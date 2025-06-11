@@ -2,10 +2,9 @@
 // This is a reverse proxy configuration for Nginx that uses JavaScript to dynamically 
 // map subdomains to specific ports and IP addresses based on a JSON file.
 // Code is based off of bluehive-testflight's port_map.js
-// Last updated: 06-02-2025 Carter Myers
-
+// Last updated: 06-08-2025 Carter Myers
 var fs = require('fs');
-var filePath = "/etc/nginx/port_map.json"; // Make sure Nginx has read access
+var filePath = "/etc/nginx/port_map.json"; 
 var cachedMapping = null;
 
 function loadMapping() {
@@ -14,7 +13,6 @@ function loadMapping() {
         cachedMapping = JSON.parse(content);
         return true;
     } catch (e) {
-        // Optionally log error
         return false;
     }
 }
@@ -90,3 +88,5 @@ function ipLookup(r) {
 
     return entry.ip;
 }
+
+export default { portLookup, ipLookup };
