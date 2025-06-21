@@ -1,13 +1,10 @@
 #!/bin/bash
 
-# /var/lib/vz/snippets/register-container.sh
-# This script registers a Proxmox container with the host's NGINX proxy and assigns it an available HTTP and SSH port.
-# Last updated: 06-08-2025 Carter Myers
-# ----------------------------------------
 set -euo pipefail
-set -x
 
 CTID="$1"
+ADDITIONAL_PROTOCOLS="$2" #Optional
+
 if [ -z "$CTID" ]; then
     echo "Usage: $0 <CTID>"
     exit 1
@@ -19,7 +16,7 @@ exec > >(tee -a "$LOGFILE") 2>&1
 
 echo "---- Hookscript started at $(date) ----"
 echo "⏳ Waiting for container to boot and get DHCP lease..."
-sleep 10
+#sleep 10
 
 # Extract IP
 container_ip=""
@@ -37,26 +34,22 @@ fi
 
 hostname=$(pct exec "$CTID" -- hostname)
 
-# Get available HTTP port (3000–3999)
-used_http_ports=$(ssh root@10.15.20.69 'jq -r ".[] | .port" /etc/nginx/port_map.json 2>/dev/null || echo ""')
-http_port=$(comm -23 <(seq 3000 3999 | sort) <(echo "$used_http_ports" | sort) | head -n 1)
-
-# Check if this container already has a port assigned in PREROUTING
+# Check if this container already has a SSH port assigned in PREROUTING
 existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
 if [[ -n "$existing_ssh_port" ]]; then
-    echo "ℹ️ Container already has SSH port $existing_ssh_port"
+    echo "ℹ️  Container already has SSH port $existing_ssh_port"
     ssh_port="$existing_ssh_port"
 else
     # Get used SSH ports
-    used_ssh_ports=$(iptables -t nat -S PREROUTING | awk -F'--dport ' '/--dport / {print $2}' | awk '{print $1}')
+    used_ssh_ports=$(iptables -t nat -S PREROUTING | awk -F'--dport ' '/--dport / {print $2}' | awk '/22$/' | awk '{print $1}')
     ssh_port=$(comm -23 <(seq 2222 2999 | sort) <(echo "$used_ssh_ports" | sort) | head -n 1)
 
     if [[ -z "$ssh_port" ]]; then
         echo "❌ No available SSH ports found"
         exit 2
     fi
-
+#
     # Add PREROUTING rule
     iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
 
@@ -64,22 +57,75 @@ else
     iptables -t nat -A POSTROUTING -o vmbr0 -p tcp -d "$container_ip" --dport 22 -j MASQUERADE
 fi
 
+# Take input file of protocols, check if the container already has a port assigned for those protocols in PREROUTING
+
+# Store all protocols and ports to write to JSON list later.
+
+list_all_protocols=()
+list_all_ports=()
+
+while read line; do
+
+	protocol=$(echo "$line" | awk '{print $1}')
+	underlying_protocol=$(echo "$line" | awk '{print $2}')
+	default_port_number=$(echo "$line" | awk '{print $3}')
+
+	protocol_port=""
+	existing_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:$default_port_number" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
+
+	if [[ -n "$existing_port" ]]; then
+		# Port already exists, so just assign it to protocol_port
+		echo "ℹ️  This Container already has a $protocol port at $existing_port"
+		protocol_port="$existing_port"
+	else
+		used_protocol_ports=$(iptables -t nat -S PREROUTING | awk -F'--dport ' '/--dport / {print $2}' | awk '{print $1}')
+		protocol_port=$(comm -23 <(seq 10001 29999 | sort) <(echo "$used_protocol_ports" | sort) | head -n 1 || true)
+
+		if [[ -z "protocol_port" ]]; then
+			echo "❌ No available $protocol ports found"
+        		exit 2
+		fi
+
+		# Add PREROUTING rule
+ 		iptables -t nat -A PREROUTING -i vmbr0 -p "$underlying_protocol" --dport "$protocol_port" -j DNAT --to-destination "$container_ip:$default_port_number"
+
+    		# Add POSTROUTING rule
+    		iptables -t nat -A POSTROUTING -o vmbr0 -p "$underlying_protocol" -d "$container_ip" --dport "$default_port_number" -j MASQUERADE
+
+	fi
+
+	list_all_protocols+=("$protocol")
+	list_all_ports+=("$protocol_port")
+
+done < <(tac "$ADDITIONAL_PROTOCOLS")
+
+# Space Seperate Lists
+
+ss_protocols="${list_all_protocols[*]}"
+ss_ports="${list_all_ports[*]}"
+
+echo "$ss_ports"
+
 # Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$http_port" "$ssh_port" <<'EOF'
+ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$ss_protocols" "$ss_ports" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
 container_ip="$2"
-http_port="$3"
-ssh_port="$4"
+ssh_port="$3"
+ss_protocols="$4" #convert to valid JSON array
+ss_ports="$5" #convert to valid JSON array
 
-jq --arg hn "$hostname" --arg ip "$container_ip" --argjson port "$http_port" --argjson ssh "$ssh_port" \
-  '. + {($hn): {ip: $ip, port: $port, ssh: $ssh}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
+jq --arg hn "$hostname" \
+   --arg ip "$container_ip" \
+   --argjson ssh "$ssh_port" \
+   --argjson protos "$(printf '%s\n' $ss_protocols | jq -R . | jq -s .)" \
+   --argjson ports "$(printf '%s\n' $ss_ports | jq -R . | jq -s 'map(tonumber)')" \
+   '. + {($hn): {ip: $ip, ports: ( reduce range(0; $protos | length) as $i ( {ssh: $ssh}; . + { ($protos[$i]): $ports[$i]}))}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
 
 mv -f /tmp/port_map.json.new /etc/nginx/port_map.json
 nginx -s reload
 EOF
 
 echo "✅ Registered $hostname → $container_ip"
-echo "🌐 HTTP port: $http_port"
 echo "🔐 SSH port: $ssh_port"
