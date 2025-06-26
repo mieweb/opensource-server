@@ -1,3 +1,6 @@
+// Script to authenticate a user into Proxmox
+// Last updated June 24th, 2025 by Maxwell Klema
+
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');

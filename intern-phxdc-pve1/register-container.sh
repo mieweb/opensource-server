@@ -16,7 +16,7 @@ exec > >(tee -a "$LOGFILE") 2>&1
 
 echo "---- Hookscript started at $(date) ----"
 echo "⏳ Waiting for container to boot and get DHCP lease..."
-#sleep 10
+sleep 10
 
 # Extract IP
 container_ip=""
@@ -40,7 +40,7 @@ hostname=$(pct exec "$CTID" -- hostname)
 existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
 if [[ -n "$existing_ssh_port" ]]; then
-    echo "ℹ️  Container already has SSH port $existing_ssh_port"
+    echo "ℹ️ Container already has SSH port $existing_ssh_port"
     ssh_port="$existing_ssh_port"
 else
     # Get used SSH ports
@@ -154,7 +154,7 @@ fi
 
 # Results
 
-echo "✅ Registered $hostname → $container_ip"
+echo "✅ Hostname is registered via $hostname → $container_ip"
 echo "🔐 SSH port: $ssh_port"
 
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
@@ -164,6 +164,3 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
 	done
 
 fi
-
-
-
