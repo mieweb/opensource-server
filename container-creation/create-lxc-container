@@ -1,0 +1,48 @@
+#!/bin/bash
+# Script to create the pct container, run register container, and migrate container accordingly.
+# Last Modified by June 26th, 2025 by Maxwell Klema
+
+CONTAINER_NAME="$1"
+CONTAINER_PASSWORD="$2"
+HTTP_PORT="$3"
+PROXMOX_USERNAME="$4"
+PUB_FILE="$5"
+NEXT_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
+
+# Create the Container Clone
+
+echo "⏳ Cloning Container..."
+pct clone 114 $NEXT_ID \
+	--hostname $CONTAINER_NAME \
+	--full true \
+
+# Set Container Options
+
+echo "⏳ Setting Container Properties.."
+pct set $NEXT_ID \
+	--tags "TAG" \
+	--onboot 1 \
+
+pct start $NEXT_ID
+pveum aclmod /vms/$NEXT_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
+#pct delete $NEXT_ID
+
+# Get the Container IP Address and install some packages
+
+echo "⏳ Waiting for DHCP to allocate IP address to container..."
+sleep 10
+
+CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
+pct exec $NEXT_ID -- apt-get upgrade
+pct exec $NEXT_ID -- apt install -y sudo
+pct exec $NEXT_ID -- apt install -y git
+pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
+pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+
+# Migrate Container (UPDATE WHEN PVE2 has PVE1 PUBLIC KEY)
+
+#if (( $NEXT_ID % 2 == 0 )); then
+#       pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2
+#fi
+
+# Insert User's Public Key into their container
