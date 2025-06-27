@@ -1,12 +1,13 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by June 26th, 2025 by Maxwell Klema
+# Last Modified by June 27th, 2025 by Maxwell Klema
 
 CONTAINER_NAME="$1"
 CONTAINER_PASSWORD="$2"
 HTTP_PORT="$3"
 PROXMOX_USERNAME="$4"
 PUB_FILE="$5"
+PROTOCOL_FILE="$6"
 NEXT_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
 
 # Create the Container Clone
@@ -20,7 +21,7 @@ pct clone 114 $NEXT_ID \
 
 echo "⏳ Setting Container Properties.."
 pct set $NEXT_ID \
-	--tags "TAG" \
+	--tags "$PROXMOX_USERNAME" \
 	--onboot 1 \
 
 pct start $NEXT_ID
@@ -38,11 +39,21 @@ pct exec $NEXT_ID -- apt install -y sudo
 pct exec $NEXT_ID -- apt install -y git
 pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
 pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
 
-# Migrate Container (UPDATE WHEN PVE2 has PVE1 PUBLIC KEY)
+# Set password inside the container
 
-#if (( $NEXT_ID % 2 == 0 )); then
-#       pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2
-#fi
+pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd"
 
-# Insert User's Public Key into their container
+# Run Contianer Provision Script to add container to port_map.json
+
+/var/lib/vz/snippets/register-container-test.sh $NEXT_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+
+# Migrate to pve2 if Container ID is even
+
+if (( $NEXT_ID % 2 == 0 )); then
+       pct stop $NEXT_ID
+       pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2 --online
+       ssh root@10.15.0.5 "pct start $NEXT_ID"
+fi

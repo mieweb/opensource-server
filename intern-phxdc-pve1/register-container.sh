@@ -1,14 +1,18 @@
 #!/bin/bash
+# var/lib/vz/snippets/register-container.sh
+# Script to register a container's IP and ports in the NGINX port map JSON file.
+# Last Modified June 27th, 2025 by Maxwell Klema 
 
 set -euo pipefail
 
-CTID="$1"
-ADDITIONAL_PROTOCOLS="${2-}" #set to empty string if not passed
-
-if [ -z "$CTID" ]; then
-    echo "Usage: $0 <CTID> <PROTOCOL FILE [OPTIONAL]>"
+if [[ -z "${1-}" || -z "${2-}" ]]; then
+    echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]>"
     exit 1
 fi
+
+CTID="$1"
+http_port="$2"
+ADDITIONAL_PROTOCOLS="${3-}" #set to empty string if not passed
 
 # Redirect stdout and stderr to a log file
 LOGFILE="/var/log/pve-hook-$CTID.log"
@@ -16,7 +20,7 @@ exec > >(tee -a "$LOGFILE") 2>&1
 
 echo "---- Hookscript started at $(date) ----"
 echo "⏳ Waiting for container to boot and get DHCP lease..."
-sleep 10
+#sleep 10
 
 # Extract IP
 container_ip=""
@@ -110,21 +114,23 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
 
 	#Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
 
-ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$ss_protocols" "$ss_ports" <<'EOF'
+ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
 container_ip="$2"
 ssh_port="$3"
-protos_json=$(echo "$4" | tr ',' '\n' | jq -R . | jq -s .)
-ports_json=$(echo "$5" | tr ',' '\n' | jq -R . | jq -s 'map(tonumber)')
+http_port="$4"
+protos_json=$(echo "$5" | tr ',' '\n' | jq -R . | jq -s .)
+ports_json=$(echo "$6" | tr ',' '\n' | jq -R . | jq -s 'map(tonumber)')
 
 jq --arg hn "$hostname" \
   --arg ip "$container_ip" \
   --argjson ssh "$ssh_port" \
+  --argjson http "$http_port" \
   --argjson protos "$protos_json" \
   --argjson ports_list "$ports_json" \
-  '. + {($hn): {ip: $ip, ports: ( reduce range(0; $protos | length) as $i ( {ssh: $ssh}; . + { ($protos[$i]): $ports_list[$i]}))}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
+  '. + {($hn): {ip: $ip, ports: ( reduce range(0; $protos | length) as $i ( {ssh: $ssh, http: $http}; . + { ($protos[$i]): $ports_list[$i]}))}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
 
 mv -f /tmp/port_map.json.new /etc/nginx/port_map.json
 nginx -s reload
@@ -134,17 +140,19 @@ else
 
 # Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
 
-ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" <<'EOF'
+ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
 container_ip="$2"
 ssh_port="$3"
+http_port="$4"
 
 jq --arg hn "$hostname" \
  --arg ip "$container_ip" \
+ --argjson http "$http_port" \
  --argjson ssh "$ssh_port" \
- '. + {($hn): {ip: $ip, ports: {ssh: $ssh}}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
+ '. + {($hn): {ip: $ip, ports: {ssh: $ssh, http: $http}}}' /etc/nginx/port_map.json > /tmp/port_map.json.new
 
 mv -f /tmp/port_map.json.new /etc/nginx/port_map.json
 nginx -s reload
@@ -154,8 +162,15 @@ fi
 
 # Results
 
+echo "======================================================"
+echo "============= COPY THESE PORTS DOWN =================="
+echo "=== Your Container will listen on the protocol's   ==="
+echo "=== default port, but incoming traffic must go     ==="
+echo "=== through the ports listed down below            ==="
+echo "======================================================"
 echo "✅ Hostname is registered via $hostname → $container_ip"
 echo "🔐 SSH port: $ssh_port"
+echo "🌐 HTTP PORT: $http_port"
 
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
 
@@ -164,3 +179,4 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
 	done
 
 fi
+echo "======================================================"
