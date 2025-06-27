@@ -144,7 +144,9 @@ while [ "${USE_OTHER_PROTOCOLS^^}" != "Y" ] && [ "${USE_OTHER_PROTOCOLS^^}" != "
 done
 
 RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
-PROTOCOL_FILE="/root/bin/protocols/protocol_list_$RANDOM_NUM.txt"
+PROTOCOL_BASE_FILE="protocol_list_$RANDOM_NUM.txt"
+PROTOCOL_FILE="/root/bin/protocols/$PROTOCOL_BASE_FILE"
+touch "$PROTOCOL_FILE"
 
 if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 	LIST_PROTOCOLS=()
@@ -178,14 +180,19 @@ if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 	done
 fi
 
-# send public key file to hypervisor and ssh, Create the Container, run port mapping script
+# send public key file & port map file to hypervisor and ssh, Create the Container, run port mapping script
 sftp root@10.15.0.4 <<EOF
 put $TEMP_PUB_FILE /var/lib/vz/snippets/container-public-keys/
 EOF
 
-ssh root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME" $PUB_FILE
+sftp root@10.15.0.4 <<EOF
+put $PROTOCOL_FILE /var/lib/vz/snippets/container-port-maps/
+EOF
+
+ssh root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME $PUB_FILE $PROTOCOL_BASE_FILE"
 
 rm -rf "$PROTOCOL_FILE"
 rm -rf "$TEMP_PUB_FILE"
+
 unset CONFIRM_PASSWORD
 unset CONTAINER_PASSWORD
