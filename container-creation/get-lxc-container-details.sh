@@ -80,7 +80,11 @@ fi
 echo -e "\n🔑 Attempting to Detect SSH Public Key..."
 
 AUTHORIZED_KEYS="/root/.ssh/authorized_keys"
-DETECT_PUBLIC_KEY=$(sudo /root/bin/ssh/detectPublicKey.sh "$SSH_KEY_FP")
+RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+PUB_FILE="key_$RANDOM_NUM.pub"
+TEMP_PUB_FILE="/root/bin/ssh/temp_pubs/$PUB_FILE" # in case two users are running this script at the same time, they do not overwrite each other's temp files
+echo "" > "$TEMP_PUB_FILE"
+DETECT_PUBLIC_KEY=$(sudo /root/bin/ssh/detectPublicKey.sh "$SSH_KEY_FP" "$TEMP_PUB_FILE")
 
 if [ "$DETECT_PUBLIC_KEY" == "Public key found for create-container" ]; then
 	echo "🔐 Public Key Found!"
@@ -100,6 +104,7 @@ else
 
 	if [ "$PUBLIC_KEY" != "" ]; then
 		echo "$PUBLIC_KEY" > "$AUTHORIZED_KEYS" && systemctl restart ssh
+		echo "$PUBLIC_KEY" > "$TEMP_PUB_FILE"
 		sudo /root/bin/ssh/publicKeyAppendJumpHost.sh "$PUBLIC_KEY"
 	fi
 fi
@@ -173,8 +178,14 @@ if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 	done
 fi
 
-# ssh into hypervisor, Cresate the Container, run port mapping script
+# send public key file to hypervisor and ssh, Create the Container, run port mapping script
+sftp root@10.15.0.4 <<EOF
+put $TEMP_PUB_FILE /var/lib/vz/snippets/container-public-keys/
+EOF
+
+ssh root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME" $PUB_FILE
 
 rm -rf "$PROTOCOL_FILE"
+rm -rf "$TEMP_PUB_FILE"
 unset CONFIRM_PASSWORD
 unset CONTAINER_PASSWORD
