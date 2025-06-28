@@ -1,7 +1,7 @@
 #!/bin/bash
 # var/lib/vz/snippets/register-container.sh
 # Script to register a container's IP and ports in the NGINX port map JSON file.
-# Last Modified June 27th, 2025 by Maxwell Klema 
+# Last Modified June 27 2025 by Maxwell Klema 
 
 set -euo pipefail
 
@@ -162,21 +162,33 @@ fi
 
 # Results
 
-echo "======================================================"
-echo "============= COPY THESE PORTS DOWN =================="
-echo "=== Your Container will listen on the protocol's   ==="
-echo "=== default port, but incoming traffic must go     ==="
-echo "=== through the ports listed down below            ==="
-echo "======================================================"
-echo "✅ Hostname is registered via $hostname → $container_ip"
-echo "🔐 SSH port: $ssh_port"
-echo "🌐 HTTP PORT: $http_port"
+# Define high-contrast colors
+BOLD='\033[1m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+GREEN='\033[32m'
+CYAN='\033[36m'
+RESET='\033[0m'
 
+# Top border and title
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}🔔  ${MAGENTA}COPY THESE PORTS DOWN${RESET} — ${CYAN}For External Access${RESET}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "📌  ${BLUE}Note:${RESET} Your container listens on default ports internally,"
+echo -e "    but EXTERNAL traffic must use the ports listed below:"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
+# Port info
+echo -e "✅  ${GREEN}Hostname Registration:${RESET} $hostname → $container_ip"
+echo -e "🔐  ${MAGENTA}SSH Port            :${RESET} $ssh_port"
+echo -e "🌐  ${BLUE}HTTP Port           :${RESET} $http_port"
+
+# Additional protocols (if any)
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
-
-	for i in "${!list_all_protocols[@]}"; do
-		echo "📡 ${list_all_protocols[$i]} port: ${list_all_ports[$i]}"
-	done
-
+    for i in "${!list_all_protocols[@]}"; do
+        echo -e "📡  ${CYAN}${list_all_protocols[$i]} Port         :${RESET} ${list_all_ports[$i]}"
+    done
 fi
-echo "======================================================"
+
+# Bottom border
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"

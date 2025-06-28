@@ -7,7 +7,7 @@ PUBLIC_KEY_LIST="/root/.ssh/authorized_keys"
 
 
 KEY_FINGERPRINT="$1"
-TEMP_PUB_FIL="$2"
+TEMP_PUB_FILE="$2"
 
 if [ "$KEY_FINGERPRINT" != "" ]; then
     # Iterate over each public key, compute fingerprint, see if there is a match

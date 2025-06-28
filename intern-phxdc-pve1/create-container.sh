@@ -37,9 +37,12 @@ CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
 pct exec $NEXT_ID -- apt-get upgrade
 pct exec $NEXT_ID -- apt install -y sudo
 pct exec $NEXT_ID -- apt install -y git
-pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
-pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
-rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+
+if [ -f "/var/lib/vz/snippets/container-public-keys/$PUBFILE" ]; then
+	pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
+	pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+fi
 
 # Set password inside the container
 
@@ -47,8 +50,15 @@ pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd"
 
 # Run Contianer Provision Script to add container to port_map.json
 
-/var/lib/vz/snippets/register-container-test.sh $NEXT_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
-rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
+	echo "CONTAINS PROTOCOL FILE"
+	/var/lib/vz/snippets/register-container-test.sh $NEXT_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+	rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+else
+	/var/lib/vz/snippets/register-container-test.sh $NEXT_ID $HTTP_PORT
+fi
+
+SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
 # Migrate to pve2 if Container ID is even
 
@@ -57,3 +67,19 @@ if (( $NEXT_ID % 2 == 0 )); then
        pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2 --online
        ssh root@10.15.0.5 "pct start $NEXT_ID"
 fi
+
+# Echo Container Details
+
+# Define friendly, high-contrast colors
+BOLD='\033[1m'
+BLUE='\033[34m'
+MAGENTA='\033[35m'
+GREEN='\033[32m'
+RESET='\033[0m'
+
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "📦  ${BLUE}Container ID        :${RESET} $NEXT_ID"
+echo -e "🌐  ${MAGENTA}Internal IP         :${RESET} $CONTAINER_IP"
+echo -e "🔗  ${GREEN}Domain Name         :${RESET} https://$CONTAINER_NAME.opensource.mieweb.org"
+echo -e "🛠️  ${BLUE}SSH Access          :${RESET} ssh -p $SSH_PORT root@$CONTAINER_NAME.opensource.mieweb.org"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
