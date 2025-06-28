@@ -83,7 +83,7 @@ AUTHORIZED_KEYS="/root/.ssh/authorized_keys"
 RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
 PUB_FILE="key_$RANDOM_NUM.pub"
 TEMP_PUB_FILE="/root/bin/ssh/temp_pubs/$PUB_FILE" # in case two users are running this script at the same time, they do not overwrite each other's temp files
-echo "" > "$TEMP_PUB_FILE"
+touch "$TEMP_PUB_FILE"
 DETECT_PUBLIC_KEY=$(sudo /root/bin/ssh/detectPublicKey.sh "$SSH_KEY_FP" "$TEMP_PUB_FILE")
 
 if [ "$DETECT_PUBLIC_KEY" == "Public key found for create-container" ]; then
@@ -181,13 +181,23 @@ if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 fi
 
 # send public key file & port map file to hypervisor and ssh, Create the Container, run port mapping script
+
+if [ -s $TEMP_PUB_FILE ]; then
 sftp root@10.15.0.4 <<EOF
 put $TEMP_PUB_FILE /var/lib/vz/snippets/container-public-keys/
 EOF
+fi
 
+# don't send it file size is zero.
+if [ -s "$PROTOCOL_FILE" ]; then 
 sftp root@10.15.0.4 <<EOF
 put $PROTOCOL_FILE /var/lib/vz/snippets/container-port-maps/
 EOF
+fi
+
+echo -e "\n===================================="
+echo "🚀 Starting Container Creation..."
+echo -e "====================================\n"
 
 ssh root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME $PUB_FILE $PROTOCOL_BASE_FILE"
 
