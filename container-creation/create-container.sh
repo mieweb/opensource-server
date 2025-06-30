@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by June 27th, 2025 by Maxwell Klema
+# Last Modified by June 30th, 2025 by Maxwell Klema
 
 CONTAINER_NAME="$1"
 CONTAINER_PASSWORD="$2"
@@ -38,7 +38,7 @@ pct exec $NEXT_ID -- apt-get upgrade
 pct exec $NEXT_ID -- apt install -y sudo
 pct exec $NEXT_ID -- apt install -y git
 
-if [ -f "/var/lib/vz/snippets/container-public-keys/$PUBFILE" ]; then
+if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
 	pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
 	pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
 	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
@@ -77,7 +77,6 @@ MAGENTA='\033[35m'
 GREEN='\033[32m'
 RESET='\033[0m'
 
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "📦  ${BLUE}Container ID        :${RESET} $NEXT_ID"
 echo -e "🌐  ${MAGENTA}Internal IP         :${RESET} $CONTAINER_IP"
 echo -e "🔗  ${GREEN}Domain Name         :${RESET} https://$CONTAINER_NAME.opensource.mieweb.org"

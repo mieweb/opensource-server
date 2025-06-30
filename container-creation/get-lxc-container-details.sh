@@ -3,6 +3,15 @@
 # Modified June 23rd, 2025 by Maxwell Klema
 # ------------------------------------------
 
+# Define color variables (works on both light and dark backgrounds)
+RESET="\033[0m"
+BOLD="\033[1m"
+MAGENTA='\033[35m'
+
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${MAGENTA}📦 MIE Container Creation Script ${RESET}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
 # Authenticate User (Only Valid Users can Create Containers)
 
 if [ -z "$PROXMOX_USERNAME" ]; then
@@ -195,9 +204,9 @@ put $PROTOCOL_FILE /var/lib/vz/snippets/container-port-maps/
 EOF
 fi
 
-echo -e "\n===================================="
-echo "🚀 Starting Container Creation..."
-echo -e "====================================\n"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}${MAGENTA}🚀 Starting Container Creation...${RESET}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 ssh root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME $PUB_FILE $PROTOCOL_BASE_FILE"
 
@@ -206,3 +215,4 @@ rm -rf "$TEMP_PUB_FILE"
 
 unset CONFIRM_PASSWORD
 unset CONTAINER_PASSWORD
+unset PUBLIC_KEY
