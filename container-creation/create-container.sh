@@ -2,6 +2,8 @@
 # Script to create the pct container, run register container, and migrate container accordingly.
 # Last Modified by June 30th, 2025 by Maxwell Klema
 
+trap cleanup SIGINT SIGTERM SIGHUP
+
 CONTAINER_NAME="$1"
 CONTAINER_PASSWORD="$2"
 HTTP_PORT="$3"
@@ -9,6 +11,27 @@ PROXMOX_USERNAME="$4"
 PUB_FILE="$5"
 PROTOCOL_FILE="$6"
 NEXT_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
+
+# Run cleanup commands in case script is interrupted
+
+function cleanup()
+{
+	BOLD='\033[1m'
+	RESET='\033[0m'
+
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	echo "⚠️  Script was abruptly exited. Running cleanup tasks."
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	pct unlock 114
+	if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
+		rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+	fi
+	if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
+		rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+	fi
+	exit 1
+}
+
 
 # Create the Container Clone
 
@@ -37,7 +60,6 @@ CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
 pct exec $NEXT_ID -- apt-get upgrade
 pct exec $NEXT_ID -- apt install -y sudo
 pct exec $NEXT_ID -- apt install -y git
-
 if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
 	pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
 	pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
