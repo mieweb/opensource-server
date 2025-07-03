@@ -49,12 +49,13 @@ if [ -z "$CONTAINER_NAME" ]; then
 	read -p "Enter Application Name (One-Word) →  " CONTAINER_NAME
 fi
 
+CONTAINER_NAME="${CONTAINER_NAME,,}" #convert to lowercase
 HOST_NAME_EXISTS=$(ssh root@10.15.20.69 "node /etc/nginx/checkHostnameRunner.js checkHostnameExists ${CONTAINER_NAME}")
 HOST_NAME_RETRIES=10
 
-while [ $HOST_NAME_EXISTS == 'true' ]; do
+while [[ $HOST_NAME_EXISTS == 'true' ]] || [[ ! "$CONTAINER_NAME" =~ ^[A-Za-z0-9-]+$ ]]; do
 	if [ $HOST_NAME_RETRIES -gt 0 ]; then
-		echo "Sorry! That name has already been registered. Try another name"
+		echo "Sorry! Either that name has already been registered or your hostname is ill-formatted. Try another name"
 		read -p "Enter Application Name (One-Word) →  " CONTAINER_NAME
 		HOST_NAME_EXISTS=$(ssh root@10.15.20.69 "node /etc/nginx/checkHostnameRunner.js checkHostnameExists ${CONTAINER_NAME}")
 		HOST_NAME_RETRIES=$(($HOST_NAME_RETRIES-1))

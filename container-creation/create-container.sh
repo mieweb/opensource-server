@@ -99,6 +99,10 @@ MAGENTA='\033[35m'
 GREEN='\033[32m'
 RESET='\033[0m'
 
+if (( $NEXT_ID % 2 == 0 )); then
+       echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+fi
+
 echo -e "📦  ${BLUE}Container ID        :${RESET} $NEXT_ID"
 echo -e "🌐  ${MAGENTA}Internal IP         :${RESET} $CONTAINER_IP"
 echo -e "🔗  ${GREEN}Domain Name         :${RESET} https://$CONTAINER_NAME.opensource.mieweb.org"
