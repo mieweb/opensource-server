@@ -27,7 +27,7 @@ done
 # Get Repository Branch
 
 if [ -z "$PROJECT_BRANCH" ]; then
-    read -p "🪾  Enter the project branch to deploy from (leave blank for main) → " PROJECT_BRANCH
+    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
 fi
 
 if [ "$PROJECT_BRANCH" == "" ]; then
@@ -36,19 +36,76 @@ fi
 
 while ! git ls-remote --heads "$PROJECT_REPOSITORY" | grep -q "refs/heads/$PROJECT_BRANCH"; do
     echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
-    read -p "🪾  Enter the project branch to deploy from (leave blank for main) → " PROJECT_BRANCH
+    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
 done
 
 # Get Project Root Directory
 
 if [ -z "$PROJECT_ROOT" ]; then
-    read -p "📁 Enter the project root directory (relative to repo root, or '.' for root) →  " PROJECT_ROOT
+    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
 fi
 
-# Get Environment Variables
-if [ -z "$ENV_VARS" ]; then
-    read -p "🔑 Enter any environment variables (KEY=VALUE, comma separated, leave blank if none) →  " ENV_VARS
+if [ "$PROJECT_ROOT" == "" ]; then
+    PROJECT_ROOT="/"
 fi
+
+VALID_PROJECT_ROOT=$(node js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
+
+while [ "$VALID_PROJECT_ROOT" == "false" ]; do
+    echo "⚠️ The root directory you provided, \"$PROJECT_ROOT\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
+    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
+    VALID_PROJECT_ROOT=$(node js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
+done
+
+# Get Environment Variables
+
+gatherEnvVars(){
+
+    read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
+    read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
+
+    while [ "$ENV_VAR_KEY" == "" ] || [ "$ENV_VAR_VALUE" == "" ]; do
+        echo "⚠️  Key or value cannot be empty. Try again."
+        read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
+        read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
+    done
+
+    echo "$ENV_VAR_KEY=$ENV_VAR_VALUE" >> $TEMP_ENV_FILE_PATH
+
+    read -p "🔑 Do you want to enter another Environment Variable? (y/n) →  " ENTER_ANOTHER_ENV
+}
+
+if [ -z "$REQUIRE_ENV_VARS" ]; then
+    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+fi
+
+while [ "${REQUIRE_ENV_VARS^^}" != "Y" ] && [ "${REQUIRE_ENV_VARS^^}" != "N" ] && [ "${REQUIRE_ENV_VARS^^}" != "" ]; do
+    echo "⚠️ Invalid option. Please try again."
+    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+done
+
+if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
+
+    # generate random temp .env file
+    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+    ENV_FILE="env_$RANDOM_NUM.txt"
+    TEMP_ENV_FILE_PATH="/root/bin/env/$ENV_FILE"
+    touch "$TEMP_ENV_FILE_PATH"
+
+    if [ ! -z "$CONTAINER_ENV_VARS" ]; then
+        echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$TEMP_ENV_FILE_PATH" #k=v pairs
+    else
+        gatherEnvVars
+        while [ "${ENTER_ANOTHER_ENV^^}" == "Y" ]; do
+            gatherEnvVars
+        done
+    fi
+fi
+
+
+
+
+
 
 # Get Install Command
 if [ -z "$INSTALL_COMMAND" ]; then
