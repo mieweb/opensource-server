@@ -12,7 +12,7 @@ echo -e "${BOLD}\n━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}${MAGENTA}🌐 Let's Get Your Project Automatically Deployed ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${RESET}"
 
-# Get and validate project repository
+# Get and validate project repository ========
 
 if [ -z "$PROJECT_REPOSITORY" ]; then
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
@@ -24,7 +24,7 @@ while ! git ls-remote --heads "$PROJECT_REPOSITORY" > /dev/null 2>&1 ; do
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
 done
 
-# Get Repository Branch
+# Get Repository Branch ========
 
 if [ -z "$PROJECT_BRANCH" ]; then
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
@@ -39,7 +39,7 @@ while ! git ls-remote --heads "$PROJECT_REPOSITORY" | grep -q "refs/heads/$PROJE
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
 done
 
-# Get Project Root Directory
+# Get Project Root Directory ========
 
 if [ -z "$PROJECT_ROOT" ]; then
     read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
@@ -57,7 +57,7 @@ while [ "$VALID_PROJECT_ROOT" == "false" ]; do
     VALID_PROJECT_ROOT=$(node js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
 done
 
-# Get Environment Variables
+# Get Environment Variables ========
 
 gatherEnvVars(){
 
@@ -93,7 +93,12 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
     touch "$TEMP_ENV_FILE_PATH"
 
     if [ ! -z "$CONTAINER_ENV_VARS" ]; then
-        echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$TEMP_ENV_FILE_PATH" #k=v pairs
+        if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
+             echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$TEMP_ENV_FILE_PATH" #k=v pairs
+        else
+            echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+            exit 10
+        fi
     else
         gatherEnvVars
         while [ "${ENTER_ANOTHER_ENV^^}" == "Y" ]; do
@@ -102,33 +107,119 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
     fi
 fi
 
+# Get Install Command ========
 
-
-
-
-
-# Get Install Command
 if [ -z "$INSTALL_COMMAND" ]; then
-    read -p "📦 Enter the install command (e.g., 'npm install', 'pip install') →  " INSTALL_COMMAND
+    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
 fi
 
-# Get Build Command
+while [ "$INSTALL_COMMAND" == "" ]; do
+    echo "⚠️  The install command cannot be blank. Please try again."
+    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
+done
+
+# Get Build Command ========
+
 if [ -z "$BUILD_COMMAND" ]; then
-    read -p "🏗️  Enter the build command (leave blank if not needed) →  " BUILD_COMMAND
+    read -p "🏗️  Enter the build command (leave blank if no build command) →  " BUILD_COMMAND
 fi
 
-# Get Output Directory
-if [ -z "$OUTPUT_DIRECTORY" ]; then
-    read -p "📂 Enter the output directory (e.g., 'dist', 'build', leave blank if not applicable) →  " OUTPUT_DIRECTORY
+# Get Build Directory ========
+
+if [ -z "$BUILD_DIRECTORY" ]; then
+    read -p "📂 Enter the build directory (e.g., 'dist'; leave blank if not applicable) →  " BUILD_DIRECTORY
 fi
 
-# Get Start Command
+while [ "$BUILD_COMMAND" == "" ] && [ "$BUILD_DIRECTORY" != "" ]; do
+    echo "⚠️  You did not enter a build command. The build directory should be empty, too. Please try again."
+    read -p "📂 Enter the build directory (e.g., 'dist', 'build', leave blank if not applicable) →  " BUILD_DIRECTORY
+done
+
+# Get Start Command ========
+
 if [ -z "$START_COMMAND" ]; then
     read -p "🚦 Enter the start command (e.g., 'npm start', 'python app.py') →  " START_COMMAND
 fi
 
-# Get Runtime Language
+while [ "$START_COMMAND" == "" ]; do
+    echo "⚠️  The start command cannot be blank. Please try again."
+    read -p "🚦 Enter the start command (e.g., 'npm start') →  " START_COMMAND
+done
+
+# Get Runtime Language ========
+
 if [ -z "$RUNTIME_LANGUAGE" ]; then
-    read -p "🖥️  Enter the runtime language (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
+    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
 fi
+
+while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
+    echo "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
+    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
+done
+
+# Get Services ========
+
+SERVICE_MAP="services/service_map.json"
+
+# Helper function to check if a user has added the same service twice
+serviceExists() {
+    SERVICE="$1"
+    APPENDED_SERVICES="$2"
+
+    for CURRENT in "${APPENDED_SERVICES[@]}"; do
+        if [ "${SERVICE,,}" == "${CURRENT,,}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Helper function to gather a service name or other valid option
+gatherService() {
+    read -p "➡️  Enter the name of a service to add to your container or type \"C\" to create a custom service (\"E\" to exit) →  " SERVICE
+    while [ "$SERVICE" == "" ]; do
+        echo "⚠️ Invalid option. Please try again."
+        read -p "➡️  Enter the name of a service to add to your container or type \"C\" to create a custom service (\"E\" to exit) →  " SERVICE
+    done
+}
+
+# Helper function to append a new service to a container
+appendService() {
+    gatherService
+
+    APPENDED_SERVICES=()
+    SERVICE_IN_MAP=$(jq -r --arg key "${SERVICE,,}" '.[$key] // empty' "$SERVICE_MAP")
+
+    #Check if service is in services/service_map.json (not null)
+    if ! serviceExists "$SERVICE" "$APPENDED_SERVICES" && [ "${SERVICE^^}" != "C" ] && [ "${SERVICE^^}" != "E" ] && [ -n "$SERVICE_IN_MAP" ]; then
+        jq -r --arg key "${SERVICE,,}" '.[$key][]' "$SERVICE_MAP" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "sudo systemctl daemon-reload" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "✅  $SERVICE added to your container."
+        APPENDED_SERVICES+=("${SERVICE^^}")
+    fi
+}
+
+if [ -z "$REQUIRE_SERVICES" ]; then
+    read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
+fi
+
+while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+    echo "⚠️  Invalid option. Please try again."
+    read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
+done
+
+if [ "${REQUIRE_SERVICES^^}" == "Y" ]; then
+    
+    # Generate random (temporary) file to store install commands for needed services 
+    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+    SERVICES_FILE="services_$RANDOM_NUM.txt"
+    TEMP_SERVICES_FILE_PATH="/root/bin/services/$SERVICES_FILE"
+    touch "$TEMP_SERVICES_FILE_PATH"
+
+    appendService
+    while [ "${SERVICE^^}" != "E" ]; do
+        appendService
+    done
+fi
+
 
