@@ -1,6 +1,6 @@
 #!/bin/bash
 # Helper script to gather project details for automatic deployment
-# Modified July 3rd, 2025 by Maxwell Klema
+# Modified July 9th, 2025 by Maxwell Klema
 # ------------------------------------------
 
 # Define color variables (works on both light and dark backgrounds)
@@ -160,12 +160,11 @@ done
 # Get Services ========
 
 SERVICE_MAP="services/service_map.json"
+APPENDED_SERVICES=()
 
 # Helper function to check if a user has added the same service twice
 serviceExists() {
     SERVICE="$1"
-    APPENDED_SERVICES="$2"
-
     for CURRENT in "${APPENDED_SERVICES[@]}"; do
         if [ "${SERVICE,,}" == "${CURRENT,,}" ]; then
             return 0
@@ -174,29 +173,79 @@ serviceExists() {
     return 1
 }
 
-# Helper function to gather a service name or other valid option
-gatherService() {
-    read -p "➡️  Enter the name of a service to add to your container or type \"C\" to create a custom service (\"E\" to exit) →  " SERVICE
-    while [ "$SERVICE" == "" ]; do
-        echo "⚠️ Invalid option. Please try again."
-        read -p "➡️  Enter the name of a service to add to your container or type \"C\" to create a custom service (\"E\" to exit) →  " SERVICE
-    done
+processService() {
+    local SERVICE="$1"
+    local MODE="$2" # "batch" or "single"
+
+    SERVICE_IN_MAP=$(jq -r --arg key "${SERVICE,,}" '.[$key] // empty' "$SERVICE_MAP")
+    if serviceExists "$SERVICE"; then
+        if [ "$MODE" = "batch" ]; then
+            return 0 # skip to next in batch mode
+        else
+            echo "⚠️  You already added \"$SERVICE\" as a service. Please try again."
+            return 0
+        fi
+    elif [ "${SERVICE^^}" != "C" ] && [ "${SERVICE^^}" != "" ] && [ -n "$SERVICE_IN_MAP" ]; then
+        jq -r --arg key "${SERVICE,,}" '.[$key][]' "$SERVICE_MAP" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "sudo systemctl daemon-reload" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "✅ ${SERVICE^^} added to your container."
+        APPENDED_SERVICES+=("${SERVICE^^}")
+    elif [ "${SERVICE^^}" == "C" ]; then
+        appendCustomService
+    elif [ "${SERVICE^^}" != "" ]; then
+        echo "⚠️  Service \"$SERVICE\" does not exist."
+        [ "$MODE" = "batch" ] && exit 20
+    fi
 }
 
 # Helper function to append a new service to a container
 appendService() {
-    gatherService
-
-    APPENDED_SERVICES=()
-    SERVICE_IN_MAP=$(jq -r --arg key "${SERVICE,,}" '.[$key] // empty' "$SERVICE_MAP")
-
-    #Check if service is in services/service_map.json (not null)
-    if ! serviceExists "$SERVICE" "$APPENDED_SERVICES" && [ "${SERVICE^^}" != "C" ] && [ "${SERVICE^^}" != "E" ] && [ -n "$SERVICE_IN_MAP" ]; then
-        jq -r --arg key "${SERVICE,,}" '.[$key][]' "$SERVICE_MAP" >> "$TEMP_SERVICES_FILE_PATH"
-        echo "sudo systemctl daemon-reload" >> "$TEMP_SERVICES_FILE_PATH"
-        echo "✅  $SERVICE added to your container."
-        APPENDED_SERVICES+=("${SERVICE^^}")
+    if [ ! -z "$SERVICES" ]; then
+        for SERVICE in $(echo "$SERVICES" | jq -r '.[]'); do
+            processService "$SERVICE" "batch"
+        done
+    else
+        read -p "➡️  Enter the name of a service to add to your container or type \"C\" to set up a custom service installation (Enter to exit) →  " SERVICE
+        processService "$SERVICE" "single"
     fi
+}
+
+appendCustomService() {
+    # If there is an env variable for custom services, iterate through each command and append it to temporary services file
+    if [ ! -z "$CUSTOM_SERVICES" ]; then
+        echo "$CUSTOM_SERVICES" | jq -c -r '.[]' | while read -r CUSTOM_SERVICE; do
+            echo "$CUSTOM_SERVICE" | jq -c -r '.[]' | while read -r CUSTOM_SERVICE_COMMAND; do
+                if [ ! -z "$CUSTOM_SERVICE_COMMAND" ]; then
+                    echo "$CUSTOM_SERVICE_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+                else
+                    echo "⚠️  Command cannot be empty."
+                    exit 21;
+                fi
+            done
+        done
+        echo "✅ Custom Services appended."
+    else
+        echo "🛎️  Configuring Custom Service Installation. For each prompt, enter a command that is a part of the installation process for your service on Debian Bookworm. Do not forget to enable and start the service at the end. Once you have entered all of your commands, press enter to continue"
+        COMMAND_NUM=1
+        read -p "➡️  Enter Command $COMMAND_NUM: " CUSTOM_COMMAND
+
+        echo "$CUSTOM_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+
+        while [ "${CUSTOM_COMMAND^^}" != "" ]; do
+            ((COMMAND_NUM++))
+            read -p "➡️  Enter Command $COMMAND_NUM: " CUSTOM_COMMAND
+            echo "$CUSTOM_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+        done
+    fi
+}
+
+# Helper function to see if a user wants to set up a custom service
+setUpService() {
+    read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
+    while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+        echo "⚠️  Invalid option. Please try again."
+        read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
+    done
 }
 
 if [ -z "$REQUIRE_SERVICES" ]; then
@@ -217,9 +266,22 @@ if [ "${REQUIRE_SERVICES^^}" == "Y" ]; then
     touch "$TEMP_SERVICES_FILE_PATH"
 
     appendService
-    while [ "${SERVICE^^}" != "E" ]; do
-        appendService
+    while [ "${SERVICE^^}" != "" ] || [ ! -z "$SERVICES" ]; do
+        if [ -z "$SERVICES" ]; then
+            appendService
+        else
+            if [ ! -z "$CUSTOM_SERVICES" ]; then # assumes both services and custom services passed as ENV vars
+                appendCustomService
+            else # custom services not passed as ENV var, so must prompt the user for their custom services
+                setUpService
+                while [ "${SETUP_CUSTOM_SERVICE_INSTALLATION^^}" == "Y" ]; do
+                    appendCustomService
+                    setUpService
+                done
+            fi
+            break
+        fi
     done
 fi
 
-
+echo -e "\n✅ Deployment Process Finished.\n"
