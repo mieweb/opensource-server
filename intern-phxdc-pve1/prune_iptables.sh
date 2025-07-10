@@ -98,7 +98,7 @@ for hostname in $HOSTNAMES_IN_JSON; do
 
         # --- IPTABLES REMOVAL ---
         # Capture rules into an array first to avoid subshell issues with 'while read'
-        mapfile -t RULES_TO_DELETE < <(sudo iptables -t nat -S | grep "$hostname" || true) # Added sudo, || true to prevent pipefail if grep finds nothing
+        mapfile -t RULES_TO_DELETE < <(sudo iptables -t nat -S | grep -w "$ip" || true) # Added sudo, || true to prevent pipefail if grep finds nothing
         
         if [[ ${#RULES_TO_DELETE[@]} -gt 0 ]]; then
             log_message "Found ${#RULES_TO_DELETE[@]} iptables rules for $hostname. Attempting removal..."
