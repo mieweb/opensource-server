@@ -1,6 +1,6 @@
 #!/bin/bash
 # Automation Script for attempting to automatically deploy projects and services on a container
-# Last Modifided by Maxwell Klema on July 9th, 2025
+# Last Modifided by Maxwell Klema on July 10th, 2025
 # -----------------------------------------------------
 
 echo "🚀  Attempting Automatic Deployment"
@@ -25,6 +25,7 @@ if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
 pct enter $NEXT_ID <<EOF
 sudo apt-get update -y && \
 sudo apt install -y nodejs && sudo apt install -y npm && \
+npm install -g pm2 && \
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && sudo $INSTALL_COMMAND
 EOF
 fi
@@ -37,10 +38,14 @@ done < "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE"
 fi
 
 # Build Project (If Needed) and Start it
+if (( $NEXT_ID % 2 == 1 )); then
 if [ "$BUILD_COMMAND" == "" ]; then
-pct exec $NEXT_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && nohup $START_COMMAND &"
+pct exec $NEXT_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c '$START_COMMAND'"
 else
 pct enter $NEXT_ID <<EOF
-$BUILD_COMMAND && $START_COMMAND
+cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
+export PATH=\$PATH:/usr/local/bin && \
+$BUILD_COMMAND && pm2 start bash -- -c '$START_COMMAND'
 EOF
+fi
 fi

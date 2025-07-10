@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by June 30th, 2025 by Maxwell Klema
+# Last Modified by July 10th, 2025 by Maxwell Klema
 
 trap cleanup SIGINT SIGTERM SIGHUP
 
@@ -10,6 +10,21 @@ HTTP_PORT="$3"
 PROXMOX_USERNAME="$4"
 PUB_FILE="$5"
 PROTOCOL_FILE="$6"
+
+# Deployment ENVS
+DEPLOY_ON_START="$7"
+PROJECT_REPOSITORY="$8"
+PROJECT_BRANCH="$9"
+PROJECT_ROOT="${10}"
+INSTALL_COMMAND="${11}"
+BUILD_COMMAND="${12}"
+BUILD_DIRECTORY="${13}"
+START_COMMAND="${14}"
+RUNTIME_LANGUAGE="${15}"
+ENV_BASE_FILE="${16}"
+SERVICES_BASE_FILE="${17}"
+
+REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 NEXT_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
 
 # Run cleanup commands in case script is interrupted
@@ -70,6 +85,12 @@ fi
 
 pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd"
 
+# Attempt to Automatically Deploy Project Inside Container
+
+if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
+	source /var/lib/vz/snippets/deployOnStart.sh
+fi
+
 # Run Contianer Provision Script to add container to port_map.json
 
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
@@ -84,15 +105,36 @@ SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22
 
 # Migrate to pve2 if Container ID is even
 
+startProject() {
+if [ "$BUILD_COMMAND" == "" ]; then
+ssh root@10.15.0.5 "
+pct enter $NEXT_ID <<EOF
+export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
+pm2 start bash -- -c '$START_COMMAND'
+EOF
+"
+else
+ssh root@10.15.0.5 "
+pct enter $NEXT_ID <<EOF
+cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
+export PATH=\$PATH:/usr/local/bin && \
+$BUILD_COMMAND && pm2 start bash -- -c '$START_COMMAND'
+EOF
+"
+fi
+}
+
 if (( $NEXT_ID % 2 == 0 )); then
        pct stop $NEXT_ID
-       pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2 --online
+       pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2 --online > /dev/null 2>&1
        ssh root@10.15.0.5 "pct start $NEXT_ID"
+	   if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
+			startProject
+	   fi
 fi
 
 # Echo Container Details
 
-# Define friendly, high-contrast colors
 BOLD='\033[1m'
 BLUE='\033[34m'
 MAGENTA='\033[35m'
