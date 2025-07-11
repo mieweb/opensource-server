@@ -1,6 +1,6 @@
 #!/bin/bash
 # Automation Script for attempting to automatically deploy projects and services on a container
-# Last Modifided by Maxwell Klema on July 10th, 2025
+# Last Modifided by Maxwell Klema on July 9th, 2025
 # -----------------------------------------------------
 
 echo "🚀  Attempting Automatic Deployment"
@@ -22,30 +22,55 @@ EOF
 
 # Install correct runtime and project dependencies
 if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
-pct enter $NEXT_ID <<EOF
+	pct enter $NEXT_ID <<EOF
 sudo apt-get update -y && \
-sudo apt install -y nodejs && sudo apt install -y npm && \
+sudo apt install -y nodejs npm && \
 npm install -g pm2 && \
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && sudo $INSTALL_COMMAND
+EOF
+elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
+	pct enter $NEXT_ID <<EOF
+sudo apt install -y python3-venv python3-pip && \
+cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
+python3 -m venv venv && source venv/bin/activate && \
+pip install --upgrade pip && \
+$INSTALL_COMMAND
 EOF
 fi
 
 # Iterate over each service installation command
 if [ -f "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE" ]; then
-while read line; do
-	pct exec $NEXT_ID -- bash -c "$line"
-done < "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE"
+	while read line; do
+		pct exec $NEXT_ID -- bash -c "$line"
+	done < "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE"
 fi
 
 # Build Project (If Needed) and Start it
-if (( $NEXT_ID % 2 == 1 )); then
-if [ "$BUILD_COMMAND" == "" ]; then
-pct exec $NEXT_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c '$START_COMMAND'"
-else
-pct enter $NEXT_ID <<EOF
+
+if (( $NEXT_ID % 2 == 1)); then
+pct set $NEXT_ID --memory 4096 --swap 0 --cores 4 #temporarily bump up container resources for computation hungry processes (e.g. meteor)\
+
+	if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
+
+		if [ "$BUILD_COMMAND" == "" ]; then
+			pct exec $NEXT_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c '$START_COMMAND'"
+		else
+			pct enter $NEXT_ID <<EOF
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
 export PATH=\$PATH:/usr/local/bin && \
 $BUILD_COMMAND && pm2 start bash -- -c '$START_COMMAND'
 EOF
-fi
+		fi
+	elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
+
+		if [ "$BUILD_COMMAND" == "" ]; then
+			pct exec $NEXT_ID -- "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $START_COMMAND"
+		else
+			pct enter $NEXT_ID <<EOF
+cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
+$BUILD_COMMAND && '$START_COMMAND'
+EOF
+		fi
+	fi
+pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
 fi
