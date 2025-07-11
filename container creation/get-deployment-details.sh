@@ -8,9 +8,9 @@ RESET="\033[0m"
 BOLD="\033[1m"
 MAGENTA='\033[35m'
 
-echo -e "${BOLD}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD}${MAGENTA}🌐 Let's Get Your Project Automatically Deployed ${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${RESET}"
+echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
 # Get and validate project repository ========
 
@@ -18,10 +18,18 @@ if [ -z "$PROJECT_REPOSITORY" ]; then
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
 fi
 
+CheckRepository() {
+    PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
+    PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED)
+}
 
-while ! git ls-remote --heads "$PROJECT_REPOSITORY" > /dev/null 2>&1 ; do
+CheckRepository
+
+while [ "$REPOSITORY_EXISTS" != "200" ]; do
     echo "⚠️ The repository link you provided, \"$PROJECT_REPOSITORY\" was not valid."
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
+    CheckRepository
 done
 
 # Get Repository Branch ========
@@ -34,9 +42,12 @@ if [ "$PROJECT_BRANCH" == "" ]; then
     PROJECT_BRANCH="main"
 fi
 
-while ! git ls-remote --heads "$PROJECT_REPOSITORY" | grep -q "refs/heads/$PROJECT_BRANCH"; do
+REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
+
+while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
     echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
+    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
 done
 
 # Get Project Root Directory ========
@@ -49,13 +60,18 @@ if [ "$PROJECT_ROOT" == "" ]; then
     PROJECT_ROOT="/"
 fi
 
-VALID_PROJECT_ROOT=$(node js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
+VALID_PROJECT_ROOT=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
 
 while [ "$VALID_PROJECT_ROOT" == "false" ]; do
     echo "⚠️ The root directory you provided, \"$PROJECT_ROOT\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
     read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
-    VALID_PROJECT_ROOT=$(node js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
+    VALID_PROJECT_ROOT=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
 done
+
+# Remove forward slash
+if [[ "$PROJECT_ROOT" == "/*" ]]; then
+    PROJECT_ROOT="${PROJECT_ROOT:1}"
+fi
 
 # Get Environment Variables ========
 
@@ -113,27 +129,11 @@ if [ -z "$INSTALL_COMMAND" ]; then
     read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
 fi
 
-while [ "$INSTALL_COMMAND" == "" ]; do
-    echo "⚠️  The install command cannot be blank. Please try again."
-    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
-done
-
 # Get Build Command ========
 
 if [ -z "$BUILD_COMMAND" ]; then
     read -p "🏗️  Enter the build command (leave blank if no build command) →  " BUILD_COMMAND
 fi
-
-# Get Build Directory ========
-
-if [ -z "$BUILD_DIRECTORY" ]; then
-    read -p "📂 Enter the build directory (e.g., 'dist'; leave blank if not applicable) →  " BUILD_DIRECTORY
-fi
-
-while [ "$BUILD_COMMAND" == "" ] && [ "$BUILD_DIRECTORY" != "" ]; do
-    echo "⚠️  You did not enter a build command. The build directory should be empty, too. Please try again."
-    read -p "📂 Enter the build directory (e.g., 'dist', 'build', leave blank if not applicable) →  " BUILD_DIRECTORY
-done
 
 # Get Start Command ========
 
@@ -159,7 +159,7 @@ done
 
 # Get Services ========
 
-SERVICE_MAP="services/service_map.json"
+SERVICE_MAP="/root/bin/services/service_map.json"
 APPENDED_SERVICES=()
 
 # Helper function to check if a user has added the same service twice
