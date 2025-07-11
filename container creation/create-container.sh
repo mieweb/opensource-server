@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by June 30th, 2025 by Maxwell Klema
+# Last Modified by July 11th, 2025 by Maxwell Klema
 
 trap cleanup SIGINT SIGTERM SIGHUP
 
@@ -136,30 +136,26 @@ EOF
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
 export PATH=\$PATH:/usr/local/bin && \
 $BUILD_COMMAND && pm2 start bash -- -c '$START_COMMAND'
-EOF
+EOFx
 		pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
 		" > /dev/null 2>&1
 	fi
 elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
-	if [ "$BUILD_COMMAND" == "" ]; then
+    if [ "$BUILD_COMMAND" == "" ]; then
+ssh -T root@10.15.0.5 "
+pct set $NEXT_ID --memory 4096 --swap 0 --cores 4 && \
+pct exec $NEXT_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND'\" /dev/null && \
+pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
+" > /dev/null 2>&1
+    else
 ssh root@10.15.0.5 "
 pct set $NEXT_ID --memory 4096 --swap 0 --cores 4 && \
-pct enter $NEXT_ID <<EOF 
-cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND
-EOF
+pct exec $NEXT_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate $BUILD_COMMAND && $START_COMMAND'\" /dev/null && \
 pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
-"
-	else
-		ssh root@10.15.0.5 "
-		pct set $NEXT_ID --memory 4096 --swap 0 --cores 4 &&
-		pct enter $NEXT_ID <<EOF	
-cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
-$BUILD_COMMAND && '$START_COMMAND'
-EOF
-		pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
-		" > /dev/null 2>&1
-	fi
+" > /dev/null 2>&1
+    fi
 fi
+
 }
 
 if (( $NEXT_ID % 2 == 0 )); then

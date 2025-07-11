@@ -1,6 +1,6 @@
 #!/bin/bash
 # Automation Script for attempting to automatically deploy projects and services on a container
-# Last Modifided by Maxwell Klema on July 9th, 2025
+# Last Modifided by Maxwell Klema on July 11th, 2025
 # -----------------------------------------------------
 
 echo "🚀  Attempting Automatic Deployment"
@@ -30,7 +30,7 @@ cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && sudo $INSTALL_COMMAND
 EOF
 elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
 	pct enter $NEXT_ID <<EOF
-sudo apt install -y python3-venv python3-pip && \
+sudo apt install -y python3-venv python3-pip tmux && \
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
 python3 -m venv venv && source venv/bin/activate && \
 pip install --upgrade pip && \
@@ -66,10 +66,7 @@ EOF
 		if [ "$BUILD_COMMAND" == "" ]; then
 			pct exec $NEXT_ID -- "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $START_COMMAND"
 		else
-			pct enter $NEXT_ID <<EOF
-cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && \
-$BUILD_COMMAND && '$START_COMMAND'
-EOF
+			pct exec $NEXT_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate $BUILD_COMMAND && $START_COMMAND'\" /dev/null && \
 		fi
 	fi
 pct set $NEXT_ID --memory 2048 --swap 0 --cores 2
