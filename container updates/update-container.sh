@@ -79,7 +79,7 @@ fi
 CheckRepository() {
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
-    REPOSITORY_EXISTS=$(curl -H "Authorization: token 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" -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED)
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED)
 }
 
 CheckRepository
