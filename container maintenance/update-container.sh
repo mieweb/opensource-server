@@ -3,8 +3,6 @@
 # Last Modified on July 11th, 2025 by Maxwell Klema
 # ----------------------------------------
 
-# INSTALL_COMMAND BUILD_COMMAND START_COMMAND RUNTIME_LANGUAGE
-
 RESET="\033[0m"
 BOLD="\033[1m"
 MAGENTA='\033[35m'
@@ -13,62 +11,8 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}${MAGENTA}🔄 Update Container Contents ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-# Authenticate User (Only Valid Users can Create Containers)
-
-if [ -z "$PROXMOX_USERNAME" ]; then
-	read -p  "Enter Proxmox Username →  " PROXMOX_USERNAME
-fi
-
-if [ -z "$PROXMOX_PASSWORD" ]; then
-	read -sp "Enter Proxmox Password →  " PROXMOX_PASSWORD
-	echo ""
-fi
-
-USER_AUTHENTICATED=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
-RETRIES=3
-
-while [ $USER_AUTHENTICATED == 'false' ]; do
-	if [ $RETRIES -gt 0 ]; then
-		echo "❌ Authentication Failed. Try Again"
-		read -p  "Enter Proxmox Username →  " PROXMOX_USERNAME
-		read -sp "Enter Proxmox Password →  " PROXMOX_PASSWORD
-		echo ""
-
-        USER_AUTHENTICATED=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
-		RETRIES=$(($RETRIES-1))
-	else
-		echo "Too many incorrect attempts. Exiting..."
-		exit 2
-	fi
-done
-
-echo "🎉 Your proxmox account, $PROXMOX_USERNAME@pve, has been authenticated"
-
-# Get CTID from Container Name
-
-if [ -z "$CONTAINER_NAME" ]; then
-    read -p "Enter Container Name →  " CONTAINER_NAME
-fi
-
-CONTAINER_ID=$( { pct list; ssh root@10.15.0.5 'pct list'; }| awk -v name="$CONTAINER_NAME" '$3 == name {print $1}')
-
-if [ -z "$CONTAINER_ID" ]; then
-    echo "❌ Container with name $CONTAINER_NAME does not exist on your account."
-    exit 1
-fi
-
-if (( $CONTAINER_ID % 2 == 0 )); then
-    CONTAINER_OWNERSHIP=$(ssh root@10.15.0.5 "pct config \"$CONTAINER_ID\" | grep "tags" | grep \"$PROXMOX_USERNAME\"")
-else
-    CONTAINER_OWNERSHIP=$(pct config "$CONTAINER_ID" | grep "tags" | grep "$PROXMOX_USERNAME")
-fi
-
-# echo "$CONTAINER_OWNERSHIP"
-
-if [ -z "$CONTAINER_OWNERSHIP" ]; then
-    echo "❌ You do not own the container with name $CONTAINER_NAME."
-    exit 1
-fi
+source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh
+source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh
 
 # Get Project Details
 
@@ -115,10 +59,6 @@ done
 
 if [ -z "$PROJECT_ROOT" ]; then
     read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
-fi
-
-if [ "$PROJECT_ROOT" == "" ]; then
-    PROJECT_ROOT="/"
 fi
 
 VALID_PROJECT_ROOT=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateRepo \"$PROJECT_REPOSITORY\" \"$PROJECT_BRANCH\" \"$PROJECT_ROOT\"")
@@ -186,19 +126,21 @@ if (( "$CONTAINER_ID" % 2 == 0 )); then
         "
     fi
 else
+
     if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
         pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-        pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull'
-        pct exec $CONTAINER_ID -- bash -c '$INSTALL_COMMAND_COMMAND' && '$BUILD_COMMAND'
-        pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c \"$START_COMMAND\"'
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull"
+        pct exec $CONTAINER_ID -- bash -c "$INSTALL_COMMAND_COMMAND' && '$BUILD_COMMAND"
+        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c \"$START_COMMAND\""
         pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
         pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-        pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull'
-        pct exec $CONTAINER_ID -- bash -c '$INSTALL_COMMAND' && '$BUILD_COMMAND'
-        pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND'\" /dev/null
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull"
+        pct exec $CONTAINER_ID -- bash -c "$INSTALL_COMMAND' && '$BUILD_COMMAND"
+        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND'" /dev/null
         pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     fi
 fi
 
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
+exit 0

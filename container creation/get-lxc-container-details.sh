@@ -1,6 +1,6 @@
 #!/bin/bash
-# Main Container Creation Script
-# Modified June 23rd, 2025 by Maxwell Klema
+# Helper script to gather project details for automatic deployment
+# Modified July 9th, 2025 by Maxwell Klema
 # ------------------------------------------
 
 # Define color variables (works on both light and dark backgrounds)
@@ -9,246 +9,277 @@ BOLD="\033[1m"
 MAGENTA='\033[35m'
 
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}${MAGENTA}📦 MIE Container Creation Script ${RESET}"
+echo -e "${BOLD}${MAGENTA}🌐 Let's Get Your Project Automatically Deployed ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-# Authenticate User (Only Valid Users can Create Containers)
+# Get and validate project repository ========
 
-if [ -z "$PROXMOX_USERNAME" ]; then
-	read -p  "Enter Proxmox Username →  " PROXMOX_USERNAME
+if [ -z "$PROJECT_REPOSITORY" ]; then
+    read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
 fi
 
-if [ -z "$PROXMOX_PASSWORD" ]; then
-	read -sp "Enter Proxmox Password →  " PROXMOX_PASSWORD
-	echo ""
-fi
-
-USER_AUTHENTICATED=$(node /root/bin/js/authenticateUserRunner.js authenticateUser "$PROXMOX_USERNAME" "$PROXMOX_PASSWORD")
-RETRIES=3
-
-while [ $USER_AUTHENTICATED == 'false' ]; do
-	if [ $RETRIES -gt 0 ]; then
-		echo "❌ Authentication Failed. Try Again"
-		read -p  "Enter Proxmox Username →  " PROXMOX_USERNAME
-		read -sp "Enter Proxmox Password →  " PROXMOX_PASSWORD
-		echo ""
-
-		USER_AUTHENTICATED=$(node /root/bin/js/authenticateUserRunner.js authenticateUser "$PROXMOX_USERNAME" "$PROXMOX_PASSWORD")
-		RETRIES=$(($RETRIES-1))
-	else
-		echo "Too many incorrect attempts. Exiting..."
-		exit 2
-	fi
-done
-
-echo "🎉 Your proxmox account, $PROXMOX_USERNAME@pve, has been authenticated"
-
-# Gather Container Hostname (hostname.opensource.mieweb.org)
-
-if [ -z "$CONTAINER_NAME" ]; then
-	read -p "Enter Application Name (One-Word) →  " CONTAINER_NAME
-fi
-
-CONTAINER_NAME="${CONTAINER_NAME,,}" #convert to lowercase
-HOST_NAME_EXISTS=$(ssh root@10.15.20.69 "node /etc/nginx/checkHostnameRunner.js checkHostnameExists ${CONTAINER_NAME}")
-HOST_NAME_RETRIES=10
-
-while [[ $HOST_NAME_EXISTS == 'true' ]] || [[ ! "$CONTAINER_NAME" =~ ^[A-Za-z0-9-]+$ ]]; do
-	if [ $HOST_NAME_RETRIES -gt 0 ]; then
-		echo "Sorry! Either that name has already been registered or your hostname is ill-formatted. Try another name"
-		read -p "Enter Application Name (One-Word) →  " CONTAINER_NAME
-		HOST_NAME_EXISTS=$(ssh root@10.15.20.69 "node /etc/nginx/checkHostnameRunner.js checkHostnameExists ${CONTAINER_NAME}")
-		HOST_NAME_RETRIES=$(($HOST_NAME_RETRIES-1))
-	else
-		echo "Too many incorrect attempts. Exiting..."
-		exit 3
-	fi
-done
-
-echo "✅ $CONTAINER_NAME is available"
-
-# Gather Container Password
-PASSWORD_RETRIES=10
-
-if [ -z "$CONTAINER_PASSWORD" ]; then
-	read -sp "Enter Container Password →  " CONTAINER_PASSWORD
-	echo
-	read -sp "Confirm Container Password →  " CONFIRM_PASSWORD
-	echo
-
-	while [[ "$CONFIRM_PASSWORD" != "$CONTAINER_PASSWORD" || ${#CONTAINER_PASSWORD} -lt 8 ]]; do
-        	if [ $PASSWORD_RETRIES -gt 0 ]; then
-				echo "Sorry, try again. Ensure passwords are at least 8 characters."
-				read -sp "Enter Container Password →  " CONTAINER_PASSWORD
-				echo
-				read -sp "Confirm Container Password →  " CONFIRM_PASSWORD
-				echo
-				PASSWORD_RETRIES=$(($PASSWORD_RETRIES-1))
-			else
-				echo "Too many incorrect attempts. Exiting..."
-				exit 4
-			fi
-	done
-else
-	CONFIRM_PASSWORD="$CONTAINER_PASSWORD"
-	while [[ "$CONFIRM_PASSWORD" != "$CONTAINER_PASSWORD" || ${#CONTAINER_PASSWORD} -lt 8 ]]; do
-        	if [ $PASSWORD_RETRIES -gt 0 ]; then
-				echo "Sorry, try again. Ensure passwords are at least 8 characters."
-				read -sp "Enter Container Password →  " CONTAINER_PASSWORD
-				echo
-				read -sp "Confirm Container Password →  " CONFIRM_PASSWORD
-				echo
-				PASSWORD_RETRIES=$(($PASSWORD_RETRIES-1))
-			else
-				echo "Too many incorrect attempts. Exiting..."
-				exit 4
-			fi
-	done
-fi
-
-# Attempt to detect public keys
-
-echo -e "\n🔑 Attempting to Detect SSH Public Key..."
-
-AUTHORIZED_KEYS="/root/.ssh/authorized_keys"
-RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
-PUB_FILE="key_$RANDOM_NUM.pub"
-TEMP_PUB_FILE="/root/bin/ssh/temp_pubs/$PUB_FILE" # in case two users are running this script at the same time, they do not overwrite each other's temp files
-touch "$TEMP_PUB_FILE"
-DETECT_PUBLIC_KEY=$(sudo /root/bin/ssh/detectPublicKey.sh "$SSH_KEY_FP" "$TEMP_PUB_FILE")
-KEY_RETRIES=10
-
-if [ "$DETECT_PUBLIC_KEY" == "Public key found for create-container" ]; then
-	echo "🔐 Public Key Found!"
-else
-	echo "🔍 Could not detect Public Key"
-
-	if [ -z "$PUBLIC_KEY" ]; then
-		read -p "Enter Public Key (Allows Easy Access to Container) [OPTIONAL - LEAVE BLANK TO SKIP] →  " PUBLIC_KEY
-	fi
-
-	# Check if key is valid
-
-	while [[ "$PUBLIC_KEY" != "" && $(echo "$PUBLIC_KEY" | ssh-keygen -l -f - 2>&1 | tr -d '\r') == "(stdin) is not a public key file." ]]; do
-		if [ $KEY_RETRIES -gt 0 ]; then
-			echo "❌ \"$PUBLIC_KEY\" is not a valid key. Enter either a valid key or leave blank to skip."
-			read -p "Enter Public Key (Allows Easy Access to Container) [OPTIONAL - LEAVE BLANK TO SKIP] →  " PUBLIC_KEY	
-			KEY_RETRIES=$(($KEY_RETRIES-1))
-		else
-			echo "Too many incorrect attempts. Exiting..."
-			exit 5
-		fi
-	done
-
-	if [ "$PUBLIC_KEY" != "" ]; then
-		echo "$PUBLIC_KEY" > "$AUTHORIZED_KEYS" && systemctl restart ssh
-		echo "$PUBLIC_KEY" > "$TEMP_PUB_FILE"
-		sudo /root/bin/ssh/publicKeyAppendJumpHost.sh "$PUBLIC_KEY"
-	fi
-fi
-
-# Get HTTP Port Container Listens On
-HTTP_PORT_RETRIES=10
-
-if [ -z "$HTTP_PORT" ]; then
-        read -p "Enter HTTP Port for your container to listen on (80-9999) →  " HTTP_PORT
-fi
-
-while ! [[ "$HTTP_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_PORT" -lt 80 ] || [ "$HTTP_PORT" -gt 9999 ]; do
-	if [ $HTTP_PORT_RETRIES -gt 0 ]; then
-		echo "❌ Invalid HTTP Port. It must be a number between 80 and 9,999."
-    	read -p "Enter HTTP Port for your container to listen on (80-9999) →  " HTTP_PORT
-		HTTP_PORT_RETRIES=$(($HTTP_PORT_RETRIES-1))
-	else
-		echo "Too many incorrect attempts. Exiting..."
-		exit 6
-	fi
-done
-
-echo "✅ HTTP Port is set to $HTTP_PORT"
-
-# Get any other protocols
-
-protocol_duplicate() {
-	PROTOCOL="$1"
-	shift #remaining params are part of list
-	LIST="$@"
-
-	for item in $LIST; do
-		if [[ "$item" == "$PROTOCOL" ]]; then
-			return 0 # Protocol is a duplicate
-		fi
-	done
-	return 1 # Protocol is not a duplicate
+CheckRepository() {
+    PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
+    PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$RROJECT_REPOSITORY)
 }
 
-read -p "Does your Container require any protocols other than SSH and HTTP? (y/n) →  " USE_OTHER_PROTOCOLS
-while [ "${USE_OTHER_PROTOCOLS^^}" != "Y" ] && [ "${USE_OTHER_PROTOCOLS^^}" != "N" ] && [ "${USER_OTHER_PROTOCOLS^^}" != "" ]; do
-	echo "Please answer 'y' for yes or 'n' for no."
-	read -p "Does your Container require any protocols other than SSH and HTTP? (y/n) →  " USE_OTHER_PROTOCOLS
+CheckRepository
+
+while [ "$REPOSITORY_EXISTS" != "200" ]; do
+    echo "⚠️ The repository link you provided, \"$PROJECT_REPOSITORY\" was not valid."
+    read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
+    CheckRepository
 done
 
-RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
-PROTOCOL_BASE_FILE="protocol_list_$RANDOM_NUM.txt"
-PROTOCOL_FILE="/root/bin/protocols/$PROTOCOL_BASE_FILE"
-touch "$PROTOCOL_FILE"
+# Get Repository Branch ========
 
-if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
-	LIST_PROTOCOLS=()
-	read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"e\" to exit →  " PROTOCOL_NAME
-	while [ "${PROTOCOL_NAME^^}" != "E" ]; do
-		FOUND=0 #keep track if protocol was found
-		while read line; do
-			PROTOCOL_ABBRV=$(echo "$line" | awk '{print $1}')
-			protocol_duplicate "$PROTOCOL_ABBRV" "${LIST_PROTOCOLS[@]}"
-			IS_PROTOCOL_DUPLICATE=$?	
-			if [[ "$PROTOCOL_ABBRV" == "${PROTOCOL_NAME^^}" && "$IS_PROTOCOL_DUPLICATE" -eq 1 ]]; then
-				LIST_PROTOCOLS+=("$PROTOCOL_ABBRV")
-				PROTOCOL_UNDRLYING_NAME=$(echo "$line" | awk '{print $3}')
-				PROTOCOL_DEFAULT_PORT=$(echo "$line" | awk '{print $2}')
-				echo "$PROTOCOL_ABBRV $PROTOCOL_UNDRLYING_NAME $PROTOCOL_DEFAULT_PORT" >> "$PROTOCOL_FILE"
-				echo "✅ Protocol ${PROTOCOL_NAME^^} added to container."
-				FOUND=1 #protocol was found
-				break
-			else
-				echo "❌ Protocol ${PROTOCOL_NAME^^} was already added to your container. Please try again."
-				FOUND=2 #protocol was a duplicate
-				break
-			fi
-		done < <(cat "/root/bin/protocols/master_protocol_list.txt" | grep "^${PROTOCOL_NAME^^}") 
-
-		if [ $FOUND -eq 0 ]; then #if no results found, let user know.
-			echo "❌ Protocol ${PROTOCOL_NAME^^} not found. Please try again."
-		fi
-
-		read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"e\" to exit →  " PROTOCOL_NAME
-	done
+if [ -z "$PROJECT_BRANCH" ]; then
+    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
 fi
 
-# send public key file & port map file to hypervisor and ssh, Create the Container, run port mapping script
-
-if [ -s $TEMP_PUB_FILE ]; then
-sftp root@10.15.0.4 <<EOF
-put $TEMP_PUB_FILE /var/lib/vz/snippets/container-public-keys/
-EOF
+if [ "$PROJECT_BRANCH" == "" ]; then
+    PROJECT_BRANCH="main"
 fi
 
-# don't send it file size is zero.
-if [ -s "$PROTOCOL_FILE" ]; then 
-sftp root@10.15.0.4 <<EOF
-put $PROTOCOL_FILE /var/lib/vz/snippets/container-port-maps/
-EOF
+REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY/tree/$PROJECT_BRANCH)
+while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
+    echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
+    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
+    if [ "PROJECT_BRANCH" == "" ]; then
+	PROJECT_BRANCH="main"
+    fi
+    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY_SHORTENED/tree/$PROJECT_BRANCH)
+done
+
+# Get Project Root Directory ========
+
+if [ -z "$PROJECT_ROOT" ]; then
+    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
 fi
 
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-echo -e "${BOLD}${MAGENTA}🚀 Starting Container Creation...${RESET}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+VALID_PROJECT_ROOT=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
 
-ssh -t root@10.15.0.4 "/var/lib/vz/snippets/create-container.sh $CONTAINER_NAME $CONTAINER_PASSWORD $HTTP_PORT $PROXMOX_USERNAME $PUB_FILE $PROTOCOL_BASE_FILE"
+while [ "$VALID_PROJECT_ROOT" == "false" ]; do
+    echo "⚠️ The root directory you provided, \"$PROJECT_ROOT\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
+    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
+    VALID_PROJECT_ROOT=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")
+done
 
-rm -rf "$PROTOCOL_FILE"
-rm -rf "$TEMP_PUB_FILE"
+# Remove forward slash
+if [[ "$PROJECT_ROOT" == "/*" ]]; then
+    PROJECT_ROOT="${PROJECT_ROOT:1}"
+fi
 
-unset CONFIRM_PASSWORD
-unset CONTAINER_PASSWORD
-unset PUBLIC_KEY
+# Get Environment Variables ========
+
+gatherEnvVars(){
+
+    read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
+    read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
+
+    while [ "$ENV_VAR_KEY" == "" ] || [ "$ENV_VAR_VALUE" == "" ]; do
+        echo "⚠️  Key or value cannot be empty. Try again."
+        read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
+        read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
+    done
+
+    echo "$ENV_VAR_KEY=$ENV_VAR_VALUE" >> $TEMP_ENV_FILE_PATH
+
+    read -p "🔑 Do you want to enter another Environment Variable? (y/n) →  " ENTER_ANOTHER_ENV
+}
+
+if [ -z "$REQUIRE_ENV_VARS" ]; then
+    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+fi
+
+while [ "${REQUIRE_ENV_VARS^^}" != "Y" ] && [ "${REQUIRE_ENV_VARS^^}" != "N" ] && [ "${REQUIRE_ENV_VARS^^}" != "" ]; do
+    echo "⚠️ Invalid option. Please try again."
+    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+done
+
+if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
+
+    # generate random temp .env file
+    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+    ENV_FILE="env_$RANDOM_NUM.txt"
+    TEMP_ENV_FILE_PATH="/root/bin/env/$ENV_FILE"
+    touch "$TEMP_ENV_FILE_PATH"
+
+    if [ ! -z "$CONTAINER_ENV_VARS" ]; then
+        if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
+             echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$TEMP_ENV_FILE_PATH" #k=v pairs
+        else
+            echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+            exit 10
+        fi
+    else
+        gatherEnvVars
+        while [ "${ENTER_ANOTHER_ENV^^}" == "Y" ]; do
+            gatherEnvVars
+        done
+    fi
+fi
+
+# Get Install Command ========
+
+if [ -z "$INSTALL_COMMAND" ]; then
+    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
+fi
+
+# Get Build Command ========
+
+if [ -z "$BUILD_COMMAND" ]; then
+    read -p "🏗️  Enter the build command (leave blank if no build command) →  " BUILD_COMMAND
+fi
+
+# Get Start Command ========
+
+if [ -z "$START_COMMAND" ]; then
+    read -p "🚦 Enter the start command (e.g., 'npm start', 'python app.py') →  " START_COMMAND
+fi
+
+while [ "$START_COMMAND" == "" ]; do
+    echo "⚠️  The start command cannot be blank. Please try again."
+    read -p "🚦 Enter the start command (e.g., 'npm start') →  " START_COMMAND
+done
+
+# Get Runtime Language ========
+
+if [ -z "$RUNTIME_LANGUAGE" ]; then
+    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
+fi
+
+while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
+    echo "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
+    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
+done
+
+# Get Services ========
+
+SERVICE_MAP="/root/bin/services/service_map.json"
+APPENDED_SERVICES=()
+
+# Helper function to check if a user has added the same service twice
+serviceExists() {
+    SERVICE="$1"
+    for CURRENT in "${APPENDED_SERVICES[@]}"; do
+        if [ "${SERVICE,,}" == "${CURRENT,,}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+processService() {
+    local SERVICE="$1"
+    local MODE="$2" # "batch" or "single"
+
+    SERVICE_IN_MAP=$(jq -r --arg key "${SERVICE,,}" '.[$key] // empty' "$SERVICE_MAP")
+    if serviceExists "$SERVICE"; then
+        if [ "$MODE" = "batch" ]; then
+            return 0 # skip to next in batch mode
+        else
+            echo "⚠️  You already added \"$SERVICE\" as a service. Please try again."
+            return 0
+        fi
+    elif [ "${SERVICE^^}" != "C" ] && [ "${SERVICE^^}" != "" ] && [ -n "$SERVICE_IN_MAP" ]; then
+        jq -r --arg key "${SERVICE,,}" '.[$key][]' "$SERVICE_MAP" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "sudo systemctl daemon-reload" >> "$TEMP_SERVICES_FILE_PATH"
+        echo "✅ ${SERVICE^^} added to your container."
+        APPENDED_SERVICES+=("${SERVICE^^}")
+    elif [ "${SERVICE^^}" == "C" ]; then
+        appendCustomService
+    elif [ "${SERVICE^^}" != "" ]; then
+        echo "⚠️  Service \"$SERVICE\" does not exist."
+        [ "$MODE" = "batch" ] && exit 20
+    fi
+}
+
+# Helper function to append a new service to a container
+appendService() {
+    if [ ! -z "$SERVICES" ]; then
+        for SERVICE in $(echo "$SERVICES" | jq -r '.[]'); do
+            processService "$SERVICE" "batch"
+        done
+    else
+        read -p "➡️  Enter the name of a service to add to your container or type \"C\" to set up a custom service installation (Enter to exit) →  " SERVICE
+        processService "$SERVICE" "single"
+    fi
+}
+
+appendCustomService() {
+    # If there is an env variable for custom services, iterate through each command and append it to temporary services file
+    if [ ! -z "$CUSTOM_SERVICES" ]; then
+        echo "$CUSTOM_SERVICES" | jq -c -r '.[]' | while read -r CUSTOM_SERVICE; do
+            echo "$CUSTOM_SERVICE" | jq -c -r '.[]' | while read -r CUSTOM_SERVICE_COMMAND; do
+                if [ ! -z "$CUSTOM_SERVICE_COMMAND" ]; then
+                    echo "$CUSTOM_SERVICE_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+                else
+                    echo "⚠️  Command cannot be empty."
+                    exit 21;
+                fi
+            done
+        done
+        echo "✅ Custom Services appended."
+    else
+        echo "🛎️  Configuring Custom Service Installation. For each prompt, enter a command that is a part of the installation process for your service on Debian Bookworm. Do not forget to enable and start the service at the end. Once you have entered all of your commands, press enter to continue"
+        COMMAND_NUM=1
+        read -p "➡️  Enter Command $COMMAND_NUM: " CUSTOM_COMMAND
+
+        echo "$CUSTOM_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+
+        while [ "${CUSTOM_COMMAND^^}" != "" ]; do
+            ((COMMAND_NUM++))
+            read -p "➡️  Enter Command $COMMAND_NUM: " CUSTOM_COMMAND
+            echo "$CUSTOM_COMMAND" >> "$TEMP_SERVICES_FILE_PATH"
+        done
+    fi
+}
+
+# Helper function to see if a user wants to set up a custom service
+setUpService() {
+    read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
+    while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+        echo "⚠️  Invalid option. Please try again."
+        read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
+    done
+}
+
+if [ -z "$REQUIRE_SERVICES" ]; then
+    read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
+fi
+
+while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+    echo "⚠️  Invalid option. Please try again."
+    read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
+done
+
+if [ "${REQUIRE_SERVICES^^}" == "Y" ]; then
+    
+    # Generate random (temporary) file to store install commands for needed services 
+    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+    SERVICES_FILE="services_$RANDOM_NUM.txt"
+    TEMP_SERVICES_FILE_PATH="/root/bin/services/$SERVICES_FILE"
+    touch "$TEMP_SERVICES_FILE_PATH"
+
+    appendService
+    while [ "${SERVICE^^}" != "" ] || [ ! -z "$SERVICES" ]; do
+        if [ -z "$SERVICES" ]; then
+            appendService
+        else
+            if [ ! -z "$CUSTOM_SERVICES" ]; then # assumes both services and custom services passed as ENV vars
+                appendCustomService
+            else # custom services not passed as ENV var, so must prompt the user for their custom services
+                setUpService
+                while [ "${SETUP_CUSTOM_SERVICE_INSTALLATION^^}" == "Y" ]; do
+                    appendCustomService
+                    setUpService
+                done
+            fi
+            break
+        fi
+    done
+fi
+
+echo -e "\n✅ Deployment Process Finished.\n"

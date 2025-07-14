@@ -21,7 +21,7 @@ fi
 CheckRepository() {
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
-    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED)
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$RROJECT_REPOSITORY)
 }
 
 CheckRepository
@@ -42,22 +42,20 @@ if [ "$PROJECT_BRANCH" == "" ]; then
     PROJECT_BRANCH="main"
 fi
 
-REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
-
+REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY/tree/$PROJECT_BRANCH)
 while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
     echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
-    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
+    if [ "PROJECT_BRANCH" == "" ]; then
+	PROJECT_BRANCH="main"
+    fi
+    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY_SHORTENED/tree/$PROJECT_BRANCH)
 done
 
 # Get Project Root Directory ========
 
 if [ -z "$PROJECT_ROOT" ]; then
     read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
-fi
-
-if [ "$PROJECT_ROOT" == "" ]; then
-    PROJECT_ROOT="/"
 fi
 
 VALID_PROJECT_ROOT=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$PROJECT_ROOT")

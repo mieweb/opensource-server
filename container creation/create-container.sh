@@ -59,17 +59,17 @@ function cleanup()
 echo "⏳ Cloning Container..."
 pct clone 114 $NEXT_ID \
 	--hostname $CONTAINER_NAME \
-	--full true \
+	--full true > /dev/null 2>&1
 
 # Set Container Options
 
 echo "⏳ Setting Container Properties.."
 pct set $NEXT_ID \
 	--tags "$PROXMOX_USERNAME" \
-	--onboot 1 \
+	--onboot 1 > /dev/null 2>&1
 
-pct start $NEXT_ID
-pveum aclmod /vms/$NEXT_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
+pct start $NEXT_ID > /dev/null 2>&1
+pveum aclmod /vms/$NEXT_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser > /dev/null 2>&1
 #pct delete $NEXT_ID
 
 # Get the Container IP Address and install some packages
@@ -78,40 +78,39 @@ echo "⏳ Waiting for DHCP to allocate IP address to container..."
 sleep 10
 
 CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
-pct exec $NEXT_ID -- apt-get upgrade
-pct exec $NEXT_ID -- apt install -y sudo git curl vim
+pct exec $NEXT_ID -- apt-get upgrade > /dev/null 2>&1
+pct exec $NEXT_ID -- apt install -y sudo git curl vim > /dev/null 2>&1
 if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
-	pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys
-	pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE
-	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE
+	pct exec $NEXT_ID -- touch ~/.ssh/authorized_keys > /dev/null 2>&1
+	pct exec $NEXT_ID -- bash -c "cat > ~/.ssh/authorized_keys"< /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
+	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
 fi
 
 # Set password inside the container
 
-pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd"
+pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev/null 2>&1
 
 # Attempt to Automatically Deploy Project Inside Container
 
 if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
-	source /var/lib/vz/snippets/deployOnStart.sh
+	source /var/lib/vz/snippets/helper-scripts/deployOnStart.sh
 
 	#cleanup
 	if [ -f "/var/lib/vz/snippets/container-env-vars/$ENV_BASE_FILE" ]; then
-		rm -rf "/var/lib/vz/snippets/container-env-vars/$ENV_BASE_FILE"
+		rm -rf "/var/lib/vz/snippets/container-env-vars/$ENV_BASE_FILE" > /dev/null 2>&1
 	fi 
 	if [ -f "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE" ]; then
-		rm -rf "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE"
+		rm -rf "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE" > /dev/null 2>&1
 	fi
 fi
 
 # Run Contianer Provision Script to add container to port_map.json
 
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
-	echo "CONTAINS PROTOCOL FILE"
 	/var/lib/vz/snippets/register-container.sh $NEXT_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
-	rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
+	rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE > /dev/null 2>&1
 else
-	/var/lib/vz/snippets/register-container.sh $NEXT_ID $HTTP_PORT
+	/var/lib/vz/snippets/register-container.sh $NEXT_ID $HTTP_PORT 
 fi
 
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
