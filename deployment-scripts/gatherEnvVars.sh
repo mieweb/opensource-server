@@ -22,30 +22,6 @@ gatherEnvVars(){
     done
 }
 
-# Helper functions to gather and validate component directory
-gatherComponentDir() {
-
-    COMPONENT_PATH="$1"
-    if [ -z "$COMPONENT_PATH" ]; then
-        read -p "Enter the path of a component to store environment variables in, relative to project root directory (To Continue, Press Enter) →  "  COMPONENT_PATH
-    fi
-    # Check that component path is valid
-    VALID_COMPONENT_PATH=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$COMPONENT_PATH")
-    while [ "$VALID_COMPONENT_PATH" == "false" ]; do
-        echo "⚠️ The component path you entered, \"$COMPONENT_PATH\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
-        if [ -z "$1" ]; then
-            read -p "Enter the path of a component to store environment variables in (relative to project root directory) →  "  COMPONENT_PATH
-            VALID_COMPONENT_PATH=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$COMPONENT_PATH")
-        else
-            exit 9
-        fi
-    done
-
-    if [[ "$COMPONENT_PATH" == /* ]]; then
-        COMPONENT_PATH="${COMPONENT_PATH:1}" # remove leading slash
-    fi
-}
-
 if [ -z "$REQUIRE_ENV_VARS" ]; then
     read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
 fi
@@ -56,7 +32,6 @@ while [ "${REQUIRE_ENV_VARS^^}" != "Y" ] && [ "${REQUIRE_ENV_VARS^^}" != "N" ] &
 done
 
 if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
-
     # generate random temp .env folder to store all env files for different components
     RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
     ENV_FOLDER="env_$RANDOM_NUM"
@@ -66,7 +41,7 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
         if [ ! -z "$CONTAINER_ENV_VARS" ]; then # Environment Variables
             if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
                 for key in $(echo "$CONTAINER_ENV_VARS" | jq -r 'keys[]'); do
-                    gatherComponentDir "$key"
+                    gatherComponentDir "Enter the path of your component to store environment variables" "$key"
                     ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
                     ENV_FILE_NAME="$ENV_FILE_NAME.txt"
                     ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE_NAME"
@@ -78,7 +53,7 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
                 exit 10
             fi
         else # No Environment Variables
-            gatherComponentDir
+            gatherComponentDir "Enter the path of your component to store environment variables"
 
             while [ "$COMPONENT_PATH" != "" ]; do
                 ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
@@ -86,7 +61,7 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
                 ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE"
                 touch "$ENV_FILE_PATH"
                 gatherEnvVars "$ENV_FILE_PATH"
-                gatherComponentDir
+                gatherComponentDir "Enter the path of your component to store environment variables"
             done
         fi
     else # Single Component
