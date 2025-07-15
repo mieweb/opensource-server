@@ -41,27 +41,29 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
         if [ ! -z "$CONTAINER_ENV_VARS" ]; then # Environment Variables
             if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
                 for key in $(echo "$CONTAINER_ENV_VARS" | jq -r 'keys[]'); do
-                    gatherComponentDir "Enter the path of your component to store environment variables" "$key"
+                    gatherComponentDir "Enter the path of your component to enter environment variables" "$key"
                     ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
                     ENV_FILE_NAME="$ENV_FILE_NAME.txt"
                     ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE_NAME"
                     touch "$ENV_FILE_PATH"
                     echo "$CONTAINER_ENV_VARS" | jq -r --arg key "$key" '.[$key] | to_entries[] | "\(.key)=\(.value)"' > "$ENV_FILE_PATH"
+                    addComponent "$key"
                 done
             else
                 echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
                 exit 10
             fi
         else # No Environment Variables
-            gatherComponentDir "Enter the path of your component to store environment variables"
+            gatherComponentDir "Enter the path of your component to enter environment variables"
 
             while [ "$COMPONENT_PATH" != "" ]; do
+                addComponent "$key"
                 ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
                 ENV_FILE="$ENV_FILE_NAME.txt"
                 ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE"
                 touch "$ENV_FILE_PATH"
                 gatherEnvVars "$ENV_FILE_PATH"
-                gatherComponentDir "Enter the path of your component to store environment variables"
+                gatherComponentDir "Enter the path of your component to enter environment variables"
             done
         fi
     else # Single Component

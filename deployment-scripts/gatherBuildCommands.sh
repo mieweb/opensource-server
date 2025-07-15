@@ -8,7 +8,7 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
                 gatherComponentDir "Enter the path of your component to enter the build command" "$key"
             done
         else
-            echo "⚠️  Your \"BUILD_COMMANDS\" is not valid JSON. Please re-format and try again."
+            echo "⚠️  Your \"BUILD_COMMAND\" is not valid JSON. Please re-format and try again."
             exit 10
         fi
     else  # No Environment Variable Passed
