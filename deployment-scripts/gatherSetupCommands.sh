@@ -1,6 +1,6 @@
 #!/bin/bash
 # This function gathers start up commands, such as build, install, and start, for both single and multiple component applications
-# Last Modified by Maxwell Klema on July 15th, 2025
+# Last Modified by Maxwell Klema on July 16th, 2025
 # ---------------------------------------------
 
 gatherSetupCommands() {
@@ -25,7 +25,7 @@ gatherSetupCommands() {
         else  # No Environment Variable Passed
             gatherComponentDir "Enter the path of your component to enter the ${TYPE,,} command"
             while [ "$COMPONENT_PATH" != "" ]; do
-                addComponent "$key"
+                addComponent "$COMPONENT_PATH"
                 read -p "$PROMPT" COMMAND
                 
                 # Append Component:Command k:v pair to map

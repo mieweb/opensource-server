@@ -3,7 +3,7 @@
 gatherRunTime() {
     COMPONENT_PATH="$1"
 
-    if [ -z "${RUNTIME_LANGUAGE}" ] && [ "${MULTI_COMPONENT^^}" == "n" ]; then
+    if [ -z "${RUNTIME_LANGUAGE}" ] || [ "$RT_ENV_VAR" != "true" ]; then
         read -p "🖥️  Enter the underlying runtime environment for \"$COMPONENT_PATH\" (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
     fi
 
@@ -48,8 +48,10 @@ if [ "${MULTI_COMPONENT^^}" == 'Y' ]; then
             RUNTIME_LANGUAGE_DICT=$(echo "$RUNTIME_LANGUAGE_DICT" | jq --arg k "$CURRENT" --arg v "$RUNTIME_LANGUAGE" '. + {($k): $v}')
         done
         RUNTIME_LANGUAGE=$RUNTIME_LANGUAGE_DICT
-        echo "DICT: $RUNTIME_LANGUAGE_DICT"
     fi
 else
+    if [ ! -z "$RUNTIME_LANGUAGE" ]; then
+        RUNTIME_LANGUAGE="true"
+    fi
     gatherRunTime "$PROJECT_REPOSITORY"
 fi
