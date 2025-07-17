@@ -11,7 +11,7 @@ REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 
 pct enter $NEXT_ID <<EOF
 cd /root && \ 
-git clone --branch $PROJECT_BRANCH --single-branch $PROJECT_REPOSITORY > /dev/null 2>&1
+git clone --branch $PROJECT_BRANCH --single-branch $PROJECT_REPOSITORY
 EOF
 
 pct exec $NEXT_ID -- bash -c "chmod 700 ~/.bashrc" # enable full R/W/X permissions
@@ -49,8 +49,10 @@ runInstallCommands() {
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
         if [ ${LINUX_DISTRO^^} == "DEBIAN" ]; then
             pct enter $NEXT_ID <<EOF > /dev/null
-sudo apt update -y && \
-sudo apt install -y nodejs npm && \
+sudo $PACKAGE_MANAGER install -y curl
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
+sudo $PACKAGE_MANAGER update -y && \
+sudo $PACKAGE_MANAGER install -y nodejs && \
 npm install -g pm2 && \
 cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && sudo $INSTALL_CMD
 EOF
@@ -102,7 +104,7 @@ fi
 
 if [ -f "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE" ]; then
 	while read line; do
-		pct exec $NEXT_ID -- bash -c "$line"
+		pct exec $NEXT_ID -- bash -c "$line" > /dev/null 2>&1
 	done < "/var/lib/vz/snippets/container-services/$SERVICES_BASE_FILE"
 fi
 
@@ -117,7 +119,7 @@ startComponent() {
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
 		if [ "$BUILD_CMD" == "" ]; then
-			pct exec $NEXT_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null
+			pct exec $NEXT_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null 2>&1
 		else
 			pct enter $NEXT_ID <<EOF > /dev/null
 export PATH=\$PATH:/usr/local/bin && \
@@ -126,16 +128,15 @@ EOF
 		fi
 	elif [ "${RUNTIME^^}" == "PYTHON" ]; then
 		if [ "$BUILD_CMD" == "" ]; then
-			pct exec $NEXT_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" 
+			pct exec $NEXT_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null 2>&1
 		else
-			pct exec $NEXT_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'" /dev/null
+			pct exec $NEXT_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'" > /dev/null 2>&1
 		fi
 	fi
 }
 
 if (( $NEXT_ID % 2 == 1 )); then
     pct set $NEXT_ID --memory 4096 --swap 0 --cores 4 > /dev/null #temporarily bump up container resources for computation hungry processes (e.g. meteor)
-
     if [ "${MULTI_COMPONENTS^^}" == "Y" ]; then
         for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
             START=$(echo "$START_COMMAND" | jq -r --arg k "$COMPONENT" '.[$k]')
@@ -147,9 +148,11 @@ if (( $NEXT_ID % 2 == 1 )); then
 
             startComponent "$RUNTIME" "$BUILD" "$START" "$COMPONENT"
         done
+        if [ ! -z "$ROOT_START_COMMAND" ]; then
+            pct exec $NEXT_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" > /dev/null 2>&1
+        fi
     else
         startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
     fi
-        
     pct set $NEXT_ID --memory 2048 --swap 0 --cores 2 > /dev/null
 fi

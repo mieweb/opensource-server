@@ -1,6 +1,6 @@
 #!/bin/bash
 # Helper script to gather project details for automatic deployment
-# Modified July 9th, 2025 by Maxwell Klema
+# Modified July 17th, 2025 by Maxwell Klema
 # ------------------------------------------
 
 # Define color variables (works on both light and dark backgrounds)
@@ -71,93 +71,77 @@ if [[ "$PROJECT_ROOT" == "/*" ]]; then
     PROJECT_ROOT="${PROJECT_ROOT:1}"
 fi
 
-# Get Environment Variables ========
+# Check if the App has multiple components (backend, frontend, multiple servers, etc.) ========
 
-gatherEnvVars(){
-
-    read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
-    read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
-
-    while [ "$ENV_VAR_KEY" == "" ] || [ "$ENV_VAR_VALUE" == "" ]; do
-        echo "⚠️  Key or value cannot be empty. Try again."
-        read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
-        read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
-    done
-
-    echo "$ENV_VAR_KEY=$ENV_VAR_VALUE" >> $TEMP_ENV_FILE_PATH
-
-    read -p "🔑 Do you want to enter another Environment Variable? (y/n) →  " ENTER_ANOTHER_ENV
-}
-
-if [ -z "$REQUIRE_ENV_VARS" ]; then
-    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+if [ -z "$MULTI_COMPONENT" ]; then
+    read -p "🔗 Does your app consist of multiple components that run independently, i.e. seperate frontend and backend (y/n) →  " MULTI_COMPONENT
 fi
 
-while [ "${REQUIRE_ENV_VARS^^}" != "Y" ] && [ "${REQUIRE_ENV_VARS^^}" != "N" ] && [ "${REQUIRE_ENV_VARS^^}" != "" ]; do
-    echo "⚠️ Invalid option. Please try again."
-    read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
+while [ "${MULTI_COMPONENT^^}" != "Y" ] && [ "${MULTI_COMPONENT^^}" != "N" ] && [ "${MULTI_COMPONENT^^}" != "" ]; do
+    echo "⚠️  Invalid option. Please try again."
+    read -p "🔗 Does your app consist of multiple components that run independently, i.e. seperate frontend and backend (y/n) →  " MULTI_COMPONENT
 done
 
-if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
+# Gather Deployment Commands ========
 
-    # generate random temp .env file
-    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
-    ENV_FILE="env_$RANDOM_NUM.txt"
-    TEMP_ENV_FILE_PATH="/root/bin/env/$ENV_FILE"
-    touch "$TEMP_ENV_FILE_PATH"
+# Helper functions to gather and validate component directory
+gatherComponentDir() {
 
-    if [ ! -z "$CONTAINER_ENV_VARS" ]; then
-        if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
-             echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$TEMP_ENV_FILE_PATH" #k=v pairs
+    COMPONENT_PATH="$2"
+    if [ -z "$COMPONENT_PATH" ]; then
+        read -p "$1, relative to project root directory (To Continue, Press Enter) →  "  COMPONENT_PATH
+    fi
+    # Check that component path is valid
+    VALID_COMPONENT_PATH=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$COMPONENT_PATH")
+    while [ "$VALID_COMPONENT_PATH" == "false" ] && [ "$COMPONENT_PATH" != "" ]; do
+        echo "⚠️ The component path you entered, \"$COMPONENT_PATH\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
+        if [ -z "$2" ]; then
+            read -p "$1, relative to project root directory (To Continue, Press Enter) →  "  COMPONENT_PATH
+            VALID_COMPONENT_PATH=$(node /root/bin/js/runner.js authenticateRepo "$PROJECT_REPOSITORY" "$PROJECT_BRANCH" "$COMPONENT_PATH")
         else
-            echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
-            exit 10
+            exit 9
         fi
-    else
-        gatherEnvVars
-        while [ "${ENTER_ANOTHER_ENV^^}" == "Y" ]; do
-            gatherEnvVars
-        done
+    done
+
+    if [[ "$COMPONENT_PATH" == /* ]]; then
+        COMPONENT_PATH="${COMPONENT_PATH:1}" # remove leading slash
+    fi
+}
+
+UNIQUE_COMPONENTS=()
+
+# Helper function to add a component to unique components if its not already present
+addComponent() {
+    COMPONENT="$1"
+    for CURRENT in "${UNIQUE_COMPONENTS[@]}"; do
+        if [ "${COMPONENT,,}" == "${CURRENT,,}" ]; then
+            return 0
+        fi
+    done
+    UNIQUE_COMPONENTS+=("$COMPONENT")
+}
+
+source /root/bin/deployment-scripts/gatherSetupCommands.sh # Function to gather build, install, and start commands
+
+source /root/bin/deployment-scripts/gatherEnvVars.sh # Gather Environment Variables
+gatherSetupCommands "BUILD" "🏗️  Enter the build command (leave blank if no build command) →  " # Gather Build Command(s)
+gatherSetupCommands "INSTALL" "📦 Enter the install command (e.g., 'npm install') →  " # Gather Install Command(s)echo "$INSTALL_COMMAND"
+gatherSetupCommands "START" "🚦 Enter the start command (e.g., 'npm start', 'python app.py') →  " # Gather Start Command(s)
+
+
+if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
+    if [ -z "$ROOT_START_COMMAND" ]; then
+        read -p "📍 If your container requires a start command at the root directory, i.e. Docker run, enter it here (leave blank for no command) →  " ROOT_START_COMMAND
     fi
 fi
 
-# Get Install Command ========
-
-if [ -z "$INSTALL_COMMAND" ]; then
-    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
-fi
-
-# Get Build Command ========
-
-if [ -z "$BUILD_COMMAND" ]; then
-    read -p "🏗️  Enter the build command (leave blank if no build command) →  " BUILD_COMMAND
-fi
-
-# Get Start Command ========
-
-if [ -z "$START_COMMAND" ]; then
-    read -p "🚦 Enter the start command (e.g., 'npm start', 'python app.py') →  " START_COMMAND
-fi
-
-while [ "$START_COMMAND" == "" ]; do
-    echo "⚠️  The start command cannot be blank. Please try again."
-    read -p "🚦 Enter the start command (e.g., 'npm start') →  " START_COMMAND
-done
-
 # Get Runtime Language ========
 
-if [ -z "$RUNTIME_LANGUAGE" ]; then
-    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
-fi
-
-while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
-    echo "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
-    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
-done
+source /root/bin/deployment-scripts/gatherRuntimeLangs.sh
 
 # Get Services ========
 
-SERVICE_MAP="/root/bin/services/service_map.json"
+SERVICE_MAP="/root/bin/services/service_map_$LINUX_DISTRIBUTION.json"
 APPENDED_SERVICES=()
 
 # Helper function to check if a user has added the same service twice
@@ -240,7 +224,7 @@ appendCustomService() {
 # Helper function to see if a user wants to set up a custom service
 setUpService() {
     read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
-    while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+    while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
         echo "⚠️  Invalid option. Please try again."
         read -p "🛎️  Do you wish to set up a custom service installation? (y/n) " SETUP_CUSTOM_SERVICE_INSTALLATION
     done
@@ -250,7 +234,7 @@ if [ -z "$REQUIRE_SERVICES" ]; then
     read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
 fi
 
-while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
+while [ "${REQUIRE_SERVICES^^}" != "Y" ] && [ "${REQUIRE_SERVICES^^}" != "N" ] && [ "${REQUIRE_SERVICES^^}" != "" ]; do
     echo "⚠️  Invalid option. Please try again."
     read -p "🛎️  Does your application require special services (i.e. Docker, MongoDB, etc.) to run on the container? (y/n) →  " REQUIRE_SERVICES
 done

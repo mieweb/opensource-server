@@ -1,7 +1,6 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by July 16th, 2025 by Maxwell Klema
-# -----------------------------------------------------
+# Last Modified by July 11th, 2025 by Maxwell Klema
 
 trap cleanup SIGINT SIGTERM SIGHUP
 
@@ -25,6 +24,7 @@ ENV_BASE_FOLDER="${15}"
 SERVICES_BASE_FILE="${16}"
 LINUX_DISTRO="${17}"
 MULTI_COMPONENTS="${18}"
+ROOT_START_COMMAND="${19}"
 
 if [ ${LINUX_DISTRO^^} == "DEBIAN" ]; then
     PACKAGE_MANAGER="apt"
@@ -106,7 +106,7 @@ pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev
 # Attempt to Automatically Deploy Project Inside Container
 
 if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
-	source /var/lib/vz/snippets/helper-scripts/clone-dos.sh
+	source /var/lib/vz/snippets/helper-scripts/deployOnStart.sh
 
 	#cleanup
 	if [ -f "/var/lib/vz/snippets/container-env-vars/$ENV_BASE_FOLDER" ]; then
@@ -157,8 +157,8 @@ if (( $NEXT_ID % 2 == 0 )); then
     pct stop $NEXT_ID > /dev/null 2>&1
     pct migrate $NEXT_ID intern-phxdc-pve2 --target-storage containers-pve2 --online > /dev/null 2>&1
 	ssh root@10.15.0.5 "pct start $NEXT_ID" > /dev/null 2>&1
-    ssh root@10.15.0.5 "pct exec $NEXT_ID -- bash -c 'chmod 700 ~/.bashrc'" # enable full R/W/X permissions
-    ssh root@10.15.0.5 "pct set $NEXT_ID --memory 4096 --swap 0 --cores 4" 
+    ssh root@10.15.0.5 "pct exec $NEXT_ID -- bash -c 'chmod 700 ~/.bashrc'" > /dev/null 2>&1 # enable full R/W/X permissions
+    ssh root@10.15.0.5 "pct set $NEXT_ID --memory 4096 --swap 0 --cores 4"  > /dev/null 2>&1
     if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
         if [ "${MULTI_COMPONENTS^^}" == "Y" ]; then
             for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
@@ -170,6 +170,9 @@ if (( $NEXT_ID % 2 == 0 )); then
                 fi
                 startProject "$RUNTIME" "$BUILD" "$START" "$COMPONENT"
             done
+			if [ ! -z "$ROOT_START_COMMAND" ]; then
+            	ssh root@10.15.0.5 "pct exec $NEXT_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+        	fi
         else
             startProject "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
         fi

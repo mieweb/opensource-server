@@ -35,7 +35,8 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
     # generate random temp .env folder to store all env files for different components
     RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
     ENV_FOLDER="env_$RANDOM_NUM"
-    mkdir -p "/root/bin/env/$ENV_FOLDER"
+    ENV_FOLDER_PATH="/root/bin/env/$ENV_FOLDER"
+    mkdir -p "$ENV_FOLDER_PATH"
 
     if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
         if [ ! -z "$CONTAINER_ENV_VARS" ]; then # Environment Variables
@@ -57,7 +58,7 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
             gatherComponentDir "Enter the path of your component to enter environment variables"
 
             while [ "$COMPONENT_PATH" != "" ]; do
-                addComponent "$key"
+                addComponent "$COMPONENT_PATH"
                 ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
                 ENV_FILE="$ENV_FILE_NAME.txt"
                 ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE"

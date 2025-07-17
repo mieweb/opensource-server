@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to automatically fetch new contents from a branch, push them to container, and restart intern
-# Last Modified on July 11th, 2025 by Maxwell Klema
+# Last Modified on July 17th, 2025 by Maxwell Klema
 # ----------------------------------------
 
 RESET="\033[0m"
@@ -38,10 +38,6 @@ echo "✅ The repository link you provided, \"$PROJECT_REPOSITORY\", was valid."
 
 # Get Project Branch
 
-if [ -z "$PROJECT_BRANCH" ]; then
-    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
-fi
-
 if [ "$PROJECT_BRANCH" == "" ]; then
     PROJECT_BRANCH="main"
 fi
@@ -55,10 +51,10 @@ while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
 done
 
 
-# Get Project Root Directroy
+# # Get Project Root Directroy
 
-if [ -z "$PROJECT_ROOT" ]; then
-    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
+if [ "$PROJECT_ROOT" == "" ]; then
+    PROJECT_ROOT="/"
 fi
 
 VALID_PROJECT_ROOT=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateRepo \"$PROJECT_REPOSITORY\" \"$PROJECT_BRANCH\" \"$PROJECT_ROOT\"")
@@ -69,77 +65,94 @@ while [ "$VALID_PROJECT_ROOT" == "false" ]; do
     VALID_PROJECT_ROOT=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateRepo \"$PROJECT_REPOSITORY\" \"$PROJECT_BRANCH\" \"$PROJECT_ROOT\"")
 done
 
-# Get Install Command ========
-
-if [ -z "$INSTALL_COMMAND" ]; then
-    read -p "📦 Enter the install command (e.g., 'npm install') →  " INSTALL_COMMAND
-fi
-
-# Get Build Command ========
-
-if [ -z "$BUILD_COMMAND" ]; then
-    read -p "🏗️  Enter the build command (leave blank if no build command) →  " BUILD_COMMAND
-fi
-
-# Get Start Command ========
-
-if [ -z "$START_COMMAND" ]; then
-    read -p "🚦 Enter the start command (e.g., 'npm start', 'python app.py') →  " START_COMMAND
-fi
-
-while [ "$START_COMMAND" == "" ]; do
-    echo "⚠️  The start command cannot be blank. Please try again."
-    read -p "🚦 Enter the start command (e.g., 'npm start') →  " START_COMMAND
-done
-
-# Get Runtime Language ========
-
-if [ -z "$RUNTIME_LANGUAGE" ]; then
-    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
-fi
-
-while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
-    echo "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
-    read -p "🖥️  Enter the underlying runtime environment (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
-done
-
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
+
+if [ "$PROJECT_ROOT" == "" ] || [ "$PROJECT_ROOT" == "/" ]; then
+    PROJECT_ROOT="."
+fi
 
 # Update Container with New Contents from repository
 
-if (( "$CONTAINER_ID" % 2 == 0 )); then
-    if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
-        ssh root@10.15.0.5 "
-            pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull'
-            pct exec $CONTAINER_ID -- bash -c '$INSTALL_COMMAND_COMMAND' && '$BUILD_COMMAND'
-            pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c \"$START_COMMAND\"'
-            pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        "
-    elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
-        ssh root@10.15.0.5 "
-            pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull'
-            pct exec $CONTAINER_ID -- bash -c '$INSTALL_COMMAND' && '$BUILD_COMMAND'
-            pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND'\" /dev/null
-            pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        "
-    fi
-else
+startComponentPVE1() {
 
-    if [ "${RUNTIME_LANGUAGE^^}" == "NODEJS" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull"
-        pct exec $CONTAINER_ID -- bash -c "$INSTALL_COMMAND_COMMAND' && '$BUILD_COMMAND"
-        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && pm2 start bash -- -c \"$START_COMMAND\""
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-    elif [ "${RUNTIME_LANGUAGE^^}" == "PYTHON" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull"
-        pct exec $CONTAINER_ID -- bash -c "$INSTALL_COMMAND' && '$BUILD_COMMAND"
-        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && source venv/bin/activate && $START_COMMAND'" /dev/null
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
+    RUNTIME="$1"
+    BUILD_CMD="$2"
+    START_CMD="$3"
+    COMP_DIR="$4"
+    INSTALL_CMD="$5"
+
+    if [ "${RUNTIME^^}" == "NODEJS" ]; then
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 > /dev/null
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null
+        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 > /dev/null
+    elif [ "${RUNTIME^^}" == "PYTHON" ]; then
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 > /dev/null
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null
+        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 > /dev/null
     fi
+}
+
+startComponentPVE2() {
+
+    RUNTIME="$1"
+    BUILD_CMD="$2"
+    START_CMD="$3"
+    COMP_DIR="$4"
+    INSTALL_CMD="$5"
+
+    if [ "${RUNTIME^^}" == "NODEJS" ]; then
+        ssh root@10.15.0.5 "
+            pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c \"cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD\"' > /dev/null 2>&1
+            pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
+        " > /dev/null
+    elif [ "${RUNTIME^^}" == "PYTHON" ]; then
+        ssh root@10.15.0.5 "
+            pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'\" > /dev/null 2>&1
+            pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
+        " > /dev/null
+    fi
+}
+
+if (( "$CONTAINER_ID" % 2 == 0 )); then
+    startComponentPVE2
+else
+    startComponentPVE1
+fi
+
+if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
+    for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
+        START=$(echo "$START_COMMAND" | jq -r --arg k "$COMPONENT" '.[$k]')
+        RUNTIME=$(echo "$RUNTIME_LANGUAGE" | jq -r --arg k "$COMPONENT" '.[$k]')
+        BUILD=$(echo "$BUILD_COMMAND" | jq -r --arg k "$COMPONENT" '.[$k]')
+        INSTALL=$(echo "$INSTALL_COMMAND" | jq -r --arg k "$COMPONENT" '.[$k]')
+        if [ "$BUILD" == "null" ]; then
+            BUILD=""
+        fi
+
+        if (( "$CONTAINER_ID" % 2 == 0 )); then
+            startComponentPVE2 "$RUNTIME" "$BUILD" "$START" "$COMPONENT" "$INSTALL"
+        else
+            startComponentPVE1 "$RUNTIME" "$BUILD" "$START" "$COMPONENT" "$INSTALL"
+        fi
+    done
+    if [ ! -z "$START_ON_ROOT" ]; then;
+        if (( "$CONTAINER_ID" % 2 == 0 )); then
+            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+        else
+            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" > /dev/null 2>&1
+        fi
+    fi
+    # startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 fi
 
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
