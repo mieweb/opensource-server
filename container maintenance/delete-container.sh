@@ -11,29 +11,19 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}${MAGENTA}🗑️  Delete Container ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh
-source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh
+CMD=(
+bash /var/lib/vz/snippets/helper-scripts/delete-runner.sh
+"$PROJECT_REPOSITORY"
+"$GITHUB_PAT"
+"$PROXMOX_USERNAME"
+"$PROXMOX_PASSWORD"
+"$CONTAINER_NAME"
+)
 
-# Delete Container
+# Safely quote each argument for the shell
+QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
 
-echo "🔄 Deleting container with name \"$CONTAINER_NAME\"..."
+tmux new-session -d -s delete-runner "$QUOTED_CMD"
 
-if (( $CONTAINER_ID % 2 == 0 )); then
-    if ssh root@10.15.0.5 "pct status $CONTAINER_ID" | grep -q "status: running"; then
-        ssh root@10.15.0.5 "pct stop $CONTAINER_ID && pct destroy $CONTAINER_ID" > /dev/null 2>&1
-    else
-        ssh root@10.15.0.5 "pct destroy $CONTAINER_ID" > /dev/null 2>&1
-    fi
-else
-    if pct status "$CONTAINER_ID" | grep -q "status: running"; then
-        pct stop "$CONTAINER_ID" && pct destroy "$CONTAINER_ID" > /dev/null 2>&1
-    else
-        pct destroy "$CONTAINER_ID" > /dev/null 2>&1
-    fi
-fi
-
-echo "🧹  Running Cleanup Tasks..."
-source /usr/local/bin/prune_iptables.sh
-
-echo "✅ Container with name \"$CONTAINER_NAME\" has been permanently deleted."
+echo "✅ Container with name \"$CONTAINER_NAME\" will been permanently deleted."
 exit 0 # Container Deleted Successfully

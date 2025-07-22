@@ -1,6 +1,6 @@
 #!/bin/bash
 # A script for cloning a Distro template, installing, and starting a runner on it.
-# Last Modified by Maxwell Klema on July 19th, 2025
+# Last Modified by Maxwell Klema on July 20th, 2025
 # ------------------------------------------------
 
 BOLD='\033[1m'
@@ -18,6 +18,7 @@ source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh #Authentic
 source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh #Ensure container does not exist.
 
 CONTAINER_EXISTS=$?
+
 if [ "$CONTAINER_EXISTS" != 1 ]; then
     exit $CONTAINER_EXISTS; # Container is not free to user, either someone else owns it or the user owns it.
 fi
@@ -53,17 +54,25 @@ pct set $NEXT_ID \
 pct start $NEXT_ID > /dev/null 2>&1
 pveum aclmod /vms/$NEXT_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser > /dev/null 2>&1
 
+sleep 5
+echo "⏳ DHCP Allocating IP Address..."
+CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
+
 # Set password inside the container and install some pacakages
-echo "📦 Updating Packages.."
+echo "📦 Updating Packages..."
 pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev/null 2>&1
 pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER upgrade -y" > /dev/null > /dev/null 2>&1
-pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER install -y sudo tmux libicu perl-Digest-SHA git curl vim tar" > /dev/null 2>&1
+if [ "${LINUX_DISTRIBUTION^^}" == "DEBIAN" ]; then
+     pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER install -y sudo git curl vim tar tmux sshpass jq" > /dev/null 2>&1
+elif [ "${LINUX_DISTRIBUTION^^}" == "ROCKY" ]; then
+    pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER install -y sudo git curl vim tar tmux libicu perl-Digest-SHA sshpass jq" > /dev/null 2>&1
+fi
 
 # Setting Up Github Runner =====
 
 # Get Temporary Token
 echo "🪙  Getting Authentication Token..."
-AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $PAT")
+AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $GITHUB_PAT")
 TOKEN=$(echo "$AUTH_TOKEN_RESPONSE" | jq -r '.token')
 
 pct enter $NEXT_ID <<EOF > /dev/null
@@ -75,5 +84,39 @@ export RUNNER_ALLOW_RUNASROOT=1 && \
 ./config.sh --url $PROJECT_REPOSITORY --token $TOKEN --labels $CONTAINER_NAME
 EOF
 
-# Start Runner
-pct exec $NEXT_ID -- bash -c "tmux new-session -d 'cd /actions-runner && export RUNNER_ALLOW_RUNASROOT=1 && ./run.sh'" > /dev/null 2>&1
+# Generate RSA Keys =====
+
+echo "🔑 Generating RSA Key Pair..."
+pct exec $NEXT_ID -- bash -c "ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa -q"
+PUB_KEY=$(pct exec $NEXT_ID -- bash -c "cat /root/.ssh/id_rsa.pub")
+
+# Place public key in all necessary authorized_keys files
+echo "$PUB_KEY" >> /home/create-container/.ssh/authorized_keys
+echo "$PUB_KEY" >> /home/update-container/.ssh/authorized_keys
+echo "$PUB_KEY" >> /home/delete-container/.ssh/authorized_keys
+echo "$PUB_KEY" >> /home/container-exists/.ssh/authorized_keys
+
+ssh root@10.15.234.122 "echo \"$PUB_KEY\" >> /root/.ssh/authorized_keys"
+
+echo "🔑 Creating Service File..."
+pct exec $NEXT_ID -- bash -c "cat <<EOF > /etc/systemd/system/github-runner.service
+[Unit]
+Description=GitHub Actions Runner
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/actions-runner
+Environment=\"RUNNER_ALLOW_RUNASROOT=1\"
+ExecStart=/actions-runner/run.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+pct exec $NEXT_ID -- systemctl daemon-reload
+pct exec $NEXT_ID -- systemctl enable github-runner
+pct exec $NEXT_ID -- systemctl start github-runner
+
+exit 3

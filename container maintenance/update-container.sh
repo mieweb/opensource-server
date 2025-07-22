@@ -11,10 +11,17 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}${MAGENTA}🔄 Update Container Contents ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
+if [ "${DEPLOY_ON_START^^}" != "Y" ]; then
+    echo "Skipping container update because there is nothing to update."
+    exit 0
+fi
+
 source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh
 source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh
 
 # Get Project Details
+
+CONTAINER_NAME="${CONTAINER_NAME,,}"
 
 if [ -z "$PROJECT_REPOSITORY" ]; then
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
@@ -23,8 +30,9 @@ fi
 CheckRepository() {
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
-    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED)
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$RROJECT_REPOSITORY)
 }
+
 
 CheckRepository
 
@@ -44,10 +52,14 @@ fi
 
 REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
 
+REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY/tree/$PROJECT_BRANCH)
 while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
     echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
-    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
+    if [ "PROJECT_BRANCH" == "" ]; then
+	PROJECT_BRANCH="main"
+    fi
+    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY_SHORTENED/tree/$PROJECT_BRANCH)
 done
 
 
@@ -82,17 +94,17 @@ startComponentPVE1() {
     INSTALL_CMD="$5"
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 > /dev/null
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null
-        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 > /dev/null
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null 2>&1
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2  
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 > /dev/null
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null
-        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 > /dev/null
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null 2>&1
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 
     fi
 }
 
@@ -111,23 +123,18 @@ startComponentPVE2() {
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c \"cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD\"' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " > /dev/null
+        " 
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         ssh root@10.15.0.5 "
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
-            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'\" > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " > /dev/null
+        " 
     fi
 }
 
-if (( "$CONTAINER_ID" % 2 == 0 )); then
-    startComponentPVE2
-else
-    startComponentPVE1
-fi
 
 if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
@@ -145,14 +152,20 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
             startComponentPVE1 "$RUNTIME" "$BUILD" "$START" "$COMPONENT" "$INSTALL"
         fi
     done
-    if [ ! -z "$START_ON_ROOT" ]; then;
+    if [ ! -z "$ROOT_START_COMMAND" ]; then
         if (( "$CONTAINER_ID" % 2 == 0 )); then
-            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" 
         else
-            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" 
         fi
     fi
     # startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+else
+    if (( "$CONTAINER_ID" % 2 == 0 )); then
+        startComponentPVE2 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+    else
+        startComponentPVE1 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+    fi
 fi
 
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
