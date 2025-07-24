@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MIE Container Creation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="login-container">
+        <img src="logo.png" alt="Company Logo" class="logo">
+        <h2>Create Your Container</h2>
+        <form id="containerForm" method="POST" action="/create-container">
+            <label for="CONTAINER_NAME">Container Name</label>
+            <input type="text" id="CONTAINER_NAME" name="CONTAINER_NAME" required>
+
+            <label for="CONTAINER_PASSWORD">Container Password</label>
+            <input type="password" id="CONTAINER_PASSWORD" name="CONTAINER_PASSWORD" required>
+
+            <label for="passwordConfirm">Confirm Password</label>
+            <input type="password" id="passwordConfirm" name="passwordConfirm" required>
+
+            <label for="LINUX_DISTRIBUTION">Linux Distro</label>
+            <select id="LINUX_DISTRIBUTION" name="LINUX_DISTRIBUTION" required>
+                <option value="debian">Debian 12 (Bookworm)</option>
+                <option value="rocky">Rocky 9</option>
+            </select>
+
+            <label for="HTTP_PORT">HTTP Port</label>
+            <input type="number" id="HTTP_PORT" name="HTTP_PORT" min="80" max="60000" value="80" required>
+
+            <label for="PUBLIC_KEY">SSH Public Key (optional)</label>
+            <input type="text" id="PUBLIC_KEY" name="PUBLIC_KEY">
+
+            <label for="OTHER_PORT">Other Port (optional, forwards TCP & UDP)</label>
+            <input type="number" id="OTHER_PORT" name="OTHER_PORT" placeholder="e.g., 8080">
+
+            <label for="DEPLOY_ON_START">Deploy on Start</label>
+            <select id="DEPLOY_ON_START" name="DEPLOY_ON_START" required>
+                <option value="n">No</option>
+                <option value="y">Yes</option>
+            </select>
+
+            <input type="submit" value="Create Container">
+        </form>
+        <div id="formError" style="color:red; margin-top:10px;"></div>
+        <div class="footer">
+            &copy; 2025 Medical Informatics Engineering
+        </div>
+    </div>
+
+<script>
+    document.getElementById('containerForm').addEventListener('submit', async function(event) {
+        // Prevent the default form submission
+        event.preventDefault();
+
+        const password = document.getElementById('CONTAINER_PASSWORD').value;
+        const confirm = document.getElementById('passwordConfirm').value;
+        const errorDiv = document.getElementById('formError');
+
+        if (password !== confirm) {
+            errorDiv.textContent = 'Passwords do not match!';
+            return; // Stop execution
+        }
+        
+        errorDiv.textContent = 'Submitting... please wait.';
+
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        try {
+            const res = await fetch('/create-container', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                if (result.redirect) {
+                    // Redirect to the new status page
+                    window.location.href = result.redirect;
+                }
+            } else {
+                errorDiv.textContent = 'An error occurred on the server.';
+            }
+        } catch (err) {
+            console.error('Fetch error:', err);
+            errorDiv.textContent = 'A network error occurred.';
+        }
+    });
+</script>
+
+</body>
+</html>
