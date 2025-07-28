@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to check if a container exists
-# Last Modified by Maxwell Klema on July 22nd, 2025
+# Last Modified by Maxwell Klema on July 13th, 2025
 # -----------------------------------------------------
 
 RESET="\033[0m"
@@ -25,15 +25,14 @@ fi
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 
 # Check if repository folder is present.
-
 if [ "$PVE1" == "true" ]; then
-    if pct exec $CONTAINER_ID -- test -d /root/$REPO_BASE_NAME; then
+    if pct exec $CONTAINER_ID -- test -f /root/container-updates.log; then
         exit 2; # Update Repository
     else
         exit 0; # Clone Repository
     fi
 else
-    if ssh 10.15.0.5 "pct exec $CONTAINER_ID -- test -d /root/$REPO_BASE_NAME"; then
+    if ssh 10.15.0.5 "pct exec $CONTAINER_ID -- test -f /root/container-updates.log"; then
         exit 2; # Update Repository
     else
         exit 0; # Clone Repository

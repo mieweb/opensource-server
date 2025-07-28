@@ -8,9 +8,16 @@ REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 
 # Clone github repository from correct branch ====
 
+echo "Repo base name: $REPO_BASE_NAME"
+
 pct enter $CONTAINER_ID <<EOF
+if [ ! -d '/root/$REPO_BASE_NAME' ]; then
 cd /root && \
-git clone --branch $PROJECT_BRANCH --single-branch $PROJECT_REPOSITORY > /dev/null
+git clone $PROJECT_REPOSITORY && git checkout $PROJECT_BRANCH > /dev/null
+else
+cd /root/$REPO_BASE_NAME && git fetch && git pull && \
+git checkout $PROJECT_BRANCH
+fi
 EOF
 
 pct exec $CONTAINER_ID -- bash -c "chmod 700 ~/.bashrc" # enable full R/W/X permissions

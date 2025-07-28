@@ -1,7 +1,5 @@
 #!/bin/bash
 # Remove Github Runner Associated with Container (and Container itself too)
-# Last Modified by Maxwell Klema on July 22nd, 2025
-# ------------------------------------------------
 
 PROJECT_REPOSITORY="$1"
 GITHUB_PAT="$2"
@@ -17,7 +15,7 @@ CONTAINER_ID=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$CON
 
 if (( $CONTAINER_ID % 2 == 0 )); then
     if ssh root@10.15.0.5 "pct status $CONTAINER_ID" | grep -q "status: running"; then
-        ssh root@10.15.0.5 "pct stop $CONTAINER_ID && pct destroy $CONTAINER_ID" > /dev/null 2>&1
+        ssh root@10.15.0.5 "pct stop $CONTAINER_ID || true && pct destroy $CONTAINER_ID" > /dev/null 2>&1
     else
         ssh root@10.15.0.5 "pct destroy $CONTAINER_ID" > /dev/null 2>&1
     fi

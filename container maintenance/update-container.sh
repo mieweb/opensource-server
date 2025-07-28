@@ -65,7 +65,7 @@ done
 
 # # Get Project Root Directroy
 
-if [ "$PROJECT_ROOT" == "" ]; then
+if [ "$PROJECT_ROOT" == "." ] || [ "$PROJECT_ROOT" == "" ]; then
     PROJECT_ROOT="/"
 fi
 
@@ -78,12 +78,45 @@ while [ "$VALID_PROJECT_ROOT" == "false" ]; do
 done
 
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
+REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
 
 if [ "$PROJECT_ROOT" == "" ] || [ "$PROJECT_ROOT" == "/" ]; then
     PROJECT_ROOT="."
 fi
 
-# Update Container with New Contents from repository
+# Install Services ====
+
+echo "🛎️ Installing Services..."
+
+# SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
+#     root@10.15.234.122 \
+#    "/root/bin/deployment-scripts/gatherServices.sh true")
+
+# echo "$SERVICE_COMMANDS" | while read -r line; do
+#     pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
+# done
+
+# Clone repository if needed ====
+
+if (( "$CONTAINER_ID" % 2 == 0 )); then
+    ssh root@10.15.0.5 "
+        pct enter $CONTAINER_ID <<EOF
+if [ ! -d '/root/$REPO_BASE_NAME' ]; then
+cd /root && \
+git clone $PROJECT_REPOSITORY && cd $REPO_BASE_NAME/ && git checkout $PROJECT_BRANCH > /dev/null
+fi
+EOF
+    "
+else
+   pct enter $CONTAINER_ID <<EOF
+if [ ! -d '/root/$REPO_BASE_NAME' ]; then
+cd /root && \
+git clone $PROJECT_REPOSITORY && cd $REPO_BASE_NAME/ && git checkout $PROJECT_BRANCH > /dev/null
+fi
+EOF
+fi
+
+# Update Container with New Contents from repository =====
 
 startComponentPVE1() {
 
@@ -96,14 +129,12 @@ startComponentPVE1() {
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
         pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null 2>&1
-        pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
         pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2  
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD" > /dev/null 2>&1
-        pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
         pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 
     fi
 }
@@ -121,7 +152,6 @@ startComponentPVE2() {
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
-            pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c \"cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD\"' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
         " 
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
@@ -129,7 +159,6 @@ startComponentPVE2() {
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
-            pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'\" > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
         " 
     fi
@@ -153,7 +182,7 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
         fi
     done
     if [ ! -z "$ROOT_START_COMMAND" ]; then
-        if (( "$CONTAINER_ID" % 2 == 0 )); then
+        if (( $CONTAINER_ID % 2 == 0 )); then
             ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" 
         else
             pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" 
@@ -161,12 +190,53 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     fi
     # startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 else
-    if (( "$CONTAINER_ID" % 2 == 0 )); then
-        startComponentPVE2 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+    if (( $CONTAINER_ID % 2 == 0 )); then
+        startComponentPVE2 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
     else
-        startComponentPVE1 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+        startComponentPVE1 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
     fi
 fi
 
+# Update Log File
+
+if (( "$CONTAINER_ID" % 2 == 0 )); then
+    ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'echo \"[$(date)]\" >> /root/container-updates.log'"
+else
+    pct exec $CONTAINER_ID -- bash -c "echo \"[$(date)]\" >> /root/container-updates.log"
+fi
+
+# Create new template if on default branch =====
+
+UPDATE_CONTAINER="true"
+BUILD_COMMAND_B64=$(echo -n "$BUILD_COMMAND" | base64)
+RUNTIME_LANGUAGE_B64=$(echo -n "$RUNTIME_LANGUAGE" | base64)
+START_COMMAND_B64=$(echo -n "$START_COMMAND" | base64)
+
+CMD=(
+bash /var/lib/vz/snippets/start_services.sh
+"$CONTAINER_ID"
+"$CONTAINER_NAME"
+"$REPO_BASE_NAME"
+"$REPO_BASE_NAME_WITH_OWNER"
+"$SSH_PORT"
+"$CONTAINER_IP"
+"$PROJECT_ROOT"
+"$ROOT_START_COMMAND"
+"$DEPLOY_ON_START"
+"$MULTI_COMPONENT"
+"$START_COMMAND_B64"
+"$BUILD_COMMAND_B64"
+"$RUNTIME_LANGUAGE_B64"
+"$GH_ACTION"
+"$PROJECT_BRANCH"
+"$GITHUB_PAT"
+"$UPDATE_CONTAINER"
+)
+
+# Safely quote each argument for the shell
+QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
+
+tmux new-session -d -s "$CONTAINER_NAME" "$QUOTED_CMD"
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
 exit 0
+

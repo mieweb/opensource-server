@@ -12,8 +12,6 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 
 # Validating Container Name =====
 
-set +e
-
 source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh #Authenticate User
 source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh #Ensure container does not exist.
 
@@ -25,14 +23,25 @@ fi
  
 # Cloning Container Template and Setting it up =====
 
-# Get correct template to clone and package manager 
-if [ ${LINUX_DISTRIBUTION^^} == "DEBIAN" ]; then
-    PACKAGE_MANAGER="apt"
-    CTID_TEMPLATE="114"
-elif [ "${LINUX_DISTRIBUTION^^}" == "ROCKY" ]; then
-    PACKAGE_MANAGER="dnf"
-    CTID_TEMPLATE="113"
-fi
+REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
+REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
+
+TEMPLATE_NAME="template-$REPO_BASE_NAME-$REPO_BASE_NAME_WITH_OWNER"
+CTID_TEMPLATE=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$TEMPLATE_NAME" '$3 == name {print $1}')
+
+case "${LINUX_DISTRIBUTION^^}" in
+  DEBIAN) PACKAGE_MANAGER="apt-get" ;;
+  ROCKY)  PACKAGE_MANAGER="dnf" ;;
+esac
+
+# If no template ID was provided, assign a default based on distro
+
+if [ -z "$CTID_TEMPLATE" ]; then
+  case "${LINUX_DISTRIBUTION^^}" in
+    DEBIAN) CTID_TEMPLATE="160" ;;
+    ROCKY)  CTID_TEMPLATE="138" ;;
+  esac
+fi 
 
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
@@ -58,15 +67,8 @@ sleep 5
 echo "⏳ DHCP Allocating IP Address..."
 CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
 
-# Set password inside the container and install some pacakages
-echo "📦 Updating Packages..."
+# Set password inside the container
 pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev/null 2>&1
-pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER upgrade -y" > /dev/null > /dev/null 2>&1
-if [ "${LINUX_DISTRIBUTION^^}" == "DEBIAN" ]; then
-     pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER install -y sudo git curl vim tar tmux sshpass jq" > /dev/null 2>&1
-elif [ "${LINUX_DISTRIBUTION^^}" == "ROCKY" ]; then
-    pct exec $NEXT_ID -- bash -c "$PACKAGE_MANAGER install -y sudo git curl vim tar tmux libicu perl-Digest-SHA sshpass jq" > /dev/null 2>&1
-fi
 
 # Setting Up Github Runner =====
 
@@ -76,12 +78,12 @@ AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repo
 TOKEN=$(echo "$AUTH_TOKEN_RESPONSE" | jq -r '.token')
 
 pct enter $NEXT_ID <<EOF > /dev/null
-mkdir actions-runner && cd actions-runner && \
-curl -o actions-runner-linux-x64-2.326.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.326.0/actions-runner-linux-x64-2.326.0.tar.gz && \
-echo "9c74af9b4352bbc99aecc7353b47bcdfcd1b2a0f6d15af54a99f54a0c14a1de8  actions-runner-linux-x64-2.326.0.tar.gz" | shasum -a 256 -c && \
-tar xzf ./actions-runner-linux-x64-2.326.0.tar.gz && \
+rm -rf /root/container-updates.log | true && \
+cd /actions-runner && export RUNNER_ALLOW_RUNASROOT=1 && \
+export runProcess=\$(ps aux | grep run.sh | awk '{print \$2}' | head -n 1) && kill -9 \$runProcess || true && \
+rm -rf .runner .credentials && rm -rf _work/* /var/log/runner/* && \
 export RUNNER_ALLOW_RUNASROOT=1 && \
-./config.sh --url $PROJECT_REPOSITORY --token $TOKEN --labels $CONTAINER_NAME
+./config.sh --url $PROJECT_REPOSITORY --token $TOKEN --labels $CONTAINER_NAME --name $CONTAINER_NAME
 EOF
 
 # Generate RSA Keys =====

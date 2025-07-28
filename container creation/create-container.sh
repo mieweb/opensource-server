@@ -60,15 +60,16 @@ DEPLOY_ON_START="$8"
 PROJECT_REPOSITORY="$9"
 PROJECT_BRANCH="${10}"
 PROJECT_ROOT="${11}"
-INSTALL_COMMAND="${12}"
-BUILD_COMMAND="${13}"
-START_COMMAND="${14}"
-RUNTIME_LANGUAGE="${15}"
+INSTALL_COMMAND=$(echo "${12}" | base64 -d)
+BUILD_COMMAND=$(echo "${13}" | base64 -d)
+START_COMMAND=$(echo "${14}" | base64 -d)
+RUNTIME_LANGUAGE=$(echo "${15}" | base64 -d)
 ENV_BASE_FOLDER="${16}"
 SERVICES_BASE_FILE="${17}"
 LINUX_DISTRO="${18}"
 MULTI_COMPONENTS="${19}"
 ROOT_START_COMMAND="${20}"
+GITHUB_PAT="${21}"
 
 # Pick the correct template to clone =====
 
@@ -148,6 +149,10 @@ if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
 	done
 fi
 
+# Create Log File ====
+
+pct exec $CONTAINER_ID -- bash -c "cd /root && touch container-updates.log"
+
 # Run Contianer Provision Script to add container to port_map.json
 
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
@@ -162,7 +167,11 @@ SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22
 # Output container details and start services if necessary =====
 
 echoContainerDetails
-		
+
+BUILD_COMMAND_B64=$(echo -n "$BUILD_COMMAND" | base64)
+RUNTIME_LANGUAGE_B64=$(echo -n "$RUNTIME_LANGUAGE" | base64)
+START_COMMAND_B64=$(echo -n "$START_COMMAND" | base64)
+
 CMD=(
 bash /var/lib/vz/snippets/start_services.sh
 "$CONTAINER_ID"
@@ -175,11 +184,12 @@ bash /var/lib/vz/snippets/start_services.sh
 "$ROOT_START_COMMAND"
 "$DEPLOY_ON_START"
 "$MULTI_COMPONENTS"
-"$START_COMMAND"
-"$BUILD_COMMAND"
-"$RUNTIME_LANGUAGE"
+"$START_COMMAND_B64"
+"$BUILD_COMMAND_B64"
+"$RUNTIME_LANGUAGE_B64"
 "$GH_ACTION"
 "$PROJECT_BRANCH"
+"$GITHUB_PAT"
 )
 
 # Safely quote each argument for the shell
