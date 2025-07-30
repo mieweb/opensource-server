@@ -1,8 +1,8 @@
 # opensource-mieweb
 
 ## Getting Started
-[Creating a LXC Container](https://www.youtube.com/watch?v=sVW3dkBqs4E)
-[Deploying an Application Automatically](https://www.youtube.com/watch?v=acDW-a32Yr8)
+- [Creating a LXC Container](https://www.youtube.com/watch?v=sVW3dkBqs4E)<br>
+- [Deploying an Application Automatically](https://www.youtube.com/watch?v=acDW-a32Yr8)
 
 Configuration storage for the [opensource.mieweb.com](https://opensource.mieweb.com) Proxmox project.
 
