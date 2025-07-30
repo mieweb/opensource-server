@@ -1,5 +1,9 @@
 # opensource-mieweb
 
+## Getting Started
+[Creating a LXC Container](https://www.youtube.com/watch?v=sVW3dkBqs4E)
+[Deploying an Application Automatically](https://www.youtube.com/watch?v=acDW-a32Yr8)
+
 Configuration storage for the [opensource.mieweb.com](https://opensource.mieweb.com) Proxmox project.
 
 This repository contains configuration files and scripts for managing a Proxmox-based container hosting environment, including automated DNS, NGINX reverse proxy, and dynamic port mapping.
@@ -19,6 +23,7 @@ This repository contains configuration files and scripts for managing a Proxmox-
         register-container.sh
         register_proxy_hook.sh
 ```
+
 ## Repository Structure
 
 - [`intern-dnsmasq/dnsmasq.conf`](intern-dnsmasq/dnsmasq.conf):  
