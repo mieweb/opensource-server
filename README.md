@@ -44,6 +44,10 @@ This repository contains configuration files and scripts for managing a Proxmox-
 - [`intern-phxdc-pve1/register_proxy_hook.sh`](intern-phxdc-pve1/register_proxy_hook.sh):  
   Proxmox event hook to trigger container registration on startup.
 
+- [A LDAPServer Server](https://github.com/mieweb/LDAPServer):
+  LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
+
+
 ## How It Works
 
 - **DNS**: All `*.opensource.mieweb.com` requests are routed to the NGINX proxy via Dnsmasq.
@@ -64,6 +68,9 @@ This repository contains configuration files and scripts for managing a Proxmox-
    - Dnsmasq.
    - `jq` for JSON manipulation.
 4. **Register new containers** using the provided hook scripts for automatic proxy and DNS integration.
+
+## Optional Submodules
+- **Push Notification 2FA** - MIE Auth https://github.com/mieweb/mieweb_auth_app
 
 ---
 
