@@ -25,9 +25,9 @@ body {
     padding: 2rem 3rem;
     border-radius: 12px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-    width: 100%; /* Changed from max-width to be more flexible */
+    max-width: 400px; /* New: limit width */
+    width: 100%;       /* Still responsive, but maxed out */
     text-align: center;
-    flex: 1; /* Allow flex item to grow/shrink */
 }
 
 .container-list-box {
