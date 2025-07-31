@@ -4,6 +4,7 @@ const session = require('express-session');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs'); // Added fs module
 
 const app = express();
 
@@ -13,7 +14,7 @@ const jobs = {};
 // --- Middleware Setup ---
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static('public')); // For CSS, images, etc.
+app.use(express.static('public'));
 app.use(session({
     secret: 'A7d#9Lm!qW2z%Xf8@Rj3&bK6^Yp$0Nc',
     resave: false,
@@ -35,7 +36,6 @@ app.get('/form.html', (req, res) => {
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
-    // This command should be secure and not directly expose passwords if possible
     exec(`node /root/bin/js/runner.js authenticateUser ${username} ${password}`, (err, stdout) => {
         if (err) {
             console.error("Login script execution error:", err);
@@ -53,6 +53,37 @@ app.post('/login', (req, res) => {
     });
 });
 
+// ✨ UPDATED: API endpoint to get user's containers
+app.get('/api/my-containers', (req, res) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+    // The username in port_map.json doesn't have the @pve suffix
+    const username = req.session.user.split('@')[0];
+
+    // Command to read the remote JSON file
+    const command = "ssh root@10.15.20.69 'cat /etc/nginx/port_map.json'";
+
+    exec(command, (err, stdout, stderr) => {
+        if (err) {
+            console.error("Error fetching port_map.json:", stderr);
+            return res.status(500).json({ error: "Could not fetch container list." });
+        }
+        try {
+            const portMap = JSON.parse(stdout);
+            const userContainers = Object.entries(portMap)
+                // This check now ensures 'details' exists and has a 'user' property before comparing
+                .filter(([_, details]) => details && details.user === username)
+                .map(([name, details]) => ({ name, ...details }));
+                
+            res.json(userContainers);
+        } catch (parseError) {
+            console.error("Error parsing port_map.json:", parseError);
+            res.status(500).json({ error: "Could not parse container list." });
+        }
+    });
+});
+
 // Kicks off the container creation script as a background job
 app.post('/create-container', (req, res) => {
     if (!req.session.user) {
@@ -65,11 +96,9 @@ app.post('/create-container', (req, res) => {
     
     jobs[jobId] = { status: 'running', output: '' };
 
-    // ✨ FIX: Run the script via bash and merge stderr into stdout with 2>&1
     const command = `${scriptPath} 2>&1`;
     const child = spawn('bash', ['-c', command], { env: commandEnv });
 
-    // Since we merged streams, we only need to listen to stdout
     child.stdout.on('data', (data) => {
         const message = data.toString();
         console.log(`[${jobId}]: ${message.trim()}`);
@@ -104,7 +133,6 @@ app.get('/api/stream/:jobId', (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    // Send the output that has already been generated
     res.write(`data: ${JSON.stringify(jobs[jobId].output)}\n\n`);
 
     let lastSentLength = jobs[jobId].output.length;
@@ -128,7 +156,6 @@ app.get('/api/stream/:jobId', (req, res) => {
         res.end();
     });
 });
-
 
 // --- Server Initialization ---
 const PORT = 3000;

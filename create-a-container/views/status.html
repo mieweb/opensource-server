@@ -30,7 +30,7 @@
             const statusElement = document.getElementById('status');
             const jobId = window.location.pathname.split('/').pop();
 
-            // Define the AnsiUp instance for converting ANSI codes to HTML
+            // Now AnsiUp will be defined
             const ansi_up = new AnsiUp();
 
             const eventSource = new EventSource(`/api/stream/${jobId}`);
