@@ -51,7 +51,7 @@ if [ -z "$PROJECT_BRANCH" ]; then
     writeLog "Prompted for project branch"
 fi
 
-if [ "$PROJECT_BRANCH" == "" ]; then
+if [ -z "$PROJECT_BRANCH" ]; then
     PROJECT_BRANCH="main"
     writeLog "Using default branch: main"
 fi
@@ -68,7 +68,7 @@ while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
     echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
     writeLog "Invalid branch entered: $PROJECT_BRANCH"
     read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
-    if [ "$PROJECT_BRANCH" == "" ]; then
+    if [ -z "$PROJECT_BRANCH" ]; then
         PROJECT_BRANCH="main"
     fi
     REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$PROJECT_REPOSITORY_SHORTENED/tree/$PROJECT_BRANCH)
