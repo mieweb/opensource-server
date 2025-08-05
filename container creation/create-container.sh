@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by July 23rd, 2025 by Maxwell Klema
+# Last Modified by August 5th, 2025 by Maxwell Klema
+# -----------------------------------------------------
 
 BOLD='\033[1m'
 BLUE='\033[34m'
@@ -33,7 +34,8 @@ echoContainerDetails() {
 	echo -e "📦  ${BLUE}Container ID        :${RESET} $CONTAINER_ID"
 	echo -e "🌐  ${MAGENTA}Internal IP         :${RESET} $CONTAINER_IP"
 	echo -e "🔗  ${GREEN}Domain Name         :${RESET} https://$CONTAINER_NAME.opensource.mieweb.org"
-	echo -e "🛠️  ${BLUE}SSH Access          :${RESET} ssh -p $SSH_PORT root@$CONTAINER_NAME.opensource.mieweb.org"
+	echo -e "🛠️  ${BLUE}SSH Access          :${RESET} ssh -p $SSH_PORT $PROXMOX_USERNAME@$CONTAINER_NAME.opensource.mieweb.org"
+	echo -e "🔑  ${BLUE}Container Password  :${RESET} Your proxmox account password"
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 	echo -e "${BOLD}${MAGENTA}NOTE: Additional background scripts are being ran in detached terminal sessions.${RESET}"
 	echo -e "${BOLD}${MAGENTA}Wait up to two minutes for all processes to complete.${RESET}"
@@ -48,28 +50,27 @@ trap cleanup SIGINT SIGTERM SIGHUP
 CONTAINER_NAME="${CONTAINER_NAME,,}"
 
 CONTAINER_NAME="$1"
-CONTAINER_PASSWORD="$2"
-GH_ACTION="$3"
-HTTP_PORT="$4"
-PROXMOX_USERNAME="$5"
-PUB_FILE="$6"
-PROTOCOL_FILE="$7"
+GH_ACTION="$2"
+HTTP_PORT="$3"
+PROXMOX_USERNAME="$4"
+USERNAME_ONLY="${PROXMOX_USERNAME%@*}"
+PUB_FILE="$5"
+PROTOCOL_FILE="$6"
 
 # Deployment ENVS
-DEPLOY_ON_START="$8"
-PROJECT_REPOSITORY="$9"
-PROJECT_BRANCH="${10}"
-PROJECT_ROOT="${11}"
-INSTALL_COMMAND=$(echo "${12}" | base64 -d)
-BUILD_COMMAND=$(echo "${13}" | base64 -d)
-START_COMMAND=$(echo "${14}" | base64 -d)
-RUNTIME_LANGUAGE=$(echo "${15}" | base64 -d)
-ENV_BASE_FOLDER="${16}"
-SERVICES_BASE_FILE="${17}"
-LINUX_DISTRO="${18}"
-MULTI_COMPONENTS="${19}"
-ROOT_START_COMMAND="${20}"
-GITHUB_PAT="${21}"
+DEPLOY_ON_START="$7"
+PROJECT_REPOSITORY="$8"
+PROJECT_BRANCH="$9"
+PROJECT_ROOT="${10}"
+INSTALL_COMMAND=$(echo "${11}" | base64 -d)
+BUILD_COMMAND=$(echo "${12}" | base64 -d)
+START_COMMAND=$(echo "${13}" | base64 -d)
+RUNTIME_LANGUAGE=$(echo "${14}" | base64 -d)
+ENV_BASE_FOLDER="${15}"
+SERVICES_BASE_FILE="${16}"
+LINUX_DISTRO="${17}"
+MULTI_COMPONENTS="${18}"
+ROOT_START_COMMAND="${19}"
 
 # Pick the correct template to clone =====
 
@@ -109,19 +110,16 @@ if [ "${GH_ACTION^^}" != "Y" ]; then
 	pct set $CONTAINER_ID \
 		--tags "$PROXMOX_USERNAME" \
 		--tags "$LINUX_DISTRO" \
+		--tags "LDAP" \
 		--onboot 1 > /dev/null 2>&1
 
 	pct start $CONTAINER_ID > /dev/null 2>&1
 	pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser > /dev/null 2>&1
-	#pct delete $CONTAINER_ID
 
 	# Get the Container IP Address and install some packages
 
 	echo "⏳ Waiting for DHCP to allocate IP address to container..."
 	sleep 5
-
-	# Set password inside the container
-	pct exec $CONTAINER_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev/null 2>&1
 else
 	CONTAINER_ID=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$CONTAINER_NAME" '$3 == name {print $1}')
 fi
@@ -133,7 +131,23 @@ if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
 	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
 fi
 
-CONTAINER_IP=$(pct exec $CONTAINER_ID -- hostname -I | awk '{print $1}')
+CONTAINER_IP=""
+attempts=0
+max_attempts=10
+
+while [[ -z "$CONTAINER_IP" && $attempts -lt $max_attempts ]]; do
+    CONTAINER_IP=$(pct exec "$CONTAINER_ID" -- hostname -I | awk '{print $1}')
+    [[ -z "$CONTAINER_IP" ]] && sleep 2 && ((attempts++))
+done
+
+if [[ -z "$CONTAINER_IP" ]]; then
+    echo "❌ Timed out waiting for container to get an IP address."
+    exit 1
+fi
+
+# Set up SSSD to communicate with LDAP server ====
+echo "⏳ Configuring LDAP connection via SSSD..."
+source /var/lib/vz/snippets/helper-scripts/configureLDAP.sh
 
 # Attempt to Automatically Deploy Project Inside Container
 
@@ -154,13 +168,14 @@ fi
 pct exec $CONTAINER_ID -- bash -c "cd /root && touch container-updates.log"
 
 # Run Contianer Provision Script to add container to port_map.json
-
+echo "⏳ Running Container Provision Script..."
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
-	/var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE
-	rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE > /dev/null 2>&1
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE "$USERNAME_ONLY"
+    rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE > /dev/null 2>&1
 else
-	/var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT 
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME"
 fi
+
 
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
@@ -189,7 +204,6 @@ bash /var/lib/vz/snippets/start_services.sh
 "$RUNTIME_LANGUAGE_B64"
 "$GH_ACTION"
 "$PROJECT_BRANCH"
-"$GITHUB_PAT"
 )
 
 # Safely quote each argument for the shell

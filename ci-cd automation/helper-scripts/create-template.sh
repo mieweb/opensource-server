@@ -41,8 +41,8 @@ else
         --full true
 fi
 
-AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $GITHUB_PAT")
-TOKEN=$(echo "$AUTH_TOKEN_RESPONSE" | jq -r '.token')
+# AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $GITHUB_PAT")
+# TOKEN=$(echo "$AUTH_TOKEN_RESPONSE" | jq -r '.token')
 
 # Remove rsa keys ====
 pct start $NEXT_ID

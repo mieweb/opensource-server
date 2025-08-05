@@ -8,7 +8,13 @@ gatherEnvVars(){
     read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
 
     while [ "$ENV_VAR_KEY" == "" ] || [ "$ENV_VAR_VALUE" == "" ]; do
+        if [ "${GH_ACTION^^}" == "Y" ]; then
+            outputError "Key and value cannot be empty. Please try again."
+            writeLog "Empty environment variable key or value entered (GH_ACTION mode)"
+            exit 15
+        fi
         echo "⚠️  Key or value cannot be empty. Try again."
+        writeLog "Empty environment variable key or value entered"
         read -p "🔑 Enter Environment Variable Key →  " ENV_VAR_KEY
         read -p "🔑 Enter Environment Variable Value →  " ENV_VAR_VALUE
     done
@@ -28,8 +34,15 @@ fi
 
 while [ "${REQUIRE_ENV_VARS^^}" != "Y" ] && [ "${REQUIRE_ENV_VARS^^}" != "N" ] && [ "${REQUIRE_ENV_VARS^^}" != "" ]; do
     echo "⚠️ Invalid option. Please try again."
+    writeLog "Invalid environment variables requirement option entered: $REQUIRE_ENV_VARS"
     read -p "🔑 Does your application require environment variables? (y/n) →  " REQUIRE_ENV_VARS
 done
+
+if [ "${GH_ACTION^^}" == "Y" ]; then
+    if [ ! -z "$CONTAINER_ENV_VARS" ]; then
+        REQUIRE_ENV_VARS="Y"
+    fi
+fi
 
 if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
     # generate random temp .env folder to store all env files for different components
@@ -51,8 +64,14 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
                     addComponent "$key"
                 done
             else
+                if [ "${GH_ACTION^^}" == "Y" ]; then
+                    outputError "Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+                    writeLog "Invalid JSON in CONTAINER_ENV_VARS (GH_ACTION mode)"
+                    exit 16
+                fi
                 echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
-                exit 10
+                writeLog "Invalid JSON in CONTAINER_ENV_VARS"
+                exit 16
             fi
         else # No Environment Variables
             gatherComponentDir "Enter the path of your component to enter environment variables"
@@ -71,12 +90,19 @@ if [ "${REQUIRE_ENV_VARS^^}" == "Y" ]; then
         ENV_FILE="env_$RANDOM_NUM.txt"
         ENV_FILE_PATH="/root/bin/env/$ENV_FOLDER/$ENV_FILE"
         touch "$ENV_FILE_PATH"
+        
         if [ ! -z "$CONTAINER_ENV_VARS" ]; then # Environment Variables
             if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
                 echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$ENV_FILE_PATH" #k=v pairs
             else
+                if [ "${GH_ACTION^^}" == "Y" ]; then
+                    outputError "Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+                    writeLog "Invalid JSON in CONTAINER_ENV_VARS for single component (GH_ACTION mode)"
+                    exit 16
+                fi
                 echo "⚠️  Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
-                exit 10
+                writeLog "Invalid JSON in CONTAINER_ENV_VARS for single component"
+                exit 16
             fi
         else # No Environment Variables
              gatherEnvVars "$ENV_FILE_PATH"

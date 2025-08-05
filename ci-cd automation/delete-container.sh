@@ -25,5 +25,5 @@ QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
 
 tmux new-session -d -s delete-runner "$QUOTED_CMD"
 
-echo "✅ Container with name \"$CONTAINER_NAME\" will been permanently deleted."
+echo "✅ Container with name \"$CONTAINER_NAME\" will be permanently deleted."
 exit 0 # Container Deleted Successfully

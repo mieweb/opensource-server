@@ -1,7 +1,15 @@
 #!/bin/bash
-# Script to check if a container exists
+# Script to check if a container exists, and if so, whether it needs to be updated or cloned.
 # Last Modified by Maxwell Klema on July 13th, 2025
 # -----------------------------------------------------
+
+outputError() {
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	echo -e "${BOLD}${MAGENTA}❌ Script Failed. Exiting... ${RESET}"
+	echo -e "$2"
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  exit $1
+}
 
 RESET="\033[0m"
 BOLD="\033[1m"
@@ -11,13 +19,11 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BOLD}${MAGENTA}🔎 Check Container Exists ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-set +e
 TYPE_RUNNER="true"
 source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh
 source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh
 
 STATUS=$?
-
 if [ "$STATUS" != 0 ]; then
     exit 1;
 fi

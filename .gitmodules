@@ -1,0 +1,3 @@
+[submodule "proxmox-launchpad"]
+	path = proxmox-launchpad
+	url = https://github.com/maxklema/proxmox-launchpad.git

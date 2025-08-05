@@ -1,10 +1,9 @@
 #!/bin/bash
 # Script ran by a virtual terminal session to start services and migrate a container
 # Script is only ran on GH action workflows when runner disconnects
-# Last Modified by Maxwell Klema on July 23rd, 2025
+# Last Modified by Maxwell Klema on August 5th, 2025
 # ------------------------------------------------
 
-set -x 
 CONTAINER_ID="$1"
 CONTAINER_NAME="$2"
 REPO_BASE_NAME="$3"
@@ -20,28 +19,27 @@ BUILD_COMMAND=$(echo "${12}" | base64 -d)
 RUNTIME_LANGUAGE=$(echo "${13}" | base64 -d)
 GH_ACTION="${14}"
 PROJECT_BRANCH="${15}"
-GITHUB_PAT="${16}"
-UPDATE_CONTAINER="${17}"
+UPDATE_CONTAINER="${16}"
 CONTAINER_NAME="${CONTAINER_NAME,,}"
 
-sleep 3
-pct stop $CONTAINER_ID > /dev/null 2>&1
+if [ "${GH_ACTION^^}" == "Y" ]; then
+	sleep 8 # Wait for Job to Complete
+fi
 
-echo "$START_COMMAND"
-echo "$BUILD_COMMAND"
-echo "$RUNTIME_LANGUAGE"
-
-sleep 10
-
+if (( $CONTAINER_ID % 2 == 0 )) && [ "$UPDATE_CONTAINER" == "true" ]; then
+	ssh root@10.15.0.5 "pct stop $CONTAINER_ID" > /dev/null 2>&1
+else
+	pct stop $CONTAINER_ID > /dev/null 2>&1
+fi
 
 # Create template if on default branch ====
-# source /var/lib/vz/snippets/helper-scripts/create-template.sh
+source /var/lib/vz/snippets/helper-scripts/create-template.sh
 
 if (( $CONTAINER_ID % 2 == 0 )); then
 
 	if [ "$UPDATE_CONTAINER" != "true" ]; then
 		pct migrate $CONTAINER_ID intern-phxdc-pve2 --target-storage containers-pve2 --online > /dev/null 2>&1
-		sleep 40 # wait for migration to finish (fix this later)
+		sleep 5 # wait for migration to finish (fix this later)
 	fi
 
 	ssh root@10.15.0.5 "pct start $CONTAINER_ID"
@@ -59,18 +57,14 @@ if (( $CONTAINER_ID % 2 == 0 )); then
 		START_CMD="$3"
 		COMP_DIR="$4"
 
+		if [ -z "$BUILD_CMD" ]; then
+			BUILD_CMD="true"
+		fi
+
 		if [ "${RUNTIME^^}" == "NODEJS" ]; then
-			if [ "$BUILD_CMD" == "" ]; then
-				ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c \"cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD\"'" > /dev/null 2>&1
-			else
-				ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'export PATH=\$PATH:/usr/local/bin && $BUILD_CMD && pm2 start bash -- -c \"cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD\"'" > /dev/null 2>&1
-			fi
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c \"mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp tmux new-session -d 'export HOME=/root export PATH=\\\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
 		elif [ "${RUNTIME^^}" == "PYTHON" ]; then
-			if [ "$BUILD_CMD" == "" ]; then
-				ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'\"" > /dev/null 2>&1
-			else
-				ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- script -q -c \"tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
-			fi
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c \"mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp tmux new-session -d 'export HOME=/root export PATH=\\\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
 		fi
 
 	}
@@ -93,11 +87,11 @@ if (( $CONTAINER_ID % 2 == 0 )); then
 			startProject "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 		fi
 	fi
-	ssh root@10.15.0.5 "pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2" 
 
 # PVE 1
 else
-	pct start $CONTAINER_ID | true
+	pct start $CONTAINER_ID || true
+	sleep 5
 	if [ "${GH_ACTION^^}" == "Y" ]; then
 		pct exec $CONTAINER_ID -- bash -c "systemctl start github-runner"
 	fi 
@@ -109,21 +103,14 @@ else
 		START_CMD="$3"
 		COMP_DIR="$4"
 
+		if [ -z "$BUILD_CMD" ]; then
+			BUILD_CMD="true"
+		fi
+
 		if [ "${RUNTIME^^}" == "NODEJS" ]; then
-			if [ "$BUILD_CMD" == "" ]; then
-				pct exec $CONTAINER_ID -- bash -c "export PATH=\$PATH:/usr/local/bin && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'" > /dev/null 2>&1
-			else
-				pct enter $CONTAINER_ID <<EOF > /dev/null
-export PATH=\$PATH:/usr/local/bin && \
-$BUILD_CMD || true && pm2 start bash -- -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $START_CMD'
-EOF
-			fi
+			pct exec "$CONTAINER_ID" -- bash -c "mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp/tmux-0 tmux new-session -d \"export HOME=/root && export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $BUILD_CMD && $START_CMD\""
 		elif [ "${RUNTIME^^}" == "PYTHON" ]; then
-			if [ "$BUILD_CMD" == "" ]; then
-				pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $START_CMD'" > /dev/null 2>&1
-			else
-				pct exec $CONTAINER_ID -- script -q -c "tmux new-session -d 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'" > /dev/null 2>&1
-			fi
+			pct exec "$CONTAINER_ID" -- bash -c "mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp/tmux-0 tmux new-session -d \"export HOME=/root &&export PATH=\$PATH:/usr/local/bin && cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $BUILD_CMD && $START_CMD\""
 		fi
 	}
 
@@ -145,5 +132,4 @@ EOF
 	else
 		startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 	fi
-	pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 > /dev/null
 fi

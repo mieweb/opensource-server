@@ -15,21 +15,9 @@ if [ -z "$PROXMOX_PASSWORD" ]; then
 fi
 
 USER_AUTHENTICATED=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
-RETRIES=3
 
-while [ $USER_AUTHENTICATED == 'false' ]; do
-	if [ $RETRIES -gt 0 ]; then
-		echo "❌ Authentication Failed. Try Again"
-		read -p  "Enter Proxmox Username →  " PROXMOX_USERNAME
-		read -sp "Enter Proxmox Password →  " PROXMOX_PASSWORD
-		echo ""
-
-        USER_AUTHENTICATED=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
-		RETRIES=$(($RETRIES-1))
-	else
-		echo "Too many incorrect attempts. Exiting..."
-		exit 2
-	fi
-done
+if [ $USER_AUTHENTICATED == 'false' ]; then
+	outputError 1 "Your Proxmox account, $PROXMOX_USERNAME@pve, was not authenticated. Retry with valid credentials."
+fi
 
 echo "🎉 Your proxmox account, $PROXMOX_USERNAME@pve, has been authenticated"

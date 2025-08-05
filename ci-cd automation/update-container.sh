@@ -1,17 +1,26 @@
 #!/bin/bash
 # Script to automatically fetch new contents from a branch, push them to container, and restart intern
-# Last Modified on July 17th, 2025 by Maxwell Klema
+# Last Modified on August 5th, 2025 by Maxwell Klema
 # ----------------------------------------
 
 RESET="\033[0m"
 BOLD="\033[1m"
 MAGENTA='\033[35m'
 
+outputError() {
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	echo -e "${BOLD}${MAGENTA}❌ Script Failed. Exiting... ${RESET}"
+	echo -e "$2"
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  exit $1
+}
+
+
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 echo -e "${BOLD}${MAGENTA}🔄 Update Container Contents ${RESET}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 
-if [ "${DEPLOY_ON_START^^}" != "Y" ]; then
+if [ -z "${RUNTIME_LANGUAGE^^}" ]; then
     echo "Skipping container update because there is nothing to update."
     exit 0
 fi
@@ -25,57 +34,48 @@ CONTAINER_NAME="${CONTAINER_NAME,,}"
 
 if [ -z "$PROJECT_REPOSITORY" ]; then
     read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
+else
+    DEPLOY_ON_START="y"
 fi
 
 CheckRepository() {
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY#*github.com/}
     PROJECT_REPOSITORY_SHORTENED=${PROJECT_REPOSITORY_SHORTENED%.git}
-    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$RROJECT_REPOSITORY)
+    REPOSITORY_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/$PROJECT_REPOSITORY_SHORTENED)
 }
-
 
 CheckRepository
 
-while [ "$REPOSITORY_EXISTS" != "200" ]; do
-    echo "⚠️ The repository link you provided, \"$PROJECT_REPOSITORY\" was not valid."
-    read -p "🚀 Paste the link to your project repository →  " PROJECT_REPOSITORY
-    CheckRepository
-done
+if [ "$REPOSITORY_EXISTS" != "200" ]; then
+    outputError 1 "The repository link you provided, \"$PROJECT_REPOSITORY\" was not valid."
+fi
 
 echo "✅ The repository link you provided, \"$PROJECT_REPOSITORY\", was valid."
 
 # Get Project Branch
 
-if [ "$PROJECT_BRANCH" == "" ]; then
+if [ -z "$PROJECT_BRANCH" ]; then
     PROJECT_BRANCH="main"
 fi
 
 REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/$PROJECT_REPOSITORY_SHORTENED/branches/$PROJECT_BRANCH)
 
-REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY/tree/$PROJECT_BRANCH)
-while [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; do
-    echo "⚠️ The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
-    read -p "🪾  Enter the project branch to deploy from (leave blank for \"main\") → " PROJECT_BRANCH
-    if [ "PROJECT_BRANCH" == "" ]; then
-	PROJECT_BRANCH="main"
-    fi
-    REPOSITORY_BRANCH_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" $PROJECT_REPOSITORY_SHORTENED/tree/$PROJECT_BRANCH)
-done
+if [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; then
+    outputError 1 "The branch you provided, \"$PROJECT_BRANCH\", does not exist on repository at \"$PROJECT_REPOSITORY\"."
+fi
 
 
 # # Get Project Root Directroy
 
-if [ "$PROJECT_ROOT" == "." ] || [ "$PROJECT_ROOT" == "" ]; then
+if [ "$PROJECT_ROOT" == "." ] || [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT="/"
 fi
 
 VALID_PROJECT_ROOT=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateRepo \"$PROJECT_REPOSITORY\" \"$PROJECT_BRANCH\" \"$PROJECT_ROOT\"")
 
-while [ "$VALID_PROJECT_ROOT" == "false" ]; do
-    echo "⚠️ The root directory you provided, \"$PROJECT_ROOT\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
-    read -p "📁 Enter the project root directory (relative to repository root directory, or leave blank for root directory) →  " PROJECT_ROOT
-    VALID_PROJECT_ROOT=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateRepo \"$PROJECT_REPOSITORY\" \"$PROJECT_BRANCH\" \"$PROJECT_ROOT\"")
-done
+if [ "$VALID_PROJECT_ROOT" == "false" ]; then
+    outputError 1 "The root directory you provided, \"$PROJECT_ROOT\", does not exist on branch, \"$PROJECT_BRANCH\", on repository at \"$PROJECT_REPOSITORY\"."
+fi
 
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
@@ -88,13 +88,34 @@ fi
 
 echo "🛎️ Installing Services..."
 
-# SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
-#     root@10.15.234.122 \
-#    "/root/bin/deployment-scripts/gatherServices.sh true")
+if [ -z "$LINUX_DISTRIBUTION" ]; then
+    LINUX_DISTRIBUTION="debian"
+fi
 
-# echo "$SERVICE_COMMANDS" | while read -r line; do
-#     pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
-# done
+if [ ! -z "$SERVICES" ] || [ ! -z "$CUSTOM_SERVICES" ]; then
+    REQUIRE_SERVICES="y"
+fi
+
+SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
+    root@10.15.234.122 \
+   "/root/bin/deployment-scripts/gatherServices.sh true")
+
+echo "$SERVICE_COMMANDS" | while read -r line; do
+    pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
+done
+
+# Change HTTP port if necessary ====
+
+if [ ! -z "$HTTP_PORT" ]; then
+    if [ "$HTTP_PORT" -lt 80 ] || [ "$HTTP_PORT" -gt 60000 ]; then
+        outputError 1 "Invalid HTTP port: $HTTP_PORT. Must be between 80 and 60000."
+    fi
+    ssh root@10.15.20.69 -- \
+"jq \ '.[\"$CONTAINER_NAME\"].ports.http = $HTTP_PORT' \
+    /etc/nginx/port_map.json > /tmp/port_map.json.new \
+    && mv -f /tmp/port_map.json.new /etc/nginx/port_map.json "
+fi
+
 
 # Clone repository if needed ====
 
@@ -165,6 +186,10 @@ startComponentPVE2() {
 }
 
 
+if [ ! -z "$RUNTIME_LANGUAGE" ] && echo "$RUNTIME_LANGUAGE" | jq . >/dev/null 2>&1; then # If RUNTIME_LANGUAGE is set and is valid JSON
+    MULTI_COMPONENT="Y"
+fi
+
 if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
         START=$(echo "$START_COMMAND" | jq -r --arg k "$COMPONENT" '.[$k]')
@@ -229,7 +254,6 @@ bash /var/lib/vz/snippets/start_services.sh
 "$RUNTIME_LANGUAGE_B64"
 "$GH_ACTION"
 "$PROJECT_BRANCH"
-"$GITHUB_PAT"
 "$UPDATE_CONTAINER"
 )
 

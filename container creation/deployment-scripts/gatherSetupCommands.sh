@@ -1,6 +1,6 @@
 #!/bin/bash
 # This function gathers start up commands, such as build, install, and start, for both single and multiple component applications
-# Last Modified by Maxwell Klema on July 16th, 2025
+# Last Modified by Maxwell Klema on July 15th, 2025
 # ---------------------------------------------
 
 gatherSetupCommands() {
@@ -19,7 +19,13 @@ gatherSetupCommands() {
                     addComponent "$key"
                 done
             else
+                if [ "${GH_ACTION^^}" == "Y" ]; then
+                    outputError "Your \"$TYPE_COMMAND\" is not valid JSON. Please re-format and try again."
+                    writeLog "Invalid JSON in $TYPE_COMMAND (GH_ACTION mode)"
+                    exit 10
+                fi
                 echo "⚠️  Your \"$TYPE_COMMAND\" is not valid JSON. Please re-format and try again."
+                writeLog "Invalid JSON in $TYPE_COMMAND"
                 exit 10
             fi
         else  # No Environment Variable Passed

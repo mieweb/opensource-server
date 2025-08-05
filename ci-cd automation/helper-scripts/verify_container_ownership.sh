@@ -20,18 +20,18 @@ if [ "$TYPE_RUNNER" != "true" ]; then
     if (( $CONTAINER_ID % 2 == 0 )); then
         CONTAINER_OWNERSHIP=$(ssh root@10.15.0.5 "pct config \"$CONTAINER_ID\" | grep "tags" | grep \"$PROXMOX_USERNAME\"")
     else
-        CONTAINER_OWNERSHIP=$(pct config "$CONTAINER_ID" | grep "tags" | grep -x "tags: $PROXMOX_USERNAME")
+        CONTAINER_OWNERSHIP=$(pct config "$CONTAINER_ID" | grep "tags" | grep -E "(^|;)$PROXMOX_USERNAME(;|$)")
     fi
 else
     CONTAINER_OWNERSHIP=$(ssh root@10.15.0.5 "pct config \"$CONTAINER_ID\" | grep "tags" | grep \"$PROXMOX_USERNAME\"")
     PVE1="false"
     if [ -z "$CONTAINER_OWNERSHIP" ]; then
-        CONTAINER_OWNERSHIP=$(pct config "$CONTAINER_ID" | grep "tags" | grep -x "tags: $PROXMOX_USERNAME")
+        CONTAINER_OWNERSHIP=$(pct config "$CONTAINER_ID" | grep "tags" | grep -E "(^|;)$PROXMOX_USERNAME(;|$)")
         PVE1="true"
     fi  
 fi
 
 if [ -z "$CONTAINER_OWNERSHIP" ]; then
     echo "❌ You do not own the container with name \"$CONTAINER_NAME\"."
-    return 2
+    outputError 1 "You do not own the container with name \"$CONTAINER_NAME\"."
 fi

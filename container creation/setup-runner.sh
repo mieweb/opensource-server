@@ -1,7 +1,15 @@
 #!/bin/bash
 # A script for cloning a Distro template, installing, and starting a runner on it.
-# Last Modified by Maxwell Klema on July 20th, 2025
+# Last Modified by Maxwell Klema on August 5th, 2025
 # ------------------------------------------------
+
+outputError() {
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+	echo -e "${BOLD}${MAGENTA}❌ Script Failed. Exiting... ${RESET}"
+	echo -e "$2"
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"  
+  exit $1
+}
 
 BOLD='\033[1m'
 RESET='\033[0m'
@@ -15,10 +23,8 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 source /var/lib/vz/snippets/helper-scripts/PVE_user_authentication.sh #Authenticate User
 source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh #Ensure container does not exist.
 
-CONTAINER_EXISTS=$?
-
-if [ "$CONTAINER_EXISTS" != 1 ]; then
-    exit $CONTAINER_EXISTS; # Container is not free to user, either someone else owns it or the user owns it.
+if [ ! -z "$CONTAINER_OWNERSHIP" ]; then
+    outputError 1 "You already own a container with name \"$CONTAINER_NAME\". Please delete it before creating a new one."
 fi
  
 # Cloning Container Template and Setting it up =====
@@ -30,7 +36,7 @@ TEMPLATE_NAME="template-$REPO_BASE_NAME-$REPO_BASE_NAME_WITH_OWNER"
 CTID_TEMPLATE=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$TEMPLATE_NAME" '$3 == name {print $1}')
 
 case "${LINUX_DISTRIBUTION^^}" in
-  DEBIAN) PACKAGE_MANAGER="apt-get" ;;
+  "") PACKAGE_MANAGER="apt-get" ;;
   ROCKY)  PACKAGE_MANAGER="dnf" ;;
 esac
 
@@ -38,10 +44,14 @@ esac
 
 if [ -z "$CTID_TEMPLATE" ]; then
   case "${LINUX_DISTRIBUTION^^}" in
-    DEBIAN) CTID_TEMPLATE="160" ;;
+    "") CTID_TEMPLATE="160" ;;
     ROCKY)  CTID_TEMPLATE="138" ;;
   esac
-fi 
+fi
+
+if [ "${LINUX_DISTRIBUTION^^}" != "ROCKY" ]; then
+  LINUX_DISTRIBUTION="DEBIAN"
+fi
 
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
@@ -58,7 +68,10 @@ pct clone $CTID_TEMPLATE $NEXT_ID \
 echo "⏳ Setting Container Properties..."
 pct set $NEXT_ID \
 	--tags "$PROXMOX_USERNAME" \
-	--onboot 1 > /dev/null 2>&1
+  --tags "$LINUX_DISTRIBUTION" \
+	--onboot 1 \
+	--cores 4 \
+  --memory 4096 > /dev/null 2>&1
 
 pct start $NEXT_ID > /dev/null 2>&1
 pveum aclmod /vms/$NEXT_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser > /dev/null 2>&1
@@ -67,23 +80,29 @@ sleep 5
 echo "⏳ DHCP Allocating IP Address..."
 CONTAINER_IP=$(pct exec $NEXT_ID -- hostname -I | awk '{print $1}')
 
-# Set password inside the container
-pct exec $NEXT_ID -- bash -c "echo 'root:$CONTAINER_PASSWORD' | chpasswd" > /dev/null 2>&1
-
 # Setting Up Github Runner =====
 
 # Get Temporary Token
 echo "🪙  Getting Authentication Token..."
-AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $GITHUB_PAT")
-TOKEN=$(echo "$AUTH_TOKEN_RESPONSE" | jq -r '.token')
+AUTH_TOKEN_RESPONSE=$(curl --location --request POST https://api.github.com/repos/$REPO_BASE_NAME_WITH_OWNER/$REPO_BASE_NAME/actions/runners/registration-token --header "Authorization: token $GITHUB_PAT" --write-out "HTTPSTATUS:%{http_code}" --silent)
 
-pct enter $NEXT_ID <<EOF > /dev/null
-rm -rf /root/container-updates.log | true && \
+HTTP_STATUS=$(echo "$AUTH_TOKEN_RESPONSE" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+AUTH_TOKEN_BODY=$(echo "$AUTH_TOKEN_RESPONSE" | sed 's/HTTPSTATUS:[0-9]*$//')
+
+if [ "$HTTP_STATUS" != "201" ]; then
+    outputError 1 "Failed to get GitHub authentication token. HTTP Status: $HTTP_STATUS\nResponse: $AUTH_TOKEN_BODY"
+fi
+
+TOKEN=$(echo "$AUTH_TOKEN_BODY" | jq -r '.token')
+
+pct enter $NEXT_ID <<EOF > /dev/null 2>&1
+rm -rf /root/container-updates.log || true && \
 cd /actions-runner && export RUNNER_ALLOW_RUNASROOT=1 && \
-export runProcess=\$(ps aux | grep run.sh | awk '{print \$2}' | head -n 1) && kill -9 \$runProcess || true && \
-rm -rf .runner .credentials && rm -rf _work/* /var/log/runner/* && \
+runProcess=\$(ps aux | grep "[r]un.sh" | awk '{print \$2}' | head -n 1) && \
+if [ ! -z "\$runProcess" ]; then kill -9 \$runProcess || true; fi && \
+rm -rf .runner .credentials && rm -rf _work/* /var/log/runner/* 2>/dev/null || true && \
 export RUNNER_ALLOW_RUNASROOT=1 && \
-./config.sh --url $PROJECT_REPOSITORY --token $TOKEN --labels $CONTAINER_NAME --name $CONTAINER_NAME
+./config.sh --url $PROJECT_REPOSITORY --token $TOKEN --labels $CONTAINER_NAME --name $CONTAINER_NAME --unattended
 EOF
 
 # Generate RSA Keys =====

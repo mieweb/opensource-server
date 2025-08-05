@@ -7,11 +7,13 @@ PROXMOX_USERNAME="$3"
 PROXMOX_PASSWORD="$4"
 CONTAINER_NAME="$5"
 
+set -x 
 sleep 2
 
 # Delete Container
 
 CONTAINER_ID=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$CONTAINER_NAME" '$3 == name {print $1}')
+echo "echo $CONTAINER_ID"
 
 if (( $CONTAINER_ID % 2 == 0 )); then
     if ssh root@10.15.0.5 "pct status $CONTAINER_ID" | grep -q "status: running"; then

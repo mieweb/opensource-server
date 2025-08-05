@@ -13,7 +13,9 @@ echo "Repo base name: $REPO_BASE_NAME"
 pct enter $CONTAINER_ID <<EOF
 if [ ! -d '/root/$REPO_BASE_NAME' ]; then
 cd /root && \
-git clone $PROJECT_REPOSITORY && git checkout $PROJECT_BRANCH > /dev/null
+git clone $PROJECT_REPOSITORY && \
+cd /root/$REPO_BASE_NAME && \
+git checkout $PROJECT_BRANCH > /dev/null
 else
 cd /root/$REPO_BASE_NAME && git fetch && git pull && \
 git checkout $PROJECT_BRANCH
@@ -26,19 +28,21 @@ pct exec $CONTAINER_ID -- bash -c "chmod 700 ~/.bashrc" # enable full R/W/X perm
 
 ENV_BASE_FOLDER="/var/lib/vz/snippets/container-env-vars/${ENV_BASE_FOLDER}"
 
-if [ "${MULTI_COMPONENTS^^}" == "Y" ]; then
-    for FILE in $ENV_BASE_FOLDER/*; do
-        FILE_BASENAME=$(basename "$FILE")
-        FILE_NAME="${FILE_BASENAME%.*}"
-        ENV_ROUTE=$(echo "$FILE_NAME" | tr '_' '/') # acts as the route to the correct folder to place .env file in.
-        
-        ENV_VARS=$(cat $ENV_BASE_FOLDER/$FILE_BASENAME)
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$ENV_ROUTE && echo "$ENV_VARS" > .env" > /dev/null 2>&1
-    done
-else
-    ENV_FOLDER_BASE_NAME=$(basename "$ENV_BASE_FOLDER")
-    ENV_VARS=$(cat $ENV_BASE_FOLDER/$ENV_FOLDER_BASE_NAME.txt)
-    pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && echo "$ENV_VARS" > .env" > /dev/null 2>&1
+if [ ! -d "$ENV_BASE_FOLDER"]; then
+    if [ "${MULTI_COMPONENTS^^}" == "Y" ]; then
+        for FILE in $ENV_BASE_FOLDER/*; do
+            FILE_BASENAME=$(basename "$FILE")
+            FILE_NAME="${FILE_BASENAME%.*}"
+            ENV_ROUTE=$(echo "$FILE_NAME" | tr '_' '/') # acts as the route to the correct folder to place .env file in.
+            
+            ENV_VARS=$(cat $ENV_BASE_FOLDER/$FILE_BASENAME)
+            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$ENV_ROUTE && echo "$ENV_VARS" > .env" > /dev/null 2>&1
+        done
+    else
+        ENV_FOLDER_BASE_NAME=$(basename "$ENV_BASE_FOLDER")
+        ENV_VARS=$(cat $ENV_BASE_FOLDER/$ENV_FOLDER_BASE_NAME.txt || true)
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && echo "$ENV_VARS" > .env" > /dev/null 2>&1
+    fi
 fi
 
 # Run Installation Commands ====
