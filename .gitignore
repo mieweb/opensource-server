@@ -1,0 +1,5 @@
+Wazuh/node_modules/
+Wazuh/package-lock.json
+Wazuh/package.json
+Wazuh/.env
+Wazuh/.gitignore
