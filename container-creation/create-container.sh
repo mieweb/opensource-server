@@ -5,12 +5,14 @@
 trap cleanup SIGINT SIGTERM SIGHUP
 
 CONTAINER_NAME="$1"
-CONTAINER_PASSWORD="$2"
-HTTP_PORT="$3"
-PROXMOX_USERNAME="$4"
-PUB_FILE="$5"
-PROTOCOL_FILE="$6"
+HTTP_PORT="$2"
+PROXMOX_USERNAME="$3"
+PUB_FILE="$4"
+PROTOCOL_FILE="$5"
 NEXT_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
+
+# Generate random 20-character alphanumeric password for root
+CONTAINER_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
 
 # Run cleanup commands in case script is interrupted
 

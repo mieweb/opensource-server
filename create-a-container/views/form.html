@@ -15,12 +15,6 @@
                 <label for="CONTAINER_NAME">Container Name</label>
                 <input type="text" id="CONTAINER_NAME" name="CONTAINER_NAME" required>
 
-                <label for="CONTAINER_PASSWORD">Container Password</label>
-                <input type="password" id="CONTAINER_PASSWORD" name="CONTAINER_PASSWORD" required>
-
-                <label for="passwordConfirm">Confirm Password</label>
-                <input type="password" id="passwordConfirm" name="passwordConfirm" required>
-
                 <label for="LINUX_DISTRIBUTION">Linux Distro</label>
                 <select id="LINUX_DISTRIBUTION" name="LINUX_DISTRIBUTION" required>
                     <option value="debian">Debian 12 (Bookworm)</option>
@@ -32,15 +26,6 @@
 
                 <label for="PUBLIC_KEY">SSH Public Key (optional)</label>
                 <input type="text" id="PUBLIC_KEY" name="PUBLIC_KEY">
-
-                <label for="OTHER_PORT">Other Port (optional, forwards TCP & UDP)</label>
-                <input type="number" id="OTHER_PORT" name="OTHER_PORT" placeholder="e.g., 8080">
-
-                <label for="DEPLOY_ON_START">Deploy on Start</label>
-                <select id="DEPLOY_ON_START" name="DEPLOY_ON_START" required>
-                    <option value="n">No</option>
-                    <option value="y">Yes</option>
-                </select>
 
                 <input type="submit" value="Create Container">
             </form>

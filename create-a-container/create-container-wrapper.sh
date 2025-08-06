@@ -183,11 +183,9 @@ fi
 # Run your create-container.sh remotely over SSH with corrected quoting and simplified variable
 ssh -t root@10.15.0.4 "bash -c \"/var/lib/vz/snippets/create-container.sh \
     '$CONTAINER_NAME' \
-    '$CONTAINER_PASSWORD' \
     '$GH_ACTION' \
     '$HTTP_PORT' \
     '$PROXMOX_USERNAME' \
-    '$KEY_BASENAME' \
     '$PROTOCOL_BASE_FILE' \
     '$DEPLOY_ON_START' \
     '${PROJECT_REPOSITORY:-}' \
