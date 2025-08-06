@@ -27,7 +27,6 @@ echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━�
 : "${PROXMOX_USERNAME:?Environment variable PROXMOX_USERNAME is required}"
 : "${PROXMOX_PASSWORD:?Environment variable PROXMOX_PASSWORD is required}"
 : "${CONTAINER_NAME:?Environment variable CONTAINER_NAME is required}"
-: "${CONTAINER_PASSWORD:?Environment variable CONTAINER_PASSWORD is required}"
 : "${LINUX_DISTRIBUTION:?Environment variable LINUX_DISTRIBUTION is required}"
 : "${HTTP_PORT:?Environment variable HTTP_PORT is required}"
 : "${DEPLOY_ON_START:=n}"  # default to "n" if not set
@@ -56,11 +55,6 @@ if [ "$HOST_NAME_EXISTS" == "true" ]; then
     outputError "Container hostname '$CONTAINER_NAME' already exists."
 fi
 echo "✅ Container name '$CONTAINER_NAME' is available."
-
-# Validate container password length
-if [ "${#CONTAINER_PASSWORD}" -lt 8 ]; then
-    outputError "Container password must be at least 8 characters."
-fi
 
 # Validate Linux distribution choice
 if [[ "$LINUX_DISTRIBUTION" != "debian" && "$LINUX_DISTRIBUTION" != "rocky" ]]; then
@@ -186,6 +180,7 @@ ssh -t root@10.15.0.4 "bash -c \"/var/lib/vz/snippets/create-container.sh \
     '$GH_ACTION' \
     '$HTTP_PORT' \
     '$PROXMOX_USERNAME' \
+    '$KEY_BASENAME' \
     '$PROTOCOL_BASE_FILE' \
     '$DEPLOY_ON_START' \
     '${PROJECT_REPOSITORY:-}' \
@@ -209,8 +204,6 @@ rm -f "${TEMP_SERVICES_FILE_PATH:-}"
 rm -rf "${ENV_FOLDER_PATH:-}"
 
 # Unset sensitive variables
-unset CONFIRM_PASSWORD
-unset CONTAINER_PASSWORD
 unset PUBLIC_KEY
 
 echo "✅ Container creation wrapper script finished successfully."

@@ -47,15 +47,8 @@
     document.getElementById('containerForm').addEventListener('submit', async function(event) {
         event.preventDefault();
 
-        const password = document.getElementById('CONTAINER_PASSWORD').value;
-        const confirm = document.getElementById('passwordConfirm').value;
         const errorDiv = document.getElementById('formError');
 
-        if (password !== confirm) {
-            errorDiv.textContent = 'Passwords do not match!';
-            return;
-        }
-        
         errorDiv.textContent = 'Submitting... please wait.';
 
         const formData = new FormData(this);

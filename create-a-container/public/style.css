@@ -38,7 +38,7 @@ body {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
     max-width: 800px; /* Wider than login-container */
     width: 100%;
-    text-align: right; /* Align output text to the right */
+    text-align: left; /* Align output text to the right */
     font-family: monospace; /* Keep terminal feel */
     white-space: pre-wrap; /* Preserve formatting */
     overflow-y: auto; /* Scroll if log is long */
@@ -46,7 +46,7 @@ body {
 }
 
 .output-container .status-message {
-    text-align: right; /* Status aligns with log text */
+    text-align: left; /* Status aligns with log text */
 }
 
 .container-list-box {
