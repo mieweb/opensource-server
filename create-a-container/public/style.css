@@ -1,0 +1,164 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to right, #2c3e50, #3498db);
+    display: flex;
+    align-items: flex-start; /* Changed from center to flex-start for top alignment */
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    padding-top: 2rem; /* Added padding to give space from the top */
+    overflow-y: auto; /* Allow scrolling if content is too long */
+}
+
+.main-content-wrapper {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 2rem;
+    width: 100%;
+    max-width: 900px; /* Increased max-width for two columns */
+    padding: 0 1rem;
+}
+
+.login-container {
+    background-color: white;
+    padding: 2rem 3rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    max-width: 400px; /* New: limit width */
+    width: 100%;       /* Still responsive, but maxed out */
+    text-align: center;
+}
+
+/* Wider wrapper for output view */
+.output-container {
+    background-color: white;
+    padding: 2rem 3rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    max-width: 800px; /* Wider than login-container */
+    width: 100%;
+    text-align: left; /* Align output text to the right */
+    font-family: monospace; /* Keep terminal feel */
+    white-space: pre-wrap; /* Preserve formatting */
+    overflow-y: auto; /* Scroll if log is long */
+    max-height: 80vh; /* Prevent giant box from pushing content off screen */
+}
+
+.output-container .status-message {
+    text-align: left; /* Status aligns with log text */
+}
+
+.container-list-box {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    flex: 1;
+    text-align: left;
+}
+
+.container-list-box h3 {
+    text-align: center;
+    margin-top: 0;
+    color: #2c3e50;
+    border-bottom: 2px solid #f0f0f0;
+    padding-bottom: 1rem;
+}
+
+.container-list-box ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.container-list-box li {
+    background-color: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.container-list-box li h4 {
+    margin: 0 0 0.5rem 0;
+    color: #3498db;
+}
+
+.container-list-box li p {
+    margin: 0.25rem 0;
+    font-size: 0.95em;
+}
+
+.container-list-box li ul {
+    margin-top: 0.5rem;
+    padding-left: 1rem;
+    font-size: 0.9em;
+}
+
+.container-list-box li ul li {
+    padding: 0;
+    margin-bottom: 0.2rem;
+    border: none;
+    background: none;
+}
+
+
+.logo {
+    max-width: 180px;
+    margin: 0 auto 1.5rem auto;
+    display: block;
+}
+
+h2 {
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-align: left;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+    width: 100%;
+    padding: 0.75rem;
+    margin-bottom: 1.2rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+
+input[type="submit"] {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+input[type="submit"]:hover {
+    background-color: #2980b9;
+}
+
+.footer {
+    margin-top: 1.2rem;
+    font-size: 0.9em;
+    color: #777;
+}
+
+select:focus {
+    border-color: #007bff;
+    outline: none;
+}

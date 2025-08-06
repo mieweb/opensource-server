@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MIE Container Creation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="main-content-wrapper">
+        <div class="login-container">
+            <img src="logo.png" alt="Company Logo" class="logo">
+            <h2>Create Your Container</h2>
+            <form id="containerForm" method="POST" action="/create-container">
+                <label for="CONTAINER_NAME">Container Name</label>
+                <input type="text" id="CONTAINER_NAME" name="CONTAINER_NAME" required>
+
+                <label for="LINUX_DISTRIBUTION">Linux Distro</label>
+                <select id="LINUX_DISTRIBUTION" name="LINUX_DISTRIBUTION" required>
+                    <option value="debian">Debian 12 (Bookworm)</option>
+                    <option value="rocky">Rocky 9</option>
+                </select>
+
+                <label for="HTTP_PORT">HTTP Port</label>
+                <input type="number" id="HTTP_PORT" name="HTTP_PORT" min="80" max="60000" value="80" required>
+
+                <label for="PUBLIC_KEY">SSH Public Key (optional)</label>
+                <input type="text" id="PUBLIC_KEY" name="PUBLIC_KEY">
+
+                <input type="submit" value="Create Container">
+            </form>
+            <div id="formError" style="color:red; margin-top:10px;"></div>
+            <div class="footer">
+                &copy; 2025 Medical Informatics Engineering
+            </div>
+        </div>
+
+        <div class="container-list-box">
+            <h3>Your Active Containers</h3>
+            <ul id="active-containers-list">
+                </ul>
+        </div>
+    </div>
+
+<script>
+    // Existing script for form submission
+    document.getElementById('containerForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const errorDiv = document.getElementById('formError');
+
+        errorDiv.textContent = 'Submitting... please wait.';
+
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+
+        try {
+            const res = await fetch('/create-container', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                if (result.redirect) {
+                    window.location.href = result.redirect;
+                }
+            } else {
+                errorDiv.textContent = 'An error occurred on the server.';
+            }
+        } catch (err) {
+            console.error('Fetch error:', err);
+            errorDiv.textContent = 'A network error occurred.';
+        }
+    });
+
+    // fetch and display active containers
+    document.addEventListener('DOMContentLoaded', async () => {
+        const listElement = document.getElementById('active-containers-list');
+        try {
+            const response = await fetch('/api/my-containers');
+            if (!response.ok) {
+                listElement.innerHTML = '<li>Could not load containers.</li>';
+                return;
+            }
+            const containers = await response.json();
+            if (containers.length === 0) {
+                listElement.innerHTML = '<li>No active containers found.</li>';
+                return;
+            }
+
+            // Clear previous list items
+            listElement.innerHTML = ''; 
+
+            containers.forEach(c => {
+                const item = document.createElement('li');
+                let portsHtml = '<ul>';
+                for (const [protocol, port] of Object.entries(c.ports)) {
+                    portsHtml += `<li><strong>${protocol.toUpperCase()}:</strong> ${port}</li>`;
+                }
+                portsHtml += '</ul>';
+
+                item.innerHTML = `
+                    <h4>${c.name}</h4>
+                    <p><strong>IP:</strong> ${c.ip}</p>
+                    <p><strong>OS:</strong> ${c.os_release}</p>
+                    ${portsHtml}
+                `;
+                listElement.appendChild(item);
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch containers:", error);
+            listElement.innerHTML = '<li>Error loading containers.</li>';
+        }
+    });
+</script>
+
+</body>
+</html>
