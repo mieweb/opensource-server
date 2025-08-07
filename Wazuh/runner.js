@@ -3,14 +3,10 @@
 // -------------------------------------------------
 
 const addAgent = require('./add-agent.js');
+process.env.DOTENV_CONFIG_SILENT = 'true';
 
 const [, , func, ...args] = process.argv;
 if (func === "addAgent") {
-    if (args.length < 2) {
-        console.error('Usage: node runner.js addAgent <containerName> <containerIP>');
-        process.exit(1);
-    }
-    
     addAgent.addAgent(...args);
 }
 

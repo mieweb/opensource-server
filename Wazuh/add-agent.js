@@ -3,7 +3,7 @@
 // -------------------------------------------------
 
 const axios = require('axios');
-const env = require('dotenv').config();
+const env = require('dotenv').config({ path: '/var/lib/vz/snippets/Wazuh/.env' });
 
 let config = {
     method: 'post',
@@ -14,34 +14,37 @@ let config = {
     }
 }
 
-axios.request(config).then((response) => {
-    if (response.status != 200) {
-        console.error('Failed to authenticate with Wazuh API');
-        return;
-    }
-
-    const JWT = response.data.data.token;
-
-    // Add the Agent to the Manager
-    let agentConfig = {
-        method: 'post',
-        url: 'https://wazuh-server.opensource.mieweb.org/agents?pretty=true',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${JWT}`
-        },
-        data: {
-            'name': 'test-container-max-2',
-            'ip': '10.15.190.52'
-        }
-    }
-
-    axios.request(agentConfig).then((response) => {
-        if (response.status !== 200) {
-            console.error('Failed to add agent:', response.data);
+function addAgent(containerName, containerIP) {
+    axios.request(config).then((response) => {
+        if (response.status != 200) {
+            console.log('fail');
+            return;
         }
 
-        agentKey = response.data.data.key
-        console.log('Agent added successfully:', agentKey);
-    })
-});
+        const JWT = response.data.data.token;
+
+        // Add the Agent to the Manager
+        let agentConfig = {
+            method: 'post',
+            url: 'https://wazuh-server.opensource.mieweb.org/agents?pretty=true',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${JWT}`
+            },
+            data: {
+                'name': containerName,
+                'ip': containerIP
+            }
+        };
+
+        return axios.request(agentConfig).then((response) => {
+            if (response.status !== 200) {
+                console.log('fail');
+            }
+            agentKey = response.data.data.key;
+            console.log(agentKey);
+        })
+    });
+}
+
+module.exports = { addAgent };

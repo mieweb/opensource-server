@@ -149,6 +149,10 @@ fi
 echo "⏳ Configuring LDAP connection via SSSD..."
 source /var/lib/vz/snippets/helper-scripts/configureLDAP.sh
 
+# Set up Wazuh-Agent on the container ====
+echo "⏳ Setting up Wazuh-Agent..."
+source /var/lib/vz/snippets/Wazuh/register-agent.sh
+
 # Attempt to Automatically Deploy Project Inside Container
 
 if [ "${DEPLOY_ON_START^^}" == "Y" ]; then
