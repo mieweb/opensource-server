@@ -1,9 +1,8 @@
-#!/bin/bash
 # This script scrapes containers that no longer exist and removes them from the Wazuh manager.
 # Last Modified by Maxwell Klema on August 7th, 2025
 # --------------------------------------------------
 
-LOG_FILE="/var/lib/vz/snippets/Wazuh/prune_agents.log"
+LOG_FILE="/var/log/prune_agents.log"
 PCT_BIN="/usr/sbin/pct"
 PVE_NODES=("localhost" "10.15.0.5")
 
@@ -34,8 +33,8 @@ for node in ${PVE_NODES[@]}; do
         write_log "$HOSTNAMES"
     else
         HOSTNAMES_CMD="${PCT_BIN} list | awk 'NR>1 {print \$3}' || true"
-        HOSTNAMES=$(ssh "$node" "$HOSTNAMES_CMD")  
-        
+        HOSTNAMES=$(ssh "$node" "$HOSTNAMES_CMD")
+
         if [[ "$CTIDS_OUTPUT" =~ "Permission denied" || "$CTIDS_OUTPUT" =~ "Connection refused" || "$CTIDS_OUTPUT" =~ "Host key verification failed" ]]; then
             log_message "ERROR: SSH to $node failed: $CTIDS_OUTPUT"
             continue
@@ -59,9 +58,8 @@ write_log "$AGENTS"
 
 # Iterate over each agent and if a existing host name does not exist, delete the agent.
 
-
 while read -r agent; do
-    if ! echo "$EXISTING_HOSTNAMES" | grep -q "^$agent$"; then
+    if ! echo "$EXISTING_HOSTNAMES" | grep -q "^$agent$" && [[ ! "$agent" =~ ^intern-phxdc-pve[0-9]$ ]]; then
         write_log "Removing agent $agent from Wazuh manager..."
         REMOVE_AGENT=$(node /var/lib/vz/snippets/Wazuh/runner.js deleteAgent "$agent")
         if [ "$REMOVE_AGENT" == "success" ]; then
@@ -73,5 +71,3 @@ while read -r agent; do
         write_log "Agent $agent is still active. No action taken."
     fi
 done <<< "$EXISTING_AGENTS"
-
-
