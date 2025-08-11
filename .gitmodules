@@ -1,0 +1,9 @@
+[submodule "LDAP/pown"]
+	path = LDAP/pown
+	url = https://github.com/anishapant21/pown.sh.git
+[submodule "LDAP/LDAPServer"]
+	path = LDAP/LDAPServer
+	url = https://github.com/mieweb/LDAPServer.git
+[submodule "ci-cd automation/Proxmox-Launchpad"]
+	path = ci-cd automation/Proxmox-Launchpad
+    url = https://github.com/maxklema/proxmox-launchpad.git

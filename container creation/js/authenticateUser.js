@@ -1,6 +1,3 @@
-// Script to authenticate a user into Proxmox
-// Last updated June 24th, 2025 by Maxwell Klema
-
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
@@ -26,5 +23,6 @@ function authenticateUser(username, password) {
 
     return axios.request(config).then((response) => response.status === 200).catch(() => false);
 }
+
 
 module.exports = { authenticateUser };
