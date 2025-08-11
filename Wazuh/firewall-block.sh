@@ -8,7 +8,7 @@
 # Expected JSON format:
 # {
 #   "version": 1,
-#   "command": "add|delete", 
+#   "command": "add|delete",
 #   "parameters": {
 #     "alert": {
 #       "data": {
@@ -53,19 +53,24 @@ add_rule() {
     if ! iptables -C INPUT -s "$ip" -j DROP 2>/dev/null; then
         log_message "Adding INPUT firewall rule to block $ip"
         iptables -I INPUT -s "$ip" -j DROP 2>/dev/null
-    fi 
+    fi
 
     if ! iptables -C FORWARD -s "$ip" -j DROP 2>/dev/null; then
-        log_message "Adding FORWARDfirewall rule to block $ip"
+        log_message "Adding FORWARD firewall rule to block $ip"
         iptables -I FORWARD -s "$ip" -j DROP 2>/dev/null
-    fi 
+    fi
+
+    if ! iptables -t raw -C PREROUTING -s "$ip" -j DROP 2>/dev/null; then
+       log_message "Adding PREROUTING firewall rule to block $ip"
+       iptables -t raw -A PREROUTING -s "$ip" -j DROP 2>/dev/null
+    fi
 }
 
 # Function to remove firewall rule
 remove_rule() {
     local ip="$1"
     log_message "Removing firewall rule for $ip"
-    
+
     # Remove iptables rules
     iptables -D INPUT -s "$ip" -j DROP 2>/dev/null
     if [[ $? -eq 0 ]]; then
@@ -73,13 +78,20 @@ remove_rule() {
     else
         log_message "WARNING: INPUT rule for $ip may not exist or already removed"
     fi
-    
+
     iptables -D FORWARD -s "$ip" -j DROP 2>/dev/null
     if [[ $? -eq 0 ]]; then
         log_message "Successfully removed FORWARD rule for $ip"
     else
         log_message "WARNING: FORWARD rule for $ip may not exist or already removed"
     fi
+
+    iptables -t raw -D PREROUTING -s "$ip" -j DROP 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        log_message "Successfully removed PREROUTING rule for $ip"
+    else
+        log_message "WARNING: PREROUTING rule for $ip may not exist or already removed"
+    fi  
 }
 
 # Execute based on command
