@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-if [[ -z "${1-}" || -z "${2-}" || -z "${4-}" || -z "${5-}" ]]; then
-    echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]> <username> <root_password>"
+
+if [[ -z "${1-}" || -z "${2-}" || -z "${4-}" ]]; then
+    echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]> <username>"
     exit 1
 fi
 
@@ -11,7 +12,6 @@ CTID="$1"
 http_port="$2"
 ADDITIONAL_PROTOCOLS="${3-}"
 proxmox_user="$4"
-root_password="$5"
 
 # Redirect stdout and stderr to a log file
 LOGFILE="/var/log/pve-hook-$CTID.log"
@@ -101,7 +101,8 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
     ss_ports="$(IFS=, ; echo "${list_all_ports[*]}")"
 
     #Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" "$root_password" <<'EOF'
+
+    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
@@ -126,7 +127,6 @@ jq --arg hn "$hostname" \
   '. + {($hn): {
       ip: $ip,
       user: $user,
-      root_password: $root_pswd,
       os_release: $osr,
       ports: ( reduce range(0; $protos | length) as $i (
           {ssh: $ssh, http: $http};
@@ -139,7 +139,7 @@ nginx -s reload
 EOF
 else
     # Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$proxmox_user" "$os_release" "$root_password" <<'EOF'
+    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$proxmox_user" "$os_release" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
@@ -148,19 +148,16 @@ ssh_port="$3"
 http_port="$4"
 user="$5"
 os_release="$6"
-root_pswd="$7"
 
 jq --arg hn "$hostname" \
   --arg ip "$container_ip" \
   --arg user "$user" \
-  --arg root_pswd "$root_pswd" \
   --arg osr "$os_release" \
   --argjson http "$http_port" \
   --argjson ssh "$ssh_port" \
   '. + {($hn): {
       ip: $ip,
       user: $user,
-      root_password: $root_pswd,
       os_release: $osr,
       ports: {ssh: $ssh, http: $http}
   }}' /etc/nginx/port_map.json > /tmp/port_map.json.new
