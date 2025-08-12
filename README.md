@@ -7,7 +7,7 @@ This repository contains configuration files and scripts for managing a Proxmox-
 ## Cluster Graph
 
 ```mermaid
-                        
+
 graph TD
     %% Repository Structure
     REPO[opensource-mieweb Repository]
@@ -37,14 +37,21 @@ graph TD
     USER[User Access] --> DNS
     DNS --> NGINX
     NGINX --> CONTAINER
-    
+
+    %% Wazuh Integration
+    CONTAINER --> |Wazuh Agent| WAGENT[Wazuh Agent]
+    WAGENT --> |reports to| WMANAGER[Wazuh Manager]
+    WMANAGER --> |sends data to| WINDEXER[Wazuh Indexer]
+
     %% Styling
     classDef folder fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef system fill:#f1f8e9,stroke:#689f38,stroke-width:2px
+    classDef wazuh fill:#fffde7,stroke:#fbc02d,stroke-width:2px
     classDef user fill:#fff3e0,stroke:#f57c00,stroke-width:2px
-    
+
     class CICD,CC,DNS,GW,LDAP,NGINX,PL folder
     class CONTAINER system
+    class WAGENT,WMANAGER,WINDEXER wazuh
     class USER user
 ```
 
@@ -72,12 +79,17 @@ graph TD
 - [`LDAP/`](LDAP/):  
   Contains LDAP authentication infrastructure including a custom Node.js LDAP server that bridges database user management with LDAP protocols, and automated LDAP client configuration tools for seamless container authentication integration. LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
 
+### Security
+
+- [`Wazuh/`](Wazuh/):
+  We utilize Wazuh, an opensource security management platform, to provide vulnerability detection and threat hunting services to our cluster. Our custom decoders and rules revolve mainly around mitigating SSH/PAM bruteforce attacks in both our hypervisors and individual containers.
+
 ### GitHub Action Integration
 
 - [`proxmox-launchpad/`](proxmox-launchpad/):  
   The Proxmox LaunchPad GitHub Action for automated container deployment directly from GitHub repositories, supporting both single and multi-component applications.
 
-- [A LDAPServer Server](https://github.com/mieweb/LDAPServer):
+- [`LDAPServer`](https://github.com/mieweb/LDAPServer):
   LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
 
 ## Create a Container
@@ -99,6 +111,7 @@ If you have an account in the [opensource-mieweb](https://opensource.mieweb.org:
 - **GitHub Integration**: The Proxmox LaunchPad action automates the entire process from repository push to live deployment, including dependency installation, service configuration, and application startup.
 - **CI/CD Pipeline**: Automated scripts used by [Proxmox LaunchPad](#proxmox-launchpad) to handle container updates, existence checks, and cleanup operations to maintain a clean and efficient hosting environment.
 - **LDAP Server**: All LXC Container Authentication is handled by a centralized LDAP server housed in the cluster. Each Container is configured with SSSD, which communicates with the LDAP server to verify/authenitcate user credentials. This approach is more secure than housing credentials locally.
+- **Wazuh**: Both containers and hypervisors are Wazuh Agents, and send all logs to our centralized Wazuh Manager, which matches each log against a large database of decoders and rules. If certain rules are triggered, active response mechanisms respond by triggering certain commands, a common one being a firewall drop of all packets originating from a certain source IP.
 
 
 ## Proxmox LaunchPad
