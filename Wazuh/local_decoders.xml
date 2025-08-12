@@ -1,0 +1,9 @@
+<!-- Sample Log -->
+
+<!-- Aug 10 19:12:33 intern-phxdc-pve1 kernel: SSH_NEW: IN=vmbr0 OUT= MAC=24:6e:96:53:53:0a:90:b1:1c:06:d2:df:08:00 SRC=68.59.164.131 DST=10.15.0.4 LEN=64 TOS=0x00 PREC=0x00 TTL=52 ID=0 DF PROTO=TCP SPT=56148 DPT=2359 WINDOW=65535 RES=0x00 CWR ECE SYN URGP=0 -->
+<decoder name="hypervisor-ssh-bruteforce">
+  <program_name>kernel</program_name>
+  <prematch>SSH_NEW: IN=</prematch>
+  <regex>SSH_NEW: IN=(\S+) OUT=(\S*) MAC=(\S+) SRC=(\S+) DST=(\S+) LEN=(\d+) TOS=(\S+) PREC=(\S+) TTL=(\d+) ID=(\d+) DF PROTO=(\S+) SPT=(\d+) DPT=(\d+) WINDOW=(\d+) RES=(\S+) CWR ECE SYN URGP=(\d+)</regex>
+  <order>in_interface,out_interface,mac,srcip,dstip,len,tos,prec,ttl,id,protocol,srcport,dstport,window,res,urgp</order>
+</decoder>

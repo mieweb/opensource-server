@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+
 if [[ -z "${1-}" || -z "${2-}" || -z "${4-}" ]]; then
     echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]> <username>"
     exit 1
@@ -100,6 +101,7 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
     ss_ports="$(IFS=, ; echo "${list_all_ports[*]}")"
 
     #Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
+
     ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" <<'EOF'
 set -euo pipefail
 
