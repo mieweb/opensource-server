@@ -77,6 +77,16 @@ graph TD
 - [`proxmox-launchpad/`](proxmox-launchpad/):  
   The Proxmox LaunchPad GitHub Action for automated container deployment directly from GitHub repositories, supporting both single and multi-component applications.
 
+- [A LDAPServer Server](https://github.com/mieweb/LDAPServer):
+  LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
+
+## Create a Container
+
+If you have an account in the [opensource-mieweb](https://opensource.mieweb.org:8006) cluster, you can create a container in three ways:
+- Use the Web GUI here: [create-a-container](https://create-a-container.opensource.mieweb.org/)
+- Use the Command Line: ssh create-container@opensource.mieweb.org (mie123!)
+- Use the Proxmox LaunchPad Github Action to automatically provision, update, and delete containers for you: [Proxmox LaunchPad](#proxmox-launchpad)
+
 ## How It Works
 
 - **DNS**: All `*.opensource.mieweb.com` requests are routed to the NGINX proxy via Dnsmasq, providing automatic subdomain resolution for containers.
@@ -126,6 +136,9 @@ The action integrates with the existing infrastructure to provide automatic DNS 
 5. **Push to your repository** and watch as containers are automatically created and your application is deployed.
 
 See the [`proxmox-launchpad/README.md`](proxmox-launchpad/README.md) for detailed setup instructions and configuration options.
+
+## Optional Submodules
+- **Push Notification 2FA** - MIE Auth https://github.com/mieweb/mieweb_auth_app
 
 ---
 
