@@ -113,12 +113,10 @@ protos_json=$(echo "$5" | tr ',' '\n' | jq -R . | jq -s .)
 ports_json=$(echo "$6" | tr ',' '\n' | jq -R . | jq -s 'map(tonumber)')
 user="$7"
 os_release="$8"
-root_pswd="$9"
 
 jq --arg hn "$hostname" \
   --arg ip "$container_ip" \
   --arg user "$user" \
-  --arg root_pswd "$root_pswd" \
   --arg osr "$os_release" \
   --argjson ssh "$ssh_port" \
   --argjson http "$http_port" \

@@ -35,8 +35,8 @@ for node in ${PVE_NODES[@]}; do
         HOSTNAMES_CMD="${PCT_BIN} list | awk 'NR>1 {print \$3}' || true"
         HOSTNAMES=$(ssh "$node" "$HOSTNAMES_CMD")
 
-        if [[ "$CTIDS_OUTPUT" =~ "Permission denied" || "$CTIDS_OUTPUT" =~ "Connection refused" || "$CTIDS_OUTPUT" =~ "Host key verification failed" ]]; then
-            log_message "ERROR: SSH to $node failed: $CTIDS_OUTPUT"
+        if [[ "$HOSTNAMES" =~ "Permission denied" || "$HOSTNAMES" =~ "Connection refused" || "$HOSTNAMES" =~ "Host key verification failed" ]]; then
+            write_log "ERROR: SSH to $node failed: $HOSTNAMES"
             continue
         fi
 
@@ -54,7 +54,7 @@ done
 EXISTING_AGENTS=$(node /var/lib/vz/snippets/Wazuh/runner.js getAgents | sed '1d')
 
 write_log "Retrieved agents from Wazuh manager:"
-write_log "$AGENTS"
+write_log "$EXISTING_AGENTS"
 
 # Iterate over each agent and if a existing host name does not exist, delete the agent.
 

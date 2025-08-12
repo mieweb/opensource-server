@@ -79,7 +79,7 @@ async function addAgent(containerName, containerIP) {
     if (response.status !== 200) {
         console.log('fail');
     }
-    agentKey = response.data.data.key;
+    const agentKey = response.data.data.key;
     console.log(agentKey);   
 }
 
