@@ -49,49 +49,24 @@ fi
 # Function to add firewall rule
 add_rule() {
     local ip="$1"
-
-    if ! iptables -C INPUT -s "$ip" -j DROP 2>/dev/null; then
-        log_message "Adding INPUT firewall rule to block $ip"
-        iptables -I INPUT -s "$ip" -j DROP 2>/dev/null
-    fi
-
-    if ! iptables -C FORWARD -s "$ip" -j DROP 2>/dev/null; then
-        log_message "Adding FORWARD firewall rule to block $ip"
-        iptables -I FORWARD -s "$ip" -j DROP 2>/dev/null
-    fi
-
-    if ! iptables -t raw -C PREROUTING -s "$ip" -j DROP 2>/dev/null; then
-       log_message "Adding PREROUTING firewall rule to block $ip"
-       iptables -t raw -A PREROUTING -s "$ip" -j DROP 2>/dev/null
+    ipset add blacklist "$ip" 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        log_message "Successfully added $ip to blacklist"
+    else
+        log_message "WARNING: Failed to add $ip to blacklist or it may already exist"
     fi
 }
 
 # Function to remove firewall rule
 remove_rule() {
     local ip="$1"
-    log_message "Removing firewall rule for $ip"
 
-    # Remove iptables rules
-    iptables -D INPUT -s "$ip" -j DROP 2>/dev/null
+    ipset del blacklist "$ip" 2>/dev/null
     if [[ $? -eq 0 ]]; then
-        log_message "Successfully removed INPUT rule for $ip"
+        log_message "Successfully removed $ip from blacklist"
     else
-        log_message "WARNING: INPUT rule for $ip may not exist or already removed"
+        log_message "WARNING: Failed to remove $ip from blacklist or it may not exist"
     fi
-
-    iptables -D FORWARD -s "$ip" -j DROP 2>/dev/null
-    if [[ $? -eq 0 ]]; then
-        log_message "Successfully removed FORWARD rule for $ip"
-    else
-        log_message "WARNING: FORWARD rule for $ip may not exist or already removed"
-    fi
-
-    iptables -t raw -D PREROUTING -s "$ip" -j DROP 2>/dev/null
-    if [[ $? -eq 0 ]]; then
-        log_message "Successfully removed PREROUTING rule for $ip"
-    else
-        log_message "WARNING: PREROUTING rule for $ip may not exist or already removed"
-    fi  
 }
 
 # Execute based on command
