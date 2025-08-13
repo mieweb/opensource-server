@@ -131,6 +131,10 @@ if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
 	rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
 fi
 
+# Generate a random root password for the container
+ROOT_PSWD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+pct exec $CONTAINER_ID -- bash -c "echo root:$ROOT_PSWD | chpasswd" > /dev/null 2>&1
+
 CONTAINER_IP=""
 attempts=0
 max_attempts=10
@@ -148,6 +152,10 @@ fi
 # Set up SSSD to communicate with LDAP server ====
 echo "⏳ Configuring LDAP connection via SSSD..."
 source /var/lib/vz/snippets/helper-scripts/configureLDAP.sh
+
+# Set up Wazuh-Agent on the container ====
+echo "⏳ Setting up Wazuh-Agent..."
+source /var/lib/vz/snippets/Wazuh/register-agent.sh
 
 # Attempt to Automatically Deploy Project Inside Container
 
@@ -170,12 +178,11 @@ pct exec $CONTAINER_ID -- bash -c "cd /root && touch container-updates.log"
 # Run Contianer Provision Script to add container to port_map.json
 echo "⏳ Running Container Provision Script..."
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
-    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE "$USERNAME_ONLY"
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE "$USERNAME_ONLY" "$ROOT_PSWD"
     rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE > /dev/null 2>&1
 else
-    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME"
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME" "$ROOT_PSWD"
 fi
-
 
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
