@@ -3,8 +3,6 @@
 # Last Modified on August 5th, 2025 by Maxwell Klema
 # ----------------------------------------
 
-set -x
-
 RESET="\033[0m"
 BOLD="\033[1m"
 MAGENTA='\033[35m'
@@ -88,23 +86,23 @@ fi
 
 # Install Services ====
 
-echo "🛎️ Installing Services..."
+# echo "🛎️ Installing Services..."
 
-if [ -z "$LINUX_DISTRIBUTION" ]; then
-    LINUX_DISTRIBUTION="debian"
-fi
+# if [ -z "$LINUX_DISTRIBUTION" ]; then
+#     LINUX_DISTRIBUTION="debian"
+# fi
 
-if [ ! -z "$SERVICES" ] || [ ! -z "$CUSTOM_SERVICES" ]; then
-    REQUIRE_SERVICES="y"
-fi
+# if [ ! -z "$SERVICES" ] || [ ! -z "$CUSTOM_SERVICES" ]; then
+#     REQUIRE_SERVICES="y"
+# fi
 
-SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
-    root@10.15.234.122 \
-   "/root/bin/deployment-scripts/gatherServices.sh true")
+# SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
+#     root@10.15.234.122 \
+#    "/root/bin/deployment-scripts/gatherServices.sh true")
 
-echo "$SERVICE_COMMANDS" | while read -r line; do
-    pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
-done
+# echo "$SERVICE_COMMANDS" | while read -r line; do
+#     pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
+# done
 
 # Change HTTP port if necessary ====
 
@@ -140,15 +138,19 @@ fi
 
 # Update Environment Variables
 
+if [ ! -z "$RUNTIME_LANGUAGE" ] && echo "$RUNTIME_LANGUAGE" | jq . >/dev/null 2>&1; then # If RUNTIME_LANGUAGE is set and is valid JSON
+    MULTI_COMPONENT="Y"
+fi
+
 # Helper Function to write environment variables to a file inside container
 writeEnvToFile() {
     env_file_path="$1"
     component_path="$2"
     env_vars=$(cat "$env_file_path")
-    if (( $CONTAINER_ID % 2 == 0)); then
-         ssh 10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'touch \"$component_path/.env\" && echo \"$env_vars\" > \"$component_path/.env\"'"
+    if (( $CONTAINER_ID % 2 == 0 )); then
+        ssh 10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'if [ -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\"'"
     else
-        pct exec $CONTAINER_ID -- bash -c "touch \"$component_path/.env\" && echo \"$env_vars\" > \"$component_path/.env\""
+        pct exec $CONTAINER_ID -- bash -c "if [ -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\""
     fi
 }
 
@@ -192,6 +194,7 @@ if [ ! -z "$CONTAINER_ENV_VARS" ]; then
     fi
 fi
 
+exit 0
 # Update Container with New Contents from repository =====
 
 startComponentPVE1() {
@@ -239,11 +242,6 @@ startComponentPVE2() {
         "
     fi
 }
-
-
-if [ ! -z "$RUNTIME_LANGUAGE" ] && echo "$RUNTIME_LANGUAGE" | jq . >/dev/null 2>&1; then # If RUNTIME_LANGUAGE is set and is valid JSON
-    MULTI_COMPONENT="Y"
-fi
 
 if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
