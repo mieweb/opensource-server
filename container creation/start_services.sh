@@ -48,7 +48,7 @@ if (( $CONTAINER_ID % 2 == 0 )); then
 
 	if [ "${GH_ACTION^^}" == "Y" ]; then
 		ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- systemctl start github-runner"
-	fi 
+	fi
 
 	startProject() {
 
@@ -85,6 +85,9 @@ if (( $CONTAINER_ID % 2 == 0 )); then
 			fi
 		else
 			startProject "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+			if [ ! -z "$ROOT_START_COMMAND" ]; then
+				ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+			fi
 		fi
 	fi
 
@@ -94,7 +97,7 @@ else
 	sleep 5
 	if [ "${GH_ACTION^^}" == "Y" ]; then
 		pct exec $CONTAINER_ID -- bash -c "systemctl start github-runner"
-	fi 
+	fi
 
 	startComponent() {
 
@@ -131,5 +134,8 @@ else
 		fi
 	else
 		startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
+		if [ ! -z "$ROOT_START_COMMAND" ]; then
+			pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" > /dev/null 2>&1
+		fi
 	fi
 fi

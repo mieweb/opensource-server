@@ -5,7 +5,7 @@
 
 outputError() {
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-	echo -e "${BOLD}${MAGENTA}❌ Script Failed. Exiting... ${RESET}"
+	echo -e "${BOLD}${MAGENTA} Script Failed. Exiting... ${RESET}"
 	echo -e "$2"
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   exit $1
@@ -32,13 +32,13 @@ REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 
 # Check if repository folder is present.
 if [ "$PVE1" == "true" ]; then
-    if pct exec $CONTAINER_ID -- test -f /root/container-updates.log; then
+    if [ ! -z $CONTAINER_ID ] && pct exec $CONTAINER_ID -- test -f /root/container-updates.log; then
         exit 2; # Update Repository
     else
         exit 0; # Clone Repository
     fi
 else
-    if ssh 10.15.0.5 "pct exec $CONTAINER_ID -- test -f /root/container-updates.log"; then
+    if [ ! -z $CONTAINER_ID ] && ssh 10.15.0.5 "pct exec $CONTAINER_ID -- test -f /root/container-updates.log" ; then
         exit 2; # Update Repository
     else
         exit 0; # Clone Repository

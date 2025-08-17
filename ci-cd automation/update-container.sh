@@ -3,6 +3,8 @@
 # Last Modified on August 5th, 2025 by Maxwell Klema
 # ----------------------------------------
 
+set -x
+
 RESET="\033[0m"
 BOLD="\033[1m"
 MAGENTA='\033[35m'
@@ -148,15 +150,15 @@ startComponentPVE1() {
     INSTALL_CMD="$5"
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2  
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     fi
 }
 
@@ -174,14 +176,14 @@ startComponentPVE2() {
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " 
+        "
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         ssh root@10.15.0.5 "
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " 
+        "
     fi
 }
 
@@ -208,17 +210,23 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     done
     if [ ! -z "$ROOT_START_COMMAND" ]; then
         if (( $CONTAINER_ID % 2 == 0 )); then
-            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" 
+            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'"
         else
-            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" 
+            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND"
         fi
     fi
     # startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 else
     if (( $CONTAINER_ID % 2 == 0 )); then
         startComponentPVE2 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
+        if [ ! -z "$ROOT_START_COMMAND" ]; then
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+		fi
     else
         startComponentPVE1 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
+        if [ ! -z "$ROOT_START_COMMAND" ]; then
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+		fi
     fi
 fi
 
@@ -262,5 +270,5 @@ QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
 
 tmux new-session -d -s "$CONTAINER_NAME" "$QUOTED_CMD"
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
+echo "Wait a few minutes for all background processes to complete before accessing the container."
 exit 0
-
