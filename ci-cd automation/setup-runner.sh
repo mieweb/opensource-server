@@ -7,7 +7,7 @@ outputError() {
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 	echo -e "${BOLD}${MAGENTA}❌ Script Failed. Exiting... ${RESET}"
 	echo -e "$2"
-	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"  
+	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   exit $1
 }
 
@@ -26,7 +26,7 @@ source /var/lib/vz/snippets/helper-scripts/verify_container_ownership.sh #Ensure
 if [ ! -z "$CONTAINER_OWNERSHIP" ]; then
     outputError 1 "You already own a container with name \"$CONTAINER_NAME\". Please delete it before creating a new one."
 fi
- 
+
 # Cloning Container Template and Setting it up =====
 
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")

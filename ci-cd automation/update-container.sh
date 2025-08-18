@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to automatically fetch new contents from a branch, push them to container, and restart intern
-# Last Modified on August 5th, 2025 by Maxwell Klema
+# Last Modified on August 17th, 2025 by Maxwell Klema
 # ----------------------------------------
 
 RESET="\033[0m"
@@ -86,23 +86,23 @@ fi
 
 # Install Services ====
 
-# echo "🛎️ Installing Services..."
+echo "🛎️ Installing Services..."
 
-# if [ -z "$LINUX_DISTRIBUTION" ]; then
-#     LINUX_DISTRIBUTION="debian"
-# fi
+if [ -z "$LINUX_DISTRIBUTION" ]; then
+    LINUX_DISTRIBUTION="debian"
+fi
 
-# if [ ! -z "$SERVICES" ] || [ ! -z "$CUSTOM_SERVICES" ]; then
-#     REQUIRE_SERVICES="y"
-# fi
+if [ ! -z "$SERVICES" ] || [ ! -z "$CUSTOM_SERVICES" ]; then
+    REQUIRE_SERVICES="y"
+fi
 
-# SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
-#     root@10.15.234.122 \
-#    "/root/bin/deployment-scripts/gatherServices.sh true")
+SERVICE_COMMANDS=$(ssh -o SendEnv="LINUX_DISTRIBUTION SERVICES CUSTOM_SERVICES REQUIRE_SERVICES" \
+    root@10.15.234.122 \
+   "/root/bin/deployment-scripts/gatherServices.sh true")
 
-# echo "$SERVICE_COMMANDS" | while read -r line; do
-#     pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
-# done
+echo "$SERVICE_COMMANDS" | while read -r line; do
+    pct exec $CONTAINER_ID -- bash -c "$line | true" > /dev/null 2>&1
+done
 
 # Change HTTP port if necessary ====
 
@@ -194,7 +194,6 @@ if [ ! -z "$CONTAINER_ENV_VARS" ]; then
     fi
 fi
 
-exit 0
 # Update Container with New Contents from repository =====
 
 startComponentPVE1() {
