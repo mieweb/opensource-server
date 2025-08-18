@@ -47,6 +47,59 @@ if [ -d "$ENV_BASE_FOLDER" ]; then
     fi
 fi
 
+# Install Specific Runtime Versions (if Needed)
+
+
+# Function to handle runtime installation
+install_runtime() {
+    local runtime_language=$1
+    local version=$2
+
+    if [ "${runtime_language,,}" == "nodejs" ]; then
+        local major=$(echo "$version" | cut -d. -f1)
+        local node_version_exists=$(curl -s https://nodejs.org/dist/index.json | grep "version\":\"v$major")
+        if [ ! -z "$node_version_exists" ]; then
+            source "/var/lib/vz/snippets/helper_scripts/node_runtime_install.sh" "$major"
+        else
+            echo "Node.js version $version ($major) is not available. Please check the version number. Using latest version instead."
+        fi
+    elif [ "${runtime_language,,}" == "python" ]; then
+        IFS='.' read -r -a parts <<< "$version"
+
+        # Fill missing parts with 0
+        while [ "${#parts[@]}" -lt 3 ]; do
+            parts+=("0")
+        done
+
+        version="${parts[0]}.${parts[1]}.${parts[2]}"
+        local python_version_exists=$(curl -s https://www.python.org/ftp/python/ | grep "$version")
+        if [ ! -z "$python_version_exists" ]; then
+            source "/var/lib/vz/snippets/helper_scripts/python_runtime_install.sh" "${LINUX_DISTRO,,}" "$version"
+        else
+            echo "Python version $version is not available. Please check the version number. Using latest version instead."
+        fi
+    fi
+}
+
+for key in $(echo "$VERSIONS_DICT" | jq -r 'keys[]'); do
+    if [ "$key" == "default" ] && [ "${MULTI_COMPONENT^^}" != "Y" ]; then
+        version=$(echo "$VERSIONS_DICT" | jq --arg k "$key" '.[$k]')
+        if [ "$version" != "null" ]; then
+            version=$(echo "$version" | sed 's/"//g')
+            install_runtime "$RUNTIME_LANGUAGE" "$version"
+        fi
+    else
+        value=$(echo "$RUNTIME_LANGUAGE" | jq --arg k "$key" '.[$k]')
+        value=$(echo "$value" | sed 's/"//g')
+        version=$(echo "$VERSIONS_DICT" | jq --arg k "$key" '.[$k]')
+        if [ "$version" != "null" ]; then
+            version=$(echo "$version" | sed 's/"//g')
+            install_runtime "$value" "$version"
+        fi
+    fi
+done
+
+
 # Run Installation Commands ====
 
 runInstallCommands() {
