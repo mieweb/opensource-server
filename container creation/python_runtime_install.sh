@@ -17,12 +17,10 @@ PYTHON_URL="https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VER
 install_dependencies() {
     case "${OS,,}" in
         debian)
-            pct enter "$CONTAINER_ID" -- bash -c "sudo apt update -y && sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
-                libnss3-dev libssl-dev libreadline-dev libffi-dev wget"
+            pct exec $CONTAINER_ID -- bash -c "sudo apt update -y && sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev wget" > /dev/null 2>&1
             ;;
         rocky)
-            pct enter "$CONTAINER_ID" -- bash -c "sudo dnf update -y && sudo dnf install -y gcc zlib-devel ncurses-devel gdbm-devel \
-                nss-devel openssl-devel readline-devel wget libffi-devel"
+            pct exec $CONTAINER_ID -- bash -c "sudo dnf update -y && sudo dnf install -y gcc zlib-devel ncurses-devel gdbm-devel nss-devel openssl-devel readline-devel wget libffi-devel" > /dev/null 2>&1
             ;;
     esac
 }
@@ -30,12 +28,12 @@ install_dependencies() {
 # Function to install Python
 install_python() {
     echo "⏳ Installing Python $PYTHON_VERSION... This may take a while."
-    pct enter "$CONTAINER_ID" -- bash -c "cd /usr/src && sudo wget $PYTHON_URL && sudo tar xzf Python-$PYTHON_VERSION.tgz && \
+    pct exec "$CONTAINER_ID" -- bash -c "cd /usr/src && sudo wget $PYTHON_URL && sudo tar xzf Python-$PYTHON_VERSION.tgz && \
         cd Python-$PYTHON_VERSION && sudo ./configure --enable-optimizations && \
         sudo make -j$(nproc) && sudo make altinstall && \
         sudo ln -sfn /usr/local/bin/python${PYTHON_VERSION%.*} /usr/local/bin/python3 && \
         python3 -m ensurepip --upgrade && python3 -m pip install --upgrade pip"
-    echo "Python $PYTHON_VERSION installed successfully."
+    echo "Python $PYTHON_VERSION installed successfully." > /dev/null 2>&1
 }
 
 install_dependencies
