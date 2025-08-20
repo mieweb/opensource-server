@@ -6,9 +6,12 @@
 echo "🚀  Attempting Automatic Deployment"
 REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
 
-# Clone github repository from correct branch ====
+# Helper function to normalize paths by removing duplicate slashes
+normalize_path() {
+    echo "$1" | sed 's#/\+#/#g'
+}
 
-echo "Repo base name: $REPO_BASE_NAME"
+# Clone github repository from correct branch ====
 
 pct enter $CONTAINER_ID <<EOF
 if [ ! -d '/root/$REPO_BASE_NAME' ]; then
@@ -28,6 +31,8 @@ pct exec $CONTAINER_ID -- bash -c "chmod 700 ~/.bashrc" # enable full R/W/X perm
 
 ENV_BASE_FOLDER="/var/lib/vz/snippets/container-env-vars/${ENV_BASE_FOLDER}"
 
+echo "$REPO_BASE_NAME"
+echo "$PROJECT_ROOT"
 if [ -d "$ENV_BASE_FOLDER" ]; then
     if [ "${MULTI_COMPONENTS^^}" == "Y" ]; then
         for FILE in $ENV_BASE_FOLDER/*; do
@@ -36,19 +41,23 @@ if [ -d "$ENV_BASE_FOLDER" ]; then
             ENV_ROUTE=$(echo "$FILE_NAME" | tr '_' '/') # acts as the route to the correct folder to place .env file in.
 
             ENV_VARS=$(cat $ENV_BASE_FOLDER/$FILE_BASENAME)
-            COMPONENT_PATH="/root/$REPO_BASE_NAME/$PROJECT_ROOT/$ENV_ROUTE"
+            COMPONENT_PATH=$(normalize_path "/root/$REPO_BASE_NAME/$PROJECT_ROOT/$ENV_ROUTE")
             pct exec $CONTAINER_ID -- bash -c "if [ -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" > \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
         done
     else
         ENV_FOLDER_BASE_NAME=$(basename "$ENV_BASE_FOLDER")
         ENV_VARS=$(cat $ENV_BASE_FOLDER/$ENV_FOLDER_BASE_NAME.txt || true)
-        COMPONENT_PATH="/root/$REPO_BASE_NAME/$PROJECT_ROOT"
+        COMPONENT_PATH=$(normalize_path "/root/$REPO_BASE_NAME/$PROJECT_ROOT")
         pct exec $CONTAINER_ID -- bash -c "if [ -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" > \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
     fi
 fi
 
 # Install Specific Runtime Versions (if Needed)
 
+echo "VERSIONS_DICT: $VERSIONS_DICT"
+echo "RUNTIME_LANGUAGE: $RUNTIME_LANGUAGE"
+
+pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 8 > /dev/null 2>&1
 
 # Function to handle runtime installation
 install_runtime() {
@@ -59,7 +68,7 @@ install_runtime() {
         local major=$(echo "$version" | cut -d. -f1)
         local node_version_exists=$(curl -s https://nodejs.org/dist/index.json | grep "version\":\"v$major")
         if [ ! -z "$node_version_exists" ]; then
-            source "/var/lib/vz/snippets/helper_scripts/node_runtime_install.sh" "$major"
+            source /var/lib/vz/snippets/helper-scripts/node_runtime_install.sh "$major"
         else
             echo "Node.js version $version ($major) is not available. Please check the version number. Using latest version instead."
         fi
@@ -74,7 +83,7 @@ install_runtime() {
         version="${parts[0]}.${parts[1]}.${parts[2]}"
         local python_version_exists=$(curl -s https://www.python.org/ftp/python/ | grep "$version")
         if [ ! -z "$python_version_exists" ]; then
-            source "/var/lib/vz/snippets/helper_scripts/python_runtime_install.sh" "${LINUX_DISTRO,,}" "$version"
+            source /var/lib/vz/snippets/helper-scripts/python_runtime_install.sh "${LINUX_DISTRO,,}" "$version"
         else
             echo "Python version $version is not available. Please check the version number. Using latest version instead."
         fi
@@ -99,19 +108,21 @@ for key in $(echo "$VERSIONS_DICT" | jq -r 'keys[]'); do
     fi
 done
 
-
 # Run Installation Commands ====
 
 runInstallCommands() {
 
     RUNTIME="$1"
     COMP_DIR="$2"
+    
+    # Create normalized path
+    WORK_DIR=$(normalize_path "/root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR")
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
-        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && sudo $INSTALL_CMD" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd $WORK_DIR && sudo $INSTALL_CMD" > /dev/null 2>&1
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         pct enter $CONTAINER_ID <<EOF > /dev/null
-cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && \
+cd $WORK_DIR && \
 python3 -m venv venv && source venv/bin/activate && \
 pip install --upgrade pip && \
 $INSTALL_CMD
