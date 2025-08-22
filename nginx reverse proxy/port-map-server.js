@@ -2,7 +2,6 @@
 // JSON-server that returns all (filtered) hosts to the https://opensource.mieweb.org
 // Last modified on Aug 22, 2025 by Maxwell Klema
 
-
 const jsonServer = require('json-server');
 const path = require('path');
 const fs = require('fs');
@@ -42,6 +41,25 @@ server.get('/keys', (req, res) => {
   const filteredKeys = keys.filter(key => !exclude.includes(key));
   res.json(filteredKeys);
 })
+
+server.get('/:key', (req, res) => {
+  const key = req.params.key;
+  const db = router.db;
+  const value = db.getState()[key];
+
+  const response = {
+    name: key,
+    owner: value.user,
+    description: value.description || "",
+    github_url: value.github_url || "",
+  };
+
+  if (value) {
+      res.json(response);
+  } else {
+      res.status(404).json({ error: 'Not found' });
+  }
+});
 
 server.use(router);
 server.listen(3001, () => {
