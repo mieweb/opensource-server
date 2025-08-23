@@ -117,8 +117,6 @@ echo "$PUB_KEY" >> /home/update-container/.ssh/authorized_keys
 echo "$PUB_KEY" >> /home/delete-container/.ssh/authorized_keys
 echo "$PUB_KEY" >> /home/container-exists/.ssh/authorized_keys
 
-ssh root@10.15.234.122 "echo \"$PUB_KEY\" >> /root/.ssh/authorized_keys"
-
 echo "🔑 Creating Service File..."
 pct exec $NEXT_ID -- bash -c "cat <<EOF > /etc/systemd/system/github-runner.service
 [Unit]
