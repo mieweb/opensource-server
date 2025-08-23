@@ -42,13 +42,13 @@ if [ -d "$ENV_BASE_FOLDER" ]; then
 
             ENV_VARS=$(cat $ENV_BASE_FOLDER/$FILE_BASENAME)
             COMPONENT_PATH=$(normalize_path "/root/$REPO_BASE_NAME/$PROJECT_ROOT/$ENV_ROUTE")
-            pct exec $CONTAINER_ID -- bash -c "if [ -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" > \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c "if [ ! -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" >> \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
         done
     else
         ENV_FOLDER_BASE_NAME=$(basename "$ENV_BASE_FOLDER")
         ENV_VARS=$(cat $ENV_BASE_FOLDER/$ENV_FOLDER_BASE_NAME.txt || true)
         COMPONENT_PATH=$(normalize_path "/root/$REPO_BASE_NAME/$PROJECT_ROOT")
-        pct exec $CONTAINER_ID -- bash -c "if [ -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" > \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "if [ ! -f \"$COMPONENT_PATH/.env\" ]; then touch \"$COMPONENT_PATH/.env\"; fi; echo \"$ENV_VARS\" >> \"$COMPONENT_PATH/.env\"" > /dev/null 2>&1
     fi
 fi
 

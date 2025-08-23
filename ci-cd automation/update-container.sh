@@ -148,9 +148,9 @@ writeEnvToFile() {
     component_path="$2"
     env_vars=$(cat "$env_file_path")
     if (( $CONTAINER_ID % 2 == 0 )); then
-        ssh 10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'if [ -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\"'"
+        ssh 10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'if [ ! -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\"'"
     else
-        pct exec $CONTAINER_ID -- bash -c "if [ -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\""
+        pct exec $CONTAINER_ID -- bash -c "if [ ! -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\""
     fi
 }
 
