@@ -2,6 +2,8 @@
 
 Configuration storage for the [opensource.mieweb.org](https://opensource.mieweb.org:8006) Proxmox project.
 
+To learn everything there is about our cluster, see our documentation at [https://opensource.mieweb.org/docs/intro](https://opensource.mieweb.org/docs/intro).
+
 This repository contains configuration files and scripts for managing a Proxmox-based container hosting environment, including automated DNS, NGINX reverse proxy, dynamic port mapping, and the Proxmox LaunchPad GitHub Action for automated container deployment.
 
 ## Cluster Graph
@@ -98,6 +100,11 @@ If you have an account in the [opensource-mieweb](https://opensource.mieweb.org:
 - Use the Web GUI here: [create-a-container](https://create-a-container.opensource.mieweb.org/)
 - Use the Command Line: ssh create-container@opensource.mieweb.org (mie123!)
 - Use the Proxmox LaunchPad Github Action to automatically provision, update, and delete containers for you: [Proxmox LaunchPad](#proxmox-launchpad)
+
+## MIE Opensource Landing
+
+Contains all the source code for [https://opensource.mieweb.org's](https://opensource.mieweb.org) landing page, built with React + Docusaurus.
+- Documentation is located at [https://opensource.mieweb.org/docs/intro](https://opensource.mieweb.org/docs/intro).
 
 ## How It Works
 

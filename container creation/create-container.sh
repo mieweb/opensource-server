@@ -42,7 +42,7 @@ echoContainerDetails() {
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
 	echo -e "${BOLD}${BLUE}Still not working? Contact Max K. at maxklema@gmail.com${RESET}"
 	echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-	
+
 }
 
 trap cleanup SIGINT SIGTERM SIGHUP
@@ -71,6 +71,7 @@ SERVICES_BASE_FILE="${16}"
 LINUX_DISTRO="${17}"
 MULTI_COMPONENTS="${18}"
 ROOT_START_COMMAND="${19}"
+SELF_HOSTED_RUNNER="${20}"
 
 # Pick the correct template to clone =====
 
@@ -96,7 +97,7 @@ fi
 
 # Create the Container Clone ====
 
-if [ "${GH_ACTION^^}" != "Y" ]; then
+if [ "${GH_ACTION^^}" != "Y" ] || [ "${SELF_HOSTED_RUNNER^^}" == "N" ]; then
 	CONTAINER_ID=$(pvesh get /cluster/nextid) #Get the next available LXC ID
 
 	echo "⏳ Cloning Container..."
@@ -178,10 +179,10 @@ pct exec $CONTAINER_ID -- bash -c "cd /root && touch container-updates.log"
 # Run Contianer Provision Script to add container to port_map.json
 echo "⏳ Running Container Provision Script..."
 if [ -f "/var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE" ]; then
-    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE "$USERNAME_ONLY" "$ROOT_PSWD"
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE "$USERNAME_ONLY"
     rm -rf /var/lib/vz/snippets/container-port-maps/$PROTOCOL_FILE > /dev/null 2>&1
 else
-    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME" "$ROOT_PSWD"
+    /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME"
 fi
 
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
