@@ -1,0 +1,51 @@
+name: Container Creation JS Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'container-creation/js/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'container-creation/js/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18, 20]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: 'container-creation/js/package-lock.json'
+
+    - name: Install dependencies
+      working-directory: ./container-creation/js
+      run: npm ci
+
+    - name: Run tests
+      working-directory: ./container-creation/js
+      run: npm test
+
+    - name: Run tests with coverage
+      working-directory: ./container-creation/js
+      run: npm run test:coverage
+
+    - name: Upload coverage reports
+      if: matrix.node-version == '20'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./container-creation/js/coverage/lcov.info
+        flags: container-creation-js
+        name: container-creation-js-coverage
+        fail_ci_if_error: false
