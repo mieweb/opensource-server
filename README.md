@@ -13,12 +13,12 @@ graph TD
     REPO[opensource-mieweb Repository]
     
     %% All Main Folders
-    REPO --> CICD[ci-cd automation]
-    REPO --> CC[container creation]
-    REPO --> DNS[dnsmasq service]
+    REPO --> CICD[ci-cd-automation]
+    REPO --> CC[container-creation]
+    REPO --> DNS[dnsmasq-service]
     REPO --> GW[gateway]
     REPO --> LDAP[LDAP]
-    REPO --> NGINX[nginx reverse proxy]
+    REPO --> NGINX[nginx-reverse-proxy]
     REPO --> PL[proxmox-launchpad]
     
     %% Core Workflow Connections
@@ -57,10 +57,10 @@ graph TD
 
 ### Core Infrastructure
 
-- [`dnsmasq service/`](dnsmasq%20service/):  
+- [`dnsmasq-service/`](dnsmasq-service/):  
   Contains Dnsmasq configuration for DHCP and DNS services, including wildcard routing for the reverse proxy and container network management.
 
-- [`nginx reverse proxy/`](nginx%20reverse%20proxy/):  
+- [`nginx-reverse-proxy/`](nginx-reverse-proxy/):  
   Houses NGINX configuration files for the reverse proxy setup, including JavaScript modules for dynamic backend resolution and SSL certificate management.
 
 - [`gateway/`](gateway/):  
@@ -68,10 +68,10 @@ graph TD
 
 ### Container Management
 
-- [`container creation/`](container%20creation/):  
+- [`container-creation/`](container-creation/):  
   Contains comprehensive scripts for LXC container lifecycle management, including creation, LDAP configuration, service deployment, and registration with the proxy infrastructure.
 
-- [`ci-cd automation/`](ci-cd%20automation/):  
+- [`ci-cd-automation/`](ci-cd-automation/):  
   Automation scripts for continuous integration and deployment workflows, including container existence checks, updates, and cleanup operations with helper utilities.
 
 ### Authentication & Directory Services
