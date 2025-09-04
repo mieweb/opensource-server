@@ -44,10 +44,10 @@ graph TD
     WMANAGER --> |sends data to| WINDEXER[Wazuh Indexer]
 
     %% Styling
-    classDef folder fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    classDef system fill:#f1f8e9,stroke:#689f38,stroke-width:2px
-    classDef wazuh fill:#fffde7,stroke:#fbc02d,stroke-width:2px
-    classDef user fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef folder fill:#1976d2,stroke:#e3f2fd,stroke-width:2px,color:#ffffff
+    classDef system fill:#689f38,stroke:#f1f8e9,stroke-width:2px,color:#ffffff
+    classDef wazuh fill:#fbc02d,stroke:#fffde7,stroke-width:2px,color:#000000
+    classDef user fill:#f57c00,stroke:#fff3e0,stroke-width:2px,color:#ffffff
 
     class CICD,CC,DNS,GW,LDAP,NGINX,PL folder
     class CONTAINER system
