@@ -7,15 +7,15 @@ gatherRunTime() {
         read -p "🖥️  Enter the underlying runtime environment for \"$COMPONENT_PATH\" (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
     fi
 
-    while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
+    while [ "${RUNTIME_LANGUAGE^^}" != "NODEJS" ] &&  "${RUNTIME_LANGUAGE^^}" != "DENO" ] && [ "${RUNTIME_LANGUAGE^^}" != "PYTHON" ]; do
         echo "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
         writeLog "Unsupported runtime environment entered: $RUNTIME_LANGUAGE for component: $COMPONENT_PATH"
         if [ "${GH_ACTION^^}" == "Y" ]; then
-            outputError "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\" and \"python\" are currently supported."
+            outputError "⚠️  Sorry, that runtime environment is not yet supported. Only \"nodejs\", \"deno\" and \"python\" are currently supported."
             writeLog "Unsupported runtime environment entered: $RUNTIME_LANGUAGE (GH_ACTION mode)"
             exit 17
         fi
-        read -p "🖥️  Enter the underlying runtime environment for \"$COMPONENT_PATH\" (e.g., 'nodejs', 'python') →  " RUNTIME_LANGUAGE
+        read -p "🖥️  Enter the underlying runtime environment for \"$COMPONENT_PATH\" (e.g., 'nodejs', 'deno', 'python') →  " RUNTIME_LANGUAGE
     done
 }
 

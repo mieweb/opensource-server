@@ -209,6 +209,11 @@ startComponentPVE1() {
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
         pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
+    elif [ "${RUNTIME^^}" == "DENO" ]; then
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
+        pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
@@ -226,6 +231,13 @@ startComponentPVE2() {
     INSTALL_CMD="$5"
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
+        ssh root@10.15.0.5 "
+            pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
+            pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
+            pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
+        "
+    elif [ "${RUNTIME^^}" == "DENO" ]; then
         ssh root@10.15.0.5 "
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
