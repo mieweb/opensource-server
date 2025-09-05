@@ -71,6 +71,8 @@ if (( $CONTAINER_ID % 2 == 0 )); then
 
         if [ "${RUNTIME^^}" == "NODEJS" ]; then
             ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c \"mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp tmux new-session -d 'export HOME=/root export PATH=\\\$PATH:/usr/local/bin && cd $WORK_DIR && $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
+        elif [ "${RUNTIME^^}" == "DENO" ]; then
+            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c \"mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp tmux new-session -d 'export HOME=/root export PATH=\\\$PATH:/usr/local/bin && cd $WORK_DIR && $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
         elif [ "${RUNTIME^^}" == "PYTHON" ]; then
             ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c \"mkdir -p /tmp && chmod 1777 /tmp && mkdir -p /tmp/tmux-0 && chmod 700 /tmp/tmux-0 && TMUX_TMPDIR=/tmp tmux new-session -d 'export HOME=/root export PATH=\\\$PATH:/usr/local/bin && cd $WORK_DIR && source venv/bin/activate $BUILD_CMD && $START_CMD'\"" > /dev/null 2>&1
         fi
