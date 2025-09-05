@@ -14,7 +14,7 @@ if [ -z "$PROXMOX_PASSWORD" ]; then
 	echo ""
 fi
 
-USER_AUTHENTICATED=$(ssh root@10.15.234.122 "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
+USER_AUTHENTICATED=$(ssh root@create-container "node /root/bin/js/runner.js authenticateUser \"$PROXMOX_USERNAME\" \"$PROXMOX_PASSWORD\"")
 
 if [ $USER_AUTHENTICATED == 'false' ]; then
 	outputError 1 "Your Proxmox account, $PROXMOX_USERNAME@pve, was not authenticated. Retry with valid credentials."
