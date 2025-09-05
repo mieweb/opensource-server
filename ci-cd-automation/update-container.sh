@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to automatically fetch new contents from a branch, push them to container, and restart intern
-# Last Modified on August 5th, 2025 by Maxwell Klema
+# Last Modified on August 17th, 2025 by Maxwell Klema
 # ----------------------------------------
 
 RESET="\033[0m"
@@ -65,7 +65,7 @@ if [ "$REPOSITORY_BRANCH_EXISTS" != "200" ]; then
 fi
 
 
-# # Get Project Root Directroy
+# Get Project Root Directroy
 
 if [ "$PROJECT_ROOT" == "." ] || [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT="/"
@@ -116,7 +116,6 @@ if [ ! -z "$HTTP_PORT" ]; then
     && mv -f /tmp/port_map.json.new /etc/nginx/port_map.json "
 fi
 
-
 # Clone repository if needed ====
 
 if (( "$CONTAINER_ID" % 2 == 0 )); then
@@ -137,6 +136,64 @@ fi
 EOF
 fi
 
+# Update Environment Variables
+
+if [ ! -z "$RUNTIME_LANGUAGE" ] && echo "$RUNTIME_LANGUAGE" | jq . >/dev/null 2>&1; then # If RUNTIME_LANGUAGE is set and is valid JSON
+    MULTI_COMPONENT="Y"
+fi
+
+# Helper Function to write environment variables to a file inside container
+writeEnvToFile() {
+    env_file_path="$1"
+    component_path="$2"
+    env_vars=$(cat "$env_file_path")
+    if (( $CONTAINER_ID % 2 == 0 )); then
+        ssh 10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'if [ ! -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\"'"
+    else
+        pct exec $CONTAINER_ID -- bash -c "if [ ! -f \"$component_path/.env\" ]; then touch \"$component_path/.env\"; fi; echo \"$env_vars\" >> \"$component_path/.env\""
+    fi
+}
+
+# Check If there are environment variables
+if [ ! -z "$CONTAINER_ENV_VARS" ]; then
+    # generate random temp .env folder to store all env files for different components
+    RANDOM_NUM=$(shuf -i 100000-999999 -n 1)
+    ENV_FOLDER="env_$RANDOM_NUM"
+    ENV_FOLDER_PATH="/var/lib/vz/snippets/container-env-vars/$ENV_FOLDER"
+    mkdir -p "$ENV_FOLDER_PATH"
+
+    if [ "${MULTI_COMPONENT^^}" == "Y" ]; then # Multi-Component
+        if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
+            for key in $(echo "$CONTAINER_ENV_VARS" | jq -r 'keys[]'); do
+                COMPONENT_PATH="/root/$REPO_BASE_NAME/$PROJECT_ROOT/$key"
+                ENV_FILE_NAME=$(echo "$COMPONENT_PATH" | tr '/' '_')
+                ENV_FILE_NAME="$ENV_FILE_NAME.txt"
+                ENV_FILE_PATH="$ENV_FOLDER_PATH/$ENV_FILE_NAME"
+                touch "$ENV_FILE_PATH"
+                echo "$CONTAINER_ENV_VARS" | jq -r --arg key "$key" '.[$key] | to_entries[] | "\(.key)=\(.value)"' > "$ENV_FILE_PATH"
+                writeEnvToFile "$ENV_FILE_PATH" "$COMPONENT_PATH"
+            done
+        else
+            outputError "Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+            writeLog "Invalid JSON in CONTAINER_ENV_VARS (GH_ACTION mode)"
+            exit 16
+        fi
+    else # Single Component
+        ENV_FILE="env_$RANDOM_NUM.txt"
+        ENV_FILE_PATH="$ENV_FOLDER_PATH/$ENV_FILE"
+        touch "$ENV_FILE_PATH"
+        if echo "$CONTAINER_ENV_VARS" | jq -e > /dev/null 2>&1; then #if exit status of jq is 0 (valid JSON) // success
+            COMPONENT_PATH="/root/$REPO_BASE_NAME/$PROJECT_ROOT"
+            echo "$CONTAINER_ENV_VARS " | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$ENV_FILE_PATH" #k=v pairs
+            writeEnvToFile "$ENV_FILE_PATH" "$COMPONENT_PATH"
+        else
+            outputError "Your \"CONTAINER_ENV_VARS\" is not valid JSON. Please re-format and try again."
+            writeLog "Invalid JSON in CONTAINER_ENV_VARS for single component (GH_ACTION mode)"
+            exit 16
+        fi
+    fi
+fi
+
 # Update Container with New Contents from repository =====
 
 startComponentPVE1() {
@@ -148,15 +205,15 @@ startComponentPVE1() {
     INSTALL_CMD="$5"
 
     if [ "${RUNTIME^^}" == "NODEJS" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2  
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
-        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 
+        pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull" > /dev/null 2>&1
         pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD && $BUILD_CMD" > /dev/null 2>&1
-        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2 
+        pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
     fi
 }
 
@@ -174,21 +231,16 @@ startComponentPVE2() {
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/ && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " 
+        "
     elif [ "${RUNTIME^^}" == "PYTHON" ]; then
         ssh root@10.15.0.5 "
             pct set $CONTAINER_ID --memory 4096 --swap 0 --cores 4 &&
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && git fetch origin && git reset --hard origin/$PROJECT_BRANCH && git pull' > /dev/null 2>&1
             pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT/$COMP_DIR && source venv/bin/activate && $INSTALL_CMD' && '$BUILD_CMD' > /dev/null 2>&1
             pct set $CONTAINER_ID --memory 2048 --swap 0 --cores 2
-        " 
+        "
     fi
 }
-
-
-if [ ! -z "$RUNTIME_LANGUAGE" ] && echo "$RUNTIME_LANGUAGE" | jq . >/dev/null 2>&1; then # If RUNTIME_LANGUAGE is set and is valid JSON
-    MULTI_COMPONENT="Y"
-fi
 
 if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     for COMPONENT in $(echo "$START_COMMAND" | jq -r 'keys[]'); do
@@ -208,17 +260,23 @@ if [ "${MULTI_COMPONENT^^}" == "Y" ]; then
     done
     if [ ! -z "$ROOT_START_COMMAND" ]; then
         if (( $CONTAINER_ID % 2 == 0 )); then
-            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" 
+            ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'"
         else
-            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND" 
+            pct exec $CONTAINER_ID -- bash -c "cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND"
         fi
     fi
     # startComponent "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "."
 else
     if (( $CONTAINER_ID % 2 == 0 )); then
         startComponentPVE2 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
+        if [ ! -z "$ROOT_START_COMMAND" ]; then
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+		fi
     else
         startComponentPVE1 "$RUNTIME_LANGUAGE" "$BUILD_COMMAND" "$START_COMMAND" "." "$INSTALL_COMMAND"
+        if [ ! -z "$ROOT_START_COMMAND" ]; then
+			ssh root@10.15.0.5 "pct exec $CONTAINER_ID -- bash -c 'cd /root/$REPO_BASE_NAME/$PROJECT_ROOT && $ROOT_START_COMMAND'" > /dev/null 2>&1
+		fi
     fi
 fi
 
@@ -262,5 +320,5 @@ QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
 
 tmux new-session -d -s "$CONTAINER_NAME" "$QUOTED_CMD"
 echo "✅ Container $CONTAINER_ID has been updated with new contents from branch \"$PROJECT_BRANCH\" on repository \"$PROJECT_REPOSITORY\"."
+echo "Wait a few minutes for all background processes to complete before accessing the container."
 exit 0
-
