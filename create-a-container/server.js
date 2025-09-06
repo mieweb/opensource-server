@@ -1,7 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execFile } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs'); // Added fs module
@@ -36,7 +36,7 @@ app.get('/form.html', (req, res) => {
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
-    exec(`node /root/bin/js/runner.js authenticateUser ${username} ${password}`, (err, stdout) => {
+    execFile('node', ['/root/bin/js/runner.js', 'authenticateUser', username, password], (err, stdout) => {
         if (err) {
             console.error("Login script execution error:", err);
             return res.status(500).json({ error: "Server error during authentication." });
