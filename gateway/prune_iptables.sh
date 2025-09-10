@@ -15,7 +15,7 @@ REMOTE_HOST="intern-nginx"
 REMOTE_FILE="/etc/nginx/port_map.json"
 LOCAL_FILE="/tmp/port_map.json"
 LOG_FILE="/var/log/prune_iptables.log"
-PVE_NODES=("localhost" "10.15.0.5")
+PVE_NODES=("localhost" "10.15.0.5" "10.15.0.6")
 
 # Function to log messages with a timestamp
 log_message() {
