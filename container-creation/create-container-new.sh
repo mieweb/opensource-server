@@ -233,8 +233,6 @@ fi
 
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
-echoContainerDetails
-
 echo "Adding container MOTD information..."
 scp 10.15.20.69:/etc/nginx/port_map.json /tmp/port_map.json
 CONTAINER_INFO=$(jq -r --arg hn "$CONTAINER_NAME" '.[$hn]' /tmp/port_map.json)
@@ -262,6 +260,8 @@ else
 fi
 
 run_pct_push $CONTAINER_ID /tmp/container_motd /etc/motd
+
+echoContainerDetails
 
 BUILD_COMMAND_B64=$(echo -n "$BUILD_COMMAND" | base64)
 RUNTIME_LANGUAGE_B64=$(echo -n "$RUNTIME_LANGUAGE" | base64)
