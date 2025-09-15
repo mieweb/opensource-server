@@ -2,7 +2,6 @@
 
 set -euo pipefail
 
-
 if [[ -z "${1-}" || -z "${2-}" || -z "${4-}" ]]; then
     echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]> <username>"
     exit 1
@@ -12,6 +11,20 @@ CTID="$1"
 http_port="$2"
 ADDITIONAL_PROTOCOLS="${3-}"
 proxmox_user="$4"
+
+# AI_CONTAINER environment variable should be exported if running on AI node
+AI_CONTAINER="${AI_CONTAINER:-N}"
+
+# run_pct_exec function to handle AI_CONTAINER
+run_pct_exec() {
+    local ctid="$1"
+    shift
+    if [[ "${AI_CONTAINER^^}" == "Y" ]]; then
+        ssh root@10.15.0.6 "pct exec $ctid -- $*"
+    else
+        pct exec "$ctid" -- "$@"
+    fi
+}
 
 # Redirect stdout and stderr to a log file
 LOGFILE="/var/log/pve-hook-$CTID.log"
@@ -23,8 +36,8 @@ attempts=0
 max_attempts=5
 
 while [[ -z "$container_ip" && $attempts -lt $max_attempts ]]; do
-  container_ip=$(pct exec "$CTID" -- ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d'/' -f1)
-  [[ -z "$container_ip" ]] && sleep 2 && ((attempts++))
+    container_ip=$(run_pct_exec "$CTID" ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d'/' -f1)
+    [[ -z "$container_ip" ]] && sleep 2 && ((attempts++))
 done
 
 if [[ -z "$container_ip" ]]; then
@@ -32,8 +45,8 @@ if [[ -z "$container_ip" ]]; then
     exit 1
 fi
 
-hostname=$(pct exec "$CTID" -- hostname)
-os_release=$(pct exec "$CTID" -- grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d "\"")
+hostname=$(run_pct_exec "$CTID" hostname)
+os_release=$(run_pct_exec "$CTID" grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
 
 # Check if this container already has a SSH port assigned in PREROUTING
 existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
