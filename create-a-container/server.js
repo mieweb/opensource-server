@@ -3,16 +3,17 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const { spawn, exec } = require('child_process'); // spawn is now used
+const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit'); // <-- ADDED
 
 const app = express();
-app.use(express.json()); // <-- ADDED: Middleware to parse JSON bodies
+app.use(express.json());
 
 app.set('trust proxy', 1);
-// A simple in-memory object to store job status and output
+
 const jobs = {};
 
 // --- Middleware Setup ---
@@ -24,11 +25,19 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: true } // true if behind HTTPS
+  cookie: { secure: true }
 }));
 
-// --- Route Handlers ---
 app.use(express.static('public'));
+
+// --- Rate Limiter for Login ---
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: { error: "Too many login attempts. Please try again later." }
+});
+
+// --- Route Handlers ---
 
 const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
@@ -41,12 +50,10 @@ app.get('/form.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'views', 'form.html'));
 });
 
-// Handles user login
-// <-- CHANGED: Replaced vulnerable 'exec' with secure 'spawn'
-app.post('/login', (req, res) => {
+// Handles user login with rate limiting
+app.post('/login', loginLimiter, (req, res) => {
     const { username, password } = req.body;
 
-    // Use spawn for security
     const runner = spawn('node', ['/root/bin/js/runner.js', 'authenticateUser', username, password]);
     
     let stdoutData = '';
@@ -77,16 +84,12 @@ app.post('/login', (req, res) => {
     });
 });
 
-
 // API endpoint to get user's containers
 app.get('/api/my-containers', (req, res) => {
     if (!req.session.user) {
         return res.status(401).json({ error: "Unauthorized" });
     }
-    // The username in port_map.json doesn't have the @pve suffix
     const username = req.session.user.split('@')[0];
-
-    // Command to read the remote JSON file
     const command = "ssh root@10.15.20.69 'cat /etc/nginx/port_map.json'";
 
     exec(command, (err, stdout, stderr) => {
@@ -97,7 +100,6 @@ app.get('/api/my-containers', (req, res) => {
         try {
             const portMap = JSON.parse(stdout);
             const userContainers = Object.entries(portMap)
-                // This check now ensures 'details' exists and has a 'user' property before comparing
                 .filter(([_, details]) => details && details.user === username)
                 .map(([name, details]) => ({ name, ...details }));
                 
