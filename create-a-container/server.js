@@ -1,28 +1,37 @@
+require('dotenv').config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const { spawn, exec } = require('child_process');
+const { spawn, exec } = require('child_process'); // spawn is now used
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs'); // Added fs module
+const fs = require('fs');
 
 const app = express();
+app.use(express.json()); // <-- ADDED: Middleware to parse JSON bodies
 
+app.set('trust proxy', 1);
 // A simple in-memory object to store job status and output
 const jobs = {};
 
 // --- Middleware Setup ---
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(express.static('public'));
+if (!process.env.SESSION_SECRET) {
+  throw new Error("SESSION_SECRET is not set in environment!");
+}
+
 app.use(session({
-    secret: 'A7d#9Lm!qW2z%Xf8@Rj3&bK6^Yp$0Nc',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false } // Set to true if using HTTPS
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: true } // true if behind HTTPS
 }));
 
 // --- Route Handlers ---
+app.use(express.static('public'));
+
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 // Serves the main container creation form, protected by login
 app.get('/form.html', (req, res) => {
@@ -33,16 +42,31 @@ app.get('/form.html', (req, res) => {
 });
 
 // Handles user login
+// <-- CHANGED: Replaced vulnerable 'exec' with secure 'spawn'
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
-    exec(`node /root/bin/js/runner.js authenticateUser ${username} ${password}`, (err, stdout) => {
-        if (err) {
-            console.error("Login script execution error:", err);
+    // Use spawn for security
+    const runner = spawn('node', ['/root/bin/js/runner.js', 'authenticateUser', username, password]);
+    
+    let stdoutData = '';
+    let stderrData = '';
+
+    runner.stdout.on('data', (data) => {
+        stdoutData += data.toString();
+    });
+
+    runner.stderr.on('data', (data) => {
+        stderrData += data.toString();
+    });
+
+    runner.on('close', (code) => {
+        if (code !== 0) {
+            console.error("Login script execution error:", stderrData);
             return res.status(500).json({ error: "Server error during authentication." });
         }
 
-        if (stdout.trim() === 'true') {
+        if (stdoutData.trim() === 'true') {
             req.session.user = username;
             req.session.proxmoxUsername = username;
             req.session.proxmoxPassword = password;
@@ -53,7 +77,8 @@ app.post('/login', (req, res) => {
     });
 });
 
-// ✨ UPDATED: API endpoint to get user's containers
+
+// API endpoint to get user's containers
 app.get('/api/my-containers', (req, res) => {
     if (!req.session.user) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -156,7 +181,3 @@ app.get('/api/stream/:jobId', (req, res) => {
         res.end();
     });
 });
-
-// --- Server Initialization ---
-const PORT = 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
