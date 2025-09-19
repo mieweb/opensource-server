@@ -173,6 +173,21 @@ protocol_duplicate() {
 	return 1 # Protocol is not a duplicate
 }
 
+show_available_protocols() {
+	echo ""
+	echo "📋 Available Protocols:"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	# Display protocols in a more readable format showing abbreviation, port, and type
+	while read line; do
+		protocol_abbrev=$(echo "$line" | awk '{print $1}')
+		protocol_port=$(echo "$line" | awk '{print $2}')
+		protocol_type=$(echo "$line" | awk '{print $3}')
+		printf "%-12s Port %-6s (%s)\n" "$protocol_abbrev" "$protocol_port" "$protocol_type"
+	done < "/root/bin/protocols/master_protocol_list.txt"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo ""
+}
+
 read -p "Does your Container require any protocols other than SSH and HTTP? (y/n) →  " USE_OTHER_PROTOCOLS
 while [ "${USE_OTHER_PROTOCOLS^^}" != "Y" ] && [ "${USE_OTHER_PROTOCOLS^^}" != "N" ] && [ "${USER_OTHER_PROTOCOLS^^}" != "" ]; do
 	echo "Please answer 'y' for yes or 'n' for no."
@@ -187,8 +202,13 @@ if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 	touch "$PROTOCOL_FILE"
 
 	LIST_PROTOCOLS=()
-	read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"e\" to exit →  " PROTOCOL_NAME
+	read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"list\" to see available protocols or \"e\" to exit →  " PROTOCOL_NAME
 	while [ "${PROTOCOL_NAME^^}" != "E" ]; do
+		if [ "${PROTOCOL_NAME^^}" == "LIST" ]; then
+			show_available_protocols
+			read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"list\" to see available protocols or \"e\" to exit →  " PROTOCOL_NAME
+			continue
+		fi
 		FOUND=0 #keep track if protocol was found
 		while read line; do
 			PROTOCOL_ABBRV=$(echo "$line" | awk '{print $1}')
@@ -213,7 +233,7 @@ if [ "${USE_OTHER_PROTOCOLS^^}" == "Y" ]; then
 			echo "❌ Protocol ${PROTOCOL_NAME^^} not found. Please try again."
 		fi
 
-		read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"e\" to exit →  " PROTOCOL_NAME
+		read -p "Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type \"list\" to see available protocols or \"e\" to exit →  " PROTOCOL_NAME
 	done
 fi
 
