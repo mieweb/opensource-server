@@ -27,6 +27,13 @@
                 <label for="PUBLIC_KEY">SSH Public Key (optional)</label>
                 <input type="text" id="PUBLIC_KEY" name="PUBLIC_KEY">
 
+                <label for="AI_CONTAINER">AI Project Type</label>
+                <select id="AI_CONTAINER" name="AI_CONTAINER">
+                    <option value="N" selected>No</option>
+                    <option value="PHOENIX">Phoenix AI Server</option>
+                    <option value="FORTWAYNE">Fort Wayne AI Server</option>
+                </select>
+
                 <input type="submit" value="Create Container">
             </form>
             <div id="formError" style="color:red; margin-top:10px;"></div>

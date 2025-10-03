@@ -2,7 +2,6 @@
 
 set -euo pipefail
 
-
 if [[ -z "${1-}" || -z "${2-}" || -z "${4-}" ]]; then
     echo "Usage: $0 <CTID> <HTTP PORT> <PROTOCOL FILE [OPTIONAL]> <username>"
     exit 1
@@ -12,6 +11,54 @@ CTID="$1"
 http_port="$2"
 ADDITIONAL_PROTOCOLS="${3-}"
 proxmox_user="$4"
+
+# Optional: AI_CONTAINER environment variable should be exported if running on AI node
+AI_CONTAINER="${AI_CONTAINER:-N}"
+
+# run_pct_exec function to handle AI containers
+run_pct_exec() {
+    local ctid="$1"
+    shift
+    local remote_cmd
+    printf -v remote_cmd '%q ' "$@"
+
+    case "${AI_CONTAINER^^}" in
+        PHOENIX)
+            ssh root@10.15.0.6 "pct exec $ctid -- $remote_cmd"
+            ;;
+        FORTWAYNE)
+            ssh root@10.250.0.2 "pct exec $ctid -- $remote_cmd"
+            ;;
+        N|"")
+            pct exec "$ctid" -- "$@"
+            ;;
+        *)
+            echo "❌ Invalid AI_CONTAINER value: $AI_CONTAINER" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# run_pct_config function to fetch config
+run_pct_config() {
+    local ctid="$1"
+    case "${AI_CONTAINER^^}" in
+        PHOENIX)
+            ssh root@10.15.0.6 "pct config $ctid"
+            ;;
+        FORTWAYNE)
+            ssh root@10.250.0.2 "pct config $ctid"
+            ;;
+        N|"")
+            pct config "$ctid"
+            ;;
+        *)
+            echo "❌ Invalid AI_CONTAINER value: $AI_CONTAINER" >&2
+            exit 1
+            ;;
+    esac
+}
+
 
 # Redirect stdout and stderr to a log file
 LOGFILE="/var/log/pve-hook-$CTID.log"
@@ -23,8 +70,8 @@ attempts=0
 max_attempts=5
 
 while [[ -z "$container_ip" && $attempts -lt $max_attempts ]]; do
-  container_ip=$(pct exec "$CTID" -- ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d'/' -f1)
-  [[ -z "$container_ip" ]] && sleep 2 && ((attempts++))
+    container_ip=$(run_pct_exec "$CTID" ip -4 addr show eth0 | awk '/inet / {print $2}' | cut -d'/' -f1)
+    [[ -z "$container_ip" ]] && sleep 2 && ((attempts++))
 done
 
 if [[ -z "$container_ip" ]]; then
@@ -32,8 +79,11 @@ if [[ -z "$container_ip" ]]; then
     exit 1
 fi
 
-hostname=$(pct exec "$CTID" -- hostname)
-os_release=$(pct exec "$CTID" -- grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d "\"")
+hostname=$(run_pct_exec "$CTID" hostname)
+os_release=$(run_pct_exec "$CTID" grep '^ID=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+
+# === NEW: Extract MAC address using cluster-aware function ===
+mac=$(run_pct_config "$CTID" | grep -oP 'hwaddr=\K([^\s,]+)')
 
 # Check if this container already has a SSH port assigned in PREROUTING
 existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
@@ -102,7 +152,7 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
 
     #Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
 
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" <<'EOF'
+    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" "$CTID" "$mac" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
@@ -113,6 +163,8 @@ protos_json=$(echo "$5" | tr ',' '\n' | jq -R . | jq -s .)
 ports_json=$(echo "$6" | tr ',' '\n' | jq -R . | jq -s 'map(tonumber)')
 user="$7"
 os_release="$8"
+ctid="$9"
+mac="${10}"
 
 jq --arg hn "$hostname" \
   --arg ip "$container_ip" \
@@ -122,10 +174,14 @@ jq --arg hn "$hostname" \
   --argjson http "$http_port" \
   --argjson protos "$protos_json" \
   --argjson ports_list "$ports_json" \
+  --argjson ctid "$ctid" \
+  --arg mac "$mac" \
   '. + {($hn): {
       ip: $ip,
       user: $user,
       os_release: $osr,
+      ctid: $ctid,
+      mac: $mac,
       ports: ( reduce range(0; $protos | length) as $i (
           {ssh: $ssh, http: $http};
           . + { ($protos[$i]): $ports_list[$i]}
@@ -137,7 +193,7 @@ nginx -s reload
 EOF
 else
     # Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$proxmox_user" "$os_release" <<'EOF'
+    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$proxmox_user" "$os_release" "$CTID" "$mac" <<'EOF'
 set -euo pipefail
 
 hostname="$1"
@@ -146,6 +202,8 @@ ssh_port="$3"
 http_port="$4"
 user="$5"
 os_release="$6"
+ctid="$7"
+mac="$8"
 
 jq --arg hn "$hostname" \
   --arg ip "$container_ip" \
@@ -153,10 +211,14 @@ jq --arg hn "$hostname" \
   --arg osr "$os_release" \
   --argjson http "$http_port" \
   --argjson ssh "$ssh_port" \
+  --argjson ctid "$ctid" \
+  --arg mac "$mac" \
   '. + {($hn): {
       ip: $ip,
       user: $user,
       os_release: $osr,
+      ctid: $ctid,
+      mac: $mac,
       ports: {ssh: $ssh, http: $http}
   }}' /etc/nginx/port_map.json > /tmp/port_map.json.new
 
