@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script to create the pct container, run register container, and migrate container accordingly.
-# Last Modified by August 27th, 2025 by Carter Myers
+# Last Modified by October 3rd, 2025 by Carter Myers
 # -----------------------------------------------------
 
 BOLD='\033[1m'
@@ -68,13 +68,39 @@ VERSIONS_DICT=$(echo "${21}" | base64 -d)
 AI_CONTAINER="${22}"   # new argument from HTML form
 
 echo "PROJECT ROOT: \"$PROJECT_ROOT\""
+echo "AI_CONTAINER: \"$AI_CONTAINER\""
 
-# === Wrapper for pct exec (and optionally pct commands for AI) ===
+# === Determine target PVE host based on AI_CONTAINER ===
+# PHOENIX -> 10.15.0.6 (existing AI host)
+# FORTWAYNE -> 10.250.0.2 (new WireGuard-connected host)
+# N -> local execution (no SSH proxy)
+case "${AI_CONTAINER^^}" in
+    PHOENIX)
+        TARGET_PVE_HOST="10.15.0.6"
+        ;;
+    FORTWAYNE)
+        TARGET_PVE_HOST="10.250.0.2"
+        ;;
+    N|"" )
+        TARGET_PVE_HOST=""
+        ;;
+    *)
+        echo "Invalid AI_CONTAINER value: $AI_CONTAINER"
+        exit 1
+        ;;
+esac
+
+# Helper: returns true if we're using a remote PVE host (PHOENIX or FORTWAYNE)
+is_remote_pve() {
+    [[ -n "$TARGET_PVE_HOST" ]]
+}
+
+# === Wrapper for pct exec (and optionally pct commands for remote PVE) ===
 run_pct_exec() {
     local ctid="$1"
     shift
-    if [ "${AI_CONTAINER^^}" == "Y" ]; then
-        ssh root@10.15.0.6 "pct exec $ctid -- $*"
+    if is_remote_pve; then
+        ssh root@"$TARGET_PVE_HOST" "pct exec $ctid -- $*"
     else
         pct exec "$ctid" -- "$@"
     fi
@@ -82,25 +108,25 @@ run_pct_exec() {
 
 run_pct() {
     # $@ = full pct command, e.g., clone, set, start, etc.
-    if [ "${AI_CONTAINER^^}" == "Y" ]; then
-        ssh root@10.15.0.6 "pct $*"
+    if is_remote_pve; then
+        ssh root@"$TARGET_PVE_HOST" "pct $*"
     else
         pct "$@"
     fi
 }
 
 run_pveum() {
-    # Wrapper for pveum commands in AI case
-    if [ "${AI_CONTAINER^^}" == "Y" ]; then
-        ssh root@10.15.0.6 "pveum $*"
+    # Wrapper for pveum commands in remote case
+    if is_remote_pve; then
+        ssh root@"$TARGET_PVE_HOST" "pveum $*"
     else
         pveum "$@"
     fi
 }
 
 run_pvesh() {
-    if [ "${AI_CONTAINER^^}" == "Y" ]; then
-        ssh root@10.15.0.6 "pvesh $*"
+    if is_remote_pve; then
+        ssh root@"$TARGET_PVE_HOST" "pvesh $*"
     else
         pvesh "$@"
     fi
@@ -110,19 +136,21 @@ run_pct_push() {
     local ctid="$1"
     local src="$2"
     local dest="$3"
-    if [ "${AI_CONTAINER^^}" == "Y" ]; then
-        ssh root@10.15.0.6 "pct push $ctid $src $dest"
+    if is_remote_pve; then
+        ssh root@"$TARGET_PVE_HOST" "pct push $ctid $src $dest"
     else
         pct push "$ctid" "$src" "$dest"
     fi
 }
 
-# === Template Selection ===
-if [ "${AI_CONTAINER^^}" == "Y" ]; then
-    echo "⏳ AI container requested. Using debian12-ai-template (CTID 150) on 10.15.0.6..."
+# === Template Selection & Clone ===
+if [[ "${AI_CONTAINER^^}" == "PHOENIX" ]]; then
+    echo "⏳ Phoenix AI container requested. Using template CTID 163..."
     CTID_TEMPLATE="163"
+    # Request cluster nextid from the target (remote if configured, else local via run_pvesh)
     CONTAINER_ID=$(run_pvesh get /cluster/nextid)
 
+    echo "DEBUG: Cloning on TARGET_PVE_HOST=${TARGET_PVE_HOST:-local} CTID_TEMPLATE=${CTID_TEMPLATE} -> CONTAINER_ID=${CONTAINER_ID}"
     run_pct clone $CTID_TEMPLATE $CONTAINER_ID \
         --hostname $CONTAINER_NAME \
         --full true
@@ -135,11 +163,33 @@ if [ "${AI_CONTAINER^^}" == "Y" ]; then
 
     run_pct start $CONTAINER_ID
     run_pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
+
+elif [[ "${AI_CONTAINER^^}" == "FORTWAYNE" ]]; then
+    echo "⏳ Fort Wayne AI container requested. Using template CTID 103 on 10.250.0.2..."
+    CTID_TEMPLATE="103"
+    # allocate nextid directly on Fort Wayne
+    CONTAINER_ID=$(ssh root@10.250.0.2 pvesh get /cluster/nextid)
+
+    echo "DEBUG: Cloning on Fort Wayne (10.250.0.2) CTID_TEMPLATE=${CTID_TEMPLATE} -> CONTAINER_ID=${CONTAINER_ID}"
+    ssh root@10.250.0.2 pct clone $CTID_TEMPLATE $CONTAINER_ID \
+        --hostname $CONTAINER_NAME \
+        --full true
+
+    ssh root@10.250.0.2 pct set $CONTAINER_ID \
+        --tags "$PROXMOX_USERNAME" \
+        --tags "$LINUX_DISTRO" \
+        --tags "AI" \
+        --onboot 1
+
+    ssh root@10.250.0.2 pct start $CONTAINER_ID
+    ssh root@10.250.0.2 pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
+
 else
     REPO_BASE_NAME=$(basename -s .git "$PROJECT_REPOSITORY")
     REPO_BASE_NAME_WITH_OWNER=$(echo "$PROJECT_REPOSITORY" | cut -d'/' -f4)
 
     TEMPLATE_NAME="template-$REPO_BASE_NAME-$REPO_BASE_NAME_WITH_OWNER"
+    # Search local and other known PVE (keeps original approach; will find local or remote templates depending on your environment)
     CTID_TEMPLATE=$( { pct list; ssh root@10.15.0.5 'pct list'; } | awk -v name="$TEMPLATE_NAME" '$3 == name {print $1}')
 
     case "${LINUX_DISTRO^^}" in
@@ -154,9 +204,10 @@ else
       esac
     fi
 
+    # For non-AI containers, allocate next ID locally and clone once here
     CONTAINER_ID=$(pvesh get /cluster/nextid)
 
-    echo "⏳ Cloning Container..."
+    echo "⏳ Cloning Container (non-AI)... CTID_TEMPLATE=${CTID_TEMPLATE} -> CONTAINER_ID=${CONTAINER_ID}"
     run_pct clone $CTID_TEMPLATE $CONTAINER_ID \
         --hostname $CONTAINER_NAME \
         --full true
@@ -176,8 +227,16 @@ fi
 if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
         echo "⏳ Appending Public Key..."
         run_pct_exec $CONTAINER_ID touch ~/.ssh/authorized_keys > /dev/null 2>&1
-        run_pct_exec $CONTAINER_ID bash -c "cat > ~/.ssh/authorized_keys" < /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
-        rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
+        # Use a here-doc to reliably feed the pubkey to the remote pct exec
+        if is_remote_pve; then
+            # copy key file to remote PVE host temporarily then pct push it in case pct exec over ssh doesn't accept stdin redirection
+            scp "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" root@"$TARGET_PVE_HOST":/tmp/"$PUB_FILE" > /dev/null 2>&1 || true
+            ssh root@"$TARGET_PVE_HOST" "pct push $CONTAINER_ID /tmp/$PUB_FILE /root/.ssh/authorized_keys >/dev/null 2>&1 || (pct exec $CONTAINER_ID -- bash -lc 'cat > ~/.ssh/authorized_keys' < /tmp/$PUB_FILE)"
+            ssh root@"$TARGET_PVE_HOST" "rm -f /tmp/$PUB_FILE" >/dev/null 2>&1 || true
+        else
+            run_pct_exec $CONTAINER_ID bash -c "cat > ~/.ssh/authorized_keys" < /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
+            rm -rf /var/lib/vz/snippets/container-public-keys/$PUB_FILE > /dev/null 2>&1
+        fi
 fi
 
 ROOT_PSWD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
@@ -197,7 +256,7 @@ if [[ -z "$CONTAINER_IP" ]]; then
     exit 1
 fi
 
-echo "⏳ Updatig container packages..."
+echo "⏳ Updatng container packages..."
 if [[ "${LINUX_DISTRO^^}" == "ROCKY" ]]; then
     run_pct_exec $CONTAINER_ID bash -c "dnf upgrade -y"
 else
@@ -234,6 +293,7 @@ fi
 SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
 echo "Adding container MOTD information..."
+# port_map.json remains on central nginx host (10.15.20.69) — leave as-is unless you want to change that behavior
 scp 10.15.20.69:/etc/nginx/port_map.json /tmp/port_map.json
 CONTAINER_INFO=$(jq -r --arg hn "$CONTAINER_NAME" '.[$hn]' /tmp/port_map.json)
 
@@ -267,7 +327,8 @@ BUILD_COMMAND_B64=$(echo -n "$BUILD_COMMAND" | base64)
 RUNTIME_LANGUAGE_B64=$(echo -n "$RUNTIME_LANGUAGE" | base64)
 START_COMMAND_B64=$(echo -n "$START_COMMAND" | base64)
 
-if [[ "$AI" != "Y" ]]; then
+# Only run start_services when this is NOT an AI container (previously referenced undefined $AI)
+if [[ "${AI_CONTAINER^^}" != "PHOENIX" && "${AI_CONTAINER^^}" != "FORTWAYNE" ]]; then
     CMD=(
     bash /var/lib/vz/snippets/start_services.sh
     "$CONTAINER_ID"
@@ -290,5 +351,9 @@ fi
 
 QUOTED_CMD=$(printf ' %q' "${CMD[@]}")
 
-tmux new-session -d -s "$CONTAINER_NAME" "$QUOTED_CMD"
+# Create detached tmux session to run the (possibly long) service start process
+if [[ -n "${CMD[*]}" ]]; then
+    tmux new-session -d -s "$CONTAINER_NAME" "$QUOTED_CMD"
+fi
+
 exit 0
