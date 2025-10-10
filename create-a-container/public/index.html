@@ -19,6 +19,11 @@
 
             <input type="submit" value="Login">
         </form>
+        <hr>
+        <div class="signup-section">
+            <h2>Dont have an account?</h2>
+            <button id="signUpBtn">Request an Account</button>
+        </div>
         <div id="errorMessage" style="color:red;"></div>
         <div class="footer">
             &copy; 2025 Medical Informatics Engineering
@@ -62,5 +67,9 @@ document.getElementById('loginForm').addEventListener('submit', async function (
     console.error("Fetch error:", err);
     errorMessageDiv.textContent = "A network error occurred. Please try again.";
   }
+});
+
+document.getElementById('signUpBtn').addEventListener('click', () => {
+  window.location.href = '/request-account.html';
 });
 </script>

@@ -36,6 +36,16 @@ CONTAINER_NAME="${CONTAINER_NAME,,}"
 LINUX_DISTRIBUTION="${LINUX_DISTRIBUTION,,}"
 DEPLOY_ON_START="${DEPLOY_ON_START,,}"
 
+# Optional: AI_CONTAINER (default to "N" if not set)
+AI_CONTAINER="${AI_CONTAINER:-N}"
+AI_CONTAINER="${AI_CONTAINER^^}"  # normalize
+
+# Validate allowed values
+if [[ "$AI_CONTAINER" != "N" && "$AI_CONTAINER" != "PHOENIX" && "$AI_CONTAINER" != "FORTWAYNE" ]]; then
+    outputError "AI_CONTAINER must be one of: N, PHOENIX, FORTWAYNE."
+fi
+
+
 # Validate Proxmox credentials using your Node.js authenticateUser
 USER_AUTHENTICATED=$(node /root/bin/js/runner.js authenticateUser "$PROXMOX_USERNAME" "$PROXMOX_PASSWORD")
 if [ "$USER_AUTHENTICATED" != "true" ]; then
@@ -175,7 +185,7 @@ if [[ -n "$KEY_FILE" ]]; then
 fi
 
 # Run your create-container.sh remotely over SSH with corrected quoting and simplified variable
-ssh -t root@10.15.0.4 "bash -c \"/var/lib/vz/snippets/create-container.sh \
+ssh -t root@10.15.0.4 "bash -c \"/var/lib/vz/snippets/create-container-new.sh \
     '$CONTAINER_NAME' \
     '$GH_ACTION' \
     '$HTTP_PORT' \
@@ -195,6 +205,9 @@ ssh -t root@10.15.0.4 "bash -c \"/var/lib/vz/snippets/create-container.sh \
     '$LINUX_DISTRIBUTION' \
     '${MULTI_COMPONENT:-}' \
     '${ROOT_START_COMMAND:-}' \
+    '${SELF_HOSTED_RUNNER:-}' \
+    '${VERSIONS_DICT:-}' \
+    '$AI_CONTAINER' # Corrected: Pass the variable's value in the correct position
 \""
 
 # Clean up temp files
@@ -204,6 +217,7 @@ rm -f "${TEMP_SERVICES_FILE_PATH:-}"
 rm -rf "${ENV_FOLDER_PATH:-}"
 
 # Unset sensitive variables
+unset CONFIRM_PASSWORD
 unset PUBLIC_KEY
 
 echo "✅ Container creation wrapper script finished successfully."
