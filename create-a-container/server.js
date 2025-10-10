@@ -197,9 +197,18 @@ app.get('/api/stream/:jobId', (req, res) => {
 });
 
 // Serve the account request form
-app.get('/request-account.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
-  });
+
+// Apply a rate limiter to protect the request-account form
+const requestAccountLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 10, // limit each IP to 10 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.get('/request-account.html', requestAccountLimiter, (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
+});
 
 app.post('/request-account', (req, res) => {
   const { firstName, lastName, email, conclusionDate, reason } = req.body;
