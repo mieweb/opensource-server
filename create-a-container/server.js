@@ -53,7 +53,7 @@ const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 // Serves the main container creation form
-app.get('/form.html', (req, res) => {
+app.get('/containers/new', (req, res) => {
   if (!req.session.user) {
     return res.redirect('/');
   }
@@ -85,7 +85,8 @@ app.post('/login', loginLimiter, (req, res) => {
       req.session.user = username;
       req.session.proxmoxUsername = username;
       req.session.proxmoxPassword = password;
-      return res.json({ success: true, redirect: '/form.html' });
+      // Redirect to the semantic new-container form route
+      return res.json({ success: true, redirect: '/containers/new' });
     } else {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -119,7 +120,7 @@ app.get('/api/my-containers', (req, res) => {
 });
 
 // Create container
-app.post('/create-container', (req, res) => {
+app.post('/containers', (req, res) => {
   if (!req.session.user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -206,11 +207,11 @@ const requestAccountLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.get('/request-account.html', requestAccountLimiter, (req, res) => {
+app.get('/register', requestAccountLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
 });
 
-app.post('/request-account', (req, res) => {
+app.post('/register', (req, res) => {
   const { firstName, lastName, email, conclusionDate, reason } = req.body;
 
   const details = `
