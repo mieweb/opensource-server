@@ -64,7 +64,7 @@
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
 
-            try {
+        try {
             const res = await fetch('/containers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
