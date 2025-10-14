@@ -273,3 +273,15 @@ app.get('/send-test-email', async (req, res) => {
     res.status(500).send(`❌ Email failed: ${err.message}`);
   }
 });
+
+// Handles logout
+app.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Error destroying session:', err);
+      return res.status(500).json({ error: 'Failed to log out.' });
+    }
+    res.clearCookie('connect.sid'); // Clear the session cookie
+    return res.status(204).send(); // Respond with 204 No Content
+  });
+});

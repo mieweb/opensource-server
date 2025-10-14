@@ -7,6 +7,9 @@
     <link href="/style.css" rel="stylesheet">
 </head>
 <body>
+    <div class="navbar">
+        <button class="logout-button" onclick="logout()">Logout</button>
+    </div>
     <div class="main-content-wrapper">
         <div class="login-container">
             <img src="logo.png" alt="Company Logo" class="logo">
@@ -122,6 +125,18 @@
             listElement.innerHTML = '<li>Error loading containers.</li>';
         }
     });
+
+    function logout() {
+        fetch('/logout', { method: 'POST' })
+            .then(response => {
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert('Failed to log out.');
+                }
+            })
+            .catch(() => alert('An error occurred while logging out.'));
+    }
 </script>
 
 </body>
