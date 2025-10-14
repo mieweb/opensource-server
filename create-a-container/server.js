@@ -9,6 +9,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer'); // <-- added
+const axios = require('axios');
+const qs = require('querystring');
+const https = require('https');
 
 const app = express();
 app.use(express.json());
@@ -61,36 +64,25 @@ app.get('/containers/new', (req, res) => {
 });
 
 // Handles login
-app.post('/login', loginLimiter, (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
-  const runner = spawn('node', ['/root/bin/js/runner.js', 'authenticateUser', username, password]);
-  let stdoutData = '';
-  let stderrData = '';
 
-  runner.stdout.on('data', (data) => {
-    stdoutData += data.toString();
+  const response = await axios.request({
+    method: 'post',
+    url: 'https://10.15.0.4:8006/api2/json/access/ticket',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    data: qs.stringify({ username: username + '@pve', password: password })
   });
 
-  runner.stderr.on('data', (data) => {
-    stderrData += data.toString();
-  });
+  if (response.status !== 200) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 
-  runner.on('close', (code) => {
-    if (code !== 0) {
-      console.error("Login script execution error:", stderrData);
-      return res.status(500).json({ error: "Server error during authentication." });
-    }
-
-    if (stdoutData.trim() === 'true') {
-      req.session.user = username;
-      req.session.proxmoxUsername = username;
-      req.session.proxmoxPassword = password;
-      // Redirect to the semantic new-container form route
-      return res.json({ success: true, redirect: '/containers/new' });
-    } else {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-  });
+  req.session.user = username;
+  req.session.proxmoxUsername = username;
+  req.session.proxmoxPassword = password;
+  return res.json({ success: true, redirect: '/form.html' });
 });
 
 // Fetch user's containers
