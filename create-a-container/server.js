@@ -31,6 +31,37 @@ app.use(session({
 
 app.use(express.static('public'));
 
+// --- Authentication middleware (single) ---
+// Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+
+  // Heuristics to detect API requests:
+  // - X-Requested-With: XMLHttpRequest (old-style AJAX)
+  // - Accept header prefers JSON (application/json)
+  // - URL path starts with /api/
+  const acceptsJSON = req.get('Accept') && req.get('Accept').includes('application/json');
+  const isAjax = req.get('X-Requested-With') === 'XMLHttpRequest';
+  const isApiPath = req.path && req.path.startsWith('/api/');
+
+  if (acceptsJSON || isAjax || isApiPath) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Otherwise treat as a browser route: include the original URL as a redirect parameter
+  const original = req.originalUrl || req.url || '/';
+  const redirectTo = '/login?redirect=' + encodeURIComponent(original);
+  return res.redirect(redirectTo);
+}
+
+// Serve login page from views (moved from public)
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'login.html'));
+});
+
+// Redirect root to the main form. The form route will enforce authentication
+app.get('/', (req, res) => res.redirect('/form.html'));
+
 // --- Rate Limiter for Login ---
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -53,10 +84,7 @@ const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 // Serves the main container creation form
-app.get('/form.html', (req, res) => {
-  if (!req.session.user) {
-    return res.redirect('/');
-  }
+app.get('/form.html', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'form.html'));
 });
 
@@ -85,7 +113,10 @@ app.post('/login', loginLimiter, (req, res) => {
       req.session.user = username;
       req.session.proxmoxUsername = username;
       req.session.proxmoxPassword = password;
-      return res.json({ success: true, redirect: '/form.html' });
+
+      // Prefer redirect provided in body, then query param, then default to '/'
+      const redirectUrl = (req.body && req.body.redirect) || req.query.redirect || '/';
+      return res.json({ success: true, redirect: redirectUrl });
     } else {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -93,10 +124,7 @@ app.post('/login', loginLimiter, (req, res) => {
 });
 
 // Fetch user's containers
-app.get('/api/my-containers', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+app.get('/api/my-containers', requireAuth, (req, res) => {
   const username = req.session.user.split('@')[0];
   const command = "ssh root@10.15.20.69 'cat /etc/nginx/port_map.json'";
 
@@ -119,11 +147,7 @@ app.get('/api/my-containers', (req, res) => {
 });
 
 // Create container
-app.post('/create-container', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
+app.post('/create-container', requireAuth, (req, res) => {
   const jobId = crypto.randomUUID();
   const commandEnv = {
     ...process.env,
@@ -153,7 +177,7 @@ app.post('/create-container', (req, res) => {
 });
 
 // Job status page
-app.get('/status/:jobId', (req, res) => {
+app.get('/status/:jobId', requireAuth, (req, res) => {
   if (!jobs[req.params.jobId]) {
     return res.status(404).send("Job not found.");
   }
