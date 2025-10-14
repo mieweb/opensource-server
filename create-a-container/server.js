@@ -99,7 +99,10 @@ app.post('/login', loginLimiter, async (req, res) => {
     method: 'post',
     url: 'https://10.15.0.4:8006/api2/json/access/ticket',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: true, // Enable validation
+      servername: 'opensource.mieweb.org' // Expected hostname in the certificate
+    }),
     data: qs.stringify({ username: username + '@pve', password: password })
   });
 
