@@ -72,6 +72,15 @@ install_runtime() {
         else
             echo "Node.js version $version ($major) is not available. Please check the version number. Using latest version instead."
         fi
+    elif [ "${runtime_language,,}" == "deno" ]; then
+        local major=$(echo "$version" | cut -d. -f1)
+        local url="https://dl.deno.land/release/v${version}/deno-aarch64.zip"
+        if curl --output /dev/null --silent --head --fail "$url"
+        then
+            source /var/lib/vz/snippets/helper-scripts/deno_runtime_install.sh "$major"
+        else
+            echo "Deno version $version ($major) is not available. Please check the version number. Using latest version instead."
+        fi
     elif [ "${runtime_language,,}" == "python" ]; then
         IFS='.' read -r -a parts <<< "$version"
 
