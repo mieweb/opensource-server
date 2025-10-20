@@ -7,11 +7,14 @@
     <link href="/style.css" rel="stylesheet">
 </head>
 <body>
+    <div class="navbar">
+        <button class="logout-button" onclick="logout()">Logout</button>
+    </div>
     <div class="main-content-wrapper">
         <div class="login-container">
             <img src="logo.png" alt="Company Logo" class="logo">
             <h2>Create Your Container</h2>
-            <form id="containerForm" method="POST" action="/create-container">
+            <form id="containerForm" method="POST" action="/containers">
                 <label for="CONTAINER_NAME">Container Name</label>
                 <input type="text" id="CONTAINER_NAME" name="CONTAINER_NAME" required>
 
@@ -62,7 +65,7 @@
         const data = Object.fromEntries(formData.entries());
 
         try {
-            const res = await fetch('/create-container', {
+            const res = await fetch('/containers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -122,6 +125,18 @@
             listElement.innerHTML = '<li>Error loading containers.</li>';
         }
     });
+
+    function logout() {
+        fetch('/logout', { method: 'POST' })
+            .then(response => {
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert('Failed to log out.');
+                }
+            })
+            .catch(() => alert('An error occurred while logging out.'));
+    }
 </script>
 
 </body>
