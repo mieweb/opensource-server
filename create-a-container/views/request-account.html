@@ -11,7 +11,7 @@
   <div class="login-container">
     <h2>Request an Opensource Account</h2>
 
-    <form id="accountRequestForm" method="POST" action="/request-account">
+    <form id="accountRequestForm" method="POST" action="/register">
 
       <label for="firstName">First Name</label>
       <input type="text" id="firstName" name="firstName" required>
@@ -49,7 +49,7 @@ document.getElementById('accountRequestForm').addEventListener('submit', async f
   messageDiv.textContent = "Submitting...";
 
   try {
-    const res = await fetch('/request-account', {
+    const res = await fetch('/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -70,6 +70,6 @@ document.getElementById('accountRequestForm').addEventListener('submit', async f
 
 // Script for the new back button
 document.getElementById('backBtn').addEventListener('click', () => {
-  window.location.href = '/index.html';
+  window.location.href = '/';
 });
 </script>

@@ -9,6 +9,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer'); // <-- added
+const axios = require('axios');
+const qs = require('querystring');
+const https = require('https');
 
 const app = express();
 app.use(express.json());
@@ -30,6 +33,37 @@ app.use(session({
 }));
 
 app.use(express.static('public'));
+
+// --- Authentication middleware (single) ---
+// Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+
+  // Heuristics to detect API requests:
+  // - X-Requested-With: XMLHttpRequest (old-style AJAX)
+  // - Accept header prefers JSON (application/json)
+  // - URL path starts with /api/
+  const acceptsJSON = req.get('Accept') && req.get('Accept').includes('application/json');
+  const isAjax = req.get('X-Requested-With') === 'XMLHttpRequest';
+  const isApiPath = req.path && req.path.startsWith('/api/');
+
+  if (acceptsJSON || isAjax || isApiPath) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Otherwise treat as a browser route: include the original URL as a redirect parameter
+  const original = req.originalUrl || req.url || '/';
+  const redirectTo = '/login?redirect=' + encodeURIComponent(original);
+  return res.redirect(redirectTo);
+}
+
+// Serve login page from views (moved from public)
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'login.html'));
+});
+
+// Redirect root to the main form. The form route will enforce authentication
+app.get('/', (req, res) => res.redirect('/containers/new'));
 
 // --- Rate Limiter for Login ---
 const loginLimiter = rateLimit({
@@ -53,50 +87,38 @@ const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 // Serves the main container creation form
-app.get('/form.html', (req, res) => {
-  if (!req.session.user) {
-    return res.redirect('/');
-  }
+app.get('/containers/new', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'form.html'));
 });
 
 // Handles login
-app.post('/login', loginLimiter, (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
-  const runner = spawn('node', ['/root/bin/js/runner.js', 'authenticateUser', username, password]);
-  let stdoutData = '';
-  let stderrData = '';
 
-  runner.stdout.on('data', (data) => {
-    stdoutData += data.toString();
+  const response = await axios.request({
+    method: 'post',
+    url: 'https://10.15.0.4:8006/api2/json/access/ticket',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: true, // Enable validation
+      servername: 'opensource.mieweb.org' // Expected hostname in the certificate
+    }),
+    data: qs.stringify({ username: username + '@pve', password: password })
   });
 
-  runner.stderr.on('data', (data) => {
-    stderrData += data.toString();
-  });
+  if (response.status !== 200) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 
-  runner.on('close', (code) => {
-    if (code !== 0) {
-      console.error("Login script execution error:", stderrData);
-      return res.status(500).json({ error: "Server error during authentication." });
-    }
+  req.session.user = username;
+  req.session.proxmoxUsername = username;
+  req.session.proxmoxPassword = password;
 
-    if (stdoutData.trim() === 'true') {
-      req.session.user = username;
-      req.session.proxmoxUsername = username;
-      req.session.proxmoxPassword = password;
-      return res.json({ success: true, redirect: '/form.html' });
-    } else {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-  });
+  return res.json({ success: true, redirect: req?.query?.redirect || '/' });
 });
 
 // Fetch user's containers
-app.get('/api/my-containers', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+app.get('/api/my-containers', requireAuth, (req, res) => {
   const username = req.session.user.split('@')[0];
   const command = "ssh root@10.15.20.69 'cat /etc/nginx/port_map.json'";
 
@@ -119,11 +141,7 @@ app.get('/api/my-containers', (req, res) => {
 });
 
 // Create container
-app.post('/create-container', (req, res) => {
-  if (!req.session.user) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
+app.post('/containers', requireAuth, (req, res) => {
   const jobId = crypto.randomUUID();
   const commandEnv = {
     ...process.env,
@@ -153,7 +171,7 @@ app.post('/create-container', (req, res) => {
 });
 
 // Job status page
-app.get('/status/:jobId', (req, res) => {
+app.get('/status/:jobId', requireAuth, (req, res) => {
   if (!jobs[req.params.jobId]) {
     return res.status(404).send("Job not found.");
   }
@@ -206,11 +224,11 @@ const requestAccountLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.get('/request-account.html', requestAccountLimiter, (req, res) => {
+app.get('/register', requestAccountLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
 });
 
-app.post('/request-account', (req, res) => {
+app.post('/register', (req, res) => {
   const { firstName, lastName, email, conclusionDate, reason } = req.body;
 
   const details = `
@@ -254,4 +272,16 @@ app.get('/send-test-email', async (req, res) => {
     console.error("Email send error:", err);
     res.status(500).send(`❌ Email failed: ${err.message}`);
   }
+});
+
+// Handles logout
+app.post('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Error destroying session:', err);
+      return res.status(500).json({ error: 'Failed to log out.' });
+    }
+    res.clearCookie('connect.sid'); // Clear the session cookie
+    return res.status(204).send(); // Respond with 204 No Content
+  });
 });

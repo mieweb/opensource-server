@@ -41,10 +41,14 @@ document.getElementById('loginForm').addEventListener('submit', async function (
   const errorMessageDiv = document.getElementById('errorMessage');
 
   try {
-    const res = await fetch('/login', {
+    // If the page was visited with a ?redirect= URL param, include it in the POST so the server can redirect after login
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirect = urlParams.get('redirect') || '/';
+
+    const res = await fetch('/login?redirect=' + encodeURIComponent(redirect), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, redirect })
     });
 
     // First, check if the HTTP response status is successful
@@ -70,6 +74,6 @@ document.getElementById('loginForm').addEventListener('submit', async function (
 });
 
 document.getElementById('signUpBtn').addEventListener('click', () => {
-  window.location.href = '/request-account.html';
+  window.location.href = '/register';
 });
 </script>
