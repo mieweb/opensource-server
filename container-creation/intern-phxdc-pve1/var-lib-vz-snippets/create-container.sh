@@ -72,6 +72,9 @@ LINUX_DISTRO="${17}"
 MULTI_COMPONENTS="${18}"
 ROOT_START_COMMAND="${19}"
 SELF_HOSTED_RUNNER="${20}"
+VERSIONS_DICT=$(echo "${21}" | base64 -d)
+
+echo "PROJECT ROOT: \"$PROJECT_ROOT\""
 
 # Pick the correct template to clone =====
 
@@ -115,7 +118,7 @@ if [ "${GH_ACTION^^}" != "Y" ] || [ "${SELF_HOSTED_RUNNER^^}" == "N" ]; then
 		--onboot 1 > /dev/null 2>&1
 
 	pct start $CONTAINER_ID > /dev/null 2>&1
-	pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser > /dev/null 2>&1
+	pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role VMUser2 > /dev/null 2>&1
 
 	# Get the Container IP Address and install some packages
 

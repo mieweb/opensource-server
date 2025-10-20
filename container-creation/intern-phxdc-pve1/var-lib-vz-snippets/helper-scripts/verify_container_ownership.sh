@@ -22,3 +22,4 @@ fi
 if [ "$CONTAINER_OWNERSHIP" != "$PROXMOX_USERNAME" ] && [ "$CONTAINER_OWNERSHIP" != "null" ]; then
     echo "❌ You do not own the container with name \"$CONTAINER_NAME\"."
     outputError 1 "You do not own the container with name \"$CONTAINER_NAME\"."
+fi
