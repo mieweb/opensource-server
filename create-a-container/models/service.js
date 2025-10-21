@@ -4,8 +4,6 @@ module.exports = (sequelize, DataTypes) => {
   class Service extends Model {
     static associate(models) {
       Service.belongsTo(models.Container, { foreignKey: 'containerId' });
-      Service.hasOne(models.Layer4Service, { foreignKey: 'serviceId', as: 'layer4Info' });
-      Service.hasOne(models.HttpService, { foreignKey: 'serviceId', as: 'httpInfo' });
     }
   }
   Service.init({
@@ -20,7 +18,19 @@ module.exports = (sequelize, DataTypes) => {
     internalPort: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false
-    }
+    },
+    externalPort: {
+      type: Sequelize.INTEGER.UNSIGNED,
+      allowNull: true  // NULL for http services
+    },
+    tls: {
+      type: Sequelize.BOOLEAN,
+      allowNull: true  // only used for tcp services
+    },
+    externalHostname: {
+      type: Sequelize.STRING(255),
+      allowNull: true  // only used for http services
+    },
   }, {
     sequelize,
     modelName: 'Service',

@@ -28,60 +28,17 @@ module.exports = {
         type: Sequelize.INTEGER.UNSIGNED,
         allowNull: false
       },
-      createdAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-      },
-      updatedAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-      }
-    });
-
-    // tcp_udp_service_info for layer 4 services
-    await queryInterface.createTable('Layer4Services', {
-      serviceId: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        references: {
-          model: 'Services',
-          key: 'id'
-        },
-        onDelete: 'CASCADE'
-      },
       externalPort: {
         type: Sequelize.INTEGER.UNSIGNED,
-        allowNull: false
+        allowNull: true  // NULL for http services
       },
       tls: {
-        // only used for tcp services; allowed to be null for udp
         type: Sequelize.BOOLEAN,
-        allowNull: true
-      },
-      createdAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-      },
-      updatedAt: {
-        allowNull: false,
-        type: Sequelize.DATE,
-      }
-    });
-
-    // http_service_info for HTTP services
-    await queryInterface.createTable('HttpServices', {
-      serviceId: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        references: {
-          model: 'Services',
-          key: 'id'
-        },
-        onDelete: 'CASCADE'
+        allowNull: true  // only used for tcp services
       },
       externalHostname: {
         type: Sequelize.STRING(255),
-        allowNull: false
+        allowNull: true  // only used for http services
       },
       createdAt: {
         allowNull: false,
