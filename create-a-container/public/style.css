@@ -192,3 +192,42 @@ select:focus {
 .navbar .logout-button:hover {
     background-color: #c0392b;
 }
+
+#signUpBtn {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+#signUpBtn:hover {
+    background-color: #2980b9;
+}
+
+#signUpBtn {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+#signUpBtn:hover {
+    background-color: #2980b9;
+}
+
+.signup-section {
+    margin-top: 1.5rem;
+}
+
