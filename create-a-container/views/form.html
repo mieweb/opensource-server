@@ -44,12 +44,6 @@
                 &copy; 2025 Medical Informatics Engineering
             </div>
         </div>
-
-        <div class="container-list-box">
-            <h3>Your Active Containers</h3>
-            <ul id="active-containers-list">
-                </ul>
-        </div>
     </div>
 
 <script>
@@ -82,47 +76,6 @@
         } catch (err) {
             console.error('Fetch error:', err);
             errorDiv.textContent = 'A network error occurred.';
-        }
-    });
-
-    // fetch and display active containers
-    document.addEventListener('DOMContentLoaded', async () => {
-        const listElement = document.getElementById('active-containers-list');
-        try {
-            const response = await fetch('/api/my-containers');
-            if (!response.ok) {
-                listElement.innerHTML = '<li>Could not load containers.</li>';
-                return;
-            }
-            const containers = await response.json();
-            if (containers.length === 0) {
-                listElement.innerHTML = '<li>No active containers found.</li>';
-                return;
-            }
-
-            // Clear previous list items
-            listElement.innerHTML = ''; 
-
-            containers.forEach(c => {
-                const item = document.createElement('li');
-                let portsHtml = '<ul>';
-                for (const [protocol, port] of Object.entries(c.ports)) {
-                    portsHtml += `<li><strong>${protocol.toUpperCase()}:</strong> ${port}</li>`;
-                }
-                portsHtml += '</ul>';
-
-                item.innerHTML = `
-                    <h4>${c.name}</h4>
-                    <p><strong>IP:</strong> ${c.ip}</p>
-                    <p><strong>OS:</strong> ${c.os_release}</p>
-                    ${portsHtml}
-                `;
-                listElement.appendChild(item);
-            });
-
-        } catch (error) {
-            console.error("Failed to fetch containers:", error);
-            listElement.innerHTML = '<li>Error loading containers.</li>';
         }
     });
 

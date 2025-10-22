@@ -12,9 +12,14 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
+const { Container } = require('./models');
 
 const app = express();
 app.use(express.json());
+
+// setup views
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'ejs');
 
 app.set('trust proxy', 1);
 
@@ -58,7 +63,7 @@ app.get('/login', (req, res) => {
 });
 
 // Redirect root to the main form. The form route will enforce authentication
-app.get('/', (req, res) => res.redirect('/containers/new'));
+app.get('/', (req, res) => res.redirect('/containers'));
 
 // --- Rate Limiter for Login ---
 const loginLimiter = rateLimit({
@@ -113,26 +118,30 @@ app.post('/login', loginLimiter, async (req, res) => {
 });
 
 // Fetch user's containers
-app.get('/api/my-containers', requireAuth, (req, res) => {
+app.get('/containers', requireAuth, async (req, res) => {
   const username = req.session.user.split('@')[0];
-  const command = "ssh root@10.15.20.69 'cat /etc/nginx/port_map.json'";
+  // eager-load related services
+  const containers = await Container.findAll({ where: { username }, include: [{ association: 'services' }] });
 
-  exec(command, (err, stdout, stderr) => {
-    if (err) {
-      console.error("Error fetching port_map.json:", stderr);
-      return res.status(500).json({ error: "Could not fetch container list." });
-    }
-    try {
-      const portMap = JSON.parse(stdout);
-      const userContainers = Object.entries(portMap)
-        .filter(([_, details]) => details && details.user === username)
-        .map(([name, details]) => ({ name, ...details }));
-      res.json(userContainers);
-    } catch (parseError) {
-      console.error("Error parsing port_map.json:", parseError);
-      res.status(500).json({ error: "Could not parse container list." });
-    }
+  // Map containers to view models
+  const rows = containers.map(c => {
+    const services = c.services || [];
+    // sshPort: externalPort of service with type tcp and internalPort 22
+    const ssh = services.find(s => s.type === 'tcp' && Number(s.internalPort) === 22);
+    const sshPort = ssh ? ssh.externalPort : null;
+    // httpPort: internalPort of first service type http
+    const http = services.find(s => s.type === 'http');
+    const httpPort = http ? http.internalPort : null;
+    return {
+      hostname: c.hostname,
+      ipv4Address: c.ipv4Address,
+      osRelease: c.osRelease,
+      sshPort,
+      httpPort
+    };
   });
+
+  return res.render('containers', { rows });
 });
 
 // Create container
