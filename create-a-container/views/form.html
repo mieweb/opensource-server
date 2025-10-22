@@ -4,14 +4,21 @@
     <meta charset="UTF-8">
     <title>MIE Container Creation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
     <link href="/style.css" rel="stylesheet">
 </head>
 <body>
-    <div class="navbar">
-        <form id="logoutForm" method="POST" action="/logout" style="display:inline;">
-            <button class="logout-button">Logout</button>
-        </form>
-    </div>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/containers">Containers</a></li>
+                <li class="breadcrumb-item active" aria-current="page">New</li>
+            </ol>
+            <form method="POST" action="/logout">
+                <button type="submit" class="btn btn-danger logout-button">Logout</button>
+            </form>
+        </div>
+    </nav>
     <div class="main-content-wrapper">
         <div class="login-container">
             <img src="/logo.png" alt="Company Logo" class="logo">
