@@ -16,6 +16,7 @@ const { Container } = require('./models');
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Parse form data
 
 // setup views
 app.set('views', path.join(__dirname, 'views'));
@@ -147,9 +148,15 @@ app.get('/containers', requireAuth, async (req, res) => {
 // Create container
 app.post('/containers', requireAuth, (req, res) => {
   const jobId = crypto.randomUUID();
+  
+  // Map standard form field names to the environment variable names expected by the script
   const commandEnv = {
     ...process.env,
-    ...req.body,
+    CONTAINER_NAME: req.body.hostname,
+    LINUX_DISTRIBUTION: req.body.osRelease,
+    HTTP_PORT: req.body.httpPort,
+    PUBLIC_KEY: req.body.publicKey || '',
+    AI_CONTAINER: req.body.aiContainer || 'N',
     PROXMOX_USERNAME: req.session.proxmoxUsername,
     PROXMOX_PASSWORD: req.session.proxmoxPassword
   };

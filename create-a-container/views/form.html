@@ -24,23 +24,23 @@
             <img src="/logo.png" alt="Company Logo" class="logo">
             <h2>Create Your Container</h2>
             <form id="containerForm" method="POST" action="/containers">
-                <label for="CONTAINER_NAME">Container Name</label>
-                <input type="text" id="CONTAINER_NAME" name="CONTAINER_NAME" required>
+                <label for="hostname">Container Hostname</label>
+                <input type="text" id="hostname" name="hostname" required>
 
-                <label for="LINUX_DISTRIBUTION">Linux Distro</label>
-                <select id="LINUX_DISTRIBUTION" name="LINUX_DISTRIBUTION" required>
+                <label for="osRelease">Linux Distribution</label>
+                <select id="osRelease" name="osRelease" required>
                     <option value="debian">Debian 12 (Bookworm)</option>
                     <option value="rocky">Rocky 9</option>
                 </select>
 
-                <label for="HTTP_PORT">HTTP Port</label>
-                <input type="number" id="HTTP_PORT" name="HTTP_PORT" min="80" max="60000" value="80" required>
+                <label for="httpPort">HTTP Port</label>
+                <input type="number" id="httpPort" name="httpPort" min="80" max="60000" value="80" required>
 
-                <label for="PUBLIC_KEY">SSH Public Key (optional)</label>
-                <input type="text" id="PUBLIC_KEY" name="PUBLIC_KEY">
+                <label for="publicKey">SSH Public Key (optional)</label>
+                <input type="text" id="publicKey" name="publicKey">
 
-                <label for="AI_CONTAINER">AI Project Type</label>
-                <select id="AI_CONTAINER" name="AI_CONTAINER">
+                <label for="aiContainer">AI Project Type</label>
+                <select id="aiContainer" name="aiContainer">
                     <option value="N" selected>No</option>
                     <option value="PHOENIX">Phoenix AI Server</option>
                     <option value="FORTWAYNE">Fort Wayne AI Server</option>
@@ -54,40 +54,5 @@
             </div>
         </div>
     </div>
-
-<script>
-    // Existing script for form submission
-    document.getElementById('containerForm').addEventListener('submit', async function(event) {
-        event.preventDefault();
-
-        const errorDiv = document.getElementById('formError');
-
-        errorDiv.textContent = 'Submitting... please wait.';
-
-        const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
-
-        try {
-            const res = await fetch('/containers', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                const result = await res.json();
-                if (result.redirect) {
-                    window.location.href = result.redirect;
-                }
-            } else {
-                errorDiv.textContent = 'An error occurred on the server.';
-            }
-        } catch (err) {
-            console.error('Fetch error:', err);
-            errorDiv.textContent = 'A network error occurred.';
-        }
-    });
-</script>
-
 </body>
 </html>
