@@ -37,6 +37,15 @@ module.exports = {
         allowNull: false,
         unique: true
       },
+      aiContainer: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      publicKey: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE

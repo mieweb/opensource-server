@@ -42,6 +42,15 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(45),
       allowNull: false,
       unique: true
+    },
+    aiContainer: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    publicKey: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     sequelize,
