@@ -20,11 +20,6 @@ app.set('trust proxy', 1);
 
 const jobs = {};
 
-// --- Middleware Setup ---
-if (!process.env.SESSION_SECRET) {
-  throw new Error("SESSION_SECRET is not set in environment!");
-}
-
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
