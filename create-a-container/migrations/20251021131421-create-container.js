@@ -38,9 +38,9 @@ module.exports = {
         unique: true
       },
       aiContainer: {
-        type: Sequelize.BOOLEAN,
+        type: Sequelize.STRING(50),
         allowNull: false,
-        defaultValue: false
+        defaultValue: 'N'
       },
       publicKey: {
         type: Sequelize.TEXT,

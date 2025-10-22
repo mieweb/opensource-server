@@ -44,9 +44,9 @@ module.exports = (sequelize, DataTypes) => {
       unique: true
     },
     aiContainer: {
-      type: DataTypes.BOOLEAN,
+      type: DataTypes.STRING(50),
       allowNull: false,
-      defaultValue: false
+      defaultValue: 'N'
     },
     publicKey: {
       type: DataTypes.TEXT,
