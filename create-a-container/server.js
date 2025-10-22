@@ -286,6 +286,6 @@ app.post('/logout', (req, res) => {
       return res.status(500).json({ error: 'Failed to log out.' });
     }
     res.clearCookie('connect.sid'); // Clear the session cookie
-    return res.status(204).send(); // Respond with 204 No Content
+    return res.redirect('/');
   });
 });

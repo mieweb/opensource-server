@@ -8,7 +8,9 @@
 </head>
 <body>
     <div class="navbar">
-        <button class="logout-button" onclick="logout()">Logout</button>
+        <form id="logoutForm" method="POST" action="/logout" style="display:inline;">
+            <button class="logout-button">Logout</button>
+        </form>
     </div>
     <div class="main-content-wrapper">
         <div class="login-container">
@@ -78,18 +80,6 @@
             errorDiv.textContent = 'A network error occurred.';
         }
     });
-
-    function logout() {
-        fetch('/logout', { method: 'POST' })
-            .then(response => {
-                if (response.ok) {
-                    window.location.href = '/';
-                } else {
-                    alert('Failed to log out.');
-                }
-            })
-            .catch(() => alert('An error occurred while logging out.'));
-    }
 </script>
 
 </body>
