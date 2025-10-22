@@ -155,7 +155,6 @@ app.post('/containers', requireAuth, (req, res) => {
     CONTAINER_NAME: req.body.hostname,
     LINUX_DISTRIBUTION: req.body.osRelease,
     HTTP_PORT: req.body.httpPort,
-    PUBLIC_KEY: req.body.publicKey || '',
     AI_CONTAINER: req.body.aiContainer || 'N',
     PROXMOX_USERNAME: req.session.proxmoxUsername,
     PROXMOX_PASSWORD: req.session.proxmoxPassword

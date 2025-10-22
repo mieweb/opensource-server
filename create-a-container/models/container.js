@@ -47,10 +47,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'N'
-    },
-    publicKey: {
-      type: DataTypes.TEXT,
-      allowNull: true
     }
   }, {
     sequelize,

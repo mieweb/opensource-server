@@ -42,10 +42,6 @@ module.exports = {
         allowNull: false,
         defaultValue: 'N'
       },
-      publicKey: {
-        type: Sequelize.TEXT,
-        allowNull: true
-      },
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE
