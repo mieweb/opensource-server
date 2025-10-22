@@ -20,15 +20,15 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     externalPort: {
-      type: Sequelize.INTEGER.UNSIGNED,
+      type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true  // NULL for http services
     },
     tls: {
-      type: Sequelize.BOOLEAN,
+      type: DataTypes.BOOLEAN,
       allowNull: true  // only used for tcp services
     },
     externalHostname: {
-      type: Sequelize.STRING(255),
+      type: DataTypes.STRING(255),
       allowNull: true  // only used for http services
     },
   }, {
