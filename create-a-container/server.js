@@ -1,7 +1,6 @@
 require('dotenv').config();
 
 const express = require('express');
-const bodyParser = require('body-parser');
 const session = require('express-session');
 const { spawn, exec } = require('child_process');
 const path = require('path');
