@@ -12,7 +12,7 @@ const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
 const { Container, Service } = require('./models');
-const serviceMap = require('./bin/services.json');
+const serviceMap = require('./data/services.json');
 
 const app = express();
 app.use(express.json());

@@ -7,7 +7,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const servicesLookup = require(path.resolve(__dirname, 'services.json'));
+const servicesLookup = require('../data/services.json');
 
 const PROXMOX_URL = process.env.PROXMOX_URL;
 const PROXMOX_USER = process.env.PROXMOX_USER;
