@@ -184,46 +184,47 @@ app.post('/containers', async (req, res) => {
         jobs[jobId].status = (code === 0) ? 'completed' : 'failed';
       });
 
-      res.json({ success: true, redirect: `/status/${jobId}` });
+      return res.redirect(`/status/${jobId}`);
     });
-  } else {
-    const container = await Container.create(req.body);
-    const httpService = await Service.create({
-      containerId: container.id,
-      type: 'http',
-      internalPort: req.body.httpPort,
-      externalPort: null,
-      tls: null,
-      externalHostname: container.hostname
-    });
-    const sshService = await Service.create({
-      containerId: container.id,
-      type: 'tcp',
-      internalPort: 22,
-      externalPort: req.body.sshPort,
-      tls: false,
-      externalHostname: null
-    });
-    if (req.body.additionalPorts && req.body.additionalProtocols) {
-      const additionalPorts = req.body.additionalPorts.split(',').map(p => p.trim());
-      const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
-      for (let i = 0; i < additionalPorts.length; i++) {
-        const port = parseInt(additionalPorts[i], 10);
-        const protocol = additionalProtocols[i].toLowerCase();
-        const defaultPort = serviceMap[protocol].port;
-        const underlyingProtocol = serviceMap[protocol].protocol;
-        const additionalService = await Service.create({
-          containerId: container.id,
-          type: underlyingProtocol,
-          internalPort: defaultPort,
-          externalPort: port,
-          tls: false,
-          externalHostname: null
-        });
-      }
-    }
-    return res.json({ success: true });
   }
+  
+  // handle non-init container creation (e.g., admin API)
+  const container = await Container.create(req.body);
+  const httpService = await Service.create({
+    containerId: container.id,
+    type: 'http',
+    internalPort: req.body.httpPort,
+    externalPort: null,
+    tls: null,
+    externalHostname: container.hostname
+  });
+  const sshService = await Service.create({
+    containerId: container.id,
+    type: 'tcp',
+    internalPort: 22,
+    externalPort: req.body.sshPort,
+    tls: false,
+    externalHostname: null
+  });
+  if (req.body.additionalPorts && req.body.additionalProtocols) {
+    const additionalPorts = req.body.additionalPorts.split(',').map(p => p.trim());
+    const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
+    for (let i = 0; i < additionalPorts.length; i++) {
+      const port = parseInt(additionalPorts[i], 10);
+      const protocol = additionalProtocols[i].toLowerCase();
+      const defaultPort = serviceMap[protocol].port;
+      const underlyingProtocol = serviceMap[protocol].protocol;
+      const additionalService = await Service.create({
+        containerId: container.id,
+        type: underlyingProtocol,
+        internalPort: defaultPort,
+        externalPort: port,
+        tls: false,
+        externalHostname: null
+      });
+    }
+  }
+  return res.json({ success: true });
 });
 
 // Job status page
