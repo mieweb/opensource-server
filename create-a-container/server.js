@@ -6,7 +6,7 @@ const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
-const rateLimit = require('express-rate-limit');
+const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
@@ -34,6 +34,12 @@ app.use(session({
 }));
 
 app.use(express.static('public'));
+
+// setup rate limiter, maximum of 100 requests per 15 minutes
+app.use(RateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+}));
 
 // --- Authentication middleware (single) ---
 // Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
@@ -66,13 +72,6 @@ app.get('/login', (req, res) => {
 // Redirect root to the main form. The form route will enforce authentication
 app.get('/', (req, res) => res.redirect('/containers'));
 
-// --- Rate Limiter for Login ---
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
-  message: { error: "Too many login attempts. Please try again later." }
-});
-
 // --- Nodemailer Setup ---
 const transporter = nodemailer.createTransport({
   host: "opensource.mieweb.org",
@@ -93,7 +92,7 @@ app.get('/containers/new', requireAuth, (req, res) => {
 });
 
 // Handles login
-app.post('/login', loginLimiter, async (req, res) => {
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   const response = await axios.request({
@@ -271,16 +270,7 @@ app.get('/api/stream/:jobId', (req, res) => {
 });
 
 // Serve the account request form
-
-// Apply a rate limiter to protect the request-account form
-const requestAccountLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute window
-  max: 10, // limit each IP to 10 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.get('/register', requestAccountLimiter, (req, res) => {
+app.get('/register', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
 });
 
