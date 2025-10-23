@@ -24,6 +24,8 @@
             <img src="/logo.png" alt="Company Logo" class="logo">
             <h2>Create Your Container</h2>
             <form id="containerForm" method="POST" action="/containers">
+                <input type="hidden" name="init" value="true">
+                
                 <label for="hostname">Container Hostname</label>
                 <input type="text" id="hostname" name="hostname" required>
 

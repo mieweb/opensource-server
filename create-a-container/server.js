@@ -12,7 +12,8 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
-const { Container } = require('./models');
+const { Container, Service } = require('./models');
+const serviceMap = require('./bin/services.json');
 
 const app = express();
 app.use(express.json());
@@ -146,38 +147,83 @@ app.get('/containers', requireAuth, async (req, res) => {
 });
 
 // Create container
-app.post('/containers', requireAuth, (req, res) => {
-  const jobId = crypto.randomUUID();
+app.post('/containers', async (req, res) => {
+  const isInit = req.body.init === 'true' || req.body.init === true;
   
-  // Map standard form field names to the environment variable names expected by the script
-  const commandEnv = {
-    ...process.env,
-    CONTAINER_NAME: req.body.hostname,
-    LINUX_DISTRIBUTION: req.body.osRelease,
-    HTTP_PORT: req.body.httpPort,
-    AI_CONTAINER: req.body.aiContainer || 'N',
-    PROXMOX_USERNAME: req.session.proxmoxUsername,
-    PROXMOX_PASSWORD: req.session.proxmoxPassword
-  };
-  const scriptPath = '/opt/container-creator/create-container-wrapper.sh';
-  
-  jobs[jobId] = { status: 'running', output: '' };
+  // Only require auth for init=true (user-initiated container creation)
+  if (isInit) {
+    return requireAuth(req, res, () => {
+      // User-initiated container creation via web form
+      const jobId = crypto.randomUUID();
+      
+      // Map standard form field names to the environment variable names expected by the script
+      const commandEnv = {
+        ...process.env,
+        CONTAINER_NAME: req.body.hostname,
+        LINUX_DISTRIBUTION: req.body.osRelease,
+        HTTP_PORT: req.body.httpPort,
+        AI_CONTAINER: req.body.aiContainer || 'N',
+        PROXMOX_USERNAME: req.session.proxmoxUsername,
+        PROXMOX_PASSWORD: req.session.proxmoxPassword
+      };
+      const scriptPath = '/opt/container-creator/create-container-wrapper.sh';
+      
+      jobs[jobId] = { status: 'running', output: '' };
 
-  const command = `${scriptPath} 2>&1`;
-  const child = spawn('bash', ['-c', command], { env: commandEnv });
+      const command = `${scriptPath} 2>&1`;
+      const child = spawn('bash', ['-c', command], { env: commandEnv });
 
-  child.stdout.on('data', (data) => {
-    const message = data.toString();
-    console.log(`[${jobId}]: ${message.trim()}`);
-    jobs[jobId].output += message;
-  });
+      child.stdout.on('data', (data) => {
+        const message = data.toString();
+        console.log(`[${jobId}]: ${message.trim()}`);
+        jobs[jobId].output += message;
+      });
 
-  child.on('close', (code) => {
-    console.log(`[${jobId}] process exited with code ${code}`);
-    jobs[jobId].status = (code === 0) ? 'completed' : 'failed';
-  });
+      child.on('close', (code) => {
+        console.log(`[${jobId}] process exited with code ${code}`);
+        jobs[jobId].status = (code === 0) ? 'completed' : 'failed';
+      });
 
-  res.json({ success: true, redirect: `/status/${jobId}` });
+      res.json({ success: true, redirect: `/status/${jobId}` });
+    });
+  } else {
+    const container = await Container.create(req.body);
+    const httpService = await Service.create({
+      containerId: container.id,
+      type: 'http',
+      internalPort: req.body.httpPort,
+      externalPort: null,
+      tls: null,
+      externalHostname: container.hostname
+    });
+    const sshService = await Service.create({
+      containerId: container.id,
+      type: 'tcp',
+      internalPort: 22,
+      externalPort: req.body.sshPort,
+      tls: false,
+      externalHostname: null
+    });
+    if (req.body.additionalPorts && req.body.additionalProtocols) {
+      const additionalPorts = req.body.additionalPorts.split(',').map(p => p.trim());
+      const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
+      for (let i = 0; i < additionalPorts.length; i++) {
+        const port = parseInt(additionalPorts[i], 10);
+        const protocol = additionalProtocols[i].toLowerCase();
+        const defaultPort = serviceMap[protocol].port;
+        const underlyingProtocol = serviceMap[protocol].protocol;
+        const additionalService = await Service.create({
+          containerId: container.id,
+          type: underlyingProtocol,
+          internalPort: defaultPort,
+          externalPort: port,
+          tls: false,
+          externalHostname: null
+        });
+      }
+    }
+    return res.json({ success: true });
+  }
 });
 
 // Job status page
