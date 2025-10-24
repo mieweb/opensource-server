@@ -5,7 +5,6 @@ const session = require('express-session');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
-const fs = require('fs');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
