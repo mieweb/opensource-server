@@ -14,31 +14,29 @@ const { Container, Service } = require('./models');
 const serviceMap = require('./data/services.json');
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // Parse form data
 
 // setup views
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
-
 app.set('trust proxy', 1);
 
-const jobs = {};
-
+// setup middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Parse form data
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: true,
   cookie: { secure: true }
 }));
-
 app.use(express.static('public'));
-
-// setup rate limiter, maximum of 100 requests per 15 minutes
 app.use(RateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
 }));
+
+// define globals
+const jobs = {};
 
 // --- Authentication middleware (single) ---
 // Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
