@@ -113,14 +113,14 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-	A[Service Declared (HTTP or TCP/UDP)] --> B[Persist Service in DB]
-	B --> C[Generate Virtual Host / Stream Mapping]
-	C --> D[Expose via Config Endpoint]
-	D --> E[NGINX Pulls Config]
-	E --> F{Config Valid?}
-	F -->|No| G[Rollback Previous Config]
-	F -->|Yes| H[Reload NGINX]
-	H --> I[Public Access via LB]
+    A[Service declared] --> B[Persist in DB]
+    B --> C[Generate mapping]
+    C --> D[Expose via config endpoint]
+    D --> E[NGINX pulls config]
+    E --> F{Valid?}
+    F -->|No| G[Rollback]
+    F -->|Yes| H[Reload]
+    H --> I[Public access]
 ```
 
 ## Configuration Propagation
