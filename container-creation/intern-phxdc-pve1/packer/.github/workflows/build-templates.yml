@@ -1,0 +1,45 @@
+name: Build and Upload Templates
+on:
+  schedule:
+    - cron: "0 4 * * *" # Nightly at 4 AM
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PROXMOX_API_URL: ${{ secrets.PROXMOX_API_URL }}
+      PROXMOX_TOKEN_ID: ${{ secrets.PROXMOX_TOKEN_ID }}
+      PROXMOX_TOKEN_SECRET: ${{ secrets.PROXMOX_TOKEN_SECRET }}
+      # Define the template version ONCE for the whole job
+      TEMPLATE_VERSION: ${{ format('{0:yyyyMMdd}', github.run_started_at) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y packer ansible zstd python3-requests
+
+      # --- Build Debian 12 ---
+      - name: Build Debian 12 Template
+        run: |
+          packer build \
+            -var "template_version=${TEMPLATE_VERSION}" \
+            debian12.pkr.hcl
+      
+      - name: Upload Debian 12 Template
+        run: |
+          python3 api/proxmox_upload.py \
+            --file /tmp/output/debian12-fungible_${TEMPLATE_VERSION}.tar.xz
+
+      # --- Build Rocky 9 ---
+      - name: Build Rocky 9 Template
+        run: |
+          packer build \
+            -var "template_version=${TEMPLATE_VERSION}" \
+            rocky9.pkr.hcl
+
+      - name: Upload Rocky 9 Template
+        run: |
+          python3 api/proxmox_upload.py \
+            --file /tmp/output/rocky9-fungible_${TEMPLATE_VERSION}.tar.xz

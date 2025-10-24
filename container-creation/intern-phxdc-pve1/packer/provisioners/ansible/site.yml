@@ -1,0 +1,56 @@
+# packer/provisioners/ansible/site.yml
+---
+- name: Apply base fungible configuration
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    - name: Ensure common packages are installed
+      ansible.builtin.package:
+        name:
+          - vim
+          - curl
+          - sudo
+          - wget
+          - ca-certificates
+          - nano
+          - git
+        state: present
+
+    - name: Set up /etc/motd branding
+      ansible.builtin.copy:
+        dest: /etc/motd
+        content: |
+          This will be replaced by logic to deploy container information.
+          This container image was built automatically via Packer and Ansible.
+
+    - name: Configure system DNS (common)
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: |
+          nameserver 1.1.1.1
+          nameserver 8.8.8.8
+      when: ansible_os_family in ['Debian', 'RedHat']
+
+    - name: Copy pown.sh (disabled until first boot)
+      ansible.builtin.copy:
+        src: files/pown.sh
+        dest: /usr/local/bin/pown.sh
+        mode: '0755'
+
+    - name: Copy Wazuh placeholder registration script
+      ansible.builtin.copy:
+        dest: /etc/wazuh-agent/init_disabled
+        content: |
+          #!/bin/bash
+          # Registration disabled in build context; runs on first boot only.
+        mode: '0755'
+
+    - name: Clean temporary or build-specific files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/apt/lists/*
+        - /var/cache/dnf
+        - /tmp/*
