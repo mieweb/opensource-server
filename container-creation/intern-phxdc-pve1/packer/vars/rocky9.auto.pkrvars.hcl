@@ -1,1 +1,1 @@
-template_name = "rocky9-fungible"
+template_name = "rocky9-lxc"
