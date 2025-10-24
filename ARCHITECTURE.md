@@ -7,7 +7,7 @@ The goal of `opensource-server` is to provide an integrated, self-service datace
 1. A user authenticates via LDAP-backed credentials in the Web UI or API.
 2. The manager (`create-a-container`) provisions a container from a Proxmox template, tagging it with template version + admin script commit hash.
 3. The container boots, receives its IP via DHCP, which updates DNS (DDNS) with an internal FQDN under `cluster.mieweb.org`.
-4. User and admin provisioning scripts run (cloud-init style) to configure declared services (HTTP, TCP, UDP) inside the container.
+4. The container boots with admin provisioning artifacts already baked into the template; only user-provided provisioning scripts (cloud-init style) run now to configure declared services (HTTP, TCP, UDP) inside the container.
 5. The manager records services in MariaDB. HTTP services create virtual host mappings; Layer 4 services allocate inbound ports.
 6. The NGINX load balancer periodically pulls generated configuration (including hostnames and stream mappings) from the manager API and reloads if valid.
 7. External traffic to `*.opensource.mieweb.org` (public domain via Cloudflare) is NATed to the internal NGINX. TLS termination is handled centrally (wildcard cert) with HTTP/2 and HTTP/3 enabled.
@@ -95,7 +95,6 @@ sequenceDiagram
 	CT->>DHCP: DHCP Discover
 	DHCP-->>CT: Lease (IPv4 + search domain)
 	DHCP->>DNS: DDNS update (A record)
-	CT->>CT: Run admin provisioning scripts
 	CT->>CT: Run user provisioning scripts
 	CT->>MGR: (optional agent) Report service readiness
 	MGR->>DB: Persist services
@@ -104,7 +103,7 @@ sequenceDiagram
 	NGINX->>NGINX: Validate & reload
 	Dev->>MGR: Check container status / outdated flag
 	MGR->>JOB: (Scheduled) Template rebuild nightly
-	JOB->>PROX: Rebuild templates
+	JOB->>PROX: Rebuild templates (apply admin provisioning scripts)
 	JOB->>MGR: New template hash available
 	MGR->>DB: Update reference hash
 	Dev->>MGR: Trigger re-provision (if outdated)
