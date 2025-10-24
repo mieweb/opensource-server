@@ -141,6 +141,16 @@ app.get('/containers', requireAuth, async (req, res) => {
   return res.render('containers', { rows });
 });
 
+// Generate nginx configuration for a container
+app.get('/nginx.conf', async (req, res) => {
+  const services = await Service.findAll({
+    where: { type: 'http' },
+    include: [{ model: Container }]
+  });
+  res.contentType('text/plain');
+  return res.render('nginx-conf', { services });
+});
+
 // Create container
 app.post('/containers', async (req, res) => {
   const isInit = req.body.init === 'true' || req.body.init === true;
