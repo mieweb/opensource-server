@@ -169,6 +169,7 @@ elif [[ "${AI_CONTAINER^^}" == "FORTWAYNE" ]]; then
     CTID_TEMPLATE="103"
     # allocate nextid directly on Fort Wayne
     CONTAINER_ID=$(ssh root@10.250.0.2 pvesh get /cluster/nextid)
+    CONTAINER_ID=$((CONTAINER_ID + 20000))
 
     echo "DEBUG: Cloning on Fort Wayne (10.250.0.2) CTID_TEMPLATE=${CTID_TEMPLATE} -> CONTAINER_ID=${CONTAINER_ID}"
     ssh root@10.250.0.2 pct clone $CTID_TEMPLATE $CONTAINER_ID \
