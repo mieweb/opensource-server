@@ -112,7 +112,7 @@ EOF
   if "${test_script}"; then
     if [[ -f "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf" ]]; then
       echo -e "${GREEN}✓ Test passed: Config file created${NC}"
-      if [[ -f "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.etag" ]]; then
+      if [[ -f "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf.etag" ]]; then
         echo -e "${GREEN}✓ Test passed: ETag file created${NC}"
       else
         echo -e "${RED}✗ Test failed: ETag file not created${NC}"
@@ -134,7 +134,7 @@ test_etag_cache_hit() {
   
   # Setup: Create existing config and ETag
   echo "# Existing config" > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf"
-  echo '"mock-etag-12345"' > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.etag"
+  echo '"mock-etag-12345"' > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf.etag"
   
   # Create a modified version of the script
   local test_script="${TEST_DIR}/pull-config-etag-test.sh"
@@ -224,7 +224,7 @@ test_validation_rollback() {
   
   # Setup: Create existing valid config
   echo "# Valid existing config" > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf"
-  echo '"mock-etag-old"' > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.etag"
+  echo '"mock-etag-old"' > "${TEST_DIR}/etc/nginx/conf.d/reverse-proxy.conf.etag"
   
   # Create a modified version of the script
   local test_script="${TEST_DIR}/pull-config-rollback-test.sh"
