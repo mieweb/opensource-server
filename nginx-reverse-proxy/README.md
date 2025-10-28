@@ -80,7 +80,7 @@ sudo chmod +x /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
 ### 4. Initial Configuration Pull
 ```bash
 # Run script manually to get initial configuration
-# No need to pre-create the config file - the script handles first run
+# No need to pre-create the config file - the script handles first run when no existing configuration exists
 sudo /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
 ```
 
@@ -120,7 +120,7 @@ To change the schedule, edit `/etc/cron.d/nginx-pull-config` with standard cron 
 # Every day at midnight: 0 0 * * *
 ```
 
-**Note**: Thanks to ETag-based caching, running the script every minute has minimal overhead. The script only downloads and reloads nginx when the configuration actually changes. Most runs will exit early with a 304 Not Modified response.
+**Note**: Thanks to ETag-based caching, running the script every minute has minimal overhead. After the first successful run, the script only downloads and reloads nginx when the configuration actually changes. Most runs will exit early with a 304 Not Modified response.
 
 ### Optimizations
 
