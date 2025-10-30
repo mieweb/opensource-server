@@ -31,8 +31,8 @@ download_config() {
     -sSL
   )
   
-  # Add ETag header if it exists
-  if [[ -f "${ETAG_FILE}" ]]; then
+  # Add ETag header if it exists and conf file exists
+  if [[ -f "${CONF_FILE}" ]] && [[ -f "${ETAG_FILE}" ]]; then
     local etag
     etag=$(cat "${ETAG_FILE}")
     curl_cmd+=(-H "If-None-Match: ${etag}")
@@ -84,8 +84,8 @@ fi
 # Move new config into place
 mv "${TEMP_FILE}" "${CONF_FILE}"
 
-# Test the new configuration
-if ! nginx -t; then
+# Test the new configuration (suppress output to avoid cron noise)
+if ! nginx -t >/dev/null 2>&1; then
   # Restore backup if it exists
   if [[ -f "${BACKUP_FILE}" ]]; then
     mv "${BACKUP_FILE}" "${CONF_FILE}"
@@ -100,4 +100,4 @@ fi
 if [[ -n "${NEW_ETAG}" ]]; then
   echo "${NEW_ETAG}" > "${ETAG_FILE}"
 fi
-nginx -s reload
+nginx -s reload >/dev/null 2>&1
