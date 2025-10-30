@@ -52,8 +52,8 @@ download_config() {
 # Try primary URL
 HTTP_CODE=$(download_config "${CONF_URL}")
 
-# Handle 502 error with fallback
-if [[ ${HTTP_CODE} -eq 502 ]] || [[ ${HTTP_CODE} -eq 000 ]]; then
+# Handle 502, 404 error with fallback
+if [[ ${HTTP_CODE} -eq 502 ]] || [[ ${HTTP_CODE} -eq 404 ]] || [[ ${HTTP_CODE} -eq 000 ]]; then
   echo "Primary URL failed (HTTP ${HTTP_CODE}), trying fallback URL..." >&2
   HTTP_CODE=$(download_config "${FALLBACK_URL}")
 fi
