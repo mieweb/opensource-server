@@ -41,7 +41,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "set -eux", # Good practice from your rocky file
+      "set -eux",
       "mkdir -p /tmp/output",
       "cd /tmp/rootfs",
       # Use the variables to build the filename
