@@ -19,8 +19,8 @@ const HEADERS = {
   Authorization: `PVEAPIToken=${TOKEN_ID}=${TOKEN_SECRET}`,
 };
 
-// Accept self-signed / insecure if needed (mirrors requests verify=False)
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+// Accept self-signed / insecure if needed (mirrors requests verify=true)
+const httpsAgent = new https.Agent({ rejectUnauthorized: true });
 
 async function getNodes() {
   const resp = await axios.get(`${API_URL}/nodes`, { headers: HEADERS, httpsAgent });
