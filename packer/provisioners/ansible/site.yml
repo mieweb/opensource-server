@@ -1,0 +1,34 @@
+# packer/provisioners/ansible/site.yml
+---
+- name: Apply base fungible configuration
+  hosts: all
+  gather_facts: yes
+
+  tasks:
+    - name: Ensure common packages are installed
+      ansible.builtin.package:
+        name:
+          - vim
+          - curl
+          - sudo
+          - wget
+          - ca-certificates
+          - nano
+          - git
+          - gpg
+        state: present
+
+    - name: Copy pown.sh (disabled until first boot)
+      ansible.builtin.copy:
+        src: files/pown.sh
+        dest: /usr/local/bin/pown.sh
+        mode: '0755'
+
+    - name: Clean temporary or build-specific files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/apt/lists/*
+        - /var/cache/dnf
+        - /tmp/*
