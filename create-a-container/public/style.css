@@ -4,19 +4,19 @@ body {
     display: flex;
     align-items: flex-start; /* Changed from center to flex-start for top alignment */
     justify-content: center;
-    height: 100vh;
+    min-height: 100vh;
     margin: 0;
-    padding-top: 2rem; /* Added padding to give space from the top */
+    padding-top: 5rem; /* Added padding to account for fixed navbar */
     overflow-y: auto; /* Allow scrolling if content is too long */
 }
 
 .main-content-wrapper {
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
     gap: 2rem;
     width: 100%;
-    max-width: 900px; /* Increased max-width for two columns */
+    max-width: 600px;
     padding: 0 1rem;
 }
 
@@ -165,16 +165,18 @@ select:focus {
 
 /* Navbar container for logout button */
 .navbar {
-    position: absolute;
+    position: fixed;
     top: 0;
+    left: 0;
     right: 0;
+    width: 100%;
     background-color: #2c3e50;
     color: white;
     padding: 0.5rem 1rem;
-    border-bottom-left-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    z-index: 1000;
 }
 
 /* Logout button style */
@@ -183,6 +185,7 @@ select:focus {
     color: white;
     border: none;
     padding: 0.5rem 1rem;
+    margin-right: 2rem;
     border-radius: 4px;
     cursor: pointer;
     font-size: 1rem;

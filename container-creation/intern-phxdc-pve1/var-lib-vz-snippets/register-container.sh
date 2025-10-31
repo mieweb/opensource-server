@@ -150,81 +150,33 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
     ss_protocols="$(IFS=, ; echo "${list_all_protocols[*]}")"
     ss_ports="$(IFS=, ; echo "${list_all_ports[*]}")"
 
-    #Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$ss_protocols" "$ss_ports" "$proxmox_user" "$os_release" "$CTID" "$mac" <<'EOF'
-set -euo pipefail
-
-hostname="$1"
-container_ip="$2"
-ssh_port="$3"
-http_port="$4"
-protos_json=$(echo "$5" | tr ',' '\n' | jq -R . | jq -s .)
-ports_json=$(echo "$6" | tr ',' '\n' | jq -R . | jq -s 'map(tonumber)')
-user="$7"
-os_release="$8"
-ctid="$9"
-mac="${10}"
-
-jq --arg hn "$hostname" \
-  --arg ip "$container_ip" \
-  --arg user "$user" \
-  --arg osr "$os_release" \
-  --argjson ssh "$ssh_port" \
-  --argjson http "$http_port" \
-  --argjson protos "$protos_json" \
-  --argjson ports_list "$ports_json" \
-  --argjson ctid "$ctid" \
-  --arg mac "$mac" \
-  '. + {($hn): {
-      ip: $ip,
-      user: $user,
-      os_release: $osr,
-      ctid: $ctid,
-      mac: $mac,
-      ports: ( reduce range(0; $protos | length) as $i (
-          {ssh: $ssh, http: $http};
-          . + { ($protos[$i]): $ports_list[$i]}
-      ))
-  }}' /etc/nginx/port_map.json > /tmp/port_map.json.new
-
-mv -f /tmp/port_map.json.new /etc/nginx/port_map.json
-nginx -s reload
-EOF
+    # Register container with additional protocols via API
+    curl -X POST https://create-a-container.opensource.mieweb.org/containers \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "hostname=$hostname" \
+      --data-urlencode "ipv4Address=$container_ip" \
+      --data-urlencode "username=$proxmox_user" \
+      --data-urlencode "osRelease=$os_release" \
+      --data-urlencode "containerId=$CTID" \
+      --data-urlencode "macAddress=$mac" \
+      --data-urlencode "aiContainer=$AI_CONTAINER" \
+      --data-urlencode "sshPort=$ssh_port" \
+      --data-urlencode "httpPort=$http_port" \
+      --data-urlencode "additionalProtocols=$ss_protocols" \
+      --data-urlencode "additionalPorts=$ss_ports"
 else
-    # Update NGINX port map JSON on the remote host safely using a heredoc and positional parameters
-    ssh root@10.15.20.69 bash -s -- "$hostname" "$container_ip" "$ssh_port" "$http_port" "$proxmox_user" "$os_release" "$CTID" "$mac" <<'EOF'
-set -euo pipefail
-
-hostname="$1"
-container_ip="$2"
-ssh_port="$3"
-http_port="$4"
-user="$5"
-os_release="$6"
-ctid="$7"
-mac="$8"
-
-jq --arg hn "$hostname" \
-  --arg ip "$container_ip" \
-  --arg user "$user" \
-  --arg osr "$os_release" \
-  --argjson http "$http_port" \
-  --argjson ssh "$ssh_port" \
-  --argjson ctid "$ctid" \
-  --arg mac "$mac" \
-  '. + {($hn): {
-      ip: $ip,
-      user: $user,
-      os_release: $osr,
-      ctid: $ctid,
-      mac: $mac,
-      ports: {ssh: $ssh, http: $http}
-  }}' /etc/nginx/port_map.json > /tmp/port_map.json.new
-
-mv -f /tmp/port_map.json.new /etc/nginx/port_map.json
-nginx -s reload
-EOF
+    # Register container without additional protocols via API
+    curl -X POST https://create-a-container.opensource.mieweb.org/containers \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "hostname=$hostname" \
+      --data-urlencode "ipv4Address=$container_ip" \
+      --data-urlencode "username=$proxmox_user" \
+      --data-urlencode "osRelease=$os_release" \
+      --data-urlencode "containerId=$CTID" \
+      --data-urlencode "macAddress=$mac" \
+      --data-urlencode "aiContainer=$AI_CONTAINER" \
+      --data-urlencode "sshPort=$ssh_port" \
+      --data-urlencode "httpPort=$http_port"
 fi
 
 # Results
