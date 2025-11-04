@@ -10,7 +10,7 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
-const { Container, Service } = require('./models');
+const { Container, Service, Node } = require('./models');
 const serviceMap = require('./data/services.json');
 
 const app = express();
@@ -38,15 +38,24 @@ app.use(RateLimit({
 // define globals
 const jobs = {};
 
-// Helper function to determine node based on aiContainer and containerId
-function getNodeForContainer(aiContainer, containerId) {
+// Helper function to determine node ID based on aiContainer and containerId
+async function getNodeForContainer(aiContainer, containerId) {
+  let nodeName;
+  
   if (aiContainer === 'FORTWAYNE') {
-    return 'mie-phxdc-ai-pve1';
+    nodeName = 'mie-phxdc-ai-pve1';
   } else if (aiContainer === 'PHOENIX') {
-    return 'intern-phxdc-pve3-ai';
+    nodeName = 'intern-phxdc-pve3-ai';
+  } else {
+    nodeName = (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
   }
-
-  return (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
+  
+  const node = await Node.findOne({ where: { name: nodeName } });
+  if (!node) {
+    throw new Error(`Node not found: ${nodeName}`);
+  }
+  
+  return node.id;
 }
 
 // --- Authentication middleware (single) ---
@@ -207,11 +216,11 @@ app.post('/containers', async (req, res) => {
   // handle non-init container creation (e.g., admin API)
   const aiContainer = req.body.aiContainer || 'N';
   const containerId = req.body.containerId;
-  const node = getNodeForContainer(aiContainer, containerId);
+  const nodeId = await getNodeForContainer(aiContainer, containerId);
   
   const container = await Container.create({
     ...req.body,
-    node
+    nodeId
   });
   const httpService = await Service.create({
     containerId: container.id,

@@ -12,6 +12,8 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       // a container has many services
       Container.hasMany(models.Service, { foreignKey: 'containerId', as: 'services' });
+      // a container belongs to a node
+      Container.belongsTo(models.Node, { foreignKey: 'nodeId', as: 'node' });
     }
   }
   Container.init({
@@ -28,9 +30,13 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: true
     },
-    node: {
-      type: DataTypes.STRING(255),
-      allowNull: false
+    nodeId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Nodes',
+        key: 'id'
+      }
     },
     containerId: {
       type: DataTypes.INTEGER.UNSIGNED,
@@ -56,9 +62,9 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'Container',
     indexes: [
       {
-        name: 'containers_node_container_id_unique',
+        name: 'containers_node_id_container_id_unique',
         unique: true,
-        fields: ['node', 'containerId']
+        fields: ['nodeId', 'containerId']
       }
     ]
   });
