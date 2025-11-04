@@ -38,6 +38,17 @@ app.use(RateLimit({
 // define globals
 const jobs = {};
 
+// Helper function to determine node based on aiContainer and containerId
+function getNodeForContainer(aiContainer, containerId) {
+  if (aiContainer === 'FORTWAYNE') {
+    return 'mie-phxdc-ai-pve1';
+  } else if (aiContainer === 'PHOENIX') {
+    return 'intern-phxdc-pve3-ai';
+  }
+
+  return (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
+}
+
 // --- Authentication middleware (single) ---
 // Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
 function requireAuth(req, res, next) {
@@ -194,7 +205,14 @@ app.post('/containers', async (req, res) => {
   }
   
   // handle non-init container creation (e.g., admin API)
-  const container = await Container.create(req.body);
+  const aiContainer = req.body.aiContainer || 'N';
+  const containerId = req.body.containerId;
+  const node = getNodeForContainer(aiContainer, containerId);
+  
+  const container = await Container.create({
+    ...req.body,
+    node
+  });
   const httpService = await Service.create({
     containerId: container.id,
     type: 'http',
