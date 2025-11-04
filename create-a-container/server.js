@@ -292,23 +292,24 @@ app.delete('/containers/:id', requireAuth, async (req, res) => {
   // Delete from Proxmox
   const proxmoxUrl = `${node.apiUrl}/api2/json/nodes/${node.name}/lxc/${container.containerId}`;
   
-  try {
-    await axios.request({
-      method: 'delete',
-      url: proxmoxUrl,
-      headers: { 
-        'CSRFPreventionToken': req.session.proxmoxCSRFToken,
-        'Cookie': `PVEAuthCookie=${req.session.proxmoxTicket}`
-      },
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: node.tlsVerify !== false,
-      })
-    });
-  } catch (err) {
-    console.error('Proxmox API error:', err.response?.data || err.message);
+  const response = await axios.request({
+    method: 'delete',
+    url: proxmoxUrl,
+    headers: { 
+      'CSRFPreventionToken': req.session.proxmoxCSRFToken,
+      'Authorization': `PVEAuthCookie=${req.session.proxmoxTicket}`
+    },
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: node.tlsVerify !== false,
+    }),
+  });
+  
+  if (response.status !== 200) {
+    console.error('Proxmox API error:', response.status, response.data);
     return res.status(500).json({ 
       error: 'Failed to delete container from Proxmox',
-      details: err.response?.data || err.message
+      status: response.status,
+      details: response.data
     });
   }
   
