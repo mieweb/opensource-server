@@ -127,9 +127,14 @@ app.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
+  // Store ticket and CSRF token for subsequent API calls
+  const { ticket, CSRFPreventionToken } = response.data.data;
+  
   req.session.user = username;
-  req.session.proxmoxUsername = username;
+  req.session.proxmoxUsername = username + '@pve';
   req.session.proxmoxPassword = password;
+  req.session.proxmoxTicket = ticket;
+  req.session.proxmoxCSRFToken = CSRFPreventionToken;
 
   return res.json({ success: true, redirect: req?.query?.redirect || '/' });
 });
@@ -257,6 +262,60 @@ app.post('/containers', async (req, res) => {
     }
   }
   return res.json({ success: true });
+});
+
+// Delete container
+app.delete('/containers/:id', requireAuth, async (req, res) => {
+  const containerId = parseInt(req.params.id, 10);
+  
+  // Find the container with its associated node
+  const container = await Container.findOne({
+    where: { id: containerId },
+    include: [{ model: Node, as: 'node' }]
+  });
+  
+  if (!container) {
+    return res.status(404).json({ error: 'Container not found' });
+  }
+  
+  // Verify ownership (only the owner can delete their container)
+  const username = req.session.user.split('@')[0];
+  if (container.username !== username) {
+    return res.status(403).json({ error: 'Forbidden: You can only delete your own containers' });
+  }
+  
+  const node = container.node;
+  if (!node || !node.apiUrl) {
+    return res.status(500).json({ error: 'Node API URL not configured' });
+  }
+  
+  // Delete from Proxmox
+  const proxmoxUrl = `${node.apiUrl}/api2/json/nodes/${node.name}/lxc/${container.containerId}`;
+  
+  try {
+    await axios.request({
+      method: 'delete',
+      url: proxmoxUrl,
+      headers: { 
+        'CSRFPreventionToken': req.session.proxmoxCSRFToken,
+        'Cookie': `PVEAuthCookie=${req.session.proxmoxTicket}`
+      },
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: node.tlsVerify !== false,
+      })
+    });
+  } catch (err) {
+    console.error('Proxmox API error:', err.response?.data || err.message);
+    return res.status(500).json({ 
+      error: 'Failed to delete container from Proxmox',
+      details: err.response?.data || err.message
+    });
+  }
+  
+  // Delete from database (cascade deletes associated services)
+  await container.destroy();
+  
+  return res.json({ success: true, message: 'Container deleted successfully' });
 });
 
 // Job status page

@@ -213,6 +213,20 @@ Create or register a container
 - **Returns (init=true)**: Redirect to status page
 - **Returns (init=false)**: `{ containerId, message }`
 
+#### `DELETE /containers/:id` (Auth Required)
+Delete a container from both Proxmox and the database
+- **Path Parameter**: `id` - Container database ID
+- **Authorization**: User can only delete their own containers
+- **Process**:
+  1. Verifies container ownership
+  2. Deletes container from Proxmox via API
+  3. On success, removes container record from database (cascades to services)
+- **Returns**: `{ success: true, message: "Container deleted successfully" }`
+- **Errors**: 
+  - `404` - Container not found
+  - `403` - User doesn't own the container
+  - `500` - Proxmox API deletion failed or node not configured
+
 #### `GET /status/:jobId` (Auth Required)
 View container creation progress page
 
