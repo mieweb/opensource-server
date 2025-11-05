@@ -123,9 +123,12 @@ label {
     text-align: left;
 }
 
+/* Added email and date field styling */
 input[type="text"],
 input[type="password"],
 input[type="number"],
+input[type="email"],
+input[type="date"],
 textarea,
 select {
     width: 100%;
