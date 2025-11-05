@@ -116,6 +116,10 @@ app.get('/containers/new', requireAuth, (req, res) => {
 // Handles login
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
+  // Validate username: only allow alphanumerics, underscores, hyphens, 3-32 chars
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username)) {
+    return res.status(400).json({ error: 'Invalid username format' });
+  }
 
   try {
     const httpsAgent = new https.Agent({
