@@ -75,7 +75,7 @@
                                                 <td>
                                                     <form method="POST" action="/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
                                                         <input type="hidden" name="_method" value="DELETE">
-                                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                                        <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
                                                     </form>
                                                 </td>
                                             </tr>

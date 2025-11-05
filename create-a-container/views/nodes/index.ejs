@@ -46,7 +46,7 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h4 class="card-title mb-0">Proxmox Nodes</h4>
-                            <a class="btn btn-primary" href="/nodes/new" role="button">New Node</a>
+                            <a class="btn btn-primary" href="/nodes/new" role="button" aria-label="Create new Proxmox node">New Node</a>
                         </div>
 
                         <div class="table-responsive">
@@ -77,10 +77,20 @@
                                                 </td>
                                                 <td><%= r.containerCount %></td>
                                                 <td>
-                                                    <a href="/nodes/<%= r.id %>/edit" class="btn btn-sm btn-outline-primary">Edit</a>
+                                                    <a href="/nodes/<%= r.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit node <%= r.name %>">Edit</a>
                                                     <form method="POST" action="/nodes/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete node <%= r.name %>? This action cannot be undone.');">
                                                         <input type="hidden" name="_method" value="DELETE">
-                                                        <button type="submit" class="btn btn-danger btn-sm" <%= r.containerCount > 0 ? 'disabled' : '' %>>Delete</button>
+                                                        <button
+                                                            type="submit"
+                                                            class="btn btn-danger btn-sm"
+                                                            <% if (r.containerCount > 0) { %>
+                                                                disabled
+                                                                aria-disabled="true"
+                                                                aria-label="Cannot delete node with associated containers"
+                                                            <% } %>
+                                                        >
+                                                            Delete
+                                                        </button>
                                                     </form>
                                                 </td>
                                             </tr>
