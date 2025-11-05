@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const flash = require('connect-flash');
+const methodOverride = require('method-override');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
@@ -23,12 +25,20 @@ app.set('trust proxy', 1);
 // setup middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Parse form data
+app.use(methodOverride((req, res) => {
+  if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+    const method = req.body._method;
+    delete req.body._method;
+    return method;
+  }
+}));
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: true,
   cookie: { secure: true }
 }));
+app.use(flash());
 app.use(express.static('public'));
 app.use(RateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -155,6 +165,7 @@ app.get('/containers', requireAuth, async (req, res) => {
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
     return {
+      id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
       osRelease: c.osRelease,
@@ -163,7 +174,11 @@ app.get('/containers', requireAuth, async (req, res) => {
     };
   });
 
-  return res.render('containers', { rows });
+  return res.render('containers', { 
+    rows,
+    successMessages: req.flash('success'),
+    errorMessages: req.flash('error')
+  });
 });
 
 // Generate nginx configuration for a container
@@ -267,26 +282,26 @@ app.post('/containers', async (req, res) => {
 // Delete container
 app.delete('/containers/:id', requireAuth, async (req, res) => {
   const containerId = parseInt(req.params.id, 10);
+  const username = req.session.user.split('@')[0];
   
-  // Find the container with its associated node
+  // Find the container with ownership check in query to prevent information leakage
   const container = await Container.findOne({
-    where: { id: containerId },
+    where: { 
+      id: containerId,
+      username: username
+    },
     include: [{ model: Node, as: 'node' }]
   });
   
   if (!container) {
-    return res.status(404).json({ error: 'Container not found' });
-  }
-  
-  // Verify ownership (only the owner can delete their container)
-  const username = req.session.user.split('@')[0];
-  if (container.username !== username) {
-    return res.status(403).json({ error: 'Forbidden: You can only delete your own containers' });
+    req.flash('error', 'Container not found');
+    return res.redirect('/containers');
   }
   
   const node = container.node;
   if (!node || !node.apiUrl) {
-    return res.status(500).json({ error: 'Node API URL not configured' });
+    req.flash('error', 'Node API URL not configured');
+    return res.redirect('/containers');
   }
   
   // Delete from Proxmox
@@ -306,17 +321,15 @@ app.delete('/containers/:id', requireAuth, async (req, res) => {
   
   if (response.status !== 200) {
     console.error('Proxmox API error:', response.status, response.data);
-    return res.status(500).json({ 
-      error: 'Failed to delete container from Proxmox',
-      status: response.status,
-      details: response.data
-    });
+    req.flash('error', `Failed to delete container from Proxmox: ${response.data?.errors || response.statusText}`);
+    return res.redirect('/containers');
   }
   
   // Delete from database (cascade deletes associated services)
   await container.destroy();
   
-  return res.json({ success: true, message: 'Container deleted successfully' });
+  req.flash('success', `Container ${container.hostname} deleted successfully`);
+  return res.redirect('/containers');
 });
 
 // Job status page
