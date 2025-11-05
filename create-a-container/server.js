@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const SequelizeStore = require('express-session-sequelize')(session.Store);
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
 const { spawn, exec } = require('child_process');
@@ -12,7 +13,7 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
-const { Container, Service, Node } = require('./models');
+const { Container, Service, Node, sequelize } = require('./models');
 const { requireAuth } = require('./middlewares');
 const { ProxmoxApi } = require('./utils');
 const serviceMap = require('./data/services.json');
@@ -34,12 +35,23 @@ app.use(methodOverride((req, res) => {
     return method;
   }
 }));
+
+// Configure session store
+const sessionStore = new SequelizeStore({
+  db: sequelize,
+});
+
 app.use(session({
   secret: process.env.SESSION_SECRET,
+  store: sessionStore,
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: true }
+  saveUninitialized: false,
+  cookie: { 
+    secure: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
+
 app.use(flash());
 app.use(express.static('public'));
 app.use(RateLimit({
