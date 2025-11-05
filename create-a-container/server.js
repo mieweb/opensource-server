@@ -14,6 +14,7 @@ const qs = require('querystring');
 const https = require('https');
 const { Container, Service, Node } = require('./models');
 const { requireAuth } = require('./middlewares');
+const { ProxmoxApi } = require('./utils');
 const serviceMap = require('./data/services.json');
 
 const app = express();
@@ -108,20 +109,20 @@ app.post('/login', async (req, res) => {
     method: 'post',
     url: 'https://10.15.0.4:8006/api2/json/access/ticket',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    httpsAgent: new https.Agent({
+      httpsAgent: new https.Agent({
       rejectUnauthorized: true, // Enable validation
       servername: 'opensource.mieweb.org' // Expected hostname in the certificate
-    }),
+      }),
     data: qs.stringify({ username: username + '@pve', password: password })
   });
 
   if (response.status !== 200) {
     return res.status(401).json({ error: 'Invalid credentials' });
-  }
+    }
 
   // Store ticket and CSRF token for subsequent API calls
   const { ticket, CSRFPreventionToken } = response.data.data;
-  
+
   req.session.user = username;
   req.session.proxmoxUsername = username + '@pve';
   req.session.proxmoxPassword = password;
@@ -272,7 +273,11 @@ app.delete('/containers/:id', requireAuth, async (req, res) => {
       id: containerId,
       username: username
     },
-    include: [{ model: Node, as: 'node' }]
+    include: [{ 
+      model: Node, 
+      as: 'node',
+      attributes: ['id', 'name', 'apiUrl', 'tokenId', 'secret', 'tlsVerify']
+    }]
   });
   
   if (!container) {
@@ -285,25 +290,29 @@ app.delete('/containers/:id', requireAuth, async (req, res) => {
     req.flash('error', 'Node API URL not configured');
     return res.redirect('/containers');
   }
+
+  if (!node.tokenId || !node.secret) {
+    req.flash('error', 'Node API token not configured');
+    return res.redirect('/containers');
+  }
   
   // Delete from Proxmox
-  const proxmoxUrl = `${node.apiUrl}/api2/json/nodes/${node.name}/lxc/${container.containerId}`;
-  
-  const response = await axios.request({
-    method: 'delete',
-    url: proxmoxUrl,
-    headers: { 
-      'CSRFPreventionToken': req.session.proxmoxCSRFToken,
-      'Authorization': `PVEAuthCookie=${req.session.proxmoxTicket}`
-    },
-    httpsAgent: new https.Agent({
-      rejectUnauthorized: node.tlsVerify !== false,
-    }),
-  });
-  
-  if (response.status !== 200) {
-    console.error('Proxmox API error:', response.status, response.data);
-    req.flash('error', `Failed to delete container from Proxmox: ${response.data?.errors || response.statusText}`);
+  try {
+    const api = new ProxmoxApi(
+      node.apiUrl,
+      node.tokenId,
+      node.secret,
+      {
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: node.tlsVerify !== false,
+        })
+      }
+    );
+
+    await api.deleteContainer(node.name, container.containerId, true, true);
+  } catch (error) {
+    console.error(error);
+    req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
     return res.redirect('/containers');
   }
   

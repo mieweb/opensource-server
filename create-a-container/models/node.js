@@ -24,6 +24,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: true
     },
+    tokenId: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    secret: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
     tlsVerify: {
       type: DataTypes.BOOLEAN,
       allowNull: true

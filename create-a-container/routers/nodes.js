@@ -13,7 +13,8 @@ router.get('/', async (req, res) => {
       model: Container, 
       as: 'containers',
       attributes: ['id']
-    }]
+    }],
+    attributes: { exclude: ['secret'] } // Never send secret to frontend
   });
 
   const rows = nodes.map(n => ({
@@ -44,7 +45,9 @@ router.get('/new', (req, res) => {
 router.get('/:id/edit', async (req, res) => {
   const nodeId = parseInt(req.params.id, 10);
   
-  const node = await Node.findByPk(nodeId);
+  const node = await Node.findByPk(nodeId, {
+    attributes: { exclude: ['secret'] } // Never send secret to frontend
+  });
   
   if (!node) {
     req.flash('error', 'Node not found');
@@ -61,11 +64,13 @@ router.get('/:id/edit', async (req, res) => {
 // POST /nodes - Create a new node
 router.post('/', async (req, res) => {
   try {
-    const { name, apiUrl, tlsVerify } = req.body;
+    const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
     
     await Node.create({
       name,
       apiUrl: apiUrl || null,
+      tokenId: tokenId || null,
+      secret: secret || null,
       tlsVerify: tlsVerify === 'true' || tlsVerify === true
     });
 
@@ -90,13 +95,21 @@ router.put('/:id', async (req, res) => {
       return res.redirect('/nodes');
     }
 
-    const { name, apiUrl, tlsVerify } = req.body;
+    const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
     
-    await node.update({
+    const updateData = {
       name,
       apiUrl: apiUrl || null,
+      tokenId: tokenId || null,
       tlsVerify: tlsVerify === 'true' || tlsVerify === true
-    });
+    };
+
+    // Only update secret if a new value was provided
+    if (secret && secret.trim() !== '') {
+      updateData.secret = secret;
+    }
+
+    await node.update(updateData);
 
     req.flash('success', `Node ${name} updated successfully`);
     return res.redirect('/nodes');
