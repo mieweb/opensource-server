@@ -12,7 +12,9 @@
         <div class="container-fluid">
             <ol class="breadcrumb mb-0">
                 <li class="breadcrumb-item active" aria-current="page"><a href="/containers">Containers</a></li>
-                <li class="breadcrumb-item"><a href="/nodes">Nodes</a></li>
+                <% if (isAdmin) { %>
+                    <li class="breadcrumb-item"><a href="/nodes">Nodes</a></li>
+                <% } %>
             </ol>
             <form method="POST" action="/logout">
                 <button type="submit" class="btn btn-danger logout-button">Logout</button>

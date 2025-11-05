@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { Node, Container } = require('../models');
-const { requireAuth } = require('../middlewares');
+const { requireAuth, requireAdmin } = require('../middlewares');
 
-// Apply auth to all routes
+// Apply auth and admin check to all routes
 router.use(requireAuth);
+router.use(requireAdmin);
 
 // GET /nodes - List all nodes
 router.get('/', async (req, res) => {
@@ -27,6 +28,7 @@ router.get('/', async (req, res) => {
 
   return res.render('nodes/index', {
     rows,
+    isAdmin: req.session.isAdmin || false,
     successMessages: req.flash('success'),
     errorMessages: req.flash('error')
   });
@@ -37,6 +39,7 @@ router.get('/new', (req, res) => {
   res.render('nodes/form', {
     node: null,
     isEdit: false,
+    isAdmin: req.session.isAdmin || false,
     errorMessages: req.flash('error')
   });
 });
@@ -57,6 +60,7 @@ router.get('/:id/edit', async (req, res) => {
   res.render('nodes/form', {
     node,
     isEdit: true,
+    isAdmin: req.session.isAdmin || false,
     errorMessages: req.flash('error')
   });
 });

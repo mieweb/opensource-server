@@ -21,4 +21,18 @@ function requireAuth(req, res, next) {
   return res.redirect(redirectTo);
 }
 
-module.exports = { requireAuth };
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin) return next();
+
+  const acceptsJSON = req.get('Accept') && req.get('Accept').includes('application/json');
+  const isAjax = req.get('X-Requested-With') === 'XMLHttpRequest';
+  const isApiPath = req.path && req.path.startsWith('/api/');
+
+  if (acceptsJSON || isAjax || isApiPath) {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+
+  return res.status(403).send('Forbidden: Admin access required');
+}
+
+module.exports = { requireAuth, requireAdmin };

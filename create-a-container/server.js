@@ -105,31 +105,51 @@ app.get('/containers/new', requireAuth, (req, res) => {
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
-  const response = await axios.request({
-    method: 'post',
-    url: 'https://10.15.0.4:8006/api2/json/access/ticket',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      httpsAgent: new https.Agent({
-      rejectUnauthorized: true, // Enable validation
-      servername: 'opensource.mieweb.org' // Expected hostname in the certificate
-      }),
-    data: qs.stringify({ username: username + '@pve', password: password })
-  });
+  try {
+    const httpsAgent = new https.Agent({
+      rejectUnauthorized: true,
+      servername: 'opensource.mieweb.org'
+    });
 
-  if (response.status !== 200) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    const response = await axios.request({
+      method: 'post',
+      url: 'https://10.15.0.4:8006/api2/json/access/ticket',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      httpsAgent,
+      data: qs.stringify({ username: username + '@pve', password: password })
+    });
+
+    if (response.status !== 200) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-  // Store ticket and CSRF token for subsequent API calls
-  const { ticket, CSRFPreventionToken } = response.data.data;
+    // Store ticket and CSRF token for subsequent API calls
+    const { ticket, CSRFPreventionToken } = response.data.data;
 
-  req.session.user = username;
-  req.session.proxmoxUsername = username + '@pve';
-  req.session.proxmoxPassword = password;
-  req.session.proxmoxTicket = ticket;
-  req.session.proxmoxCSRFToken = CSRFPreventionToken;
+    // Query user groups to check for admin privileges
+    const userResponse = await axios.request({
+      method: 'get',
+      url: `https://10.15.0.4:8006/api2/json/access/users/${username}@pve`,
+      headers: { 
+        'CSRFPreventionToken': CSRFPreventionToken,
+        'Cookie': `PVEAuthCookie=${ticket}`
+      },
+      httpsAgent
+    });
 
-  return res.json({ success: true, redirect: req?.query?.redirect || '/' });
+    const groups = userResponse.data?.data?.groups || [];
+    const isAdmin = groups.includes('administrators');
+
+    req.session.user = username;
+    req.session.proxmoxUsername = username + '@pve';
+    req.session.proxmoxPassword = password;
+    req.session.isAdmin = isAdmin;
+
+    return res.json({ success: true, redirect: req?.query?.redirect || '/' });
+  } catch (error) {
+    console.error('Login error:', error.message);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 });
 
 // Fetch user's containers
@@ -159,6 +179,7 @@ app.get('/containers', requireAuth, async (req, res) => {
 
   return res.render('containers', { 
     rows,
+    isAdmin: req.session.isAdmin || false,
     successMessages: req.flash('success'),
     errorMessages: req.flash('error')
   });
