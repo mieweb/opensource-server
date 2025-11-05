@@ -75,7 +75,7 @@ router.post('/', async (req, res) => {
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
       secret: secret || null,
-      tlsVerify: tlsVerify === 'true' || tlsVerify === true
+      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
     });
 
     req.flash('success', `Node ${name} created successfully`);
@@ -105,7 +105,7 @@ router.put('/:id', async (req, res) => {
       name,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
-      tlsVerify: tlsVerify === 'true' || tlsVerify === true
+      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
     };
 
     // Only update secret if a new value was provided
