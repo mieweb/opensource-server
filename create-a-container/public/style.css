@@ -4,19 +4,19 @@ body {
     display: flex;
     align-items: flex-start; /* Changed from center to flex-start for top alignment */
     justify-content: center;
-    height: 100vh;
+    min-height: 100vh;
     margin: 0;
-    padding-top: 2rem; /* Added padding to give space from the top */
+    padding-top: 5rem; /* Added padding to account for fixed navbar */
     overflow-y: auto; /* Allow scrolling if content is too long */
 }
 
 .main-content-wrapper {
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
     gap: 2rem;
     width: 100%;
-    max-width: 900px; /* Increased max-width for two columns */
+    max-width: 600px;
     padding: 0 1rem;
 }
 
@@ -123,9 +123,12 @@ label {
     text-align: left;
 }
 
+/* Added email and date field styling */
 input[type="text"],
 input[type="password"],
 input[type="number"],
+input[type="email"],
+input[type="date"],
 textarea,
 select {
     width: 100%;
@@ -162,3 +165,75 @@ select:focus {
     border-color: #007bff;
     outline: none;
 }
+
+/* Navbar container for logout button */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    z-index: 1000;
+}
+
+/* Logout button style */
+.navbar .logout-button {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    margin-right: 2rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+.navbar .logout-button:hover {
+    background-color: #c0392b;
+}
+
+#signUpBtn {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+#signUpBtn:hover {
+    background-color: #2980b9;
+}
+
+#signUpBtn {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+#signUpBtn:hover {
+    background-color: #2980b9;
+}
+
+.signup-section {
+    margin-top: 1.5rem;
+}
+
