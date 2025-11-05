@@ -13,6 +13,7 @@ const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
 const { Container, Service, Node } = require('./models');
+const { requireAuth } = require('./middlewares');
 const serviceMap = require('./data/services.json');
 
 const app = express();
@@ -68,29 +69,6 @@ async function getNodeForContainer(aiContainer, containerId) {
   return node.id;
 }
 
-// --- Authentication middleware (single) ---
-// Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
-function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
-
-  // Heuristics to detect API requests:
-  // - X-Requested-With: XMLHttpRequest (old-style AJAX)
-  // - Accept header prefers JSON (application/json)
-  // - URL path starts with /api/
-  const acceptsJSON = req.get('Accept') && req.get('Accept').includes('application/json');
-  const isAjax = req.get('X-Requested-With') === 'XMLHttpRequest';
-  const isApiPath = req.path && req.path.startsWith('/api/');
-
-  if (acceptsJSON || isAjax || isApiPath) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  // Otherwise treat as a browser route: include the original URL as a redirect parameter
-  const original = req.originalUrl || req.url || '/';
-  const redirectTo = '/login?redirect=' + encodeURIComponent(original);
-  return res.redirect(redirectTo);
-}
-
 // Serve login page from views (moved from public)
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'login.html'));
@@ -108,6 +86,10 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false, // allow self-signed certs
   },
 });
+
+// --- Mount Routers ---
+const nodesRouter = require('./routers/nodes');
+app.use('/nodes', nodesRouter);
 
 // --- Routes ---
 const PORT = 3000;
