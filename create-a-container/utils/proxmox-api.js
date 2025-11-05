@@ -27,10 +27,6 @@ class ProxmoxApi {
       ...this.options
     });
 
-    if (response.status !== 200) {
-      throw new Error(`Failed to delete container: ${response.data?.errors || response.statusText}`);
-    }
-
     return response.data;
   }
 }
