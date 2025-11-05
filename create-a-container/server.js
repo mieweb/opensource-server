@@ -170,9 +170,11 @@ app.post('/login', async (req, res) => {
 
 // Fetch user's containers
 app.get('/containers', requireAuth, async (req, res) => {
-  const username = req.session.user.split('@')[0];
   // eager-load related services
-  const containers = await Container.findAll({ where: { username }, include: [{ association: 'services' }] });
+  const containers = await Container.findAll({
+    where: { username: req.session.user },
+    include: [{ association: 'services' }]
+  });
 
   // Map containers to view models
   const rows = containers.map(c => {
@@ -302,13 +304,12 @@ app.post('/containers', async (req, res) => {
 // Delete container
 app.delete('/containers/:id', requireAuth, async (req, res) => {
   const containerId = parseInt(req.params.id, 10);
-  const username = req.session.user.split('@')[0];
   
   // Find the container with ownership check in query to prevent information leakage
   const container = await Container.findOne({
     where: { 
       id: containerId,
-      username: username
+      username: req.session.user
     },
     include: [{ 
       model: Node, 
