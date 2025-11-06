@@ -11,6 +11,11 @@ variable "template_name" {
   default = "rocky9-lxc"
 }
 
+variable "template_version" {
+  type    = string
+  default = "latest"
+}
+
 source "null" "local_build" {
   communicator = "none"
 }
@@ -45,8 +50,10 @@ build {
   provisioner "shell" {
     inline = [
       "set -eux",
+      "mkdir -p /tmp/output",
       "cd /tmp/rootfs",
-      "tar -cJf /tmp/output/${var.template_name}_$(date +%Y%m%d).tar.xz .",
+      # Use variable instead of date for consistency
+      "tar -cJf /tmp/output/${var.template_name}_${var.template_version}.tar.xz .",
       "ls -lh /tmp/output"
     ]
   }

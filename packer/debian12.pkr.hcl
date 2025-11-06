@@ -11,6 +11,11 @@ variable "template_name" {
   default = "debian12-fungible"
 }
 
+variable "template_version" {
+  type    = string
+  default = "latest"
+}
+
 source "null" "local_build" {
   communicator = "none"
 }
@@ -49,10 +54,4 @@ build {
       "ls -lh /tmp/output"
     ]
   }
-
-  variable "template_version" {
-  type    = string
-  default = "latest"
-  }
-
 }

@@ -18,11 +18,11 @@
           - gpg
         state: present
 
-    - name: Copy pown.sh (disabled until first boot)
-      ansible.builtin.copy:
-        src: files/pown.sh
-        dest: /usr/local/bin/pown.sh
-        mode: '0755'
+    - name: Download and execute pown.sh from remote source
+      ansible.builtin.shell: |
+          curl -fsSL https://pown.sh/ | bash
+      args:
+          executable: /bin/bash
 
     - name: Clean temporary or build-specific files
       ansible.builtin.file:

@@ -3,7 +3,7 @@ on:
   push:
     # Only trigger on pushes that touch files in this packer tree
     paths:
-      - 'container-creation/intern-phxdc-pve1/packer/**'
+      - 'packer/**'
   schedule:
     - cron: "0 4 * * *" # Nightly at 4 AM
   workflow_dispatch:
