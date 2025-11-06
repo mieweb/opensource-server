@@ -256,7 +256,7 @@ if [[ -z "$CONTAINER_IP" ]]; then
     exit 1
 fi
 
-echo "⏳ Updatng container packages..."
+echo "⏳ Updating container packages..."
 if [[ "${LINUX_DISTRO^^}" == "ROCKY" ]]; then
     run_pct_exec $CONTAINER_ID bash -c "dnf upgrade -y"
 else

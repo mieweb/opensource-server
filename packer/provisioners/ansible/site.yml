@@ -32,3 +32,15 @@
         - /var/lib/apt/lists/*
         - /var/cache/dnf
         - /tmp/*
+
+    - name: ⏳ Updating all packages (RedHat-based)
+      dnf:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: ⏳ Updating all packages (Debian-based)
+      apt:
+        upgrade: dist
+        update_cache: yes
+      when: ansible_os_family == "Debian"
