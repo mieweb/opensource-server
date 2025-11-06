@@ -143,7 +143,7 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
             fi
 
             # Protocol PREROUTING rule
-            iptables -t nat -A PREROUTING -i "$IPTABLES_IFACE" -p "$underlying_protocol" --dport "$protocol_port" -j DNAT --to-destination "$container_ip:$default_port_number"
+            iptables -t nat -A PREROUTING -i vmbr0 -p "$underlying_protocol" --dport "$protocol_port" -j DNAT --to-destination "$container_ip:$default_port_number"
 
             # Protocol POSTROUTING rule
             iptables -t nat -A POSTROUTING -o "$IPTABLES_IFACE" -p "$underlying_protocol" -d "$container_ip" --dport "$default_port_number" -j MASQUERADE
