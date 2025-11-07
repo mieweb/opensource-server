@@ -239,8 +239,7 @@ if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
         fi
 fi
 
-ROOT_PSWD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
-run_pct_exec $CONTAINER_ID bash -c "echo root:$ROOT_PSWD | chpasswd" > /dev/null 2>&1
+run_pct_exec $CONTAINER_ID bash -c 'passwd -d root; passwd -l root' > /dev/null 2>&1
 
 CONTAINER_IP=""
 attempts=0

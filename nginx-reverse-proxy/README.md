@@ -10,11 +10,20 @@ The reverse proxy configuration is automatically synchronized from the create-a-
 
 ### `pull-config.sh`
 Bash script that:
-1. Backs up the current nginx configuration
-2. Downloads the latest configuration from the API endpoint
-3. Tests the new configuration with `nginx -t`
-4. Rolls back to the backup if validation fails
-5. Reloads nginx if validation succeeds
+1. Checks for an existing ETag and sends it with the request (If-None-Match header)
+2. Skips all operations if the server returns 304 Not Modified (no changes)
+3. Falls back to internal cluster URL if the primary URL returns a 502 error
+4. Backs up the current nginx configuration (if it exists)
+5. Downloads the latest configuration from the API endpoint
+6. Tests the new configuration with `nginx -t`
+7. Rolls back to the backup if validation fails (if backup exists)
+8. Saves the ETag for future requests
+9. Reloads nginx if validation succeeds
+
+This approach ensures:
+- **Efficient bandwidth usage**: Only downloads when configuration has changed
+- **High availability**: Automatically falls back to internal URL on gateway errors
+- **Bootstrap-friendly**: Works correctly on first run when no config exists yet
 
 ### `pull-config.cron`
 Cron job definition that runs `pull-config.sh` every minute to keep the nginx configuration synchronized with the database.
@@ -71,7 +80,7 @@ sudo chmod +x /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
 ### 4. Initial Configuration Pull
 ```bash
 # Run script manually to get initial configuration
-sudo touch /etc/nginx/conf.d/reverse-proxy.conf
+# No need to pre-create the config file - the script handles first run when no existing configuration exists
 sudo /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
 ```
 
@@ -93,7 +102,9 @@ sudo tail -f /var/log/syslog | grep pull-config
 The scripts use these default paths (can be modified in the scripts):
 
 - `CONF_FILE`: `/etc/nginx/conf.d/reverse-proxy.conf` - Target nginx config file
-- `CONF_URL`: `https://create-a-container.opensource.mieweb.org/nginx.conf` - API endpoint
+- `ETAG_FILE`: `/etc/nginx/conf.d/reverse-proxy.etag` - Stores ETag for caching
+- `CONF_URL`: `https://create-a-container.opensource.mieweb.org/nginx.conf` - Primary API endpoint
+- `FALLBACK_URL`: `http://create-a-container.cluster.mieweb.org:3000/nginx.conf` - Fallback endpoint (used on 502 errors)
 
 ### Cron Schedule
 By default, the configuration is pulled every minute:
@@ -108,6 +119,22 @@ To change the schedule, edit `/etc/cron.d/nginx-pull-config` with standard cron 
 # Every hour: 0 * * * *
 # Every day at midnight: 0 0 * * *
 ```
+
+**Note**: Thanks to ETag-based caching, running the script every minute has minimal overhead. After the first successful run, the script only downloads and reloads nginx when the configuration actually changes. Most runs will exit early with a 304 Not Modified response.
+
+### Optimizations
+
+#### ETag-Based Caching
+The script uses HTTP ETags to avoid unnecessary downloads. On each run:
+- If an ETag exists from a previous run, it's sent with the request
+- If the server returns 304 Not Modified, the script exits immediately
+- This reduces bandwidth usage and prevents unnecessary nginx reloads
+
+#### High Availability Fallback
+If the primary URL (via reverse proxy) returns a 502 Bad Gateway error:
+- The script automatically falls back to the internal cluster URL
+- This handles the bootstrapping problem where the reverse proxy isn't configured yet
+- The internal URL bypasses the reverse proxy and connects directly to the service
 
 ## Troubleshooting
 
@@ -185,6 +212,13 @@ ls -lt /etc/nginx/conf.d/reverse-proxy.conf
 sudo /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
 ```
 
+### Force Download (Bypass ETag Cache)
+```bash
+# Remove the ETag file to force a fresh download
+sudo rm -f /etc/nginx/conf.d/reverse-proxy.etag
+sudo /opt/opensource-server/nginx-reverse-proxy/pull-config.sh
+```
+
 ### Disable Automatic Updates
 ```bash
 # Temporarily disable cron job
@@ -193,3 +227,26 @@ sudo chmod 000 /etc/cron.d/nginx-pull-config
 # Or remove it completely
 sudo rm /etc/cron.d/nginx-pull-config
 ```
+
+## Testing
+
+The repository includes comprehensive test scripts to validate the pull-config.sh behavior:
+
+### Run All Tests
+```bash
+cd /opt/opensource-server/nginx-reverse-proxy
+./test-pull-config.sh
+```
+
+This tests:
+- First run without existing configuration
+- ETag caching (304 Not Modified handling)
+- Configuration validation and rollback on failure
+
+### Test 502 Fallback
+```bash
+cd /opt/opensource-server/nginx-reverse-proxy
+./test-502-fallback.sh
+```
+
+This validates the fallback mechanism when the primary URL returns a 502 error.
