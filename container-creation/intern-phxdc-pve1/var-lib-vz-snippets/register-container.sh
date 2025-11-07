@@ -109,7 +109,7 @@ else
     fi
 
         # SSH PREROUTING rule
-        iptables -t nat -A PREROUTING -i "$IPTABLES_IFACE" -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
+        iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
 
         # SSH POSTROUTING rule
         iptables -t nat -A POSTROUTING -o "$IPTABLES_IFACE" -p tcp -d "$container_ip" --dport 22 -j MASQUERADE
