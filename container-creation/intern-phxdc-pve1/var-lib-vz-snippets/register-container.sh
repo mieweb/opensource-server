@@ -85,6 +85,13 @@ os_release=$(run_pct_exec "$CTID" grep '^ID=' /etc/os-release | cut -d'=' -f2 | 
 # === NEW: Extract MAC address using cluster-aware function ===
 mac=$(run_pct_config "$CTID" | grep -oP 'hwaddr=\K([^\s,]+)')
 
+# Determine which interface to use for iptables rules
+if [[ "${AI_CONTAINER^^}" == "FORTWAYNE" ]]; then
+    IPTABLES_IFACE="wg0"
+else
+    IPTABLES_IFACE="vmbr0"
+fi
+
 # Check if this container already has a SSH port assigned in PREROUTING
 existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
 
@@ -101,12 +108,12 @@ else
         exit 2
     fi
 
-    # Add PREROUTING rule
-    iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
+        # SSH PREROUTING rule
+        iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
 
-    # Add POSTROUTING rule
-    iptables -t nat -A POSTROUTING -o vmbr0 -p tcp -d "$container_ip" --dport 22 -j MASQUERADE
-fi
+        # SSH POSTROUTING rule
+        iptables -t nat -A POSTROUTING -o "$IPTABLES_IFACE" -p tcp -d "$container_ip" --dport 22 -j MASQUERADE
+    fi
 
 # Take input file of protocols, check if the container already has a port assigned for those protocols in PREROUTING
 # Store all protocols and ports to write to JSON list later.
@@ -135,11 +142,12 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
                 exit 2
             fi
 
-            # Add PREROUTING rule
+            # Protocol PREROUTING rule
             iptables -t nat -A PREROUTING -i vmbr0 -p "$underlying_protocol" --dport "$protocol_port" -j DNAT --to-destination "$container_ip:$default_port_number"
 
-            # Add POSTROUTING rule
-            iptables -t nat -A POSTROUTING -o vmbr0 -p "$underlying_protocol" -d "$container_ip" --dport "$default_port_number" -j MASQUERADE
+            # Protocol POSTROUTING rule
+            iptables -t nat -A POSTROUTING -o "$IPTABLES_IFACE" -p "$underlying_protocol" -d "$container_ip" --dport "$default_port_number" -j MASQUERADE
+
         fi
 
         list_all_protocols+=("$protocol")
