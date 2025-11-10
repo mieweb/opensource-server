@@ -157,7 +157,7 @@ app.post('/login', async (req, res) => {
     const isAdmin = groups.includes('administrators');
 
     req.session.user = username;
-    req.session.proxmoxUsername = username + '@pve';
+    req.session.proxmoxUsername = username;
     req.session.proxmoxPassword = password;
     req.session.isAdmin = isAdmin;
 
