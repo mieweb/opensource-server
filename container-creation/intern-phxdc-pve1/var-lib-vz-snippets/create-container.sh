@@ -136,7 +136,8 @@ if [ -f "/var/lib/vz/snippets/container-public-keys/$PUB_FILE" ]; then
 fi
 
 # Generate a random root password for the container
-pct exec $CONTAINER_ID -- bash -c 'passwd -d root; passwd -l root' > /dev/null 2>&1
+pct exec $CONTAINER_ID -- passwd -d root > /dev/null 2>&1
+pct exec $CONTAINER_ID -- passwd -l root > /dev/null 2>&1
 
 CONTAINER_IP=""
 attempts=0
