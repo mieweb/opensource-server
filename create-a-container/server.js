@@ -2,6 +2,9 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const SequelizeStore = require('express-session-sequelize')(session.Store);
+const flash = require('connect-flash');
+const methodOverride = require('method-override');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
@@ -10,7 +13,9 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
-const { Container, Service } = require('./models');
+const { Container, Service, Node, sequelize } = require('./models');
+const { requireAuth } = require('./middlewares');
+const { ProxmoxApi } = require('./utils');
 const serviceMap = require('./data/services.json');
 
 const app = express();
@@ -23,12 +28,31 @@ app.set('trust proxy', 1);
 // setup middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Parse form data
+app.use(methodOverride((req, res) => {
+  if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+    const method = req.body._method;
+    delete req.body._method;
+    return method;
+  }
+}));
+
+// Configure session store
+const sessionStore = new SequelizeStore({
+  db: sequelize,
+});
+
 app.use(session({
   secret: process.env.SESSION_SECRET,
+  store: sessionStore,
   resave: false,
-  saveUninitialized: true,
-  cookie: { secure: true }
+  saveUninitialized: false,
+  cookie: { 
+    secure: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
+
+app.use(flash());
 app.use(express.static('public'));
 app.use(RateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -38,27 +62,24 @@ app.use(RateLimit({
 // define globals
 const jobs = {};
 
-// --- Authentication middleware (single) ---
-// Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
-function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
-
-  // Heuristics to detect API requests:
-  // - X-Requested-With: XMLHttpRequest (old-style AJAX)
-  // - Accept header prefers JSON (application/json)
-  // - URL path starts with /api/
-  const acceptsJSON = req.get('Accept') && req.get('Accept').includes('application/json');
-  const isAjax = req.get('X-Requested-With') === 'XMLHttpRequest';
-  const isApiPath = req.path && req.path.startsWith('/api/');
-
-  if (acceptsJSON || isAjax || isApiPath) {
-    return res.status(401).json({ error: 'Unauthorized' });
+// Helper function to determine node ID based on aiContainer and containerId
+async function getNodeForContainer(aiContainer, containerId) {
+  let nodeName;
+  
+  if (aiContainer === 'FORTWAYNE') {
+    nodeName = 'mie-phxdc-ai-pve1';
+  } else if (aiContainer === 'PHOENIX') {
+    nodeName = 'intern-phxdc-pve3-ai';
+  } else {
+    nodeName = (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
   }
-
-  // Otherwise treat as a browser route: include the original URL as a redirect parameter
-  const original = req.originalUrl || req.url || '/';
-  const redirectTo = '/login?redirect=' + encodeURIComponent(original);
-  return res.redirect(redirectTo);
+  
+  const node = await Node.findOne({ where: { name: nodeName } });
+  if (!node) {
+    throw new Error(`Node not found: ${nodeName}`);
+  }
+  
+  return node.id;
 }
 
 // Serve login page from views (moved from public)
@@ -79,6 +100,10 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// --- Mount Routers ---
+const nodesRouter = require('./routers/nodes');
+app.use('/nodes', nodesRouter);
+
 // --- Routes ---
 const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
@@ -91,34 +116,65 @@ app.get('/containers/new', requireAuth, (req, res) => {
 // Handles login
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-
-  const response = await axios.request({
-    method: 'post',
-    url: 'https://10.15.0.4:8006/api2/json/access/ticket',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    httpsAgent: new https.Agent({
-      rejectUnauthorized: true, // Enable validation
-      servername: 'opensource.mieweb.org' // Expected hostname in the certificate
-    }),
-    data: qs.stringify({ username: username + '@pve', password: password })
-  });
-
-  if (response.status !== 200) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+  // Validate username: only allow alphanumerics, underscores, hyphens, 3-32 chars
+  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username)) {
+    return res.status(400).json({ error: 'Invalid username format' });
   }
 
-  req.session.user = username;
-  req.session.proxmoxUsername = username;
-  req.session.proxmoxPassword = password;
+  try {
+    const httpsAgent = new https.Agent({
+      rejectUnauthorized: true,
+      servername: 'opensource.mieweb.org'
+    });
 
-  return res.json({ success: true, redirect: req?.query?.redirect || '/' });
+    const response = await axios.request({
+      method: 'post',
+      url: 'https://10.15.0.4:8006/api2/json/access/ticket',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      httpsAgent,
+      data: qs.stringify({ username: username + '@pve', password: password })
+    });
+
+    if (response.status !== 200) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Store ticket and CSRF token for subsequent API calls
+    const { ticket, CSRFPreventionToken } = response.data.data;
+
+    // Query user groups to check for admin privileges
+    const userResponse = await axios.request({
+      method: 'get',
+      url: `https://10.15.0.4:8006/api2/json/access/users/${username}@pve`,
+      headers: { 
+        'CSRFPreventionToken': CSRFPreventionToken,
+        'Cookie': `PVEAuthCookie=${ticket}`
+      },
+      httpsAgent
+    });
+
+    const groups = userResponse.data?.data?.groups || [];
+    const isAdmin = groups.includes('administrators');
+
+    req.session.user = username;
+    req.session.proxmoxUsername = username + '@pve';
+    req.session.proxmoxPassword = password;
+    req.session.isAdmin = isAdmin;
+
+    return res.json({ success: true, redirect: req?.query?.redirect || '/' });
+  } catch (error) {
+    console.error('Login error:', error.message);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
 });
 
 // Fetch user's containers
 app.get('/containers', requireAuth, async (req, res) => {
-  const username = req.session.user.split('@')[0];
   // eager-load related services
-  const containers = await Container.findAll({ where: { username }, include: [{ association: 'services' }] });
+  const containers = await Container.findAll({
+    where: { username: req.session.user },
+    include: [{ association: 'services' }]
+  });
 
   // Map containers to view models
   const rows = containers.map(c => {
@@ -130,6 +186,7 @@ app.get('/containers', requireAuth, async (req, res) => {
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
     return {
+      id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
       osRelease: c.osRelease,
@@ -138,7 +195,12 @@ app.get('/containers', requireAuth, async (req, res) => {
     };
   });
 
-  return res.render('containers', { rows });
+  return res.render('containers', { 
+    rows,
+    isAdmin: req.session.isAdmin || false,
+    successMessages: req.flash('success'),
+    errorMessages: req.flash('error')
+  });
 });
 
 // Generate nginx configuration for a container
@@ -194,7 +256,14 @@ app.post('/containers', async (req, res) => {
   }
   
   // handle non-init container creation (e.g., admin API)
-  const container = await Container.create(req.body);
+  const aiContainer = req.body.aiContainer || 'N';
+  const containerId = req.body.containerId;
+  const nodeId = await getNodeForContainer(aiContainer, containerId);
+  
+  const container = await Container.create({
+    ...req.body,
+    nodeId
+  });
   const httpService = await Service.create({
     containerId: container.id,
     type: 'http',
@@ -230,6 +299,66 @@ app.post('/containers', async (req, res) => {
     }
   }
   return res.json({ success: true });
+});
+
+// Delete container
+app.delete('/containers/:id', requireAuth, async (req, res) => {
+  const containerId = parseInt(req.params.id, 10);
+  
+  // Find the container with ownership check in query to prevent information leakage
+  const container = await Container.findOne({
+    where: { 
+      id: containerId,
+      username: req.session.user
+    },
+    include: [{ 
+      model: Node, 
+      as: 'node',
+      attributes: ['id', 'name', 'apiUrl', 'tokenId', 'secret', 'tlsVerify']
+    }]
+  });
+  
+  if (!container) {
+    req.flash('error', 'Container not found');
+    return res.redirect('/containers');
+  }
+  
+  const node = container.node;
+  if (!node || !node.apiUrl) {
+    req.flash('error', 'Node API URL not configured');
+    return res.redirect('/containers');
+  }
+
+  if (!node.tokenId || !node.secret) {
+    req.flash('error', 'Node API token not configured');
+    return res.redirect('/containers');
+  }
+  
+  // Delete from Proxmox
+  try {
+    const api = new ProxmoxApi(
+      node.apiUrl,
+      node.tokenId,
+      node.secret,
+      {
+        httpsAgent: new https.Agent({
+          rejectUnauthorized: node.tlsVerify !== false,
+        })
+      }
+    );
+
+    await api.deleteContainer(node.name, container.containerId, true, true);
+  } catch (error) {
+    console.error(error);
+    req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
+    return res.redirect('/containers');
+  }
+  
+  // Delete from database (cascade deletes associated services)
+  await container.destroy();
+  
+  req.flash('success', `Container ${container.hostname} deleted successfully`);
+  return res.redirect('/containers');
 });
 
 // Job status page

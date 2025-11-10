@@ -34,6 +34,18 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     sequelize,
     modelName: 'Service',
+    indexes: [
+      {
+        name: 'services_http_unique_hostname',
+        unique: true,
+        fields: ['externalHostname']
+      },
+      {
+        name: 'services_layer4_unique_port',
+        unique: true,
+        fields: ['type', 'externalPort']
+      }
+    ]
   });
   return Service;
 };

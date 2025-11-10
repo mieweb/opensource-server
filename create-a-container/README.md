@@ -2,6 +2,56 @@
 
 A web application for managing LXC container creation, configuration, and lifecycle on Proxmox VE infrastructure. Provides a user-friendly interface and REST API for container management with automated database tracking and nginx reverse proxy configuration generation.
 
+## Data Model
+
+```mermaid
+erDiagram
+    Node ||--o{ Container : "hosts"
+    Container ||--o{ Service : "exposes"
+    
+    Node {
+        int id PK
+        string name UK "Proxmox node name"
+        string apiUrl "Proxmox API URL"
+        boolean tlsVerify "Verify TLS certificates"
+        datetime createdAt
+        datetime updatedAt
+    }
+    
+    Container {
+        int id PK
+        string hostname UK "FQDN hostname"
+        string username "Owner username"
+        string osRelease "OS distribution"
+        int nodeId FK "References Node"
+        int containerId UK "Proxmox VMID"
+        string macAddress UK "MAC address"
+        string ipv4Address UK "IPv4 address"
+        string aiContainer "Node type flag"
+        datetime createdAt
+        datetime updatedAt
+    }
+    
+    Service {
+        int id PK
+        int containerId FK "References Container"
+        enum type "tcp, udp, or http"
+        int internalPort "Port inside container"
+        int externalPort "External port (tcp/udp only)"
+        boolean tls "TLS enabled (tcp only)"
+        string externalHostname UK "Public hostname (http only)"
+        datetime createdAt
+        datetime updatedAt
+    }
+```
+
+**Key Constraints:**
+- `(Node.name)` - Unique
+- `(Container.hostname)` - Unique
+- `(Container.nodeId, Container.containerId)` - Unique (same VMID can exist on different nodes)
+- `(Service.externalHostname)` - Unique when type='http'
+- `(Service.type, Service.externalPort)` - Unique when type='tcp' or type='udp'
+
 ## Features
 
 - **User Authentication** - Proxmox VE authentication integration
@@ -162,6 +212,20 @@ Create or register a container
 - **Body (init=false)**: Container registration data (for scripts)
 - **Returns (init=true)**: Redirect to status page
 - **Returns (init=false)**: `{ containerId, message }`
+
+#### `DELETE /containers/:id` (Auth Required)
+Delete a container from both Proxmox and the database
+- **Path Parameter**: `id` - Container database ID
+- **Authorization**: User can only delete their own containers
+- **Process**:
+  1. Verifies container ownership
+  2. Deletes container from Proxmox via API
+  3. On success, removes container record from database (cascades to services)
+- **Returns**: `{ success: true, message: "Container deleted successfully" }`
+- **Errors**: 
+  - `404` - Container not found
+  - `403` - User doesn't own the container
+  - `500` - Proxmox API deletion failed or node not configured
 
 #### `GET /status/:jobId` (Auth Required)
 View container creation progress page

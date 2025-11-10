@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Your Containers - MIE</title>
+    <title>Nodes - MIE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
     <link href="/style.css" rel="stylesheet">
@@ -11,10 +11,8 @@
     <nav class="navbar navbar-expand-lg">
         <div class="container-fluid">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item active" aria-current="page"><a href="/containers">Containers</a></li>
-                <% if (isAdmin) { %>
-                    <li class="breadcrumb-item"><a href="/nodes">Nodes</a></li>
-                <% } %>
+                <li class="breadcrumb-item"><a href="/containers">Containers</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><a href="/nodes">Nodes</a></li>
             </ol>
             <form method="POST" action="/logout">
                 <button type="submit" class="btn btn-danger logout-button">Logout</button>
@@ -47,19 +45,18 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h4 class="card-title mb-0">Your Containers</h4>
-                            <a class="btn btn-primary" href="/containers/new" role="button">New Container</a>
+                            <h4 class="card-title mb-0">Proxmox Nodes</h4>
+                            <a class="btn btn-primary" href="/nodes/new" role="button" aria-label="Create new Proxmox node">New Node</a>
                         </div>
 
                         <div class="table-responsive">
                             <table class="table table-hover table-bordered align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Hostname</th>
-                                        <th>IPv4</th>
-                                        <th>OS Release</th>
-                                        <th>SSH Port</th>
-                                        <th>HTTP Port</th>
+                                        <th>Name</th>
+                                        <th>API URL</th>
+                                        <th>TLS Verify</th>
+                                        <th>Containers</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -67,23 +64,41 @@
                                     <% if (rows && rows.length) { %>
                                         <% rows.forEach(r => { %>
                                             <tr>
-                                                <td><%= r.hostname %></td>
-                                                <td><%= r.ipv4Address || '-' %></td>
-                                                <td><%= r.osRelease || '-' %></td>
-                                                <td><%= r.sshPort || '-' %></td>
-                                                <td><%= r.httpPort || '-' %></td>
+                                                <td><%= r.name %></td>
+                                                <td><%= r.apiUrl || '-' %></td>
                                                 <td>
-                                                    <form method="POST" action="/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
+                                                    <% if (r.tlsVerify === true) { %>
+                                                        <span class="badge bg-success">Yes</span>
+                                                    <% } else if (r.tlsVerify === false) { %>
+                                                        <span class="badge bg-warning text-dark">No</span>
+                                                    <% } else { %>
+                                                        <span class="badge bg-secondary">Not Set</span>
+                                                    <% } %>
+                                                </td>
+                                                <td><%= r.containerCount %></td>
+                                                <td>
+                                                    <a href="/nodes/<%= r.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit node <%= r.name %>">Edit</a>
+                                                    <form method="POST" action="/nodes/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete node <%= r.name %>? This action cannot be undone.');">
                                                         <input type="hidden" name="_method" value="DELETE">
-                                                        <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
+                                                        <button
+                                                            type="submit"
+                                                            class="btn btn-danger btn-sm"
+                                                            <% if (r.containerCount > 0) { %>
+                                                                disabled
+                                                                aria-disabled="true"
+                                                                aria-label="Cannot delete node with associated containers"
+                                                            <% } %>
+                                                        >
+                                                            Delete
+                                                        </button>
                                                     </form>
                                                 </td>
                                             </tr>
                                         <% }) %>
                                     <% } else { %>
                                         <tr>
-                                            <td colspan="6" class="text-muted text-center py-4">
-                                                No containers found. Click "New Container" to create your first one.
+                                            <td colspan="5" class="text-muted text-center py-4">
+                                                No nodes found. Click "New Node" to create your first one.
                                             </td>
                                         </tr>
                                     <% } %>
