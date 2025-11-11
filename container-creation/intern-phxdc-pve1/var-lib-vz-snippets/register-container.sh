@@ -91,10 +91,13 @@ mac=$(run_pct_config "$CTID" | grep -oP 'hwaddr=\K([^\s,]+)')
 # Store all protocols and ports to write to JSON list later.
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
     list_all_protocols=()
+    list_all_ports=()
 
     while read line; do
         protocol=$(echo "$line" | awk '{print $1}')
+        port=$(echo "$line" | awk '{print $3}')
         list_all_protocols+=("$protocol")
+        list_all_ports+=("$port")
     done < <(tac "$ADDITIONAL_PROTOCOLS")
 
     # Space Seperate Lists
@@ -126,7 +129,7 @@ else
       --data-urlencode "httpPort=$http_port")"
 fi
 
-ssh_port="$(jq -r '.sshPort' <<< "$response")"
+ssh_port="$(jq -r '.data.services[] | select(.type == "tcp" and .internalPort == 22) | .externalPort' <<< "$response")"
 
 # Results
 # Define high-contrast colors
@@ -153,7 +156,9 @@ echo -e "🌐  ${BLUE}HTTP Port              :${RESET} $http_port"
 # Additional protocols (if any)
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
     for i in "${!list_all_protocols[@]}"; do
-        echo -e "📡  ${CYAN}${list_all_protocols[$i]} Port               :${RESET} ${list_all_ports[$i]}"
+        internal_port="${list_all_ports[$i]}"
+        service_info="$(jq -r --arg port "$internal_port" '.data.services[] | select(.internalPort == ($port | tonumber)) | "\(.externalPort)/\(.type)"' <<< "$response")"
+        echo -e "📡  ${CYAN}${list_all_protocols[$i]} Port               :${RESET} $service_info"
     done
 fi
 

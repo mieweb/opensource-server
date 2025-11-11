@@ -284,9 +284,10 @@ app.post('/containers', async (req, res) => {
     tls: false,
     externalHostname: null
   });
+  const services = [httpService, sshService];
   if (req.body.additionalProtocols) {
     const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
-    additionalProtocols.forEach(async (protocol, _) => {
+    for (const protocol of additionalProtocols) {
       const defaultPort = serviceMap[protocol].port;
       const underlyingProtocol = serviceMap[protocol].protocol;
       const port = await Service.nextAvailablePortInRange(underlyingProtocol, 10001, 29999)
@@ -298,9 +299,10 @@ app.post('/containers', async (req, res) => {
         tls: false,
         externalHostname: null
       });
-    });
+      services.push(additionalService);
+    }
   }
-  return res.json({ success: true, sshPort });
+  return res.json({ success: true, data: { ...container.toJSON(), services } });
 });
 
 // Delete container
