@@ -262,7 +262,7 @@ app.post('/containers', async (req, res) => {
   const aiContainer = req.body.aiContainer || 'N';
   const containerId = req.body.containerId;
   const nodeId = await getNodeForContainer(aiContainer, containerId);
-  const sshPort = await Service.nextAvailablePortInRange('tcp', 2000, 2999);
+  const sshPort = await Service.nextAvailablePortInRange('tcp', 2222, 2999);
   
   const container = await Container.create({
     ...req.body,
@@ -284,14 +284,12 @@ app.post('/containers', async (req, res) => {
     tls: false,
     externalHostname: null
   });
-  if (req.body.additionalPorts && req.body.additionalProtocols) {
-    const additionalPorts = req.body.additionalPorts.split(',').map(p => p.trim());
+  if (req.body.additionalProtocols) {
     const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
-    for (let i = 0; i < additionalPorts.length; i++) {
-      const port = parseInt(additionalPorts[i], 10);
-      const protocol = additionalProtocols[i].toLowerCase();
+    additionalProtocols.forEach(async (protocol, _) => {
       const defaultPort = serviceMap[protocol].port;
       const underlyingProtocol = serviceMap[protocol].protocol;
+      const port = await Service.nextAvailablePortInRange(underlyingProtocol, 10001, 29999)
       const additionalService = await Service.create({
         containerId: container.id,
         type: underlyingProtocol,
@@ -300,9 +298,9 @@ app.post('/containers', async (req, res) => {
         tls: false,
         externalHostname: null
       });
-    }
+    });
   }
-  return res.json({ success: true });
+  return res.json({ success: true, sshPort });
 });
 
 // Delete container
