@@ -92,29 +92,6 @@ else
     IPTABLES_IFACE="vmbr0"
 fi
 
-# Check if this container already has a SSH port assigned in PREROUTING
-existing_ssh_port=$(iptables -t nat -S PREROUTING | grep "to-destination $container_ip:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
-
-if [[ -n "$existing_ssh_port" ]]; then
-    echo "ℹ️ Container already has SSH port $existing_ssh_port"
-    ssh_port="$existing_ssh_port"
-else
-    # Get used SSH ports
-    used_ssh_ports=$(iptables -t nat -S PREROUTING | awk -F'--dport ' '/--dport / {print $2}' | awk '/22$/' | awk '{print $1}')
-    ssh_port=$(comm -23 <(seq 2222 2999 | sort) <(echo "$used_ssh_ports" | sort) | head -n 1)
-
-    if [[ -z "$ssh_port" ]]; then
-        echo "❌ No available SSH ports found"
-        exit 2
-    fi
-
-        # SSH PREROUTING rule
-        iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport "$ssh_port" -j DNAT --to-destination "$container_ip:22"
-
-        # SSH POSTROUTING rule
-        iptables -t nat -A POSTROUTING -o "$IPTABLES_IFACE" -p tcp -d "$container_ip" --dport 22 -j MASQUERADE
-    fi
-
 # Take input file of protocols, check if the container already has a port assigned for those protocols in PREROUTING
 # Store all protocols and ports to write to JSON list later.
 if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
@@ -168,7 +145,6 @@ if [ ! -z "$ADDITIONAL_PROTOCOLS" ]; then
       --data-urlencode "containerId=$CTID" \
       --data-urlencode "macAddress=$mac" \
       --data-urlencode "aiContainer=$AI_CONTAINER" \
-      --data-urlencode "sshPort=$ssh_port" \
       --data-urlencode "httpPort=$http_port" \
       --data-urlencode "additionalProtocols=$ss_protocols" \
       --data-urlencode "additionalPorts=$ss_ports"
@@ -183,7 +159,6 @@ else
       --data-urlencode "containerId=$CTID" \
       --data-urlencode "macAddress=$mac" \
       --data-urlencode "aiContainer=$AI_CONTAINER" \
-      --data-urlencode "sshPort=$ssh_port" \
       --data-urlencode "httpPort=$http_port"
 fi
 
