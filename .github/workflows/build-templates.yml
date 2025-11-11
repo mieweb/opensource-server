@@ -1,31 +1,29 @@
 name: Build and Upload Templates
 on:
   push:
-    # Only trigger on pushes that touch files in this packer tree
     paths:
       - 'packer/**'
   schedule:
-    - cron: "0 4 * * *" # Nightly at 4 AM
+    - cron: "0 4 * * *"
   workflow_dispatch:
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     env:
       PROXMOX_API_URL: ${{ secrets.PROXMOX_API_URL }}
       PROXMOX_TOKEN_ID: ${{ secrets.PROXMOX_TOKEN_ID }}
       PROXMOX_TOKEN_SECRET: ${{ secrets.PROXMOX_TOKEN_SECRET }}
-      # Define the template version ONCE for the whole job
-      TEMPLATE_VERSION: ${{ format('{0:yyyyMMdd}', github.run_started_at) }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set TEMPLATE_VERSION
+        run: echo "TEMPLATE_VERSION=$(date +%Y%m%d)" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y packer ansible zstd python3-requests
 
-      # --- Build Debian 12 ---
       - name: Build Debian 12 Template
         run: |
           packer build \
@@ -37,7 +35,6 @@ jobs:
           python3 api/proxmox_upload.py \
             --file /tmp/output/debian12-fungible_${TEMPLATE_VERSION}.tar.xz
 
-      # --- Build Rocky 9 ---
       - name: Build Rocky 9 Template
         run: |
           packer build \
