@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const morgan = require('morgan');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
@@ -26,6 +27,7 @@ app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
 
 // setup middleware
+app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Parse form data
 app.use(methodOverride((req, res) => {
