@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CONF_FILE=/etc/nginx/conf.d/reverse-proxy.conf
+CONF_FILE=/etc/nginx/nginx.conf
 ETAG_FILE="${CONF_FILE}.etag"
 TEMP_FILE="${CONF_FILE}.tmp"
 HEADERS_FILE="${CONF_FILE}.headers"

@@ -206,11 +206,12 @@ app.get('/containers', requireAuth, async (req, res) => {
 // Generate nginx configuration for a container
 app.get('/nginx.conf', async (req, res) => {
   const services = await Service.findAll({
-    where: { type: 'http' },
     include: [{ model: Container }]
   });
+  const httpServices = services.filter(s => s.type === 'http');
+  const streamServices = services.filter(s => s.type === 'tcp' || s.type === 'udp');
   res.contentType('text/plain');
-  return res.render('nginx-conf', { services });
+  return res.render('nginx-conf', { httpServices, streamServices });
 });
 
 // Create container
