@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage function
 usage() {
     cat <<EOF
-Usage: $0 <hostname> <ipv4Address> <username> <osRelease> <containerId> <macAddress> <aiContainer> <sshPort> <httpPort> [additionalProtocols] [additionalPorts]
+Usage: $0 <hostname> <ipv4Address> <username> <osRelease> <containerId> <macAddress> <aiContainer> <httpPort> [additionalProtocols]
 
 Register a container via the API endpoint.
 
@@ -17,12 +17,10 @@ Required Parameters:
   containerId         Container ID (CTID)
   macAddress          MAC address of the container
   aiContainer         AI container type (N, PHOENIX, or FORTWAYNE)
-  sshPort             External SSH port
   httpPort            HTTP port
 
 Optional Parameters:
   additionalProtocols Comma-separated list of additional protocol names
-  additionalPorts     Comma-separated list of additional port numbers
 
 Environment Variables:
   CONTAINER_API_URL   Override the API endpoint URL
@@ -36,7 +34,7 @@ Examples:
   $0 test-container 10.15.7.7 rgingras debian 123 AA:BB:CC:DD:EE:FF N 2222 80 "dns,smtp" "5353,2525"
 
   # Override URL
-  CONTAINER_API_URL=https://create-a-container-dev.opensource.mieweb.org/containers $0 test-container 10.15.7.7 rgingras debian 123 AA:BB:CC:DD:EE:FF N 2222 80
+  CONTAINER_API_URL=https://create-a-container-dev.opensource.mieweb.org/containers $0 test-container 10.15.7.7 rgingras debian 123 AA:BB:CC:DD:EE:FF N 80
 EOF
     exit 1
 }
@@ -56,12 +54,10 @@ osRelease="$4"
 containerId="$5"
 macAddress="$6"
 aiContainer="$7"
-sshPort="$8"
-httpPort="$9"
+httpPort="$8"
 
 # Optional parameters
-additionalProtocols="${10:-}"
-additionalPorts="${11:-}"
+additionalProtocols="${9:-}"
 
 # Default URL
 url="${CONTAINER_API_URL:-http://localhost:3000/containers}"
@@ -83,17 +79,12 @@ curl_cmd=(
     --data-urlencode "containerId=$containerId"
     --data-urlencode "macAddress=$macAddress"
     --data-urlencode "aiContainer=$aiContainer"
-    --data-urlencode "sshPort=$sshPort"
     --data-urlencode "httpPort=$httpPort"
 )
 
 # Add optional parameters if provided
 if [[ -n "$additionalProtocols" ]]; then
     curl_cmd+=(--data-urlencode "additionalProtocols=$additionalProtocols")
-fi
-
-if [[ -n "$additionalPorts" ]]; then
-    curl_cmd+=(--data-urlencode "additionalPorts=$additionalPorts")
 fi
 
 # Execute curl
