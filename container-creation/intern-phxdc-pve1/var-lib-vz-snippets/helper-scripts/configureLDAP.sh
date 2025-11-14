@@ -42,6 +42,21 @@ run_pct() {
     fi
 }
 
+# === Temporary .env Import Step ===
+
+HOST_ENV_FILE="/var/lib/vz/snippets/helper-scripts/pown.sh.env"
+
+if [ ! -f "$HOST_ENV_FILE" ]; then
+    echo "❌ .env file not found at: $HOST_ENV_FILE" >&2
+    exit 1
+fi
+
+ENV_CONTENT=$(sed 's/["\$`]/\\&/g' "$HOST_ENV_FILE")
+
+run_pct_exec "$CONTAINER_ID" bash -c "printf '%s\n' \"$ENV_CONTENT\" > /etc/pown.sh.env"
+
+echo "✅ Imported .env into container at /etc/pown.sh.env"
+
 # === LDAP / SSSD Configuration Steps ===
 
 # Curl Pown.sh script to install SSSD and configure LDAP 
