@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const morgan = require('morgan');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
@@ -26,6 +27,7 @@ app.set('view engine', 'ejs');
 app.set('trust proxy', 1);
 
 // setup middleware
+app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Parse form data
 app.use(methodOverride((req, res) => {
@@ -206,11 +208,12 @@ app.get('/containers', requireAuth, async (req, res) => {
 // Generate nginx configuration for a container
 app.get('/nginx.conf', async (req, res) => {
   const services = await Service.findAll({
-    where: { type: 'http' },
     include: [{ model: Container }]
   });
+  const httpServices = services.filter(s => s.type === 'http');
+  const streamServices = services.filter(s => s.type === 'tcp' || s.type === 'udp');
   res.contentType('text/plain');
-  return res.render('nginx-conf', { services });
+  return res.render('nginx-conf', { httpServices, streamServices });
 });
 
 // Create container
@@ -259,6 +262,7 @@ app.post('/containers', async (req, res) => {
   const aiContainer = req.body.aiContainer || 'N';
   const containerId = req.body.containerId;
   const nodeId = await getNodeForContainer(aiContainer, containerId);
+  const sshPort = await Service.nextAvailablePortInRange('tcp', 2222, 2999);
   
   const container = await Container.create({
     ...req.body,
@@ -276,18 +280,17 @@ app.post('/containers', async (req, res) => {
     containerId: container.id,
     type: 'tcp',
     internalPort: 22,
-    externalPort: req.body.sshPort,
+    externalPort: sshPort,
     tls: false,
     externalHostname: null
   });
-  if (req.body.additionalPorts && req.body.additionalProtocols) {
-    const additionalPorts = req.body.additionalPorts.split(',').map(p => p.trim());
+  const services = [httpService, sshService];
+  if (req.body.additionalProtocols) {
     const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
-    for (let i = 0; i < additionalPorts.length; i++) {
-      const port = parseInt(additionalPorts[i], 10);
-      const protocol = additionalProtocols[i].toLowerCase();
+    for (const protocol of additionalProtocols) {
       const defaultPort = serviceMap[protocol].port;
       const underlyingProtocol = serviceMap[protocol].protocol;
+      const port = await Service.nextAvailablePortInRange(underlyingProtocol, 10001, 29999)
       const additionalService = await Service.create({
         containerId: container.id,
         type: underlyingProtocol,
@@ -296,9 +299,10 @@ app.post('/containers', async (req, res) => {
         tls: false,
         externalHostname: null
       });
+      services.push(additionalService);
     }
   }
-  return res.json({ success: true });
+  return res.json({ success: true, data: { ...container.toJSON(), services } });
 });
 
 // Delete container

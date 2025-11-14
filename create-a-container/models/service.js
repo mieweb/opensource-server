@@ -5,6 +5,33 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       Service.belongsTo(models.Container, { foreignKey: 'containerId' });
     }
+
+    // finds the next available external port for the given type in the specified range
+    static async nextAvailablePortInRange(type, minPort, maxPort) {
+      // Get all used ports for this type
+      const usedServices = await Service.findAll({
+        where: {
+          type: type,
+          externalPort: {
+            [sequelize.Sequelize.Op.between]: [minPort, maxPort]
+          }
+        },
+        attributes: ['externalPort'],
+        order: [['externalPort', 'ASC']]
+      });
+
+      const usedPorts = new Set(usedServices.map(s => s.externalPort));
+
+      // Find the first available port in the range
+      for (let port = minPort; port <= maxPort; port++) {
+        if (!usedPorts.has(port)) {
+          return port;
+        }
+      }
+
+      // No available ports in range
+      throw new Error(`No available ports in range ${minPort}-${maxPort} for type ${type}`);
+    }
   }
   Service.init({
     containerId: {
