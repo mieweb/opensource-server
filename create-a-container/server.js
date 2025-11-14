@@ -67,9 +67,9 @@ async function getNodeForContainer(aiContainer, containerId) {
   let nodeName;
   
   if (aiContainer === 'FORTWAYNE') {
-    nodeName = 'mie-phxdc-ai-pve1';
-  } else if (aiContainer === 'PHOENIX') {
     nodeName = 'intern-phxdc-pve3-ai';
+  } else if (aiContainer === 'PHOENIX') {
+    nodeName = 'mie-phxdc-ai-pve1';
   } else {
     nodeName = (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
   }
