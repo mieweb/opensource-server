@@ -166,7 +166,7 @@ if [[ "${AI_CONTAINER^^}" == "PHOENIX" ]]; then
 
 elif [[ "${AI_CONTAINER^^}" == "FORTWAYNE" ]]; then
     echo "⏳ Fort Wayne AI container requested. Using template CTID 103 on 10.250.0.2..."
-    CTID_TEMPLATE="20113"
+    CTID_TEMPLATE="113"
     # allocate nextid directly on Fort Wayne
     CONTAINER_ID=$(ssh root@10.250.0.2 pvesh get /cluster/nextid)
 
