@@ -11,23 +11,35 @@ module.exports = {
 
     // Step 2: Populate node based on aiContainer values
     // FORTWAYNE -> mie-phxdc-ai-pve1
-    await queryInterface.sequelize.query(
-      "UPDATE Containers SET node = 'mie-phxdc-ai-pve1' WHERE aiContainer = 'FORTWAYNE'"
+    await queryInterface.bulkUpdate('Containers', 
+      { node: 'mie-phxdc-ai-pve1' }, 
+      { aiContainer: 'PHOENIX' }
     );
 
     // PHOENIX -> intern-phxdc-pve3-ai
-    await queryInterface.sequelize.query(
-      "UPDATE Containers SET node = 'intern-phxdc-pve3-ai' WHERE aiContainer = 'PHOENIX'"
+    await queryInterface.bulkUpdate('Containers', 
+      { node: 'intern-phxdc-pve3-ai' }, 
+      { aiContainer: 'FORTWAYNE' }
     );
+
+    // quote everything properly
+    const containersTable = queryInterface.quoteIdentifier('Containers');
+    const aiContainerField = queryInterface.quoteIdentifier('aiContainer');
+    const containerIdField = queryInterface.quoteIdentifier('containerId');
+    const nodeField = queryInterface.quoteIdentifier('node');
 
     // N + odd containerId -> intern-phxdc-pve1
     await queryInterface.sequelize.query(
-      "UPDATE Containers SET node = 'intern-phxdc-pve1' WHERE aiContainer = 'N' AND MOD(containerId, 2) = 1"
+      `UPDATE ${containersTable} 
+       SET ${nodeField} = 'intern-phxdc-pve1' 
+       WHERE ${aiContainerField} = 'N' AND MOD(${containerIdField}, 2) = 1`
     );
 
     // N + even containerId -> intern-phxdc-pve2
     await queryInterface.sequelize.query(
-      "UPDATE Containers SET node = 'intern-phxdc-pve2' WHERE aiContainer = 'N' AND MOD(containerId, 2) = 0"
+      `UPDATE ${containersTable} 
+       SET ${nodeField} = 'intern-phxdc-pve2' 
+       WHERE ${aiContainerField} = 'N' AND MOD(${containerIdField}, 2) = 0`
     );
 
     // Step 3: Make node NOT NULL
