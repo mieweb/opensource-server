@@ -124,7 +124,7 @@ const config: Config = {
                         },
                         {
                             label: "Proxmox Launchpad Source",
-                            href: "https://github.com/maxklema/proxmox-launchpad",
+                            href: "https://github.com/mieweb/launchpad",
                         },
                         {
                             label: "Mieweb Github Organization",
