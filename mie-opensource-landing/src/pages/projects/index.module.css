@@ -1,0 +1,20 @@
+.projectShowcase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;  
+}
+
+.projectHeaderOverlay{
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        linear-gradient(rgba(200, 200, 200, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200, 200, 200, 0.4) 1px, transparent 1px);
+    background-size: 20px 20px;
+    height: 225px;
+    opacity: 0.6;
+}

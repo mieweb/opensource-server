@@ -1,0 +1,8 @@
+{
+  "label": "Proxmox Launchpad",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "description": "Ready to automate your deployments even further? Learn how to integrate Proxmox Launchpad into your repository for a seamless CI/CD pipeline to our cluster."
+  }
+}
