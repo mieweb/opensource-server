@@ -1,0 +1,8 @@
+{
+  "label": "Creating Containers",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn how to create and set up both basic LXCs and deployment-ready LXC Containers"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "label": "Creating Basic Containers",
+  "position": 1,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn how to create and set up basic LXCs (non-deployment ready) from both the web and the command line."
+  }
+}

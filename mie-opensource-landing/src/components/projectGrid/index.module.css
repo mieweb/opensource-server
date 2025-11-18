@@ -1,0 +1,128 @@
+/* PROJECT SHOWCASE SECTION */
+
+.projectShowcase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 0 1rem 0;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto; /* Center it */
+}
+
+.projectGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+    width: 100%;
+    margin-bottom: 2.5rem;
+}
+
+.projectCard {
+    border-radius: 10px;
+    padding: 1.0rem;
+    transition: transform 0.3s ease;
+    border: 0.5px solid var(--ifm-color-gray-400);
+}
+
+.projectHeader {
+    display: flex;
+    align-items: top;
+    justify-content: space-between;
+    min-height: 5rem;
+    margin-bottom: 0.5rem;
+}
+
+.projectInfo {
+    max-width: 80%;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.projectName {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem !important;
+    padding-bottom: 0 !important;
+    line-height: 1.3;
+    overflow: hidden;
+}
+
+.projectAuthor {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2;
+}
+
+.projectDescription {
+    font-size: 0.9rem;
+    color: var(--ifm-color-gray-700);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-height: 3rem;
+}
+
+/* PAGINATION STYLES */
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 2rem;
+    list-style: none;
+    padding: 0;
+}
+
+.pageItem {
+    margin: 0 0.35rem;
+}
+
+.pageLink {
+    display: block;
+    padding: 0.25rem 0.65rem 0.25rem 0.65rem;
+    color: var(--ifm-color-primary);
+    text-decoration: none;
+    border: 0.5px solid var(--ifm-color-primary-light);
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+}
+
+.activePage {
+    background-color: var(--ifm-color-primary);
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.activeLinkPage {
+    color: #fff;
+}
+
+.pageLink:hover {
+    background-color: var(--ifm-color-primary-lightest);
+    border-color: var(--ifm-color-primary-lightest);
+    color: #fff;
+    cursor: pointer;
+}
+
+.pageItem:hover {
+    cursor: pointer;
+}
+
+.TextField {
+     --vaadin-input-field-background: var(--ifm-color-gray-200) !important;
+     --vaadin-input-field-border-radius: 15px !important;
+    width: 300px;
+    margin-bottom: 2rem;
+}
+
+.Button:hover {
+    cursor: pointer;
+}
+

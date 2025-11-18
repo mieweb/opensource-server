@@ -1,0 +1,75 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* You can override the default Infima variables here. */
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-color-main: #1baa27 !important;
+  --ifm-color-primary-dark: #162338;
+  --ifm-color-primary-darker: #131f30;
+  --ifm-color-primary-darkest: #0c1821;
+  --ifm-color-primary-light: #324a5f;
+  --ifm-color-primary-lighter: #3d566d;
+  --ifm-color-primary-lightest: #4a6380;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(27, 42, 65, 0.1);
+  
+  /* Grey color palette for light mode */
+  --ifm-color-gray-0: #ffffff;
+  --ifm-color-gray-100: #f8f9fa;
+  --ifm-color-gray-200: #e9ecef;
+  --ifm-color-gray-300: #dee2e6;
+  --ifm-color-gray-400: #ced4da;
+  --ifm-color-gray-500: #adb5bd;
+  --ifm-color-gray-600: #6c757d;
+  --ifm-color-gray-700: #495057;
+  --ifm-color-gray-800: #343a40;
+  --ifm-color-gray-900: #212529;
+  
+  /* Custom grey variations */
+  --ifm-color-gray-light: #f5f5f5;
+  --ifm-color-gray-medium: #9e9e9e;
+  --ifm-color-gray-dark: #424242;
+  
+  /* Border greys */
+  --ifm-color-border-light: #e1e4e8;
+  --ifm-color-border-medium: #d1d5da;
+  --ifm-color-border-dark: #586069;
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-color-main: #ccc9dc;
+  --ifm-color-primary-dark: #bdb9d1;
+  --ifm-color-primary-darker: #b3aeca;
+  --ifm-color-primary-darkest: #9087b0;
+  --ifm-color-primary-light: #dbd8e7;
+  --ifm-color-primary-lighter: #e0ddec;
+  --ifm-color-primary-lightest: #f0eef6;
+  --docusaurus-highlighted-code-line-bg: rgba(204, 201, 220, 0.1);
+  
+  /* Grey color palette for dark mode */
+  --ifm-color-gray-0: #000000;
+  --ifm-color-gray-100: #1a1a1a;
+  --ifm-color-gray-200: #2d2d2d;
+  --ifm-color-gray-300: #404040;
+  --ifm-color-gray-400: #595959;
+  --ifm-color-gray-500: #737373;
+  --ifm-color-gray-600: #8c8c8c;
+  --ifm-color-gray-700: #a6a6a6;
+  --ifm-color-gray-800: #bfbfbf;
+  --ifm-color-gray-900: #d9d9d9;
+  
+  /* Custom grey variations for dark mode */
+  --ifm-color-gray-light: #2a2a2a;
+  --ifm-color-gray-medium: #666666;
+  --ifm-color-gray-dark: #cccccc;
+  
+  /* Border greys for dark mode */
+  --ifm-color-border-light: #30363d;
+  --ifm-color-border-medium: #21262d;
+  --ifm-color-border-dark: #8b949e;
+}
