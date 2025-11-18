@@ -4,9 +4,3 @@
 [submodule "LDAP/LDAPServer"]
 	path = LDAP/LDAPServer
 	url = https://github.com/mieweb/LDAPServer.git
-[submodule "ci-cd-automation/Proxmox-Launchpad"]
-	path = ci-cd-automation/Proxmox-Launchpad
-	url = https://github.com/maxklema/proxmox-launchpad.git
-[submodule "mie-opensource-landing"]
-	path = mie-opensource-landing
-	url = https://github.com/maxklema/mie-opensource-landing
