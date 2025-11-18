@@ -105,6 +105,8 @@ const transporter = nodemailer.createTransport({
 // --- Mount Routers ---
 const nodesRouter = require('./routers/nodes');
 app.use('/nodes', nodesRouter);
+const jobsRouter = require('./routers/jobs');
+app.use('/api/jobs', jobsRouter);
 
 // --- Routes ---
 const PORT = 3000;

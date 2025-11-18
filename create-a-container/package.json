@@ -1,7 +1,8 @@
 {
   "scripts": {
     "dev": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate"
+    "db:migrate": "sequelize db:migrate",
+    "job-runner": "node job-runner.js"
   },
   "dependencies": {
     "axios": "^1.12.2",
