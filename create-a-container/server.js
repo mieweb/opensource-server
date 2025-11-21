@@ -100,10 +100,12 @@ const transporter = nodemailer.createTransport({
 // --- Mount Routers ---
 const nodesRouter = require('./routers/nodes');
 const loginRouter = require('./routers/login');
+const registerRouter = require('./routers/register');
 app.use('/nodes', nodesRouter);
 const jobsRouter = require('./routers/jobs');
 app.use('/jobs', jobsRouter);
 app.use('/login', loginRouter);
+app.use('/register', registerRouter);
 
 // --- Routes ---
 const PORT = 3000;
@@ -357,29 +359,6 @@ app.get('/api/stream/:jobId', (req, res) => {
     res.end();
   });
 });
-
-// Serve the account request form
-app.get('/register', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'register.html'));
-});
-
-app.post('/register', async (req, res) => {
-  const userParams = {
-    uidNumber: await User.nextUidNumber(),
-    uid: req.body.uid,
-    sn: req.body.sn,
-    givenName: req.body.givenName,
-    mail: req.body.mail,
-    userPassword: req.body.userPassword,
-    status: await User.count() === 0 ? 'active' : 'pending', // first user is active
-    cn: `${req.body.givenName} ${req.body.sn}`,
-    homeDirectory: `/home/${req.body.uid}`,
-  }
-  const user = await User.create(userParams);
-  res.flash('success', 'Account registered successfully. You will be notified via email once approved.');
-  res.redirect('/login');
-});
-
 
 // --- Email Test Endpoint ---
 app.get('/send-test-email', async (req, res) => {
