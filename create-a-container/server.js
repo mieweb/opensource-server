@@ -84,11 +84,6 @@ async function getNodeForContainer(aiContainer, containerId) {
   return node.id;
 }
 
-// Serve login page from views (moved from public)
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'login.html'));
-});
-
 // Redirect root to the main form. The form route will enforce authentication
 app.get('/', (req, res) => res.redirect('/containers'));
 
@@ -104,9 +99,11 @@ const transporter = nodemailer.createTransport({
 
 // --- Mount Routers ---
 const nodesRouter = require('./routers/nodes');
+const loginRouter = require('./routers/login');
 app.use('/nodes', nodesRouter);
 const jobsRouter = require('./routers/jobs');
 app.use('/jobs', jobsRouter);
+app.use('/login', loginRouter);
 
 // --- Routes ---
 const PORT = 3000;
@@ -115,61 +112,6 @@ app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`)
 // Serves the main container creation form
 app.get('/containers/new', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'form.html'));
-});
-
-// Handles login
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  // Validate username: only allow alphanumerics, underscores, hyphens, 3-32 chars
-  if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username)) {
-    return res.status(400).json({ error: 'Invalid username format' });
-  }
-
-  try {
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: true,
-      servername: 'opensource.mieweb.org'
-    });
-
-    const response = await axios.request({
-      method: 'post',
-      url: 'https://10.15.0.4:8006/api2/json/access/ticket',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      httpsAgent,
-      data: qs.stringify({ username: username + '@pve', password: password })
-    });
-
-    if (response.status !== 200) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Store ticket and CSRF token for subsequent API calls
-    const { ticket, CSRFPreventionToken } = response.data.data;
-
-    // Query user groups to check for admin privileges
-    const userResponse = await axios.request({
-      method: 'get',
-      url: `https://10.15.0.4:8006/api2/json/access/users/${username}@pve`,
-      headers: { 
-        'CSRFPreventionToken': CSRFPreventionToken,
-        'Cookie': `PVEAuthCookie=${ticket}`
-      },
-      httpsAgent
-    });
-
-    const groups = userResponse.data?.data?.groups || [];
-    const isAdmin = groups.includes('administrators');
-
-    req.session.user = username;
-    req.session.proxmoxUsername = username;
-    req.session.proxmoxPassword = password;
-    req.session.isAdmin = isAdmin;
-
-    return res.json({ success: true, redirect: req?.query?.redirect || '/' });
-  } catch (error) {
-    console.error('Login error:', error.message);
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
 });
 
 // Fetch user's containers

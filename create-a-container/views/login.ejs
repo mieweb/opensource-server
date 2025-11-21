@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MIE Container Creation Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="login-container">
+        <img src="logo.png" alt="Company Logo" class="logo">
+        <h2>Container Creation Login</h2>
+        
+        <% if (successMessages && successMessages.length > 0) { %>
+            <% successMessages.forEach(function(message) { %>
+                <div style="color: green; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid green; background-color: #d4edda; border-radius: 4px;">
+                    <%= message %>
+                </div>
+            <% }) %>
+        <% } %>
+        
+        <% if (errorMessages && errorMessages.length > 0) { %>
+            <% errorMessages.forEach(function(message) { %>
+                <div style="color: red; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid red; background-color: #f8d7da; border-radius: 4px;">
+                    <%= message %>
+                </div>
+            <% }) %>
+        <% } %>
+        
+        <form method="POST" action="/login">
+            <input type="hidden" name="redirect" value="<%= redirect %>">
+            
+            <label for="username">Username</label>
+            <input type="text" name="username" id="username" required>
+
+            <label for="password">Password</label>
+            <input type="password" name="password" id="password" required>
+
+            <input type="submit" value="Login">
+        </form>
+        <hr>
+        <div class="signup-section">
+            <h2>Don't have an account?</h2>
+            <a href="/register" style="text-decoration: none;">
+                <button type="button">Request an Account</button>
+            </a>
+        </div>
+        <div class="footer">
+            &copy; 2025 Medical Informatics Engineering
+        </div>
+    </div>
+</body>
+</html>
