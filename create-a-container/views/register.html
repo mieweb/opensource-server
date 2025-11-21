@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <div class="login-container">
+    <h2>Register for an Opensource Account</h2>
+
+    <form id="accountRequestForm" method="POST" action="/register">
+
+      <label for="givenName">First Name</label>
+      <input type="text" id="givenName" name="givenName" required>
+
+      <label for="sn">Last Name</label>
+      <input type="text" id="sn" name="sn" required>
+
+      <label for="uid">Username</label>
+      <input type="text" id="uid" name="uid" required>
+
+      <label for="mail">Email</label>
+      <input type="email" id="mail" name="mail" required>
+
+      <label for="userPassword">Password</label>
+      <input type="password" id="userPassword" name="userPassword" required>
+
+      <input type="submit" value="Register">
+    </form>
+
+    <a href="/login" style="display: inline-block; margin-top: 0.8rem; text-decoration: none;">
+      <button type="button" style="background-color: #7f8c8d;">Back to Login</button>
+    </a>
+  </div>
+
+<script>
+// Auto-generate username from first and last name
+function generateUsername() {
+  const givenName = document.getElementById('givenName').value.trim();
+  const sn = document.getElementById('sn').value.trim();
+  const uidInput = document.getElementById('uid');
+  
+  let username = '';
+  
+  if (!sn && givenName) {
+    // Only first name: use full first name
+    username = givenName.toLowerCase();
+  } else if (!givenName && sn) {
+    // Only last name: use full last name
+    username = sn.toLowerCase();
+  } else if (givenName && sn) {
+    // Both names: first initial + last name
+    username = (givenName[0] + sn).toLowerCase();
+  }
+  
+  uidInput.value = username;
+}
+
+// Add event listeners to auto-generate username
+document.getElementById('givenName').addEventListener('input', generateUsername);
+document.getElementById('sn').addEventListener('input', generateUsername);
+</script>
+
+</body>
+</html>

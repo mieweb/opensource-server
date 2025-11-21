@@ -14,7 +14,7 @@ const nodemailer = require('nodemailer'); // <-- added
 const axios = require('axios');
 const qs = require('querystring');
 const https = require('https');
-const { Container, Service, Node, sequelize } = require('./models');
+const { Container, Service, Node, User, sequelize } = require('./models');
 const { requireAuth } = require('./middlewares');
 const { ProxmoxApi } = require('./utils');
 const serviceMap = require('./data/services.json');
@@ -418,34 +418,24 @@ app.get('/api/stream/:jobId', (req, res) => {
 
 // Serve the account request form
 app.get('/register', (req, res) => {
-  res.sendFile(path.join(__dirname, 'views', 'request-account.html'));
+  res.sendFile(path.join(__dirname, 'views', 'register.html'));
 });
 
-app.post('/register', (req, res) => {
-  const { firstName, lastName, email, conclusionDate, reason } = req.body;
-
-  const details = `
-New intern account request received for ${firstName} ${lastName}:
-
-Name: ${firstName} ${lastName}
-Email: ${email}
-Anticipated Intern Conclusion Date: ${conclusionDate}
-Reason: ${reason}
-`;
-
-  const mailCmd = `echo "${details}" | mail -r accounts@opensource.mieweb.org -s "New Intern Account Request" devopsalerts@mieweb.com`;
-
-  exec(mailCmd, (err, stdout, stderr) => {
-    if (err) {
-      console.error('Error sending email:', err);
-      console.error('stderr:', stderr);
-      return res.status(500).json({ error: 'Failed to send email notification to DevOps.' });
-    } else {
-      console.log('DevOps notification sent successfully');
-      console.log('stdout:', stdout);
-      return res.json({ success: true, message: 'Account request submitted successfully.' });
-    }
-  });
+app.post('/register', async (req, res) => {
+  const userParams = {
+    uidNumber: await User.nextUidNumber(),
+    uid: req.body.uid,
+    sn: req.body.sn,
+    givenName: req.body.givenName,
+    mail: req.body.mail,
+    userPassword: req.body.userPassword,
+    status: await User.count() === 0 ? 'active' : 'pending', // first user is active
+    cn: `${req.body.givenName} ${req.body.sn}`,
+    homeDirectory: `/home/${req.body.uid}`,
+  }
+  const user = await User.create(userParams);
+  res.flash('success', 'Account registered successfully. You will be notified via email once approved.');
+  res.redirect('/login');
 });
 
 
