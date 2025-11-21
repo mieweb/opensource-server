@@ -1,131 +1,100 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><%= isEdit ? 'Edit Node' : 'New Node' %> - MIE</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-    <link href="/style.css" rel="stylesheet">
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg">
-        <div class="container-fluid">
-            <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="/containers">Containers</a></li>
-                <li class="breadcrumb-item"><a href="/nodes">Nodes</a></li>
-                <li class="breadcrumb-item active" aria-current="page"><%= isEdit ? 'Edit' : 'New' %></li>
-            </ol>
-            <form method="POST" action="/logout">
-                <button type="submit" class="btn btn-danger logout-button">Logout</button>
-            </form>
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit Node' : 'New Node') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Containers', url: '/containers' },
+    { label: 'Nodes', url: '/nodes' },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  errorMessages
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit Node' : 'Create New Node' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/nodes/${node.id}` : '/nodes' %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+      <div class="mb-3">
+        <label for="name" class="form-label">Node Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="name" 
+          name="name" 
+          value="<%= node ? node.name : '' %>" 
+          required
+          placeholder="e.g., intern-phxdc-pve1"
+        >
+        <div class="form-text">The Proxmox node name (must be unique)</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="apiUrl" class="form-label">API URL</label>
+        <input 
+          type="url" 
+          class="form-control" 
+          id="apiUrl" 
+          name="apiUrl" 
+          value="<%= node && node.apiUrl ? node.apiUrl : '' %>"
+          placeholder="e.g., https://10.15.0.4:8006"
+        >
+        <div class="form-text">The Proxmox API endpoint URL (optional)</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="tokenId" class="form-label">Token ID</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="tokenId" 
+          name="tokenId" 
+          value="<%= node && node.tokenId ? node.tokenId : '' %>"
+          placeholder="e.g., user@pam!token-name"
+          autocomplete="off"
+        >
+        <div class="form-text">API token identifier (optional)</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="secret" class="form-label">Secret</label>
+        <input 
+          type="password" 
+          class="form-control" 
+          id="secret" 
+          name="secret" 
+          value=""
+          placeholder="<%= isEdit ? '(unchanged)' : '' %>"
+          autocomplete="off"
+        >
+        <div class="form-text">
+          <%= isEdit ? 'Leave blank to keep existing secret. Enter new secret to update.' : 'API token secret (optional)' %>
         </div>
-    </nav>
+      </div>
 
-    <main class="container mt-4">
-        <div class="row justify-content-center">
-            <div class="col-12 col-lg-8">
-                <!-- Flash Messages -->
-                <% if (errorMessages && errorMessages.length > 0) { %>
-                    <% errorMessages.forEach(msg => { %>
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            <%= msg %>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    <% }) %>
-                <% } %>
+      <div class="mb-3">
+        <label for="tlsVerify" class="form-label">TLS Verification</label>
+        <select class="form-select" id="tlsVerify" name="tlsVerify">
+          <option value="" <%= (!node || node.tlsVerify === null) ? 'selected' : '' %>>Not Set (Default: Verify)</option>
+          <option value="true" <%= (node && node.tlsVerify === true) ? 'selected' : '' %>>Enable (Verify Certificates)</option>
+          <option value="false" <%= (node && node.tlsVerify === false) ? 'selected' : '' %>>Disable (Skip Verification)</option>
+        </select>
+        <div class="form-text">Whether to verify TLS certificates when connecting to this node</div>
+      </div>
 
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <h4 class="card-title mb-4"><%= isEdit ? 'Edit Node' : 'Create New Node' %></h4>
+      <div class="d-flex justify-content-between">
+        <a href="/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update Node' : 'Create Node' %>
+        </button>
+      </div>
+    </form>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
 
-                        <form method="POST" action="<%= isEdit ? `/nodes/${node.id}` : '/nodes' %>">
-                            <% if (isEdit) { %>
-                                <input type="hidden" name="_method" value="PUT">
-                            <% } %>
-
-                            <div class="mb-3">
-                                <label for="name" class="form-label">Node Name <span class="text-danger">*</span></label>
-                                <input 
-                                    type="text" 
-                                    class="form-control" 
-                                    id="name" 
-                                    name="name" 
-                                    value="<%= node ? node.name : '' %>" 
-                                    required
-                                    placeholder="e.g., intern-phxdc-pve1"
-                                >
-                                <div class="form-text">The Proxmox node name (must be unique)</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="apiUrl" class="form-label">API URL</label>
-                                <input 
-                                    type="url" 
-                                    class="form-control" 
-                                    id="apiUrl" 
-                                    name="apiUrl" 
-                                    value="<%= node && node.apiUrl ? node.apiUrl : '' %>"
-                                    placeholder="e.g., https://10.15.0.4:8006"
-                                >
-                                <div class="form-text">The Proxmox API endpoint URL (optional)</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="tokenId" class="form-label">Token ID</label>
-                                <input 
-                                    type="text" 
-                                    class="form-control" 
-                                    id="tokenId" 
-                                    name="tokenId" 
-                                    value="<%= node && node.tokenId ? node.tokenId : '' %>"
-                                    placeholder="e.g., user@pam!token-name"
-                                    autocomplete="off"
-                                >
-                                <div class="form-text">API token identifier (optional)</div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="secret" class="form-label">Secret</label>
-                                <input 
-                                    type="password" 
-                                    class="form-control" 
-                                    id="secret" 
-                                    name="secret" 
-                                    value=""
-                                    placeholder="<%= isEdit ? '(unchanged)' : '' %>"
-                                    autocomplete="off"
-                                >
-                                <div class="form-text">
-                                    <%= isEdit ? 'Leave blank to keep existing secret. Enter new secret to update.' : 'API token secret (optional)' %>
-                                </div>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="tlsVerify" class="form-label">TLS Verification</label>
-                                <select class="form-select" id="tlsVerify" name="tlsVerify">
-                                    <option value="" <%= (!node || node.tlsVerify === null) ? 'selected' : '' %>>Not Set (Default: Verify)</option>
-                                    <option value="true" <%= (node && node.tlsVerify === true) ? 'selected' : '' %>>Enable (Verify Certificates)</option>
-                                    <option value="false" <%= (node && node.tlsVerify === false) ? 'selected' : '' %>>Disable (Skip Verification)</option>
-                                </select>
-                                <div class="form-text">Whether to verify TLS certificates when connecting to this node</div>
-                            </div>
-
-                            <div class="d-flex justify-content-between">
-                                <a href="/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
-                                <button type="submit" class="btn btn-primary">
-                                    <%= isEdit ? 'Update Node' : 'Create Node' %>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="card-footer text-muted text-center small">
-                        &copy; 2025 Medical Informatics Engineering
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
-</body>
-</html>
+<%- include('../layouts/footer') %>

@@ -1,0 +1,43 @@
+<%- include('../layouts/header', { 
+  title: 'Create Your Container - MIE',
+  breadcrumbs: [
+    { label: 'Containers', url: '/containers' },
+    { label: 'New', url: null }
+  ],
+  colWidth: 'col-12 col-lg-6',
+  showNav: true,
+  successMessages: [],
+  errorMessages: []
+}) %>
+
+<div class="login-container">
+  <img src="/logo.png" alt="Company Logo" class="logo">
+  <h2>Create Your Container</h2>
+  <form id="containerForm" method="POST" action="/containers">
+    <input type="hidden" name="init" value="true">
+    
+    <label for="hostname">Container Hostname</label>
+    <input type="text" id="hostname" name="hostname" required>
+
+    <label for="osRelease">Linux Distribution</label>
+    <select id="osRelease" name="osRelease" required>
+      <option value="debian">Debian 12 (Bookworm)</option>
+      <option value="rocky">Rocky 9</option>
+    </select>
+
+    <label for="httpPort">HTTP Port</label>
+    <input type="number" id="httpPort" name="httpPort" min="80" max="60000" value="80" required>
+
+    <label for="aiContainer">AI Project Type</label>
+    <select id="aiContainer" name="aiContainer">
+      <option value="N" selected>No</option>
+      <option value="PHOENIX">Phoenix AI Server</option>
+      <option value="FORTWAYNE">Fort Wayne AI Server</option>
+    </select>
+
+    <input type="submit" value="Create Container">
+  </form>
+  <div id="formError" style="color:red; margin-top:10px;"></div>
+</div>
+
+<%- include('../layouts/footer') %>

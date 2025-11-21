@@ -1,0 +1,64 @@
+<%- include('../layouts/header', { 
+  title: 'Your Containers - MIE',
+  breadcrumbs: [
+    { label: 'Containers', url: '/containers' }
+  ],
+  colWidth: 'col-12 col-lg-10',
+  showNav: true,
+  successMessages,
+  errorMessages
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="card-title mb-0">Your Containers</h4>
+      <a class="btn btn-primary" href="/containers/new" role="button">New Container</a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Hostname</th>
+            <th>IPv4</th>
+            <th>OS Release</th>
+            <th>SSH Port</th>
+            <th>HTTP Port</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (rows && rows.length) { %>
+            <% rows.forEach(r => { %>
+              <tr>
+                <td><%= r.hostname %></td>
+                <td><%= r.ipv4Address || '-' %></td>
+                <td><%= r.osRelease || '-' %></td>
+                <td><%= r.sshPort || '-' %></td>
+                <td><%= r.httpPort || '-' %></td>
+                <td>
+                  <form method="POST" action="/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          <% } else { %>
+            <tr>
+              <td colspan="6" class="text-muted text-center py-4">
+                No containers found. Click "New Container" to create your first one.
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
