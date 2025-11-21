@@ -1,11 +1,11 @@
 <%- include('../layouts/header', { 
   title: (isEdit ? 'Edit Node' : 'New Node') + ' - MIE',
   breadcrumbs: [
-    { label: 'Containers', url: '/containers' },
     { label: 'Nodes', url: '/nodes' },
     { label: isEdit ? 'Edit' : 'New', url: '#' }
   ],
   colWidth: 'col-lg-8',
+  isAdmin: true,
   errorMessages
 }) %>
 
