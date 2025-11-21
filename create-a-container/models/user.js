@@ -12,7 +12,13 @@ module.exports = (sequelize, DataTypes) => {
      * The `models/index` file will call this method automatically.
      */
     static associate(models) {
-      // Define associations here if needed in the future
+      // Many-to-many relationship with Groups through UserGroups
+      User.belongsToMany(models.Group, {
+        through: 'UserGroups',
+        foreignKey: 'uidNumber',
+        otherKey: 'gidNumber',
+        as: 'groups'
+      });
     }
 
     /**
@@ -48,7 +54,7 @@ module.exports = (sequelize, DataTypes) => {
     gidNumber: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      defaultValue: 2001
+      defaultValue: 2001 // Default to ldapusers group
     },
     homeDirectory: {
       type: DataTypes.STRING(255),
@@ -96,7 +102,25 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true,
     hooks: {
       beforeCreate: async (user, options) => {
+        // Hash password
         user.userPassword = await argon2.hash(user.userPassword);
+      },
+      afterCreate: async (user, options) => {
+        const { Group } = sequelize.models;
+        
+        // Add user to ldapusers group
+        const primaryGroup = await Group.findByPk(user.gidNumber);
+        await user.addGroup(primaryGroup);
+        
+        // Check if this is the first user
+        const userCount = await User.count();
+        if (userCount === 1) {
+          // Add first user to sysadmins group
+          const sysadminsGroup = await Group.findByPk(2000);
+          if (sysadminsGroup) {
+            await user.addGroup(sysadminsGroup);
+          }
+        }
       },
       beforeUpdate: async (user, options) => {
         if (user.changed('userPassword')) {
