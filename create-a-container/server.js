@@ -174,9 +174,14 @@ app.post('/login', async (req, res) => {
 app.get('/containers', requireAuth, async (req, res) => {
   // eager-load related services
   const containers = await Container.findAll({
-    where: { username: req.session.user },
+    where: { username: req.session.user, ...req.query },
     include: [{ association: 'services' }]
   });
+
+  // Return JSON if client prefers application/json over text/html
+  if (req.accepts(['json', 'html']) === 'json') {
+    return res.json(containers);
+  }
 
   // Map containers to view models
   const rows = containers.map(c => {
