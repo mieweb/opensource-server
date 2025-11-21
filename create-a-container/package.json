@@ -4,6 +4,7 @@
     "db:migrate": "sequelize db:migrate"
   },
   "dependencies": {
+    "argon2": "^0.44.0",
     "axios": "^1.12.2",
     "connect-flash": "^0.1.1",
     "dotenv": "^17.2.3",
