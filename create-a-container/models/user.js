@@ -31,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
      * @returns {boolean} - True if the password matches, false otherwise
      */
     async validatePassword(plainPassword) {
-      return await argon2.verify(plainPassword, this.userPassword);
+      return await argon2.verify(this.userPassword, plainPassword);
     }
   }
   User.init({
