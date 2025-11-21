@@ -101,11 +101,13 @@ const transporter = nodemailer.createTransport({
 const nodesRouter = require('./routers/nodes');
 const loginRouter = require('./routers/login');
 const registerRouter = require('./routers/register');
+const usersRouter = require('./routers/users');
 app.use('/nodes', nodesRouter);
 const jobsRouter = require('./routers/jobs');
 app.use('/jobs', jobsRouter);
 app.use('/login', loginRouter);
 app.use('/register', registerRouter);
+app.use('/users', usersRouter);
 
 // --- Routes ---
 const PORT = 3000;
