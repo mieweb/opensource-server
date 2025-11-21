@@ -290,7 +290,7 @@ else
     /var/lib/vz/snippets/register-container.sh $CONTAINER_ID $HTTP_PORT "" "$PROXMOX_USERNAME"
 fi
 
-SSH_PORT=$(iptables -t nat -S PREROUTING | grep "to-destination $CONTAINER_IP:22" | awk -F'--dport ' '{print $2}' | awk '{print $1}' | head -n 1 || true)
+SSH_PORT="$(curl https://create-a-container.opensource.mieweb.org/nginx.conf | grep -B2 "$CONTAINER_IP:22" | sed -n 's/.*listen[[:space:]]\+\([0-9]\+\).*/\1/p')"
 
 echo "Adding container MOTD information..."
 # port_map.json remains on central nginx host (10.15.20.69) — leave as-is unless you want to change that behavior
