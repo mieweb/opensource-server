@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Users - MIE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/containers">Containers</a></li>
+                <li class="breadcrumb-item"><a href="/nodes">Nodes</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><a href="/users">Users</a></li>
+            </ol>
+            <form method="POST" action="/logout">
+                <button type="submit" class="btn btn-danger logout-button">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-10">
+                <!-- Flash Messages -->
+                <% if (successMessages && successMessages.length > 0) { %>
+                    <% successMessages.forEach(msg => { %>
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            <%= msg %>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    <% }) %>
+                <% } %>
+                
+                <% if (errorMessages && errorMessages.length > 0) { %>
+                    <% errorMessages.forEach(msg => { %>
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <%= msg %>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    <% }) %>
+                <% } %>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="card-title mb-0">Users</h4>
+                            <a class="btn btn-primary" href="/users/new" role="button" aria-label="Create new user">New User</a>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>UID</th>
+                                        <th>Username</th>
+                                        <th>Full Name</th>
+                                        <th>Email</th>
+                                        <th>Status</th>
+                                        <th>Groups</th>
+                                        <th>Admin</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% if (rows.length === 0) { %>
+                                        <tr>
+                                            <td colspan="8" class="text-center text-muted">No users found</td>
+                                        </tr>
+                                    <% } else { %>
+                                        <% rows.forEach(row => { %>
+                                            <tr>
+                                                <td><%= row.uidNumber %></td>
+                                                <td><%= row.uid %></td>
+                                                <td><%= row.cn %></td>
+                                                <td><%= row.mail %></td>
+                                                <td>
+                                                    <% if (row.status === 'active') { %>
+                                                        <span class="badge bg-success">Active</span>
+                                                    <% } else if (row.status === 'pending') { %>
+                                                        <span class="badge bg-warning text-dark">Pending</span>
+                                                    <% } else { %>
+                                                        <span class="badge bg-secondary"><%= row.status %></span>
+                                                    <% } %>
+                                                </td>
+                                                <td><%= row.groups %></td>
+                                                <td>
+                                                    <% if (row.isAdmin) { %>
+                                                        <span class="badge bg-danger">Yes</span>
+                                                    <% } else { %>
+                                                        <span class="badge bg-secondary">No</span>
+                                                    <% } %>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm" role="group">
+                                                        <a href="/users/<%= row.uidNumber %>/edit" class="btn btn-outline-primary" aria-label="Edit user <%= row.uid %>">Edit</a>
+                                                        <form method="POST" action="/users/<%= row.uidNumber %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete user <%= row.uid %>?');">
+                                                            <input type="hidden" name="_method" value="DELETE">
+                                                            <button type="submit" class="btn btn-outline-danger" aria-label="Delete user <%= row.uid %>">Delete</button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <% }) %>
+                                    <% } %>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-Vx3JEYoYe+GHhlKxjB4W6b7rH8Wz3tz3UZdyzp1a9Y2Xk8P4u2ZH5lK9D/Cj3Dd0" crossorigin="anonymous"></script>
+</body>
+</html>
