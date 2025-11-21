@@ -14,7 +14,10 @@ router.get('/', (req, res) => {
 // POST / - Handle login submission
 router.post('/', async (req, res) => {
   const { username, password } = req.body;
-  const user = await User.findOne({ where: { uid: username } });
+  const user = await User.findOne({ 
+    where: { uid: username },
+    include: [{ association: 'groups' }]
+  });
   if (!user) {
     req.flash('error', 'Invalid username or password');
     return res.redirect('/login');
@@ -33,6 +36,7 @@ router.post('/', async (req, res) => {
 
   // Set session variables
   req.session.user = user.uid;
+  req.session.isAdmin = user.groups?.some(group => group.isAdmin) || false;
   return res.redirect(req.body.redirect || '/');
 });
 
