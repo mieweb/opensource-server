@@ -8,43 +8,69 @@
     <link href="/style.css" rel="stylesheet">
 </head>
 <body>
-    <% if (typeof showNav === 'undefined' || showNav) { %>
-    <nav class="navbar navbar-expand-lg">
-        <div class="container-fluid">
-            <ol class="breadcrumb mb-0">
-                <% if (typeof breadcrumbs !== 'undefined') { %>
-                    <% breadcrumbs.forEach((crumb, index) => { %>
-                        <li class="breadcrumb-item <%= index === breadcrumbs.length - 1 ? 'active' : '' %>" <%= index === breadcrumbs.length - 1 ? 'aria-current="page"' : '' %>>
-                            <a href="<%= crumb.url %>"><%= crumb.label %></a>
-                        </li>
-                    <% }) %>
-                <% } %>
-            </ol>
-            <form method="POST" action="/logout">
-                <button type="submit" class="btn btn-danger logout-button">Logout</button>
-            </form>
-        </div>
-    </nav>
-    <% } %>
+  <nav class="navbar navbar-expand-lg">
+    <div class="container-fluid">
+      <ol class="breadcrumb mb-0">
+        <% if (typeof breadcrumbs !== 'undefined') { %>
+          <% breadcrumbs.forEach((crumb, index) => { %>
+            <li class="breadcrumb-item <%= index === breadcrumbs.length - 1 ? 'active' : '' %>" <%= index === breadcrumbs.length - 1 ? 'aria-current="page"' : '' %>>
+              <a href="<%= crumb.url %>"><%= crumb.label %></a>
+            </li>
+          <% }) %>
+        <% } %>
+      </ol>
+      <form method="POST" action="/logout">
+        <button type="submit" class="btn btn-danger logout-button">Logout</button>
+      </form>
+    </div>
+  </nav>
 
-    <main class="container mt-4">
+  <main class="container-fluid mt-4">
+    <div class="row">
+      <!-- Sidebar -->
+      <nav class="col-md-2 d-md-block bg-light sidebar">
+        <div class="position-sticky pt-3">
+          <ul class="nav flex-column">
+            <li class="nav-item">
+              <a class="nav-link" href="/containers">
+                Containers
+              </a>
+            </li>
+            <% if (typeof isAdmin !== 'undefined' && isAdmin) { %>
+              <li class="nav-item">
+                <a class="nav-link" href="/nodes">
+                  Nodes
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="/users">
+                  Users
+                </a>
+              </li>
+            <% } %>
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Main content -->
+      <main class="col-md-10 ms-sm-auto px-md-4">
         <div class="row justify-content-center">
-            <div class="col-12 <%= typeof colWidth !== 'undefined' ? colWidth : 'col-lg-10' %>">
-                <!-- Flash Messages -->
-                <% if (typeof successMessages !== 'undefined' && successMessages && successMessages.length > 0) { %>
-                    <% successMessages.forEach(msg => { %>
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            <%= msg %>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    <% }) %>
-                <% } %>
-                
-                <% if (typeof errorMessages !== 'undefined' && errorMessages && errorMessages.length > 0) { %>
-                    <% errorMessages.forEach(msg => { %>
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            <%= msg %>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    <% }) %>
-                <% } %>
+          <div class="col-12 <%= typeof colWidth !== 'undefined' ? colWidth : 'col-lg-10' %>">
+            <!-- Flash Messages -->
+            <% if (typeof successMessages !== 'undefined' && successMessages && successMessages.length > 0) { %>
+              <% successMessages.forEach(msg => { %>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                  <%= msg %>
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              <% }) %>
+            <% } %>
+            
+            <% if (typeof errorMessages !== 'undefined' && errorMessages && errorMessages.length > 0) { %>
+              <% errorMessages.forEach(msg => { %>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                  <%= msg %>
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+              <% }) %>
+            <% } %>
