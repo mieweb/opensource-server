@@ -1,0 +1,38 @@
+const express = require('express');
+const router = express.Router();
+const { User } = require('../models');
+
+// GET / - Display registration form
+router.get('/', (req, res) => {
+  res.render('register', {
+    successMessages: req.flash('success'),
+    errorMessages: req.flash('error')
+  });
+});
+
+// POST / - Handle registration submission
+router.post('/', async (req, res) => {
+  const userParams = {
+    uidNumber: await User.nextUidNumber(),
+    uid: req.body.uid,
+    sn: req.body.sn,
+    givenName: req.body.givenName,
+    mail: req.body.mail,
+    userPassword: req.body.userPassword,
+    status: await User.count() === 0 ? 'active' : 'pending', // first user is active
+    cn: `${req.body.givenName} ${req.body.sn}`,
+    homeDirectory: `/home/${req.body.uid}`,
+  };
+
+  try {
+    await User.create(userParams);
+    req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
+    return res.redirect('/login');
+  } catch (err) {
+    console.error('Registration error:', err);
+    req.flash('error', 'Registration failed: ' + err.message);
+    return res.redirect('/register');
+  }
+});
+
+module.exports = router;
