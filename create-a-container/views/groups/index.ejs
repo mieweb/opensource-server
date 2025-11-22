@@ -1,0 +1,62 @@
+<%- include('../layouts/header', { 
+  title: 'Groups - MIE',
+  breadcrumbs: [
+    { label: 'Groups', url: '/groups' }
+  ],
+  req
+}) %>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="card-title mb-0">Groups</h4>
+      <a class="btn btn-primary" href="/groups/new" role="button" aria-label="Create new group">New Group</a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>GID</th>
+            <th>Name</th>
+            <th>Admin Group</th>
+            <th>User Count</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (rows.length === 0) { %>
+            <tr>
+              <td colspan="5" class="text-center text-muted">No groups found</td>
+            </tr>
+          <% } else { %>
+            <% rows.forEach(row => { %>
+              <tr>
+                <td><%= row.gidNumber %></td>
+                <td><%= row.cn %></td>
+                <td>
+                  <% if (row.isAdmin) { %>
+                    <span class="badge bg-danger">Yes</span>
+                  <% } else { %>
+                    <span class="badge bg-secondary">No</span>
+                  <% } %>
+                </td>
+                <td><%= row.userCount %></td>
+                <td>
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a href="/groups/<%= row.gidNumber %>/edit" class="btn btn-outline-primary" aria-label="Edit group <%= row.cn %>">Edit</a>
+                    <form method="POST" action="/groups/<%= row.gidNumber %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete group <%= row.cn %>?');">
+                      <input type="hidden" name="_method" value="DELETE">
+                      <button type="submit" class="btn btn-outline-danger" aria-label="Delete group <%= row.cn %>">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
