@@ -103,11 +103,13 @@ const loginRouter = require('./routers/login');
 const registerRouter = require('./routers/register');
 const usersRouter = require('./routers/users');
 const groupsRouter = require('./routers/groups');
+const sitesRouter = require('./routers/sites');
 app.use('/nodes', nodesRouter);
 app.use('/login', loginRouter);
 app.use('/register', registerRouter);
 app.use('/users', usersRouter);
 app.use('/groups', groupsRouter);
+app.use('/sites', sitesRouter);
 
 // --- Routes ---
 const PORT = 3000;
