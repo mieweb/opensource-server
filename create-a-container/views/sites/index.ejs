@@ -9,7 +9,9 @@
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="card-title mb-0">Sites</h4>
-      <a class="btn btn-primary" href="/sites/new" role="button" aria-label="Create new site">New Site</a>
+      <% if (req.session && req.session.isAdmin) { %>
+        <a class="btn btn-primary" href="/sites/new" role="button" aria-label="Create new site">New Site</a>
+      <% } %>
     </div>
 
     <div class="table-responsive">
@@ -41,24 +43,26 @@
                 <td><%= row.nodeCount %></td>
                 <td>
                   <a href="/sites/<%= row.id %>/containers" class="btn btn-sm btn-outline-info" aria-label="View containers for <%= row.name %>">Containers</a>
-                  <a href="/sites/<%= row.id %>/nodes" class="btn btn-sm btn-outline-secondary" aria-label="View nodes for <%= row.name %>">Nodes</a>
-                  <a href="/sites/<%= row.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit site <%= row.name %>">Edit</a>
-                  <form method="POST" action="/sites/<%= row.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete site <%= row.name %>?');">
-                    <input type="hidden" name="_method" value="DELETE">
-                    <button
-                      type="submit"
-                      class="btn btn-danger btn-sm"
-                      <% if (row.nodeCount > 0) { %>
-                        disabled
-                        aria-disabled="true"
-                        aria-label="Cannot delete site with associated nodes"
-                      <% } else { %>
-                        aria-label="Delete site <%= row.name %>"
-                      <% } %>
-                    >
-                      Delete
-                    </button>
-                  </form>
+                  <% if (req.session && req.session.isAdmin) { %>
+                    <a href="/sites/<%= row.id %>/nodes" class="btn btn-sm btn-outline-secondary" aria-label="View nodes for <%= row.name %>">Nodes</a>
+                    <a href="/sites/<%= row.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit site <%= row.name %>">Edit</a>
+                    <form method="POST" action="/sites/<%= row.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete site <%= row.name %>?');">
+                      <input type="hidden" name="_method" value="DELETE">
+                      <button
+                        type="submit"
+                        class="btn btn-danger btn-sm"
+                        <% if (row.nodeCount > 0) { %>
+                          disabled
+                          aria-disabled="true"
+                          aria-label="Cannot delete site with associated nodes"
+                        <% } else { %>
+                          aria-label="Delete site <%= row.name %>"
+                        <% } %>
+                      >
+                        Delete
+                      </button>
+                    </form>
+                  <% } %>
                 </td>
               </tr>
             <% }) %>
