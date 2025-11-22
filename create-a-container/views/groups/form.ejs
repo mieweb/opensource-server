@@ -1,0 +1,109 @@
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit Group' : 'New Group') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Groups', url: '/groups' },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit Group' : 'Create New Group' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/groups/${group.gidNumber}` : '/groups' %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+
+      <% if (!isEdit) { %>
+        <div class="mb-3">
+          <label for="gidNumber" class="form-label">Group ID (GID) <span class="text-danger">*</span></label>
+          <input 
+            type="number" 
+            class="form-control" 
+            id="gidNumber" 
+            name="gidNumber" 
+            value="<%= group ? group.gidNumber : '' %>" 
+            required
+            min="2000"
+            placeholder="e.g., 2002"
+          >
+          <div class="form-text">Numeric group identifier (must be unique, 2000+)</div>
+        </div>
+      <% } else { %>
+        <div class="mb-3">
+          <label class="form-label">Group ID (GID)</label>
+          <input 
+            type="text" 
+            class="form-control" 
+            value="<%= group.gidNumber %>" 
+            disabled
+          >
+          <div class="form-text">Group ID cannot be changed</div>
+        </div>
+      <% } %>
+
+      <div class="mb-3">
+        <label for="cn" class="form-label">Group Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="cn" 
+          name="cn" 
+          value="<%= group ? group.cn : '' %>" 
+          required
+          placeholder="e.g., developers"
+        >
+        <div class="form-text">Common name for the group</div>
+      </div>
+
+      <div class="mb-3">
+        <div class="form-check">
+          <input 
+            type="checkbox" 
+            class="form-check-input" 
+            id="isAdmin" 
+            name="isAdmin"
+            <%= (group && group.isAdmin) ? 'checked' : '' %>
+          >
+          <label class="form-check-label" for="isAdmin">
+            Administrator Group
+          </label>
+          <div class="form-text">Members of this group will have admin privileges</div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <a href="/groups" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update Group' : 'Create Group' %>
+        </button>
+      </div>
+    </form>
+
+    <% if (isEdit) { %>
+      <hr class="my-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="text-danger mb-1">Danger Zone</h5>
+          <p class="text-muted small mb-0">Permanently delete this group</p>
+        </div>
+        <button 
+          type="button" 
+          class="btn btn-danger" 
+          onclick="document.getElementById('deleteForm').submit();"
+        >
+          Delete Group
+        </button>
+      </div>
+
+      <form id="deleteForm" method="POST" action="/groups/<%= group.gidNumber %>" style="display: none;" onsubmit="return confirm('Are you sure you want to delete this group? This action cannot be undone.');">
+        <input type="hidden" name="_method" value="DELETE">
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
