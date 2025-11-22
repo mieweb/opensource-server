@@ -300,6 +300,7 @@ select:focus {
   background-color: #34495e;
   color: #ecf0f1;
   border: 1px solid #4a5f7f;
+  margin-bottom: 0.5rem;
 }
 
 .sidebar #site-selector:focus {
@@ -317,6 +318,56 @@ select:focus {
 .sidebar .nav-link.active {
   background-color: #3498db;
   color: white;
+}
+
+/* Utility for screen-reader only text */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  border: 0 !important;
+}
+
+/* Site group hover should wrap selector + link */
+.sidebar .site-group > .nav-link.site-selector-wrapper {
+  display: flex;
+  align-items: center;
+  padding-right: 0.5rem;
+}
+
+.sidebar .site-group:hover > .nav-link.site-selector-wrapper,
+.sidebar .site-group:focus-within > .nav-link.site-selector-wrapper {
+  background-color: #34495e;
+  color: #3498db;
+}
+
+/* Nested children indentation */
+.sidebar .site-children {
+  list-style: none;
+  margin: 0 0 0.5rem 0;
+  padding: 0 0 0.5rem 0.25rem;
+  border-left: 2px solid #34495e;
+}
+
+.sidebar .site-children .child-link {
+  display: block;
+  padding: 0.4rem 0.75rem 0.4rem 1.25rem; /* extra left padding for indentation */
+  font-size: 0.9rem;
+  color: #bdc3c7;
+}
+
+.sidebar .site-children .child-link:hover {
+  background-color: #34495e;
+  color: #ecf0f1;
+}
+
+.sidebar .site-children .child-link.active {
+  background-color: #3498db;
+  color: #fff;
 }
 
 /* Navbar styling */
