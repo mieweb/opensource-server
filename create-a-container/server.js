@@ -113,7 +113,7 @@ app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`)
 
 // Serves the main container creation form
 app.get('/containers/new', requireAuth, (req, res) => {
-  res.render('containers/form');
+  res.render('containers/form', { req });
 });
 
 // Fetch user's containers
@@ -150,9 +150,7 @@ app.get('/containers', requireAuth, async (req, res) => {
 
   return res.render('containers/index', { 
     rows,
-    isAdmin: req.session.isAdmin || false,
-    successMessages: req.flash('success'),
-    errorMessages: req.flash('error')
+    req
   });
 });
 
