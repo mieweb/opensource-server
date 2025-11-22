@@ -42,13 +42,11 @@
                 </td>
                 <td><%= row.userCount %></td>
                 <td>
-                  <div class="btn-group btn-group-sm" role="group">
-                    <a href="/groups/<%= row.gidNumber %>/edit" class="btn btn-outline-primary" aria-label="Edit group <%= row.cn %>">Edit</a>
-                    <form method="POST" action="/groups/<%= row.gidNumber %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete group <%= row.cn %>?');">
-                      <input type="hidden" name="_method" value="DELETE">
-                      <button type="submit" class="btn btn-outline-danger" aria-label="Delete group <%= row.cn %>">Delete</button>
-                    </form>
-                  </div>
+                  <a href="/groups/<%= row.gidNumber %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit group <%= row.cn %>">Edit</a>
+                  <form method="POST" action="/groups/<%= row.gidNumber %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete group <%= row.cn %>?');">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete group <%= row.cn %>">Delete</button>
+                  </form>
                 </td>
               </tr>
             <% }) %>
