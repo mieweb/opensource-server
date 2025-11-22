@@ -5,6 +5,7 @@ const { requireAuth, requireAdmin } = require('../middlewares');
 const axios = require('axios');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
+const { hostname } = require('os');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -164,8 +165,8 @@ router.post('/import', async (req, res) => {
     }
 
     const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
-    const nodes = await client.nodes()
-    await Node.bulkCreate(nodes.map(n => {
+    const nodes = await client.nodes();
+    const importedNodes = await Node.bulkCreate(nodes.map(n => {
       return {
         name: n.node,
         apiUrl,
@@ -175,8 +176,23 @@ router.post('/import', async (req, res) => {
         siteId
       };
     }));
+
+    const containerList = await client.clusterResources('lxc');
+    const containers = await Promise.all(containerList.map(async (c) => {
+      const config = await client.lxcConfig(c.node, c.vmid);
+      return {
+        hostname: config.hostname,
+        username: req.session.user,
+        nodeId: importedNodes.find(n => n.name === c.node).id,
+        containerId: c.vmid,
+        macAddress: config.net0.match(/hwaddr=([0-9A-Fa-f:]+)/)[1],
+        ipv4Address: config.net0.match(/ip=([^,]+)/)[1]
+      };
+    }));
+    await Container.bulkCreate(containers);
     res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
+    console.log(err);
     req.flash('error', `Failed to import nodes: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/import`);
   }
