@@ -28,9 +28,7 @@ router.get('/', async (req, res) => {
 
   return res.render('nodes/index', {
     rows,
-    isAdmin: req.session.isAdmin || false,
-    successMessages: req.flash('success'),
-    errorMessages: req.flash('error')
+    req
   });
 });
 
@@ -39,8 +37,7 @@ router.get('/new', (req, res) => {
   res.render('nodes/form', {
     node: null,
     isEdit: false,
-    isAdmin: req.session.isAdmin || false,
-    errorMessages: req.flash('error')
+    req
   });
 });
 
@@ -60,8 +57,7 @@ router.get('/:id/edit', async (req, res) => {
   res.render('nodes/form', {
     node,
     isEdit: true,
-    isAdmin: req.session.isAdmin || false,
-    errorMessages: req.flash('error')
+    req
   });
 });
 

@@ -29,9 +29,7 @@ router.get('/', async (req, res) => {
 
   return res.render('users/index', {
     rows,
-    isAdmin: req.session.isAdmin || false,
-    successMessages: req.flash('success'),
-    errorMessages: req.flash('error')
+    req
   });
 });
 
@@ -45,8 +43,7 @@ router.get('/new', async (req, res) => {
     user: null,
     groups,
     isEdit: false,
-    isAdmin: req.session.isAdmin || false,
-    errorMessages: req.flash('error')
+    req
   });
 });
 
@@ -71,8 +68,7 @@ router.get('/:id/edit', async (req, res) => {
     user,
     groups,
     isEdit: true,
-    isAdmin: req.session.isAdmin || false,
-    errorMessages: req.flash('error')
+    req
   });
 });
 
