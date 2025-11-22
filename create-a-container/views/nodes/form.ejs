@@ -1,7 +1,8 @@
 <%- include('../layouts/header', { 
   title: (isEdit ? 'Edit Node' : 'New Node') + ' - MIE',
   breadcrumbs: [
-    { label: 'Nodes', url: '/nodes' },
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/nodes` },
     { label: isEdit ? 'Edit' : 'New', url: '#' }
   ],
   colWidth: 'col-lg-8',
@@ -12,7 +13,7 @@
   <div class="card-body">
     <h4 class="card-title mb-4"><%= isEdit ? 'Edit Node' : 'Create New Node' %></h4>
 
-    <form method="POST" action="<%= isEdit ? `/nodes/${node.id}` : '/nodes' %>">
+    <form method="POST" action="<%= isEdit ? `/sites/${site.id}/nodes/${node.id}` : `/sites/${site.id}/nodes` %>">
       <% if (isEdit) { %>
         <input type="hidden" name="_method" value="PUT">
       <% } %>
@@ -84,7 +85,7 @@
       </div>
 
       <div class="d-flex justify-content-between">
-        <a href="/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
+        <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
         <button type="submit" class="btn btn-primary">
           <%= isEdit ? 'Update Node' : 'Create Node' %>
         </button>

@@ -1,15 +1,24 @@
 const express = require('express');
-const router = express.Router();
-const { Node, Container } = require('../models');
+const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
+const { Node, Container, Site } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
 router.use(requireAdmin);
 
-// GET /nodes - List all nodes
+// GET /sites/:siteId/nodes - List all nodes for a site
 router.get('/', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
   const nodes = await Node.findAll({
+    where: { siteId },
     include: [{ 
       model: Container, 
       as: 'containers',
@@ -28,42 +37,69 @@ router.get('/', async (req, res) => {
 
   return res.render('nodes/index', {
     rows,
+    site,
     req
   });
 });
 
-// GET /nodes/new - Display form for creating a new node
-router.get('/new', (req, res) => {
+// GET /sites/:siteId/nodes/new - Display form for creating a new node
+router.get('/new', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
   res.render('nodes/form', {
     node: null,
+    site,
     isEdit: false,
     req
   });
 });
 
-// GET /nodes/:id/edit - Display form for editing an existing node
+// GET /sites/:siteId/nodes/:id/edit - Display form for editing an existing node
 router.get('/:id/edit', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
   const nodeId = parseInt(req.params.id, 10);
   
-  const node = await Node.findByPk(nodeId, {
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+  
+  const node = await Node.findOne({
+    where: { id: nodeId, siteId },
     attributes: { exclude: ['secret'] } // Never send secret to frontend
   });
   
   if (!node) {
     req.flash('error', 'Node not found');
-    return res.redirect('/nodes');
+    return res.redirect(`/sites/${siteId}/nodes`);
   }
 
   res.render('nodes/form', {
     node,
+    site,
     isEdit: true,
     req
   });
 });
 
-// POST /nodes - Create a new node
+// POST /sites/:siteId/nodes - Create a new node
 router.post('/', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
   try {
+    const site = await Site.findByPk(siteId);
+    if (!site) {
+      req.flash('error', 'Site not found');
+      return res.redirect('/sites');
+    }
+
     const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
     
     await Node.create({
@@ -71,28 +107,38 @@ router.post('/', async (req, res) => {
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
       secret: secret || null,
-      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
+      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+      siteId
     });
 
     req.flash('success', `Node ${name} created successfully`);
-    return res.redirect('/nodes');
+    return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error creating node:', err);
     req.flash('error', `Failed to create node: ${err.message}`);
-    return res.redirect('/nodes/new');
+    return res.redirect(`/sites/${siteId}/nodes/new`);
   }
 });
 
-// PUT /nodes/:id - Update an existing node
+// PUT /sites/:siteId/nodes/:id - Update an existing node
 router.put('/:id', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
   const nodeId = parseInt(req.params.id, 10);
   
   try {
-    const node = await Node.findByPk(nodeId);
+    const site = await Site.findByPk(siteId);
+    if (!site) {
+      req.flash('error', 'Site not found');
+      return res.redirect('/sites');
+    }
+
+    const node = await Node.findOne({
+      where: { id: nodeId, siteId }
+    });
     
     if (!node) {
       req.flash('error', 'Node not found');
-      return res.redirect('/nodes');
+      return res.redirect(`/sites/${siteId}/nodes`);
     }
 
     const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
@@ -112,42 +158,50 @@ router.put('/:id', async (req, res) => {
     await node.update(updateData);
 
     req.flash('success', `Node ${name} updated successfully`);
-    return res.redirect('/nodes');
+    return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error updating node:', err);
     req.flash('error', `Failed to update node: ${err.message}`);
-    return res.redirect(`/nodes/${nodeId}/edit`);
+    return res.redirect(`/sites/${siteId}/nodes/${nodeId}/edit`);
   }
 });
 
-// DELETE /nodes/:id - Delete a node
+// DELETE /sites/:siteId/nodes/:id - Delete a node
 router.delete('/:id', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
   const nodeId = parseInt(req.params.id, 10);
   
   try {
-    const node = await Node.findByPk(nodeId, {
+    const site = await Site.findByPk(siteId);
+    if (!site) {
+      req.flash('error', 'Site not found');
+      return res.redirect('/sites');
+    }
+
+    const node = await Node.findOne({
+      where: { id: nodeId, siteId },
       include: [{ model: Container, as: 'containers' }]
     });
     
     if (!node) {
       req.flash('error', 'Node not found');
-      return res.redirect('/nodes');
+      return res.redirect(`/sites/${siteId}/nodes`);
     }
 
     // Check if node has containers
     if (node.containers && node.containers.length > 0) {
       req.flash('error', `Cannot delete node ${node.name}: ${node.containers.length} container(s) still reference this node`);
-      return res.redirect('/nodes');
+      return res.redirect(`/sites/${siteId}/nodes`);
     }
 
     await node.destroy();
     
     req.flash('success', `Node ${node.name} deleted successfully`);
-    return res.redirect('/nodes');
+    return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error deleting node:', err);
     req.flash('error', `Failed to delete node: ${err.message}`);
-    return res.redirect('/nodes');
+    return res.redirect(`/sites/${siteId}/nodes`);
   }
 });
 

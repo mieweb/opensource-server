@@ -98,18 +98,16 @@ const transporter = nodemailer.createTransport({
 });
 
 // --- Mount Routers ---
-const nodesRouter = require('./routers/nodes');
 const loginRouter = require('./routers/login');
 const registerRouter = require('./routers/register');
 const usersRouter = require('./routers/users');
 const groupsRouter = require('./routers/groups');
-const sitesRouter = require('./routers/sites');
-app.use('/nodes', nodesRouter);
+const sitesRouter = require('./routers/sites'); // Includes nested nodes router
 app.use('/login', loginRouter);
 app.use('/register', registerRouter);
 app.use('/users', usersRouter);
 app.use('/groups', groupsRouter);
-app.use('/sites', sitesRouter);
+app.use('/sites', sitesRouter); // /sites/:siteId/nodes routes are nested here
 
 // --- Routes ---
 const PORT = 3000;
