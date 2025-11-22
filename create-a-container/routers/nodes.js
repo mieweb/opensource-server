@@ -60,6 +60,19 @@ router.get('/new', async (req, res) => {
   });
 });
 
+// GET /sites/:siteId/nodes/import - Display form for importing nodes
+router.get('/import', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
+  return res.render('nodes/import', { site, req });
+});
+
 // GET /sites/:siteId/nodes/:id/edit - Display form for editing an existing node
 router.get('/:id/edit', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
@@ -118,6 +131,20 @@ router.post('/', async (req, res) => {
     req.flash('error', `Failed to create node: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/new`);
   }
+});
+
+// POST /sites/:siteId/nodes/import - Placeholder for import logic
+router.post('/import', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
+  // TODO: Implement import logic (fetch external API, create nodes)
+  req.flash('error', 'Import functionality not implemented yet');
+  return res.redirect(`/sites/${siteId}/nodes/import`);
 });
 
 // PUT /sites/:siteId/nodes/:id - Update an existing node

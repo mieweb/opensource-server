@@ -1,0 +1,72 @@
+<%- include('../layouts/header', { 
+  title: 'Import Nodes - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/nodes` },
+    { label: 'Import', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4">Import Nodes</h4>
+
+    <form method="POST" action="/sites/<%= site.id %>/nodes/import">
+      <div class="mb-3">
+        <label for="apiUrl" class="form-label">API URL <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="apiUrl" 
+          name="apiUrl" 
+          placeholder="https://api.example.com/nodes" 
+          required
+        >
+        <div class="form-text">The URL of the external API endpoint</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="tokenId" class="form-label">Username / Token Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="tokenId" 
+          name="tokenId" 
+          placeholder="token-identifier" 
+          required
+        >
+      </div>
+
+      <div class="mb-3">
+        <label for="secret" class="form-label">Password / API Key <span class="text-danger">*</span></label>
+        <input 
+          type="password" 
+          class="form-control" 
+          id="secret" 
+          name="secret" 
+          placeholder="••••••••" 
+          required
+        >
+      </div>
+
+      <div class="mb-3">
+        <label for="tlsVerify" class="form-label">TLS Verification</label>
+        <select class="form-select" id="tlsVerify" name="tlsVerify">
+          <option value="">Not Set (Default: Verify)</option>
+          <option value="true">Enable (Verify Certificates)</option>
+          <option value="false">Disable (Skip Verification)</option>
+        </select>
+        <div class="form-text">Whether to verify TLS certificates when importing nodes</div>
+      </div>
+
+      <div class="d-flex justify-content-between">
+        <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
