@@ -82,6 +82,44 @@ class ProxmoxApi {
   }
 
   /**
+   * Get cluster resources
+   * @param {'node'|'storage'|'pool'|'qemu'|'lxc'|'openvz'|'sdn'|'network'|'vm'} type 
+   * @returns {Promise<object>} - The API response data
+   */
+  async clusterResources(type = null) {
+    const rawTypes = ['vm', 'storage', 'node', 'sdn'];
+    const typeMap = {
+      'node': 'node',
+      'storage': 'storage',
+      'pool': 'storage',
+      'qemu': 'vm',
+      'lxc': 'vm',
+      'openvz': 'vm',
+      'sdn': 'sdn',
+      'network': 'sdn'
+    };
+    const typeParam = type && typeMap[type];
+    const url = `${this.baseUrl}/api2/json/cluster/resources${typeParam ? `?type=${typeParam}` : ''}`;
+    const response = await axios.get(url, this.options);
+    if (rawTypes.includes(type)) {
+      return response.data.data;
+    }
+
+    return response.data.data.filter(r => r.type === type);
+  }
+
+  /**
+   * Get container configuration
+   * @param {string} node 
+   * @param {number} vmid 
+   * @returns {Promise<object>} - The API response data
+   */
+  async lxcConfig(node, vmid) {
+    const response = await axios.get(`${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/config`, this.options);
+    return response.data.data;    
+  }
+
+  /**
    * Delete a container
    * @param {string} nodeName 
    * @param {number} containerId 
