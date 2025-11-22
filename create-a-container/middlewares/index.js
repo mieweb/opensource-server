@@ -25,4 +25,6 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden: Admin access required');
 }
 
-module.exports = { requireAuth, requireAdmin };
+const { setCurrentSite, loadSites } = require('./currentSite');
+
+module.exports = { requireAuth, requireAdmin, setCurrentSite, loadSites };

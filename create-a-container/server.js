@@ -10,7 +10,7 @@ const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const { Container, Service, User, sequelize } = require('./models');
-const { requireAuth } = require('./middlewares');
+const { requireAuth, loadSites } = require('./middlewares');
 
 const app = express();
 
@@ -53,6 +53,14 @@ app.use(RateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
 }));
+
+// Middleware to load sites for authenticated users
+app.use((req, res, next) => {
+  if (req.session && req.session.user) {
+    return loadSites(req, res, next);
+  }
+  next();
+});
 
 // Redirect root to sites list
 app.get('/', (req, res) => res.redirect('/sites'));
