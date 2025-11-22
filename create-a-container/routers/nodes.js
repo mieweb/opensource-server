@@ -151,30 +151,35 @@ router.post('/import', async (req, res) => {
   let secret = tokenId ? password : null;
 
   // create an api token if a username/password was provided
-  if (!tokenId) {
-    const client = new ProxmoxApi(apiUrl, null, null, { httpsAgent });
-    await client.authenticate(username, password);
-    const ticketData = await client.createApiToken(username, `import-${Date.now()}`);
-    tokenId = ticketData['full-tokenid'];
-    secret = ticketData['value'];
+  try {
+    if (!tokenId) {
+      const client = new ProxmoxApi(apiUrl, null, null, { httpsAgent });
+      await client.authenticate(username, password);
+      const ticketData = await client.createApiToken(username, `import-${Date.now()}`);
+      tokenId = ticketData['full-tokenid'];
+      secret = ticketData['value'];
 
-    // set privileges for the created token
-    await client.updateAcl('/', 'Administrator', null, true, tokenId, null);
+      // set privileges for the created token
+      await client.updateAcl('/', 'Administrator', null, true, tokenId, null);
+    }
+
+    const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
+    const nodes = await client.nodes()
+    await Node.bulkCreate(nodes.map(n => {
+      return {
+        name: n.node,
+        apiUrl,
+        tokenId,
+        secret,
+        tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+        siteId
+      };
+    }));
+    res.redirect(`/sites/${siteId}/nodes`);
+  } catch (err) {
+    req.flash('error', `Failed to import nodes: ${err.message}`);
+    return res.redirect(`/sites/${siteId}/nodes/import`);
   }
-
-  const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
-  const nodes = await client.nodes()
-  await Node.bulkCreate(nodes.map(n => {
-    return {
-      name: n.node,
-      apiUrl,
-      tokenId,
-      secret,
-      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
-      siteId
-    };
-  }));
-  res.redirect(`/sites/${siteId}/nodes`);
 });
 
 // PUT /sites/:siteId/nodes/:id - Update an existing node
