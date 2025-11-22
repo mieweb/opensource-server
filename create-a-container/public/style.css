@@ -7,6 +7,14 @@ body {
   overflow-y: auto;
 }
 
+/* Centering wrapper for standalone pages (login, register) */
+.page-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
 .main-content-wrapper {
     display: flex;
     flex-direction: column;
