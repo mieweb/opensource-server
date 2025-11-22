@@ -19,37 +19,38 @@
         </div>
         <div class="position-sticky">
           <ul class="nav flex-column">
-            <li class="nav-item">
-              <div class="d-flex align-items-center nav-link">
-                <a href="/sites" style="flex-shrink: 0; color: inherit; text-decoration: none;">
-                  Sites
-                </a>
-                <select id="site-selector" class="form-select form-select-sm mb-0" style="flex-grow: 1; margin-left: 0.5rem;" onchange="if(this.value) window.location.href=`/sites/${this.value}/containers`">
+            <% 
+              const path = req.originalUrl || ''; 
+              const hasCurrentSite = typeof currentSite !== 'undefined' && currentSite; 
+              const containersActive = hasCurrentSite && path.includes(`/sites/${currentSite}/containers`); 
+              const nodesActive = hasCurrentSite && path.includes(`/sites/${currentSite}/nodes`); 
+            %>
+            <li class="nav-item site-group" aria-label="Site navigation">
+              <div class="d-flex align-items-center nav-link site-selector-wrapper">
+                <a href="/sites" class="sites-root-link" style="flex-shrink:0; color: inherit; text-decoration: none;" aria-label="View all sites">Sites</a>
+                <label for="site-selector" class="visually-hidden">Select current site</label>
+                <select id="site-selector" class="form-select form-select-sm" style="flex-grow:1; margin-left:0.5rem;" aria-label="Site selector" onchange="if(this.value) window.location.href=`/sites/${this.value}/containers`">
                   <option value="">Select...</option>
                   <% if (typeof sites !== 'undefined' && sites) { %>
                     <% sites.forEach(site => { %>
-                      <option value="<%= site.id %>" <%= currentSite === site.id ? 'selected' : '' %>>
-                        <%= site.name %>
-                      </option>
+                      <option value="<%= site.id %>" <%= currentSite === site.id ? 'selected' : '' %>><%= site.name %></option>
                     <% }) %>
                   <% } %>
                 </select>
               </div>
-            </li>
-            <% if (typeof currentSite !== 'undefined' && currentSite) { %>
-              <li class="nav-item">
-                <a class="nav-link" href="/sites/<%= currentSite %>/containers">
-                  Containers
-                </a>
-              </li>
-              <% if (req.session && req.session.isAdmin) { %>
-                <li class="nav-item">
-                  <a class="nav-link" href="/sites/<%= currentSite %>/nodes">
-                    Nodes
-                  </a>
-                </li>
+              <% if (hasCurrentSite) { %>
+                <ul class="site-children" aria-label="Resources for selected site">
+                  <li>
+                    <a class="nav-link child-link <%= containersActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/containers" aria-current="<%= containersActive ? 'page' : '' %>">Containers</a>
+                  </li>
+                  <% if (req.session && req.session.isAdmin) { %>
+                    <li>
+                      <a class="nav-link child-link <%= nodesActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/nodes" aria-current="<%= nodesActive ? 'page' : '' %>">Nodes</a>
+                    </li>
+                  <% } %>
+                </ul>
               <% } %>
-            <% } %>
+            </li>
             <% if (req.session && req.session.isAdmin) { %>
               <li class="nav-item">
                 <a class="nav-link" href="/users">
