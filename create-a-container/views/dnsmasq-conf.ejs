@@ -1,0 +1,10 @@
+no-resolv
+dhcp-authoritative
+domain-needed
+bogus-priv
+domain=<%= site.internalDomain %>
+<% site.dnsForwarders.split(',').forEach((forwarder) => { %>
+server=<%= forwarder.trim() %>
+<% }) %>
+dhcp-range=<%= site.dhcpRangeStart %>,<%= site.dhcpRangeEnd %>,<%= site.subnetMask %>,12h
+dhcp-option=option:router,<%= site.gateway %>
