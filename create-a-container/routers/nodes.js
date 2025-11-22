@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const { Node, Container, Site } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
+const axios = require('axios');
+const https = require('https');
+const ProxmoxApi = require('../utils/proxmox-api');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -133,7 +136,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST /sites/:siteId/nodes/import - Placeholder for import logic
+// POST /sites/:siteId/nodes/import - Import nodes from Proxmox API
 router.post('/import', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
@@ -142,9 +145,36 @@ router.post('/import', async (req, res) => {
     return res.redirect('/sites');
   }
 
-  // TODO: Implement import logic (fetch external API, create nodes)
-  req.flash('error', 'Import functionality not implemented yet');
-  return res.redirect(`/sites/${siteId}/nodes/import`);
+  const { apiUrl, username, password, tlsVerify } = req.body;
+  const httpsAgent = new https.Agent({ rejectUnauthorized: tlsVerify !== 'false' });
+  let tokenId = username.includes('!') ? username : null;
+  let secret = tokenId ? password : null;
+
+  // create an api token if a username/password was provided
+  if (!tokenId) {
+    const client = new ProxmoxApi(apiUrl, null, null, { httpsAgent });
+    await client.authenticate(username, password);
+    const ticketData = await client.createApiToken(username, `import-${Date.now()}`);
+    tokenId = ticketData['full-tokenid'];
+    secret = ticketData['value'];
+
+    // set privileges for the created token
+    await client.updateAcl('/', 'Administrator', null, true, tokenId, null);
+  }
+
+  const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
+  const nodes = await client.nodes()
+  await Node.bulkCreate(nodes.map(n => {
+    return {
+      name: n.node,
+      apiUrl,
+      tokenId,
+      secret,
+      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+      siteId
+    };
+  }));
+  res.redirect(`/sites/${siteId}/nodes`);
 });
 
 // PUT /sites/:siteId/nodes/:id - Update an existing node
