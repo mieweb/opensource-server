@@ -9,11 +9,10 @@ const containersRouter = require('./containers');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
 
-// Apply auth and admin check to all routes
+// Apply auth to all routes
 router.use(requireAuth);
-router.use(requireAdmin);
 
-// GET /sites - List all sites
+// GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {
   const sites = await Site.findAll({
     include: [{
@@ -39,8 +38,8 @@ router.get('/', async (req, res) => {
   });
 });
 
-// GET /sites/new - Display form for creating a new site
-router.get('/new', async (req, res) => {
+// GET /sites/new - Display form for creating a new site (admin only)
+router.get('/new', requireAdmin, async (req, res) => {
   res.render('sites/form', {
     site: null,
     isEdit: false,
@@ -48,8 +47,8 @@ router.get('/new', async (req, res) => {
   });
 });
 
-// GET /sites/:id/edit - Display form for editing an existing site
-router.get('/:id/edit', async (req, res) => {
+// GET /sites/:id/edit - Display form for editing an existing site (admin only)
+router.get('/:id/edit', requireAdmin, async (req, res) => {
   const site = await Site.findByPk(req.params.id);
   
   if (!site) {
@@ -64,8 +63,8 @@ router.get('/:id/edit', async (req, res) => {
   });
 });
 
-// POST /sites - Create a new site
-router.post('/', async (req, res) => {
+// POST /sites - Create a new site (admin only)
+router.post('/', requireAdmin, async (req, res) => {
   try {
     const { name, internalDomain, subnet, gateway, dnsForwarders } = req.body;
     
@@ -86,8 +85,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /sites/:id - Update an existing site
-router.put('/:id', async (req, res) => {
+// PUT /sites/:id - Update an existing site (admin only)
+router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const site = await Site.findByPk(req.params.id);
     
@@ -115,8 +114,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /sites/:id - Delete a site
-router.delete('/:id', async (req, res) => {
+// DELETE /sites/:id - Delete a site (admin only)
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const site = await Site.findByPk(req.params.id, {
       include: [{ model: Node, as: 'nodes' }]
