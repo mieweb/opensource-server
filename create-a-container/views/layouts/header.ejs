@@ -36,7 +36,7 @@
                 Containers
               </a>
             </li>
-            <% if (typeof isAdmin !== 'undefined' && isAdmin) { %>
+            <% if (req.session && req.session.isAdmin) { %>
               <li class="nav-item">
                 <a class="nav-link" href="/nodes">
                   Nodes
@@ -57,7 +57,11 @@
         <div class="row justify-content-center">
           <div class="col-12 <%= typeof colWidth !== 'undefined' ? colWidth : 'col-lg-10' %>">
             <!-- Flash Messages -->
-            <% if (typeof successMessages !== 'undefined' && successMessages && successMessages.length > 0) { %>
+            <% 
+              const successMessages = req.flash ? req.flash('success') : [];
+              const errorMessages = req.flash ? req.flash('error') : [];
+            %>
+            <% if (successMessages && successMessages.length > 0) { %>
               <% successMessages.forEach(msg => { %>
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                   <%= msg %>
@@ -66,7 +70,7 @@
               <% }) %>
             <% } %>
             
-            <% if (typeof errorMessages !== 'undefined' && errorMessages && errorMessages.length > 0) { %>
+            <% if (errorMessages && errorMessages.length > 0) { %>
               <% errorMessages.forEach(msg => { %>
                 <div class="alert alert-danger alert-dismissible fade show" role="alert">
                   <%= msg %>
