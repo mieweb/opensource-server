@@ -1,13 +1,10 @@
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(to right, #2c3e50, #3498db);
-    display: flex;
-    align-items: flex-start; /* Changed from center to flex-start for top alignment */
-    justify-content: center;
-    min-height: 100vh;
-    margin: 0;
-    padding-top: 5rem; /* Added padding to account for fixed navbar */
-    overflow-y: auto; /* Allow scrolling if content is too long */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(to right, #2c3e50, #3498db);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
 }
 
 .main-content-wrapper {
@@ -168,18 +165,18 @@ select:focus {
 
 /* Navbar container for logout button */
 .navbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    background-color: #2c3e50;
-    color: white;
-    padding: 0.5rem 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    z-index: 1000;
+  position: relative;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background-color: #2c3e50;
+  color: white;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  z-index: 1000;
 }
 
 /* Logout button style */
@@ -242,25 +239,60 @@ select:focus {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding-top: 1rem;
-  border-right: 1px solid #dee2e6;
-  background-color: #f8f9fa;
+  padding: 0;
+  border-right: 2px solid #1a252f;
+  background-color: #2c3e50;
+}
+
+.sidebar-logo {
+  padding: 0;
+  text-align: center;
+  border-bottom: 1px solid #34495e;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-logo a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.sidebar-logo .logo {
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: 0;
+}
+
+.sidebar .nav {
+  padding: 1rem 0;
 }
 
 .sidebar .nav-link {
-  color: #333;
+  color: #ecf0f1;
   padding: 0.75rem 1rem;
   border-radius: 0.25rem;
   transition: background-color 0.2s, color 0.2s;
 }
 
 .sidebar .nav-link:hover {
-  background-color: #e9ecef;
-  color: #0056b3;
+  background-color: #34495e;
+  color: #3498db;
 }
 
 .sidebar .nav-link.active {
-  background-color: #0d6efd;
+  background-color: #3498db;
   color: white;
 }
 
+/* Navbar styling */
+.navbar {
+  border-bottom: 2px solid #1a252f;
+}
