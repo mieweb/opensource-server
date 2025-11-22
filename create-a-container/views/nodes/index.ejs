@@ -1,7 +1,8 @@
 <%- include('../layouts/header', { 
   title: 'Nodes - MIE',
   breadcrumbs: [
-    { label: 'Nodes', url: '/nodes' }
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/nodes` }
   ],
   req
 }) %>
@@ -9,8 +10,8 @@
 <div class="card shadow-sm">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="card-title mb-0">Proxmox Nodes</h4>
-      <a class="btn btn-primary" href="/nodes/new" role="button" aria-label="Create new Proxmox node">New Node</a>
+      <h4 class="card-title mb-0">Proxmox Nodes for <%= site.name %></h4>
+      <a class="btn btn-primary" href="/sites/<%= site.id %>/nodes/new" role="button" aria-label="Create new Proxmox node">New Node</a>
     </div>
 
     <div class="table-responsive">
@@ -41,8 +42,8 @@
                 </td>
                 <td><%= r.containerCount %></td>
                 <td>
-                  <a href="/nodes/<%= r.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit node <%= r.name %>">Edit</a>
-                  <form method="POST" action="/nodes/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete node <%= r.name %>? This action cannot be undone.');">
+                  <a href="/sites/<%= site.id %>/nodes/<%= r.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit node <%= r.name %>">Edit</a>
+                  <form method="POST" action="/sites/<%= site.id %>/nodes/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete node <%= r.name %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">
                     <button
                       type="submit"
