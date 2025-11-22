@@ -1,16 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { Site, Node } = require('../models');
-const { requireAuth, requireAdmin } = require('../middlewares');
+const { requireAuth, requireAdmin, setCurrentSite } = require('../middlewares');
+
+// Apply auth to all routes
+router.use(requireAuth);
+
+// store the current site for routes with :siteId
+router.use('/:siteId', setCurrentSite);
 
 // Mount sub-routers
 const nodesRouter = require('./nodes');
 const containersRouter = require('./containers');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
-
-// Apply auth to all routes
-router.use(requireAuth);
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {
