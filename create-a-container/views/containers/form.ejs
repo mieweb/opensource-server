@@ -1,7 +1,8 @@
 <%- include('../layouts/header', { 
   title: 'Create Your Container - MIE',
   breadcrumbs: [
-    { label: 'Containers', url: '/containers' },
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/containers` },
     { label: 'New', url: null }
   ],
   colWidth: 'col-12 col-lg-6',
@@ -11,7 +12,7 @@
 <div class="login-container">
   <img src="/logo.png" alt="Company Logo" class="logo">
   <h2>Create Your Container</h2>
-  <form id="containerForm" method="POST" action="/containers">
+  <form id="containerForm" method="POST" action="/sites/<%= site.id %>/containers">
     <input type="hidden" name="init" value="true">
     
     <label for="hostname">Container Hostname</label>

@@ -40,6 +40,7 @@
                 <td><%= row.gateway || '-' %></td>
                 <td><%= row.nodeCount %></td>
                 <td>
+                  <a href="/sites/<%= row.id %>/containers" class="btn btn-sm btn-outline-info" aria-label="View containers for <%= row.name %>">Containers</a>
                   <a href="/sites/<%= row.id %>/nodes" class="btn btn-sm btn-outline-secondary" aria-label="View nodes for <%= row.name %>">Nodes</a>
                   <a href="/sites/<%= row.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit site <%= row.name %>">Edit</a>
                   <form method="POST" action="/sites/<%= row.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete site <%= row.name %>?');">
