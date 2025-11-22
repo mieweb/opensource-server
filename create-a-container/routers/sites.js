@@ -3,9 +3,11 @@ const router = express.Router();
 const { Site, Node } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 
-// Mount nodes router as sub-router
+// Mount sub-routers
 const nodesRouter = require('./nodes');
+const containersRouter = require('./containers');
 router.use('/:siteId/nodes', nodesRouter);
+router.use('/:siteId/containers', containersRouter);
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);

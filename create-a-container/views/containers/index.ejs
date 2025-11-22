@@ -1,7 +1,8 @@
 <%- include('../layouts/header', { 
   title: 'Your Containers - MIE',
   breadcrumbs: [
-    { label: 'Containers', url: '/containers' }
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/containers` }
   ],
   colWidth: 'col-12 col-lg-10',
   req
@@ -10,8 +11,8 @@
 <div class="card shadow-sm">
   <div class="card-body">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="card-title mb-0">Your Containers</h4>
-      <a class="btn btn-primary" href="/containers/new" role="button">New Container</a>
+      <h4 class="card-title mb-0">Your Containers - <%= site.name %></h4>
+      <a class="btn btn-primary" href="/sites/<%= site.id %>/containers/new" role="button">New Container</a>
     </div>
 
     <div class="table-responsive">
@@ -21,6 +22,7 @@
             <th>Hostname</th>
             <th>IPv4</th>
             <th>OS Release</th>
+            <th>Node</th>
             <th>SSH Port</th>
             <th>HTTP Port</th>
             <th>Actions</th>
@@ -33,10 +35,11 @@
                 <td><%= r.hostname %></td>
                 <td><%= r.ipv4Address || '-' %></td>
                 <td><%= r.osRelease || '-' %></td>
+                <td><%= r.nodeName %></td>
                 <td><%= r.sshPort || '-' %></td>
                 <td><%= r.httpPort || '-' %></td>
                 <td>
-                  <form method="POST" action="/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
+                  <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">
                     <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
                   </form>
@@ -45,7 +48,7 @@
             <% }) %>
           <% } else { %>
             <tr>
-              <td colspan="6" class="text-muted text-center py-4">
+              <td colspan="7" class="text-muted text-center py-4">
                 No containers found. Click "New Container" to create your first one.
               </td>
             </tr>
