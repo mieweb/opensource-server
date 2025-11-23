@@ -1,165 +1,128 @@
-# opensource-mieweb
+# opensource-server
 
-Configuration storage for the [opensource.mieweb.org](https://opensource.mieweb.org:8006) Proxmox project.
+Infrastructure management platform for automated LXC container hosting with Proxmox VE.
 
-To learn everything there is about our cluster, see our documentation at [https://opensource.mieweb.org/docs/intro](https://opensource.mieweb.org/docs/intro).
+This repository provides a complete self-service container management system with web interface, automated configuration distribution, and integrated DNS/reverse proxy services.
 
-This repository contains configuration files and scripts for managing a Proxmox-based container hosting environment, including automated DNS, NGINX reverse proxy, dynamic port mapping, and the Proxmox LaunchPad GitHub Action for automated container deployment.
+## Project Components
 
-## Cluster Graph
+- [`create-a-container/`](create-a-container/README.md) - Web application for container lifecycle management
+- [`pull-config/`](pull-config/README.md) - Automated configuration distribution system for nginx and dnsmasq
+- [`mie-opensource-landing/`](mie-opensource-landing/README.md) - Landing page and documentation site
+- [`packer/`](packer/README.md) - LXC container template creation
+- [`ci-cd-automation/`](ci-cd-automation/README.md) - Proxmox API automation scripts
+- [`LDAP/`](LDAP/README.md) - Centralized authentication infrastructure
+- [`Wazuh/`](Wazuh/README.md) - Security monitoring and threat detection
 
-```mermaid
+## Bootstrap Installation
 
-graph TD
-    %% Repository Structure
-    REPO[opensource-mieweb Repository]
-    
-    %% All Main Folders
-    REPO --> CICD[ci-cd-automation]
-    REPO --> CC[container-creation]
-    REPO --> DNS[dnsmasq-service]
-    REPO --> GW[gateway]
-    REPO --> LDAP[LDAP]
-    REPO --> NGINX[nginx-reverse-proxy]
-    REPO --> PL[proxmox-launchpad]
-    
-    %% Core Workflow Connections
-    CC --> |creates| CONTAINER[LXC Container]
-    CONTAINER --> |Updates Container Map| NGINX
-    CONTAINER --> |updates| DNS
-    CONTAINER --> | Updates IP Tables| GW
-    CONTAINER --> |authenticates via| LDAP
-    
-    %% CI/CD Operations
-    CICD --> |manages| CONTAINER
-    PL --> |automates| CC
-    PL --> |uses| CICD
-    
-    %% User Access Flow
-    USER[User Access] --> DNS
-    DNS --> NGINX
-    NGINX --> CONTAINER
+Bootstrap a new infrastructure node from scratch:
 
-    %% Wazuh Integration
-    CONTAINER --> |Wazuh Agent| WAGENT[Wazuh Agent]
-    WAGENT --> |reports to| WMANAGER[Wazuh Manager]
-    WMANAGER --> |sends data to| WINDEXER[Wazuh Indexer]
+### 1. Install a Debian 13 LXC on Proxmox
 
-    %% Styling
-    classDef folder fill:#1976d2,stroke:#e3f2fd,stroke-width:2px,color:#ffffff
-    classDef system fill:#689f38,stroke:#f1f8e9,stroke-width:2px,color:#ffffff
-    classDef wazuh fill:#fbc02d,stroke:#fffde7,stroke-width:2px,color:#000000
-    classDef user fill:#f57c00,stroke:#fff3e0,stroke-width:2px,color:#ffffff
+### 2. Install nginx (mainline from nginx's repo preferred)
 
-    class CICD,CC,DNS,GW,LDAP,NGINX,PL folder
-    class CONTAINER system
-    class WAGENT,WMANAGER,WINDEXER wazuh
-    class USER user
+```bash
+# Add nginx mainline repository (https://nginx.org/en/linux_packages.html#Debian)
+apt install curl gnupg2 ca-certificates lsb-release debian-archive-keyring
+curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
+    | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+http://nginx.org/packages/mainline/debian `lsb_release -cs` nginx" \
+    | tee /etc/apt/sources.list.d/nginx.list
+echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
+    | tee /etc/apt/preferences.d/99nginx
+
+apt update
+apt install -y nginx ssl-cert
+systemctl enable --now nginx
 ```
 
-### Core Infrastructure
+### 3. Install dnsmasq
 
-- [`dnsmasq-service/`](dnsmasq-service/):  
-  Contains Dnsmasq configuration for DHCP and DNS services, including wildcard routing for the reverse proxy and container network management.
+```bash
+apt install -y dnsmasq
+systemctl enable --now dnsmasq
+```
 
-- [`nginx-reverse-proxy/`](nginx-reverse-proxy/):  
-  Houses NGINX configuration files for the reverse proxy setup, including JavaScript modules for dynamic backend resolution and SSL certificate management.
+### 4. Install prerequisites
 
-- [`gateway/`](gateway/):  
-  Gateway configuration and management scripts for network routing and access control between the internal container network and external traffic. Also contains daily clean up scripts for the cluster.
+```bash
+apt install -y git make npm
+```
 
-### Container Management
+### 5. Clone the repository
 
-- [`container-creation/`](container-creation/):  
-  Contains comprehensive scripts for LXC container lifecycle management, including creation, LDAP configuration, service deployment, and registration with the proxy infrastructure.
+```bash
+git clone https://github.com/mieweb/opensource-server.git /opt/opensource-server
+cd /opt/opensource-server
+```
 
-- [`ci-cd-automation/`](ci-cd-automation/):  
-  Automation scripts for continuous integration and deployment workflows, including container existence checks, updates, and cleanup operations with helper utilities.
+### 6. Run installation
 
-### Authentication & Directory Services
+```bash
+make install
+```
 
-- [`LDAP/`](LDAP/):  
-  Contains LDAP authentication infrastructure including a custom Node.js LDAP server that bridges database user management with LDAP protocols, and automated LDAP client configuration tools for seamless container authentication integration. LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
+> **Note**: The `make install` command will set up the create-a-container web application, install the pull-config system for automated configuration management, and configure nginx and dnsmasq integration.
 
-### Security
+For detailed configuration and usage instructions, refer to the individual component READMEs linked above.
 
-- [`Wazuh/`](Wazuh/):
-  We utilize Wazuh, an opensource security management platform, to provide vulnerability detection and threat hunting services to our cluster. Our custom decoders and rules revolve mainly around mitigating SSH/PAM bruteforce attacks in both our hypervisors and individual containers.
+## Architecture Overview
 
-### GitHub Action Integration
+The system provides automated container hosting through three main components:
 
-- [`proxmox-launchpad/`](proxmox-launchpad/):  
-  The Proxmox LaunchPad GitHub Action for automated container deployment directly from GitHub repositories, supporting both single and multi-component applications.
+1. **Container Management** (`create-a-container/`)
+   - Web-based interface for container lifecycle operations
+   - Proxmox VE API integration for LXC container provisioning
+   - Site-based organization with hierarchical node/container relationships
+   - Service port mapping and DNS configuration
 
-- [`LDAPServer`](https://github.com/mieweb/LDAPServer):
-  LDAP Server configured to reference the [Proxmox VE Users @pve realm](https://pve.proxmox.com/wiki/User_Management) with optional [Push Notification 2FA](https://github.com/mieweb/mieweb_auth_app)
+2. **Configuration Distribution** (`pull-config/`)
+   - Automated pulling of nginx and dnsmasq configurations
+   - ETag-based change detection for efficient updates
+   - Validation and automatic rollback on errors
+   - Multi-instance support via run-parts pattern
 
-## Create a Container
+3. **Infrastructure Services**
+   - nginx reverse proxy with SSL/TLS termination
+   - dnsmasq for DHCP and DNS services
+   - LDAP authentication for centralized user management
+   - Wazuh security monitoring and threat detection
 
-If you have an account in the [opensource-mieweb](https://opensource.mieweb.org:8006) cluster, you can create a container in three ways:
-- Use the Web GUI here: [create-a-container](https://create-a-container.opensource.mieweb.org/)
-- Use the Command Line: ssh create-container@opensource.mieweb.org (mie123!)
-- Use the Proxmox LaunchPad Github Action to automatically provision, update, and delete containers for you: [Proxmox LaunchPad](#proxmox-launchpad)
+### Data Flow
 
-## MIE Opensource Landing
-
-Contains all the source code for [https://opensource.mieweb.org's](https://opensource.mieweb.org) landing page, built with React + Docusaurus.
-- Documentation is located at [https://opensource.mieweb.org/docs/intro](https://opensource.mieweb.org/docs/intro).
-
-## How It Works
-
-- **DNS**: All `*.opensource.mieweb.com` requests are routed to the NGINX proxy via Dnsmasq, providing automatic subdomain resolution for containers.
-- **Reverse Proxy**: NGINX uses JavaScript modules to dynamically resolve backend IP addresses and ports for each subdomain, based on the container registry in `/etc/nginx/port_map.json`.
-- **Container Lifecycle**: When containers start, Proxmox hooks automatically:
-  - Wait for DHCP lease assignment
-  - Allocate available HTTP and SSH ports
-  - Update the NGINX port mapping and reload configuration
-  - Configure iptables rules for SSH port forwarding
-- **GitHub Integration**: The Proxmox LaunchPad action automates the entire process from repository push to live deployment, including dependency installation, service configuration, and application startup.
-- **CI/CD Pipeline**: Automated scripts used by [Proxmox LaunchPad](#proxmox-launchpad) to handle container updates, existence checks, and cleanup operations to maintain a clean and efficient hosting environment.
-- **LDAP Server**: All LXC Container Authentication is handled by a centralized LDAP server housed in the cluster. Each Container is configured with SSSD, which communicates with the LDAP server to verify/authenitcate user credentials. This approach is more secure than housing credentials locally.
-- **Wazuh**: Both containers and hypervisors are Wazuh Agents, and send all logs to our centralized Wazuh Manager, which matches each log against a large database of decoders and rules. If certain rules are triggered, active response mechanisms respond by triggering certain commands, a common one being a firewall drop of all packets originating from a certain source IP.
-
-
-## Proxmox LaunchPad
-
-The Proxmox LaunchPad is a powerful GitHub Action that automatically creates, manages, and deploys LXC containers on the Proxmox cluster based on your repository's branch activity. It supports:
-
-- **Automatic Container Creation**: Creates new containers when branches are created or pushed to
-- **Multi-Component Deployments**: Supports applications with multiple services (e.g., frontend + backend)
-- **Service Integration**: Automatically installs and configures services like MongoDB, Docker, Redis, PostgreSQL, and more
-- **Branch-Based Environments**: Each branch gets its own isolated container environment
-- **Automatic Cleanup**: Deletes containers when branches are deleted (e.g., after PR merges)
-
-The action integrates with the existing infrastructure to provide automatic DNS registration, reverse proxy configuration, and port mapping for seamless access to deployed applications.
-
-## Opensource Cluster Usage
-
-### For Infrastructure Management
-
-1. **Clone this repository** to your Proxmox host or configuration management system.
-2. **Deploy the configuration files** to their respective locations on your infrastructure.
-3. **Ensure dependencies**:
-   - Proxmox VE with LXC container support
-   - NGINX with the `ngx_http_js_module`
-   - Dnsmasq for DNS and DHCP services
-4. **Set up LDAP authentication** using the provided LDAP server and client configuration tools.
-5. **Configure container templates** and network settings according to your environment.
-6. **Register new containers** using the provided hook scripts for automatic proxy and DNS integration.
-
-### For GitHub Action Deployment
-
-1. **Add the Proxmox LaunchPad action** to your repository's workflow file.
-2. **Configure repository secrets** for Proxmox credentials and optionally a GitHub PAT.
-3. **Set up trigger events** for push, create, and delete operations in your workflow.
-4. **Configure deployment properties** in your workflow file for automatic application deployment.
-5. **Push to your repository** and watch as containers are automatically created and your application is deployed.
-
-See the [`proxmox-launchpad/README.md`](proxmox-launchpad/README.md) for detailed setup instructions and configuration options.
-
-## Optional Submodules
-- **Push Notification 2FA** - MIE Auth https://github.com/mieweb/mieweb_auth_app
+```mermaid
+graph TD
+    User[User] --> WebUI[create-a-container Web UI]
+    WebUI --> DB[(SQLite Database)]
+    WebUI --> PVE[Proxmox VE API]
+    PVE --> LXC[LXC Container]
+    
+    Cron[Cron Job] --> PullConfig[pull-config]
+    PullConfig --> WebUI
+    PullConfig --> Nginx[nginx config]
+    PullConfig --> Dnsmasq[dnsmasq config]
+    
+    Client[Client Request] --> Nginx
+    Nginx --> LXC
+    
+    DB --> Sites[Sites]
+    Sites --> Nodes[Nodes]
+    Nodes --> Containers[Containers]
+    Containers --> Services[Services]
+    
+    classDef user fill:#f57c00,stroke:#fff3e0,stroke-width:2px,color:#ffffff
+    classDef app fill:#1976d2,stroke:#e3f2fd,stroke-width:2px,color:#ffffff
+    classDef infra fill:#689f38,stroke:#f1f8e9,stroke-width:2px,color:#ffffff
+    classDef data fill:#7b1fa2,stroke:#f3e5f5,stroke-width:2px,color:#ffffff
+    
+    class User,Client user
+    class WebUI,PullConfig app
+    class PVE,LXC,Nginx,Dnsmasq,Cron infra
+    class DB,Sites,Nodes,Containers,Services data
+```
 
 ---
 
-Contributors: Carter Myers, Maxwell Klema, and Anisha Pant
+Contributors: Carter Myers, Maxwell Klema, Anisha Pant, and Robert Gingras
