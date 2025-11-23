@@ -178,7 +178,7 @@ router.post('/', async (req, res) => {
         return lookup.address;
       } catch (err) {
         console.error('DNS lookup failed:', err);
-        await setTimeout(() => {}, retryDelay);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     }
     console.error('DNS lookup failed after maximum retries');
