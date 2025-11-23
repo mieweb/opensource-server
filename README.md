@@ -42,8 +42,14 @@ systemctl enable --now nginx
 
 ```bash
 apt install -y dnsmasq
-systemctl enable --now dnsmasq
 ```
+
+Edit Debian's dnsmasq defaults. In `/etc/default/dnsmasq`, comment out `CONFIG_DIR=` and uncomment `IGNORE_RESOLVCONF=`. We want all configuration to be handled by and only by `pull-config`.
+
+```bash
+systemctl enable --now dnsmasq.service
+```
+
 
 ### 4. Install prerequisites
 
