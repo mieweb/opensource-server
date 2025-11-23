@@ -49,7 +49,11 @@ module.exports = {
     });
 
     // Step 4: Remove unique constraint from containerId
-    await queryInterface.removeIndex('Containers', 'containerId');
+    await queryInterface.changeColumn('Containers', 'containerId', {
+      type: Sequelize.INTEGER,
+      allowNull: false,
+      unique: false
+    });
 
     // Step 5: Add unique constraint on (node, containerId)
     await queryInterface.addIndex('Containers', ['node', 'containerId'], {
