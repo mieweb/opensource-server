@@ -1,0 +1,43 @@
+<%- include('../layouts/header', { 
+  title: 'Create Your Container - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/containers` },
+    { label: 'New', url: null }
+  ],
+  colWidth: 'col-12 col-lg-6',
+  req
+}) %>
+
+<div class="login-container">
+  <img src="/logo.png" alt="Company Logo" class="logo">
+  <h2>Create Your Container</h2>
+  <form id="containerForm" method="POST" action="/sites/<%= site.id %>/containers">
+    <input type="hidden" name="init" value="true">
+    
+    <label for="hostname">Container Hostname</label>
+    <input type="text" id="hostname" name="hostname" required>
+
+    <label for="template">Container Template</label>
+    <select id="template" name="template" required>
+      <option value="">Select a template...</option>
+      <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
+        <% templates.forEach(template => { %>
+          <option value="<%= template.node %>,<%= template.volid %>">
+            <%= template.name %> (<%= template.node %>)
+          </option>
+        <% }) %>
+      <% } else { %>
+        <option value="" disabled>No templates available</option>
+      <% } %>
+    </select>
+
+    <label for="httpPort">HTTP Port</label>
+    <input type="number" id="httpPort" name="httpPort" min="80" max="60000" value="80" required>
+
+    <input type="submit" value="Create Container">
+  </form>
+  <div id="formError" style="color:red; margin-top:10px;"></div>
+</div>
+
+<%- include('../layouts/footer') %>

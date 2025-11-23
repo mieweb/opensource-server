@@ -16,11 +16,22 @@ module.exports = {
     });
 
     // Step 2: Populate nodeId based on node string values
-    await queryInterface.sequelize.query(
-      "UPDATE Containers c JOIN Nodes n ON c.node = n.name SET c.nodeId = n.id"
+    const nodesTable = queryInterface.quoteIdentifier('Nodes');
+    const [nodes, _] = await queryInterface.sequelize.query(
+      `SELECT id, name FROM ${nodesTable}`
     );
+    for (const { id, name } of nodes) {
+      await queryInterface.bulkUpdate('Containers', {
+        nodeId: id
+      }, {
+        node: name
+      });
+    }
 
-    // Step 3: Make nodeId NOT NULL
+    // Step 3: Remove old unique constraint on (node, containerId)
+    await queryInterface.removeIndex('Containers', 'containers_node_container_id_unique');
+
+    // Step 4: Make nodeId NOT NULL
     await queryInterface.changeColumn('Containers', 'nodeId', {
       type: Sequelize.INTEGER,
       allowNull: false,
@@ -29,20 +40,17 @@ module.exports = {
         key: 'id'
       },
       onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT'
+      onDelete: 'RESTRICT',
     });
 
-    // Step 4: Remove old unique constraint on (node, containerId)
-    await queryInterface.removeIndex('Containers', 'containers_node_container_id_unique');
+    // Step 5: Remove the old node column
+    await queryInterface.removeColumn('Containers', 'node');
 
-    // Step 5: Add new unique constraint on (nodeId, containerId)
+    // Step 6: Add new unique constraint on (nodeId, containerId)
     await queryInterface.addIndex('Containers', ['nodeId', 'containerId'], {
       name: 'containers_node_id_container_id_unique',
       unique: true
     });
-
-    // Step 6: Remove the old node column
-    await queryInterface.removeColumn('Containers', 'node');
   },
 
   async down (queryInterface, Sequelize) {
@@ -53,9 +61,16 @@ module.exports = {
     });
 
     // Populate node from nodeId
-    await queryInterface.sequelize.query(
-      "UPDATE Containers c JOIN Nodes n ON c.nodeId = n.id SET c.node = n.name"
+    const [nodes, _] = await queryInterface.sequelize.query(
+      'SELECT id, name FROM Nodes'
     );
+    for (const { id, name } of nodes) {
+      await queryInterface.bulkUpdate('Containers', {
+        node: name
+      }, {
+        nodeId: id
+      });
+    }
 
     // Make node NOT NULL
     await queryInterface.changeColumn('Containers', 'node', {
