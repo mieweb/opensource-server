@@ -20,5 +20,6 @@ dhcp-option=option:router,<%= site.gateway %>
 <%_ site.nodes.forEach((node) => { _%>
 <%_ node.containers.forEach((container) => { _%>
 dhcp-host=<%= container.macAddress %>,<%= container.ipv4Address.split('/')[0] %>
+host-record=<%= container.hostname %>.<%= site.internalDomain %>,<%= container.ipv4Address.split('/')[0] %>
 <%_ }) _%>
 <%_ }) _%>
