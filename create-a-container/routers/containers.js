@@ -7,26 +7,6 @@ const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 
-// Helper function to determine node ID based on aiContainer and containerId
-async function getNodeForContainer(aiContainer, containerId) {
-  let nodeName;
-  
-  if (aiContainer === 'FORTWAYNE') {
-    nodeName = 'intern-phxdc-pve3-ai';
-  } else if (aiContainer === 'PHOENIX') {
-    nodeName = 'mie-phxdc-ai-pve1';
-  } else {
-    nodeName = (containerId % 2 === 1) ? 'intern-phxdc-pve1' : 'intern-phxdc-pve2';
-  }
-  
-  const node = await Node.findOne({ where: { name: nodeName } });
-  if (!node) {
-    throw new Error(`Node not found: ${nodeName}`);
-  }
-  
-  return node.id;
-}
-
 // GET /sites/:siteId/containers/new - Display form for creating a new container
 router.get('/new', requireAuth, async (req, res) => {
   // verify site exists
@@ -165,9 +145,18 @@ router.post('/', async (req, res) => {
   const upid = await client.createLxc(node.name, {
     ostemplate,
     vmid,
+    cores: 4,
+    features: 'nesting=1',  // allow nested containers
     hostname,
-    storage: ostemplate.split(':')[0],
-    net0: 'name=eth0'
+    memory: 4096,  // 4GB RAM
+    net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
+    rootfs: `${ostemplate.split(':')[0]}:50`,  // 50GB root disk on the template's storage
+    searchdomain: site.internalDomain,  // use the site's search domain
+    swap: 0,
+    onboot: 1,  // start the container automatically on node boot
+    start: 1,  // start the container immediately after creation
+    tags: req.session.user,
+    unprivileged: 1 
   });
   
   // wait for the task to complete
@@ -207,6 +196,7 @@ router.post('/', async (req, res) => {
   return res.redirect(`/sites/${siteId}/containers`);
 } catch (err) {
   console.log(err);
+  console.log(err.response?.data?.errors);
   throw err;
 }
 });
