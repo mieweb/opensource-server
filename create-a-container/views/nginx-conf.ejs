@@ -47,8 +47,8 @@ http {
     server_name _;
 
     # SSL certificates
-    ssl_certificate /root/.acme.sh/opensource.mieweb.org/fullchain.cer;
-    ssl_certificate_key /root/.acme.sh/opensource.mieweb.org/opensource.mieweb.org.key;
+    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
 
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -107,6 +107,7 @@ http {
     return 404;
     <%_ } _%>
   }
+
   <%_ httpServices.forEach((service, index) => { _%>
   server {
     listen 443 ssl;
