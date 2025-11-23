@@ -13,6 +13,9 @@ install: install-create-container install-pull-config
 
 install-create-container:
 	cd create-a-container && npm install --production
+	echo "SESSION_SECRET=$(head -c 32 /dev/urandom | base64)" > create-a-container/.env
+	echo 'DATABASE_DIALECT=sqlite3' >> create-a-container/.env
+	echo 'DATABASE_STORAGE=/opt/opensource-server/create-a-container/database.sqlite' >> create-a-container/.env
 	install -m644 -oroot -groot create-a-container/container-creator.service /etc/systemd/system/container-creator.service
 	systemctl daemon-reload
 	systemctl enable container-creator.service
