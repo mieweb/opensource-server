@@ -14,7 +14,7 @@ router.get('/:siteId/dnsmasq.conf', async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
-        attributes: ['macAddress', 'ipv4Address']
+        attributes: ['macAddress', 'ipv4Address', 'hostname']
       }]
     }]
   });
