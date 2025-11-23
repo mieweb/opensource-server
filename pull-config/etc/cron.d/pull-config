@@ -3,5 +3,3 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Run all pull-config instances every minute
 * * * * * root /bin/run-parts /etc/pull-config.d
-
-

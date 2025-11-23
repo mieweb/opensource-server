@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Site, Node, Container } = require('../models');
+const { Site, Node, Container, Service } = require('../models');
 const { requireAuth, requireAdmin, setCurrentSite } = require('../middlewares');
 
 // GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
@@ -25,6 +25,46 @@ router.get('/:siteId/dnsmasq.conf', async (req, res) => {
   
   res.set('Content-Type', 'text/plain');
   return res.render('dnsmasq-conf', { site });
+});
+
+// GET /sites/:siteId/nginx.conf - Public endpoint for nginx configuration
+router.get('/:siteId/nginx.conf', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  // fetch services for the specific site
+  const site = await Site.findByPk(siteId, {
+    include: [{
+      model: Node,
+      as: 'nodes',
+      include: [{
+        model: Container,
+        as: 'containers',
+        include: [{
+          model: Service,
+          as: 'services'
+        }]
+      }]
+    }]
+  });
+  
+  // Flatten services from site→nodes→containers→services
+  const allServices = [];
+  for (const node of site.nodes) {
+    for (const container of node.containers) {
+      for (const service of container.services) {
+        // Add container reference for template compatibility
+        service.Container = container;
+        allServices.push(service);
+      }
+    }
+  }
+  
+  // Filter by type
+  const httpServices = allServices.filter(s => s.type === 'http');
+  const streamServices = allServices.filter(s => s.type === 'tcp' || s.type === 'udp');
+  
+  res.set('Content-Type', 'text/plain');
+  return res.render('nginx-conf', { httpServices, streamServices });
 });
 
 // Apply auth to all routes below this point
