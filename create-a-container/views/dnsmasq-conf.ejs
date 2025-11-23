@@ -1,10 +1,24 @@
+# standard configuration
 no-resolv
 dhcp-authoritative
 domain-needed
 bogus-priv
+
+# internal domain for the site
 domain=<%= site.internalDomain %>
-<% site.dnsForwarders.split(',').forEach((forwarder) => { %>
+
+# DNS forwarders
+<%_ site.dnsForwarders.split(',').forEach((forwarder) => { _%>
 server=<%= forwarder.trim() %>
-<% }) %>
-dhcp-range=<%= site.dhcpRangeStart %>,<%= site.dhcpRangeEnd %>,<%= site.subnetMask %>,12h
+<%_ }) _%>
+
+# DHCP configuration
+dhcp-range=<%= site.dhcpRange %>,<%= site.subnetMask %>,12h
 dhcp-option=option:router,<%= site.gateway %>
+
+# Static DHCP leases for existing containers
+<%_ site.nodes.forEach((node) => { _%>
+<%_ node.containers.forEach((container) => { _%>
+dhcp-host=<%= container.macAddress %>,<%= container.ipv4Address.split('/')[0] %>
+<%_ }) _%>
+<%_ }) _%>

@@ -20,7 +20,8 @@ module.exports = (sequelize, DataTypes) => {
   Site.init({
     name: DataTypes.STRING,
     internalDomain: DataTypes.STRING,
-    subnet: DataTypes.STRING,
+    dhcpRange: DataTypes.STRING,
+    subnetMask: DataTypes.STRING,
     gateway: DataTypes.STRING,
     dnsForwarders: DataTypes.STRING
   }, {

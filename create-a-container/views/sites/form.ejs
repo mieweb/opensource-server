@@ -46,30 +46,43 @@
 
       <div class="row">
         <div class="col-md-6 mb-3">
-          <label for="subnet" class="form-label">Subnet</label>
+          <label for="dhcpRange" class="form-label">DHCP Range</label>
           <input 
             type="text" 
             class="form-control" 
-            id="subnet" 
-            name="subnet" 
-            value="<%= site ? site.subnet : '' %>" 
-            placeholder="e.g., 10.0.0.0/24"
+            id="dhcpRange" 
+            name="dhcpRange" 
+            value="<%= site ? site.dhcpRange : '' %>" 
+            placeholder="e.g., 10.0.0.100,10.0.0.200"
           >
-          <div class="form-text">CIDR notation subnet</div>
+          <div class="form-text">Comma-separated start and end IPs for DHCP range</div>
         </div>
 
         <div class="col-md-6 mb-3">
-          <label for="gateway" class="form-label">Gateway</label>
+          <label for="subnetMask" class="form-label">Subnet Mask</label>
           <input 
             type="text" 
             class="form-control" 
-            id="gateway" 
-            name="gateway" 
-            value="<%= site ? site.gateway : '' %>" 
-            placeholder="e.g., 10.0.0.1"
+            id="subnetMask" 
+            name="subnetMask" 
+            value="<%= site ? site.subnetMask : '' %>" 
+            placeholder="e.g., 255.255.255.0"
           >
-          <div class="form-text">Gateway IP address</div>
+          <div class="form-text">Subnet mask for DHCP configuration</div>
         </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="gateway" class="form-label">Gateway</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="gateway" 
+          name="gateway" 
+          value="<%= site ? site.gateway : '' %>" 
+          placeholder="e.g., 10.0.0.1"
+        >
+        <div class="form-text">Gateway IP address</div>
       </div>
 
       <div class="mb-3">

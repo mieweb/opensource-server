@@ -21,7 +21,7 @@
             <th>ID</th>
             <th>Name</th>
             <th>Internal Domain</th>
-            <th>Subnet</th>
+            <th>DHCP Range</th>
             <th>Gateway</th>
             <th>Node Count</th>
             <th>Actions</th>
@@ -38,7 +38,7 @@
                 <td><%= row.id %></td>
                 <td><%= row.name %></td>
                 <td><%= row.internalDomain || '-' %></td>
-                <td><%= row.subnet || '-' %></td>
+                <td><%= row.dhcpRange || '-' %></td>
                 <td><%= row.gateway || '-' %></td>
                 <td><%= row.nodeCount %></td>
                 <td>
