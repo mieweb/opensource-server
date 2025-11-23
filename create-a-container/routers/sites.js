@@ -49,15 +49,15 @@ router.get('/:siteId/nginx.conf', async (req, res) => {
   
   // Flatten services from site→nodes→containers→services
   const allServices = [];
-  for (const node of site.nodes) {
-    for (const container of node.containers) {
-      for (const service of container.services) {
+  site?.nodes?.forEach(node => {
+    node?.containers?.forEach(container => {
+      container?.services?.forEach(service => {
         // Add container reference for template compatibility
         service.Container = container;
         allServices.push(service);
-      }
-    }
-  }
+      });
+    });
+  });
   
   // Filter by type
   const httpServices = allServices.filter(s => s.type === 'http');
