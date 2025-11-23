@@ -9,7 +9,7 @@ const methodOverride = require('method-override');
 const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
-const { Container, Service, User, sequelize } = require('./models');
+const { sequelize } = require('./models');
 const { requireAuth, loadSites } = require('./middlewares');
 
 const app = express();
@@ -92,17 +92,6 @@ app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/conta
 // --- Routes ---
 const PORT = 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-
-// Generate nginx configuration for a container
-app.get('/nginx.conf', async (req, res) => {
-  const services = await Service.findAll({
-    include: [{ model: Container }]
-  });
-  const httpServices = services.filter(s => s.type === 'http');
-  const streamServices = services.filter(s => s.type === 'tcp' || s.type === 'udp');
-  res.contentType('text/plain');
-  return res.render('nginx-conf', { httpServices, streamServices });
-});
 
 // Handles logout
 app.post('/logout', (req, res) => {

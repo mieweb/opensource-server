@@ -29,6 +29,84 @@ http {
 
   server_names_hash_bucket_size 128;
   
+  server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+    return 301 https://$host$request_uri;
+  }
+
+  server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    listen 443 quic;
+    listen [::]:443 quic;
+    http2 on;
+    http3 on;
+
+    server_name _;
+
+    # SSL certificates
+    ssl_certificate /root/.acme.sh/opensource.mieweb.org/fullchain.cer;
+    ssl_certificate_key /root/.acme.sh/opensource.mieweb.org/opensource.mieweb.org.key;
+
+    # Modern TLS configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+
+    # SSL session optimization
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+
+    # OCSP stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /root/.acme.sh/opensource.mieweb.org/fullchain.cer;
+    resolver 1.1.1.1 8.8.8.8 valid=300s;
+    resolver_timeout 5s;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+
+    <%_ if (httpServices.length === 0) { _%>
+    location / {
+      proxy_pass http://localhost:3000;
+      proxy_http_version 1.1;
+
+      # Proxy headers
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Port $server_port;
+
+      # WebSocket support
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+
+      # Timeouts
+      proxy_connect_timeout 60s;
+      proxy_send_timeout 60s;
+      proxy_read_timeout 60s;
+
+      # Buffering (disable for SSE/streaming)
+      proxy_buffering off;
+      proxy_request_buffering off;
+
+      # Allow large uploads
+      client_max_body_size 100M;
+    }
+    <%_ } else { _%>
+    return 404;
+    <%_ } _%>
+  }
   <%_ httpServices.forEach((service, index) => { _%>
   server {
     listen 443 ssl;
