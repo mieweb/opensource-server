@@ -1,9 +1,33 @@
 const express = require('express');
 const router = express.Router();
-const { Site, Node } = require('../models');
+const { Site, Node, Container } = require('../models');
 const { requireAuth, requireAdmin, setCurrentSite } = require('../middlewares');
 
-// Apply auth to all routes
+// GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
+router.get('/:siteId/dnsmasq.conf', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  const site = await Site.findByPk(siteId, {
+    include: [{
+      model: Node,
+      as: 'nodes',
+      include: [{
+        model: Container,
+        as: 'containers',
+        attributes: ['macAddress', 'ipv4Address']
+      }]
+    }]
+  });
+  
+  if (!site) {
+    return res.status(404).send('Site not found');
+  }
+  
+  res.set('Content-Type', 'text/plain');
+  return res.render('dnsmasq-conf', { site });
+});
+
+// Apply auth to all routes below this point
 router.use(requireAuth);
 
 // store the current site for routes with :siteId
@@ -30,7 +54,7 @@ router.get('/', async (req, res) => {
     id: s.id,
     name: s.name,
     internalDomain: s.internalDomain,
-    subnet: s.subnet,
+    dhcpRange: s.dhcpRange,
     gateway: s.gateway,
     nodeCount: s.nodes ? s.nodes.length : 0
   }));
@@ -69,12 +93,13 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
 // POST /sites - Create a new site (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, internalDomain, subnet, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
     
     await Site.create({
       name,
       internalDomain,
-      subnet,
+      dhcpRange,
+      subnetMask,
       gateway,
       dnsForwarders
     });
@@ -98,12 +123,13 @@ router.put('/:id', requireAdmin, async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, internalDomain, subnet, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
     
     await site.update({
       name,
       internalDomain,
-      subnet,
+      dhcpRange,
+      subnetMask,
       gateway,
       dnsForwarders
     });
