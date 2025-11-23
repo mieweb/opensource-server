@@ -18,21 +18,22 @@
     <label for="hostname">Container Hostname</label>
     <input type="text" id="hostname" name="hostname" required>
 
-    <label for="osRelease">Linux Distribution</label>
-    <select id="osRelease" name="osRelease" required>
-      <option value="debian">Debian 12 (Bookworm)</option>
-      <option value="rocky">Rocky 9</option>
+    <label for="template">Container Template</label>
+    <select id="template" name="template" required>
+      <option value="">Select a template...</option>
+      <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
+        <% templates.forEach(template => { %>
+          <option value="<%= template.node %>,<%= template.volid %>">
+            <%= template.name %> (<%= template.node %>)
+          </option>
+        <% }) %>
+      <% } else { %>
+        <option value="" disabled>No templates available</option>
+      <% } %>
     </select>
 
     <label for="httpPort">HTTP Port</label>
     <input type="number" id="httpPort" name="httpPort" min="80" max="60000" value="80" required>
-
-    <label for="aiContainer">AI Project Type</label>
-    <select id="aiContainer" name="aiContainer">
-      <option value="N" selected>No</option>
-      <option value="PHOENIX">Phoenix AI Server</option>
-      <option value="FORTWAYNE">Fort Wayne AI Server</option>
-    </select>
 
     <input type="submit" value="Create Container">
   </form>

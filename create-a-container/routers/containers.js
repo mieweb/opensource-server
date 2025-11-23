@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
-const { Container, Service, Node, Site } = require('../models');
+const dns = require('dns').promises;
+const { Container, Service, Node, Site, Sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
-const { ProxmoxApi } = require('../utils/proxmox-api');
+const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 
 // Helper function to determine node ID based on aiContainer and containerId
@@ -28,16 +29,57 @@ async function getNodeForContainer(aiContainer, containerId) {
 
 // GET /sites/:siteId/containers/new - Display form for creating a new container
 router.get('/new', requireAuth, async (req, res) => {
+  // verify site exists
   const siteId = parseInt(req.params.siteId, 10);
-  
   const site = await Site.findByPk(siteId);
   if (!site) {
     req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
+  
+  // Get valid container templates from all nodes in this site
+  const templates = [];
+  const nodes = await Node.findAll({
+    where: {
+      [Sequelize.Op.and]: {
+        siteId,
+        apiUrl: { [Sequelize.Op.ne]: null },
+        tokenId: { [Sequelize.Op.ne]: null },
+        secret: { [Sequelize.Op.ne]: null }
+      }
+    },
+  });
+
+  for (const node of nodes) {
+    const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: node.tlsVerify !== false
+      })
+    });
+
+    // Get datastores for this node
+    const datastores = await client.datastores(node.name, 'vztmpl', true);
+
+    // Iterate over each datastore and get its contents
+    for (const datastore of datastores) {
+      const contents = await client.storageContents(node.name, datastore.storage, 'vztmpl');
+      
+      // Add templates from this storage
+      for (const item of contents) {
+        templates.push({
+          volid: item.volid,
+          name: item.volid.split('/').pop(), // Extract filename from volid
+          size: item.size,
+          node: node.name,
+          storage: datastore.storage
+        });
+      }
+    }
+  }
 
   return res.render('containers/form', { 
     site,
+    templates,
     req 
   });
 });
@@ -101,7 +143,6 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /sites/:siteId/containers - Create a new container
 router.post('/', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
-  const isInit = req.body.init === 'true' || req.body.init === true;
   
   // Validate site exists
   const site = await Site.findByPk(siteId);
@@ -109,70 +150,65 @@ router.post('/', async (req, res) => {
     req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
+
+  try {
+  // clone the template
+  const { hostname, template, httpPort } = req.body;
+  const [ nodeName, ostemplate ] = template.split(',');
+  const node = await Node.findOne({ where: { name: nodeName, siteId } });
+  const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
+    httpsAgent: new https.Agent({
+      rejectUnauthorized: node.tlsVerify !== false
+    })
+  });
+  const vmid = await client.nextId();
+  const upid = await client.createLxc(node.name, {
+    ostemplate,
+    vmid,
+    hostname,
+    storage: ostemplate.split(':')[0],
+    net0: 'name=eth0'
+  });
   
-  // Only require auth for init=true (user-initiated container creation)
-  if (isInit) {
-    // User-initiated container creation via web form is no longer supported
-    // The jobs object has been removed - this endpoint now only handles API calls
-    req.flash('error', 'Container creation via web form is no longer supported');
-    return res.redirect(`/sites/${siteId}/containers`);
+  // wait for the task to complete
+  while (true) {
+    const status = await client.taskStatus(node.name, upid);
+    if (status.status === 'stopped') break;
   }
-  
-  // handle non-init container creation (e.g., admin API)
-  const aiContainer = req.body.aiContainer || 'N';
-  const containerId = req.body.containerId;
-  const nodeId = await getNodeForContainer(aiContainer, containerId);
-  
-  // Verify the node belongs to this site
-  const node = await Node.findOne({ where: { id: nodeId, siteId } });
-  if (!node) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Node does not belong to this site' 
-    });
-  }
-  
-  const sshPort = await Service.nextAvailablePortInRange('tcp', 2222, 2999);
+
+  // record container information
+  const config = await client.lxcConfig(node.name, vmid);
+  const macAddress = config['net0'].match(/hwaddr=([0-9A-Fa-f:]+)/)[1];
+  const ipv4Address = await (async () => {
+    const maxRetries = 10;
+    const retryDelay = 3000;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const domainName = `${hostname}.${site.internalDomain}`;
+        const lookup = await dns.lookup(domainName);
+        return lookup.address;
+      } catch (err) {
+        console.error('DNS lookup failed:', err);
+        await setTimeout(() => {}, retryDelay);
+      }
+    }
+    console.error('DNS lookup failed after maximum retries');
+    return null
+  })();
   
   const container = await Container.create({
-    ...req.body,
-    nodeId
+    hostname,
+    username: req.session.user,
+    nodeId: node.id,
+    containerId: vmid,
+    macAddress,
+    ipv4Address
   });
-  const httpService = await Service.create({
-    containerId: container.id,
-    type: 'http',
-    internalPort: req.body.httpPort,
-    externalPort: null,
-    tls: null,
-    externalHostname: container.hostname
-  });
-  const sshService = await Service.create({
-    containerId: container.id,
-    type: 'tcp',
-    internalPort: 22,
-    externalPort: sshPort,
-    tls: false,
-    externalHostname: null
-  });
-  const services = [httpService, sshService];
-  if (req.body.additionalProtocols) {
-    const additionalProtocols = req.body.additionalProtocols.split(',').map(p => p.trim().toLowerCase()); 
-    for (const protocol of additionalProtocols) {
-      const defaultPort = serviceMap[protocol].port;
-      const underlyingProtocol = serviceMap[protocol].protocol;
-      const port = await Service.nextAvailablePortInRange(underlyingProtocol, 10001, 29999)
-      const additionalService = await Service.create({
-        containerId: container.id,
-        type: underlyingProtocol,
-        internalPort: defaultPort,
-        externalPort: port,
-        tls: false,
-        externalHostname: null
-      });
-      services.push(additionalService);
-    }
-  }
-  return res.json({ success: true, data: { ...container.toJSON(), services } });
+  return res.redirect(`/sites/${siteId}/containers`);
+} catch (err) {
+  console.log(err);
+  throw err;
+}
 });
 
 // DELETE /sites/:siteId/containers/:id - Delete a container
