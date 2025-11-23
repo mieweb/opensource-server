@@ -120,6 +120,89 @@ class ProxmoxApi {
   }
 
   /**
+   * Get status for all datastores
+   * @param {string} node 
+   * @param {string} content 
+   * @param {boolean} enabled 
+   * @param {boolean} format 
+   * @param {string} storage 
+   * @param {string} target 
+   * @returns {Promise<object>} - The API response data
+   */
+  async datastores(node, content = null, enabled = false, format = false, storage = null, target = null) {
+    const params = {};
+    if (content) params.content = content;
+    if (enabled) params.enabled = 1;
+    if (format) params.format = 1;
+    if (storage) params.storage = storage;
+    if (target) params.target = target;
+    const response = await axios.get(`${this.baseUrl}/api2/json/nodes/${node}/storage`, {
+      params,
+      ...this.options
+    });
+    return response.data.data;
+  }
+
+  /**
+   * Get storage contents
+   * @param {string} node 
+   * @param {string} storage 
+   * @param {string} content - Content type filter (e.g., 'vztmpl' for container templates)
+   * @returns {Promise<object>} - The API response data
+   */
+  async storageContents(node, storage, content = null) {
+    const params = {};
+    if (content) params.content = content;
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/storage/${storage}/content`,
+      {
+        params,
+        ...this.options
+      }
+    );
+    return response.data.data;
+  }
+
+  /**
+   * @returns {Promise<number>} - The next available VMID
+   */
+  async nextId() {
+    const response = await axios.get(`${this.baseUrl}/api2/json/cluster/nextid`, this.options);
+    return response.data.data;
+  }
+
+  /**
+   * Create or restore a container
+   * @param {string} node 
+   * @param {object} options 
+   * @returns {Promise<string>} - The created container ID
+   */
+  async createLxc(node, options) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc`,
+      {
+        ...options
+      },
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
+   * Read task status
+   * @param {string} node 
+   * @param {string} upid 
+   * @returns {Promise<object>} - The API response data
+   */
+  async taskStatus(node, upid) {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/tasks/${encodeURIComponent(upid)}/status`,
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
    * Delete a container
    * @param {string} nodeName 
    * @param {number} containerId 
@@ -128,10 +211,6 @@ class ProxmoxApi {
    * @returns {Promise<object>} - The API response data
    */
   async deleteContainer(nodeName, containerId, force = false, purge = false) {
-    if (!this.tokenId || !this.secret) {
-      throw new Error('Token ID and secret are required for authentication.');
-    }
-
     const params = {};
     if (force) params.force = 1;
     if (purge) params.purge = 1;
