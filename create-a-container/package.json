@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate",
+    "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
     "job-runner": "node job-runner.js"
   },
   "dependencies": {
