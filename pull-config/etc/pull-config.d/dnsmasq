@@ -5,7 +5,7 @@
 SITE_ID=1
 
 # Configuration file to manage
-export CONF_FILE=/etc/dnsmasq.d/site-${SITE_ID}.conf
+export CONF_FILE=/etc/dnsmasq.conf
 
 # URL to fetch configuration from
 export CONF_URL=http://localhost:3000/sites/${SITE_ID}/dnsmasq.conf
