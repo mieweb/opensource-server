@@ -1,4 +1,7 @@
 'use strict';
+
+const { sequelize } = require('../models');
+
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -33,12 +36,14 @@ module.exports = {
     });
 
     // Seed the Nodes table with existing node values from Containers
-    await queryInterface.sequelize.query(`
-      INSERT INTO Nodes (name, apiUrl, tlsVerify, createdAt, updatedAt)
-      SELECT DISTINCT node, NULL, NULL, NOW(), NOW()
-      FROM Containers
-      ORDER BY node
-    `);
+    const containersTable = queryInterface.quoteIdentifier('Containers');
+    const [nodeNames, _] = await queryInterface.sequelize.query(
+      `SELECT DISTINCT node FROM ${containersTable}`
+    );
+    const nodes = nodeNames.map(n => ({ name: n.node, createdAt: new Date(), updatedAt: new Date() }));
+    if (nodes.length > 0) {
+      await queryInterface.bulkInsert('Nodes', nodes);
+    }
   },
   async down(queryInterface, Sequelize) {
     await queryInterface.dropTable('Nodes');
