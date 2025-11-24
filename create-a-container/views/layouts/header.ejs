@@ -24,6 +24,7 @@
               const hasCurrentSite = typeof currentSite !== 'undefined' && currentSite; 
               const containersActive = hasCurrentSite && path.includes(`/sites/${currentSite}/containers`); 
               const nodesActive = hasCurrentSite && path.includes(`/sites/${currentSite}/nodes`); 
+              const externalDomainsActive = hasCurrentSite && path.includes(`/sites/${currentSite}/external-domains`); 
             %>
             <li class="nav-item site-group" aria-label="Site navigation">
               <div class="d-flex align-items-center nav-link site-selector-wrapper">
@@ -46,6 +47,9 @@
                   <% if (req.session && req.session.isAdmin) { %>
                     <li>
                       <a class="nav-link child-link <%= nodesActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/nodes" aria-current="<%= nodesActive ? 'page' : '' %>">Nodes</a>
+                    </li>
+                    <li>
+                      <a class="nav-link child-link <%= externalDomainsActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/external-domains" aria-current="<%= externalDomainsActive ? 'page' : '' %>">External Domains</a>
                     </li>
                   <% } %>
                 </ul>

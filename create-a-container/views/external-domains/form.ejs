@@ -1,0 +1,107 @@
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit External Domain' : 'New External Domain') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/external-domains` },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit External Domain' : 'Create New External Domain' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/sites/${site.id}/external-domains/${externalDomain.id}` : `/sites/${site.id}/external-domains` %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+      
+      <div class="mb-3">
+        <label for="name" class="form-label">Domain Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="name" 
+          name="name" 
+          value="<%= externalDomain ? externalDomain.name : '' %>"
+          required
+          placeholder="example.com"
+        >
+        <div class="form-text">The fully qualified domain name (e.g., example.com)</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="acmeEmail" class="form-label">ACME Email</label>
+        <input 
+          type="email" 
+          class="form-control" 
+          id="acmeEmail" 
+          name="acmeEmail" 
+          value="<%= externalDomain ? externalDomain.acmeEmail : '' %>"
+          placeholder="admin@example.com"
+        >
+        <div class="form-text">Email address for ACME certificate registration and renewal notifications</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="acmeDirectoryUrl" class="form-label">ACME Directory URL</label>
+        <input 
+          type="url" 
+          class="form-control" 
+          id="acmeDirectoryUrl" 
+          name="acmeDirectoryUrl" 
+          value="<%= externalDomain ? externalDomain.acmeDirectoryUrl : 'https://acme-v02.api.letsencrypt.org/directory' %>"
+          placeholder="https://acme-v02.api.letsencrypt.org/directory"
+        >
+        <div class="form-text">
+          ACME directory URL. Use Let's Encrypt production: 
+          <code>https://acme-v02.api.letsencrypt.org/directory</code><br>
+          or staging: <code>https://acme-staging-v02.api.letsencrypt.org/directory</code>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="cloudflareApiEmail" class="form-label">Cloudflare API Email</label>
+        <input 
+          type="email" 
+          class="form-control" 
+          id="cloudflareApiEmail" 
+          name="cloudflareApiEmail" 
+          value="<%= externalDomain ? externalDomain.cloudflareApiEmail : '' %>"
+          placeholder="user@example.com"
+        >
+        <div class="form-text">Cloudflare account email for DNS-01 challenge validation</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="cloudflareApiKey" class="form-label">Cloudflare API Key</label>
+        <input 
+          type="password" 
+          class="form-control" 
+          id="cloudflareApiKey" 
+          name="cloudflareApiKey" 
+          value=""
+          placeholder="<%= isEdit ? '(unchanged)' : '' %>"
+          autocomplete="off"
+        >
+        <div class="form-text">
+          API token with DNS:Edit permission. <%= isEdit ? 'Leave blank to keep existing API key. Enter new key to update.' : '' %>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between">
+        <a href="/sites/<%= site.id %>/external-domains" class="btn btn-secondary" aria-label="Cancel and return to external domains list">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update External Domain' : 'Create External Domain' %>
+        </button>
+      </div>
+    </form>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
