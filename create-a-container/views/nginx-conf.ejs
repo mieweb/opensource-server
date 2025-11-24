@@ -110,21 +110,11 @@ http {
     http2 on;
     http3 on;
     
-    server_name <%= service.externalHostname %>.opensource.mieweb.org;
+    server_name <%= service.externalHostname %>.<%= service.externalDomain.name %>;
   
-    # SSL certificates - use lego certificates if available, fallback to snakeoil
-    <%_ 
-    const matchingDomain = externalDomains.find(d => 
-      service.externalHostname && service.externalHostname.endsWith(d.name)
-    );
-    if (matchingDomain) { 
-    _%>
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= matchingDomain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= matchingDomain.name %>.key;
-    <%_ } else { _%>
-    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
-    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
-    <%_ } _%>
+    # SSL certificates from lego
+    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= service.externalDomain.name %>.crt;
+    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= service.externalDomain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;

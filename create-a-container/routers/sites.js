@@ -41,7 +41,11 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
         as: 'containers',
         include: [{
           model: Service,
-          as: 'services'
+          as: 'services',
+          include: [{
+            model: ExternalDomain,
+            as: 'externalDomain'
+          }]
         }]
       }]
     }, {
