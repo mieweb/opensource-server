@@ -112,9 +112,19 @@ http {
     
     server_name <%= service.externalHostname %>.opensource.mieweb.org;
   
-    # SSL certificates
+    # SSL certificates - use lego certificates if available, fallback to snakeoil
+    <%_ 
+    const matchingDomain = externalDomains.find(d => 
+      service.externalHostname && service.externalHostname.endsWith(d.name)
+    );
+    if (matchingDomain) { 
+    _%>
+    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= matchingDomain.name %>.crt;
+    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= matchingDomain.name %>.key;
+    <%_ } else { _%>
     ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
     ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+    <%_ } _%>
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -162,6 +172,44 @@ http {
       # Allow large uploads
       client_max_body_size 100M;
     }
+  }
+  <%_ }) _%>
+
+  <%_ externalDomains.forEach((domain) => { _%>
+  # Wildcard server for *.<%= domain.name %> - returns 404
+  server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    listen 443 quic;
+    listen [::]:443 quic;
+    http2 on;
+    http3 on;
+    
+    server_name *.<%= domain.name %>;
+  
+    # SSL certificates from lego
+    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.crt;
+    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.key;
+    
+    # Modern TLS configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+    ssl_prefer_server_ciphers off;
+    
+    # SSL session optimization
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+    
+    # Return 404 for all requests
+    return 404;
   }
   <%_ }) _%>
 }
