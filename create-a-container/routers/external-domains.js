@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const { ExternalDomain, Site, Sequelize } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
+const path = require('path');
+const spawn = require('util').promisify(require('child_process').spawn);
 
 // All routes require authentication
 router.use(requireAuth);
@@ -95,7 +97,7 @@ router.post('/', requireAdmin, async (req, res) => {
   try {
     const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
 
-    await ExternalDomain.create({
+    const externalDomain = await ExternalDomain.create({
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
@@ -104,7 +106,44 @@ router.post('/', requireAdmin, async (req, res) => {
       siteId
     });
 
-    req.flash('success', `External domain ${name} created successfully`);
+    // Provision SSL certificates via lego if all required fields are present
+    if (externalDomain.name && externalDomain.acmeEmail && externalDomain.cloudflareApiEmail && externalDomain.cloudflareApiKey) {
+      try {
+        const certsPath = path.join(__dirname, '..', 'certs');
+        const legoArgs = [
+          '-d', externalDomain.name,
+          '-d', `*.${externalDomain.name}`,
+          '-a',
+          '-m', externalDomain.acmeEmail,
+          '--dns', 'cloudflare',
+          '--path', certsPath,
+          'run'
+        ];
+
+        // Add server URL if provided
+        if (externalDomain.acmeDirectoryUrl) {
+          legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
+        }
+
+        const env = {
+          ...process.env,
+          CF_API_EMAIL: externalDomain.cloudflareApiEmail,
+          CF_DNS_API_TOKEN: externalDomain.cloudflareApiKey
+        };
+
+        console.log(legoArgs.join(' '));
+        const { stdout, stderr } = await spawn('lego', legoArgs, { env });
+        console.log(`Certificate provisioned for ${externalDomain.name}`);
+        
+        req.flash('success', `External domain ${name} created and certificate provisioned successfully`);
+      } catch (certError) {
+        console.error('Certificate provisioning error:', certError);
+        req.flash('warning', `External domain ${name} created, but certificate provisioning failed: ${certError.message}`);
+      }
+    } else {
+      req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
+    }
+
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
     console.error('Error creating external domain:', error);
