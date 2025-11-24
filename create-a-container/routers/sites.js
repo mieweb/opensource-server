@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Site, Node, Container, Service } = require('../models');
+const { Site, Node, Container, Service, ExternalDomain } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
 
 // GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
@@ -44,6 +44,9 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
           as: 'services'
         }]
       }]
+    }, {
+      model: ExternalDomain,
+      as: 'externalDomains'
     }]
   });
   
@@ -64,7 +67,7 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   const streamServices = allServices.filter(s => s.type === 'tcp' || s.type === 'udp');
   
   res.set('Content-Type', 'text/plain');
-  return res.render('nginx-conf', { httpServices, streamServices });
+  return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
 });
 
 // Apply auth to all routes below this point
