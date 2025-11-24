@@ -76,8 +76,10 @@ router.use('/:siteId', setCurrentSite);
 // Mount sub-routers
 const nodesRouter = require('./nodes');
 const containersRouter = require('./containers');
+const externalDomainsRouter = require('./external-domains');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
+router.use('/:siteId/external-domains', externalDomainsRouter);
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {
