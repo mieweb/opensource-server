@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { Site, Node, Container, Service } = require('../models');
-const { requireAuth, requireAdmin, setCurrentSite } = require('../middlewares');
+const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
 
 // GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
-router.get('/:siteId/dnsmasq.conf', async (req, res) => {
+router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
   const site = await Site.findByPk(siteId, {
@@ -28,7 +28,7 @@ router.get('/:siteId/dnsmasq.conf', async (req, res) => {
 });
 
 // GET /sites/:siteId/nginx.conf - Public endpoint for nginx configuration
-router.get('/:siteId/nginx.conf', async (req, res) => {
+router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
   // fetch services for the specific site

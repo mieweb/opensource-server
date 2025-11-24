@@ -25,6 +25,36 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden: Admin access required');
 }
 
+// Localhost-only middleware
+// Checks if request is from localhost, accounting for TLS-terminating reverse proxy
+function requireLocalhost(req, res, next) {
+  const isLocalhost = (ip) => {
+    return ip === '127.0.0.1' || 
+           ip === '::1' || 
+           ip === '::ffff:127.0.0.1' ||
+           ip === 'localhost';
+  };
+
+  // Get the direct connection IP
+  const directIp = req.connection?.remoteAddress || 
+                   req.socket?.remoteAddress || 
+                   req.ip;
+
+  // Check if direct connection is from localhost
+  if (!isLocalhost(directIp)) {
+    return res.status(403).send('Forbidden: This endpoint is only accessible from localhost');
+  }
+
+  // If X-Real-IP header is present (reverse proxy), verify it's also localhost
+  const realIp = req.get('X-Real-IP');
+  if (realIp && !isLocalhost(realIp)) {
+    return res.status(403).send('Forbidden: This endpoint is only accessible from localhost');
+  }
+
+  // Both checks passed
+  return next();
+}
+
 const { setCurrentSite, loadSites } = require('./currentSite');
 
-module.exports = { requireAuth, requireAdmin, setCurrentSite, loadSites };
+module.exports = { requireAuth, requireAdmin, requireLocalhost, setCurrentSite, loadSites };
