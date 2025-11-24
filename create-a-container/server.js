@@ -9,10 +9,29 @@ const methodOverride = require('method-override');
 const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
-const { sequelize } = require('./models');
+const crypto = require('crypto');
+const { sequelize, SessionSecret } = require('./models');
 const { requireAuth, loadSites } = require('./middlewares');
 
 const app = express();
+
+// Function to get or create session secrets
+async function getSessionSecrets() {
+  const secrets = await SessionSecret.findAll({
+    order: [['createdAt', 'DESC']],
+    attributes: ['secret']
+  });
+
+  if (secrets.length === 0) {
+    // Generate a new secret if none exist
+    const newSecret = crypto.randomBytes(32).toString('hex');
+    await SessionSecret.create({ secret: newSecret });
+    console.log('Generated new session secret');
+    return [newSecret];
+  }
+
+  return secrets.map(s => s.secret);
+}
 
 // setup views
 app.set('views', path.join(__dirname, 'views'));
@@ -37,7 +56,7 @@ const sessionStore = new SequelizeStore({
 });
 
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: getSessionSecrets(),
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
