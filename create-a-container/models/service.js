@@ -4,6 +4,7 @@ module.exports = (sequelize, DataTypes) => {
   class Service extends Model {
     static associate(models) {
       Service.belongsTo(models.Container, { foreignKey: 'containerId' });
+      Service.belongsTo(models.ExternalDomain, { foreignKey: 'externalDomainId', as: 'externalDomain' });
     }
 
     // finds the next available external port for the given type in the specified range
@@ -58,14 +59,26 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: true  // only used for http services
     },
+    externalDomainId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'ExternalDomains',
+        key: 'id'
+      },
+      comment: 'External domain for http services'
+    },
   }, {
     sequelize,
     modelName: 'Service',
     indexes: [
       {
-        name: 'services_http_unique_hostname',
+        name: 'services_http_unique_hostname_domain',
         unique: true,
-        fields: ['externalHostname']
+        fields: ['externalHostname', 'externalDomainId'],
+        where: {
+          type: 'http'
+        }
       },
       {
         name: 'services_layer4_unique_port',
