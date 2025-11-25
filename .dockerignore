@@ -1,0 +1,4 @@
+.git
+.gitignore
+/create-a-container/data/database.sqlite
+/create-a-container/certs/*
