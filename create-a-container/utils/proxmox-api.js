@@ -1,5 +1,19 @@
 const axios = require('axios');
-const user = require('../models/user');
+const { URL } = require('url');
+
+/**
+ * 
+ * @param {string} urlString 
+ * @returns {boolean}
+ */
+function validateUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    return ['https:', 'http:'].includes(url.protocol);
+  } catch (err) {
+    return false;
+  }
+}
 
 class ProxmoxApi {
   /**
@@ -10,6 +24,10 @@ class ProxmoxApi {
    * @param {object} options 
    */
   constructor(baseUrl, tokenId = null, secret = null, options = {}) {
+    if (!validateUrl(baseUrl)) {
+      throw new Error('Invalid Proxmox API URL');
+    }
+
     this.baseUrl = baseUrl;
     this.options = options;
     if (tokenId && secret) {
@@ -25,6 +43,10 @@ class ProxmoxApi {
    * @returns {Promise<void>}
    */
   async authenticate(username, password) {
+    if (!/^[-_.a-zA-Z0-9]+@[a-zA-Z0-9]+$/.test(username)) {
+      throw new Error('Invalid username format');
+    }
+
     const response = await axios.post(`${this.baseUrl}/api2/json/access/ticket`, {
       username,
       password
