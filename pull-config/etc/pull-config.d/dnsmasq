@@ -14,10 +14,10 @@ export CONF_URL=http://localhost:3000/sites/${SITE_ID}/dnsmasq.conf
 export TEST_COMMAND="dnsmasq --test"
 
 # Command to reload the service (empty means use SERVICE_NAME fallback)
-export RELOAD_COMMAND=""
+export RELOAD_COMMAND="systemctl restart dnsmasq"
 
 # Service name for systemctl reload-or-restart
-export SERVICE_NAME="dnsmasq"
+export SERVICE_NAME=""
 
 # Execute pull-config
 exec /opt/opensource-server/pull-config/bin/pull-config
