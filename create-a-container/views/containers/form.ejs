@@ -78,8 +78,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
 </div>
 
 <script>
-  const isEdit = <%= isEdit ? 'true' : 'false' %>;
-  const existingServices = <%= isEdit ? JSON.stringify(container.services.map(s => ({
+  const isEdit = <%- isEdit ? 'true' : 'false' %>;
+  const existingServices = <%- isEdit ? JSON.stringify(container.services.map(s => ({
     type: s.type,
     internalPort: s.internalPort,
     externalHostname: s.externalHostname || '',
