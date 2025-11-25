@@ -14,63 +14,45 @@ This repository provides a complete self-service container management system wit
 - [`LDAP/`](LDAP/README.md) - Centralized authentication infrastructure
 - [`Wazuh/`](Wazuh/README.md) - Security monitoring and threat detection
 
-## Bootstrap Installation
+## Installation
 
-Bootstrap a new infrastructure node from scratch:
+### Recommended: Proxmox 9+ OCI Container (Preferred)
 
-### 1. Install a Debian 13 LXC on Proxmox
-
-### 2. Install nginx (mainline from nginx's repo preferred)
+With Proxmox 9's native OCI container support, the easiest installation method is to deploy directly from GitHub Container Registry:
 
 ```bash
-# Add nginx mainline repository (https://nginx.org/en/linux_packages.html#Debian)
-apt install curl gnupg2 ca-certificates lsb-release debian-archive-keyring
-curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
-    | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-http://nginx.org/packages/mainline/debian `lsb_release -cs` nginx" \
-    | tee /etc/apt/sources.list.d/nginx.list
-echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
-    | tee /etc/apt/preferences.d/99nginx
-
-apt update
-apt install -y nginx ssl-cert
-systemctl enable --now nginx
+# Pull and run the container from GHCR
+pct create <VMID> ghcr.io/mieweb/opensource-server:latest \
+  --hostname opensource-server \
+  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
+  --features nesting=1 \
+  --privileged 1 \
+  --onboot 1
 ```
 
-### 3. Install dnsmasq
+> **Note**: Adjust the VMID, network configuration, and other parameters according to your Proxmox environment.
+
+### Alternative: Docker Container
+
+See the [`Dockerfile`](Dockerfile) in the repository root for building and running the container with Docker:
 
 ```bash
-apt install -y dnsmasq
+docker build -t opensource-server .
+docker run -d --privileged \
+  -p 443:443 \
+  -p 53:53/udp \
+  --name opensource-server \
+  opensource-server:latest
 ```
 
-Edit Debian's dnsmasq defaults. In `/etc/default/dnsmasq`, comment out `CONFIG_DIR=` and uncomment `IGNORE_RESOLVCONF=`. We want all configuration to be handled by and only by `pull-config`.
+### Manual Installation (Legacy)
 
-```bash
-systemctl enable --now dnsmasq.service
-```
+For a traditional installation on a Debian-based system, see the [`Dockerfile`](Dockerfile) for the complete installation steps and dependencies. The Dockerfile serves as the canonical reference for system setup and configuration.
 
-
-### 4. Install prerequisites
-
-```bash
-apt install -y git make npm
-```
-
-### 5. Clone the repository
-
-```bash
-git clone https://github.com/mieweb/opensource-server.git /opt/opensource-server
-cd /opt/opensource-server
-```
-
-### 6. Run installation
-
-```bash
-make install
-```
-
-> **Note**: The `make install` command will set up the create-a-container web application, install the pull-config system for automated configuration management, and configure nginx and dnsmasq integration.
+Key steps include:
+1. Install nginx (mainline from nginx's repo preferred)
+2. Install dnsmasq with proper configuration
+3. Clone repository and run `make install`
 
 For detailed configuration and usage instructions, refer to the individual component READMEs linked above.
 
