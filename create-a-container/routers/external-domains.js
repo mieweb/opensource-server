@@ -3,7 +3,7 @@ const router = express.Router({ mergeParams: true }); // Enable access to :siteI
 const { ExternalDomain, Site, Sequelize } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 const path = require('path');
-const spawn = require('util').promisify(require('child_process').spawn);
+const { run } = require('../utils');
 
 // All routes require authentication
 router.use(requireAuth);
@@ -106,6 +106,7 @@ router.post('/', requireAdmin, async (req, res) => {
       siteId
     });
 
+    // TODO: do this async in a Job queue
     // Provision SSL certificates via lego if all required fields are present
     if (externalDomain.name && externalDomain.acmeEmail && externalDomain.cloudflareApiEmail && externalDomain.cloudflareApiKey) {
       try {
@@ -131,8 +132,7 @@ router.post('/', requireAdmin, async (req, res) => {
           CF_DNS_API_TOKEN: externalDomain.cloudflareApiKey
         };
 
-        console.log(legoArgs.join(' '));
-        const { stdout, stderr } = await spawn('lego', legoArgs, { env });
+        const { stdout, stderr } = await run('lego', legoArgs, { env });
         console.log(`Certificate provisioned for ${externalDomain.name}`);
         
         req.flash('success', `External domain ${name} created and certificate provisioned successfully`);

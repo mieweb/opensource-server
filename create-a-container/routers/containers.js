@@ -30,6 +30,7 @@ router.get('/new', requireAuth, async (req, res) => {
     },
   });
 
+  // TODO: use datamodel backed templates instead of querying Proxmox here
   for (const node of nodes) {
     const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
       httpsAgent: new https.Agent({
@@ -194,6 +195,7 @@ router.post('/', async (req, res) => {
     return res.redirect('/sites');
   }
 
+  // TODO: build the container async in a Job
   try {
   // clone the template
   const { hostname, template, services } = req.body;
@@ -277,9 +279,16 @@ router.post('/', async (req, res) => {
         if (externalHostname) {
           serviceData.externalHostname = externalHostname;
         }
-        if (externalDomainId) {
+        if (externalDomainId && externalDomainId !== '') {
           serviceData.externalDomainId = parseInt(externalDomainId, 10);
         }
+        
+        // Validate that both hostname and domain are set
+        if (!serviceData.externalHostname || !serviceData.externalDomainId) {
+          req.flash('error', 'HTTP services must have both an external hostname and external domain');
+          return res.redirect(`/sites/${siteId}/containers/new`);
+        }
+        
         serviceData.externalPort = null; // HTTP services don't use external ports
       } else {
         // For TCP/UDP services, auto-assign external port
@@ -334,6 +343,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     const { services } = req.body;
 
+    // TODO: improve this
     // Delete all existing services for this container
     await Service.destroy({
       where: { containerId: container.id }
@@ -359,9 +369,16 @@ router.put('/:id', requireAuth, async (req, res) => {
           if (externalHostname) {
             serviceData.externalHostname = externalHostname;
           }
-          if (externalDomainId) {
+          if (externalDomainId && externalDomainId !== '') {
             serviceData.externalDomainId = parseInt(externalDomainId, 10);
           }
+          
+          // Validate that both hostname and domain are set
+          if (!serviceData.externalHostname || !serviceData.externalDomainId) {
+            req.flash('error', 'HTTP services must have both an external hostname and external domain');
+            return res.redirect(`/sites/${siteId}/containers/${containerId}/edit`);
+          }
+          
           serviceData.externalPort = null; // HTTP services don't use external ports
         } else {
           // For TCP/UDP services, auto-assign external port
