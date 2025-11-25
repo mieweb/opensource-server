@@ -26,6 +26,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       unique: true
     },
+    ipv4Address: {
+      type: DataTypes.STRING(15),
+      allowNull: true
+    },
     apiUrl: {
       type: DataTypes.STRING(255),
       allowNull: true
