@@ -39,6 +39,7 @@
                 <td><%= r.sshPort || '-' %></td>
                 <td><%= r.httpPort || '-' %></td>
                 <td>
+                  <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>
                   <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">
                     <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
