@@ -32,6 +32,20 @@
       </div>
 
       <div class="mb-3">
+        <label for="ipv4Address" class="form-label">IPv4 Address</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="ipv4Address" 
+          name="ipv4Address" 
+          value="<%= node && node.ipv4Address ? node.ipv4Address : '' %>"
+          placeholder="e.g., 10.15.0.4"
+          pattern="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$"
+        >
+        <div class="form-text">The node's IPv4 address (optional)</div>
+      </div>
+
+      <div class="mb-3">
         <label for="apiUrl" class="form-label">API URL</label>
         <input 
           type="url" 

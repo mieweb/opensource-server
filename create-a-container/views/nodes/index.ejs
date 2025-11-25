@@ -22,6 +22,7 @@
         <thead class="table-light">
           <tr>
             <th>Name</th>
+            <th>IPv4 Address</th>
             <th>API URL</th>
             <th>TLS Verify</th>
             <th>Containers</th>
@@ -33,6 +34,7 @@
             <% rows.forEach(r => { %>
               <tr>
                 <td><%= r.name %></td>
+                <td><%= r.ipv4Address || '-' %></td>
                 <td><%= r.apiUrl || '-' %></td>
                 <td>
                   <% if (r.tlsVerify === true) { %>

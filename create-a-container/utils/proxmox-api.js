@@ -82,6 +82,16 @@ class ProxmoxApi {
   }
 
   /**
+   * Get node network configuration
+   * @param {string} node - The node name
+   * @returns {Promise<object>} - The API response data
+   */
+  async nodeNetwork(node) {
+    const response = await axios.get(`${this.baseUrl}/api2/json/nodes/${node}/network`, this.options);
+    return response.data.data;
+  }
+
+  /**
    * Get cluster resources
    * @param {'node'|'storage'|'pool'|'qemu'|'lxc'|'openvz'|'sdn'|'network'|'vm'} type 
    * @returns {Promise<object>} - The API response data

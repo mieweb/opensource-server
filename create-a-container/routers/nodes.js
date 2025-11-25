@@ -5,7 +5,6 @@ const { requireAuth, requireAdmin } = require('../middlewares');
 const axios = require('axios');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
-const { hostname } = require('os');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -34,6 +33,7 @@ router.get('/', async (req, res) => {
   const rows = nodes.map(n => ({
     id: n.id,
     name: n.name,
+    ipv4Address: n.ipv4Address,
     apiUrl: n.apiUrl,
     tlsVerify: n.tlsVerify,
     containerCount: n.containers ? n.containers.length : 0
@@ -117,10 +117,11 @@ router.post('/', async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
     
     await Node.create({
       name,
+      ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
       secret: secret || null,
@@ -166,16 +167,41 @@ router.post('/import', async (req, res) => {
 
     const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
     const nodes = await client.nodes();
-    const importedNodes = await Node.bulkCreate(nodes.map(n => {
-      return {
-        name: n.node,
-        apiUrl,
-        tokenId,
-        secret,
-        tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
-        siteId
-      };
+    
+    // Fetch network information for each node to get IP address
+    const nodesWithIp = await Promise.all(nodes.map(async (n) => {
+      try {
+        const networkInterfaces = await client.nodeNetwork(n.node);
+        // Find the primary network interface (usually vmbr0 or the one with type 'bridge' and active)
+        const primaryInterface = networkInterfaces.find(iface => 
+          iface.iface === 'vmbr0' || (iface.type === 'bridge' && iface.active)
+        );
+        const ipv4Address = primaryInterface?.address || null;
+        
+        return {
+          name: n.node,
+          ipv4Address,
+          apiUrl,
+          tokenId,
+          secret,
+          tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+          siteId
+        };
+      } catch (err) {
+        console.error(`Failed to fetch network info for node ${n.node}:`, err.message);
+        return {
+          name: n.node,
+          ipv4Address: null,
+          apiUrl,
+          tokenId,
+          secret,
+          tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+          siteId
+        };
+      }
     }));
+    
+    const importedNodes = await Node.bulkCreate(nodesWithIp);
 
     const containerList = await client.clusterResources('lxc');
     const containers = await Promise.all(containerList.map(async (c) => {
@@ -219,10 +245,11 @@ router.put('/:id', async (req, res) => {
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
-    const { name, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
     
     const updateData = {
       name,
+      ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
