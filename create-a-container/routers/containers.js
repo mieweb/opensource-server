@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, Node, Site, Sequelize } = require('../models');
+const { Container, Service, Node, Site, ExternalDomain, Sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
@@ -57,9 +57,17 @@ router.get('/new', requireAuth, async (req, res) => {
     }
   }
 
+  // Get external domains for this site
+  const externalDomains = await ExternalDomain.findAll({
+    where: { siteId },
+    order: [['name', 'ASC']]
+  });
+
   return res.render('containers/form', { 
     site,
     templates,
+    externalDomains,
+    container: undefined, // Not editing
     req 
   });
 });
@@ -120,6 +128,61 @@ router.get('/', requireAuth, async (req, res) => {
   });
 });
 
+// GET /sites/:siteId/containers/:id/edit - Display form for editing container services
+router.get('/:id/edit', requireAuth, async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  const containerId = parseInt(req.params.id, 10);
+  
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
+  // Find the container with ownership check
+  const container = await Container.findOne({
+    where: { 
+      id: containerId,
+      username: req.session.user
+    },
+    include: [
+      { 
+        model: Node, 
+        as: 'node',
+        where: { siteId }
+      },
+      {
+        model: Service,
+        as: 'services',
+        include: [{
+          model: ExternalDomain,
+          as: 'externalDomain'
+        }]
+      }
+    ]
+  });
+
+  if (!container) {
+    req.flash('error', 'Container not found');
+    return res.redirect(`/sites/${siteId}/containers`);
+  }
+
+  // Get external domains for this site
+  const externalDomains = await ExternalDomain.findAll({
+    where: { siteId },
+    order: [['name', 'ASC']]
+  });
+
+  return res.render('containers/form', { 
+    site,
+    container,
+    externalDomains,
+    templates: [], // Not needed for edit
+    isEdit: true,
+    req 
+  });
+});
+
 // POST /sites/:siteId/containers - Create a new container
 router.post('/', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
@@ -133,7 +196,7 @@ router.post('/', async (req, res) => {
 
   try {
   // clone the template
-  const { hostname, template, httpPort } = req.body;
+  const { hostname, template, services } = req.body;
   const [ nodeName, ostemplate ] = template.split(',');
   const node = await Node.findOne({ where: { name: nodeName, siteId } });
   const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
@@ -193,12 +256,131 @@ router.post('/', async (req, res) => {
     macAddress,
     ipv4Address
   });
+
+  // Create services if provided
+  if (services && typeof services === 'object') {
+    for (const key in services) {
+      const service = services[key];
+      const { type, internalPort, externalHostname, externalDomainId } = service;
+      
+      // Validate required fields
+      if (!type || !internalPort) continue;
+      
+      const serviceData = {
+        containerId: container.id,
+        type,
+        internalPort: parseInt(internalPort, 10)
+      };
+
+      if (type === 'http') {
+        // For HTTP services, set hostname and domain
+        if (externalHostname) {
+          serviceData.externalHostname = externalHostname;
+        }
+        if (externalDomainId) {
+          serviceData.externalDomainId = parseInt(externalDomainId, 10);
+        }
+        serviceData.externalPort = null; // HTTP services don't use external ports
+      } else {
+        // For TCP/UDP services, auto-assign external port
+        const minPort = 2000;
+        const maxPort = 65565;
+        serviceData.externalPort = await Service.nextAvailablePortInRange(type, minPort, maxPort);
+      }
+
+      await Service.create(serviceData);
+    }
+  }
+
   return res.redirect(`/sites/${siteId}/containers`);
 } catch (err) {
   console.log(err);
   console.log(err.response?.data?.errors);
   throw err;
 }
+});
+
+// PUT /sites/:siteId/containers/:id - Update container services
+router.put('/:id', requireAuth, async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  const containerId = parseInt(req.params.id, 10);
+  
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    req.flash('error', 'Site not found');
+    return res.redirect('/sites');
+  }
+
+  try {
+    // Find the container with ownership check
+    const container = await Container.findOne({
+      where: { 
+        id: containerId,
+        username: req.session.user
+      },
+      include: [
+        { 
+          model: Node, 
+          as: 'node',
+          where: { siteId }
+        }
+      ]
+    });
+
+    if (!container) {
+      req.flash('error', 'Container not found');
+      return res.redirect(`/sites/${siteId}/containers`);
+    }
+
+    const { services } = req.body;
+
+    // Delete all existing services for this container
+    await Service.destroy({
+      where: { containerId: container.id }
+    });
+
+    // Create new services if provided
+    if (services && typeof services === 'object') {
+      for (const key in services) {
+        const service = services[key];
+        const { type, internalPort, externalHostname, externalDomainId } = service;
+        
+        // Validate required fields
+        if (!type || !internalPort) continue;
+        
+        const serviceData = {
+          containerId: container.id,
+          type,
+          internalPort: parseInt(internalPort, 10)
+        };
+
+        if (type === 'http') {
+          // For HTTP services, set hostname and domain
+          if (externalHostname) {
+            serviceData.externalHostname = externalHostname;
+          }
+          if (externalDomainId) {
+            serviceData.externalDomainId = parseInt(externalDomainId, 10);
+          }
+          serviceData.externalPort = null; // HTTP services don't use external ports
+        } else {
+          // For TCP/UDP services, auto-assign external port
+          const minPort = 2000;
+          const maxPort = 65565;
+          serviceData.externalPort = await Service.nextAvailablePortInRange(type, minPort, maxPort);
+        }
+
+        await Service.create(serviceData);
+      }
+    }
+
+    req.flash('success', 'Container services updated successfully');
+    return res.redirect(`/sites/${siteId}/containers`);
+  } catch (err) {
+    console.error('Error updating container:', err);
+    req.flash('error', 'Failed to update container: ' + err.message);
+    return res.redirect(`/sites/${siteId}/containers/${containerId}/edit`);
+  }
 });
 
 // DELETE /sites/:siteId/containers/:id - Delete a container

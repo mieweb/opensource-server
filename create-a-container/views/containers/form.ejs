@@ -1,43 +1,208 @@
+<%
+const isEdit = typeof container !== 'undefined' && container;
+const pageTitle = isEdit ? 'Edit Container Services' : 'Create Your Container';
+const formAction = isEdit ? `/sites/${site.id}/containers/${container.id}` : `/sites/${site.id}/containers`;
+const breadcrumbLabel = isEdit ? 'Edit' : 'New';
+%>
 <%- include('../layouts/header', { 
-  title: 'Create Your Container - MIE',
+  title: pageTitle + ' - MIE',
   breadcrumbs: [
     { label: 'Sites', url: '/sites' },
     { label: site.name, url: `/sites/${site.id}/containers` },
-    { label: 'New', url: null }
+    { label: breadcrumbLabel, url: null }
   ],
-  colWidth: 'col-12 col-lg-6',
+  colWidth: 'col-12 col-lg-10',
   req
 }) %>
 
-<div class="login-container">
+<div class="login-container" style="max-width: 900px;">
   <img src="/logo.png" alt="Company Logo" class="logo">
-  <h2>Create Your Container</h2>
-  <form id="containerForm" method="POST" action="/sites/<%= site.id %>/containers">
-    <input type="hidden" name="init" value="true">
+  <h2><%= pageTitle %></h2>
+  <form id="containerForm" method="POST" action="<%= formAction %>">
+    <% if (isEdit) { %>
+      <input type="hidden" name="_method" value="PUT">
+    <% } else { %>
+      <input type="hidden" name="init" value="true">
+    <% } %>
     
-    <label for="hostname">Container Hostname</label>
-    <input type="text" id="hostname" name="hostname" required>
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+      <div style="flex: 1;">
+        <label for="hostname">Container Hostname</label>
+        <input type="text" id="hostname" name="hostname" value="<%= isEdit ? container.hostname : '' %>" <%= isEdit ? 'readonly' : 'required' %> <%= isEdit ? 'style="background-color: #e9ecef;"' : '' %>>
+      </div>
+      
+      <div style="flex: 1;">
+        <label for="template">Container Template</label>
+        <% if (isEdit) { %>
+          <input type="text" id="template" value="<%= container.node.name %>" readonly style="background-color: #e9ecef;">
+        <% } else { %>
+          <select id="template" name="template" required>
+            <option value="">Select a template...</option>
+            <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
+              <% templates.forEach(template => { %>
+                <option value="<%= template.node %>,<%= template.volid %>">
+                  <%= template.name %> (<%= template.node %>)
+                </option>
+              <% }) %>
+            <% } else { %>
+              <option value="" disabled>No templates available</option>
+            <% } %>
+          </select>
+        <% } %>
+      </div>
+    </div>
 
-    <label for="template">Container Template</label>
-    <select id="template" name="template" required>
-      <option value="">Select a template...</option>
-      <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
-        <% templates.forEach(template => { %>
-          <option value="<%= template.node %>,<%= template.volid %>">
-            <%= template.name %> (<%= template.node %>)
-          </option>
-        <% }) %>
-      <% } else { %>
-        <option value="" disabled>No templates available</option>
-      <% } %>
-    </select>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <label style="margin-bottom: 0;">Services</label>
+      <button type="button" id="addServiceBtn" class="btn btn-sm btn-primary">Add Service</button>
+    </div>
+    <div style="margin-bottom: 20px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+        <thead>
+          <tr>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">External</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="servicesTableBody">
+          <!-- Services will be added here dynamically -->
+        </tbody>
+      </table>
+    </div>
 
-    <label for="httpPort">HTTP Port</label>
-    <input type="number" id="httpPort" name="httpPort" min="80" max="60000" value="80" required>
-
-    <input type="submit" value="Create Container">
+    <input type="submit" value="<%= isEdit ? 'Update Services' : 'Create Container' %>">
   </form>
   <div id="formError" style="color:red; margin-top:10px;"></div>
 </div>
+
+<script>
+  const isEdit = <%= isEdit ? 'true' : 'false' %>;
+  const existingServices = <%= isEdit ? JSON.stringify(container.services.map(s => ({
+    type: s.type,
+    internalPort: s.internalPort,
+    externalHostname: s.externalHostname || '',
+    externalDomainId: s.externalDomainId || ''
+  }))) : '[]' %>;
+  const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
+  let serviceCounter = 0;
+
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '') {
+    const row = document.createElement('tr');
+    row.id = `service-row-${serviceCounter}`;
+    
+    const typeCell = document.createElement('td');
+    typeCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    typeCell.innerHTML = `
+      <select name="services[${serviceCounter}][type]" class="service-type" data-index="${serviceCounter}" required style="width: 100%; padding: 4px;">
+        <option value="http" ${type === 'http' ? 'selected' : ''}>HTTP</option>
+        <option value="tcp" ${type === 'tcp' ? 'selected' : ''}>TCP</option>
+        <option value="udp" ${type === 'udp' ? 'selected' : ''}>UDP</option>
+      </select>
+    `;
+    
+    const internalPortCell = document.createElement('td');
+    internalPortCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    internalPortCell.innerHTML = `
+      <input type="number" name="services[${serviceCounter}][internalPort]" value="${internalPort}" min="1" max="65535" required style="width: 100%; padding: 4px;">
+    `;
+    
+    const externalCell = document.createElement('td');
+    externalCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    externalCell.id = `external-cell-${serviceCounter}`;
+    
+    const actionCell = document.createElement('td');
+    actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+    actionCell.innerHTML = `
+      <button type="button" onclick="removeServiceRow(${serviceCounter})" style="padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;">Remove</button>
+    `;
+    
+    row.appendChild(typeCell);
+    row.appendChild(internalPortCell);
+    row.appendChild(externalCell);
+    row.appendChild(actionCell);
+    
+    document.getElementById('servicesTableBody').appendChild(row);
+    
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId);
+    serviceCounter++;
+  }
+
+  function updateExternalCell(index, type, hostname = '', domainId = '') {
+    const cell = document.getElementById(`external-cell-${index}`);
+    
+    if (type === 'http') {
+      // Auto-select first domain if no domain is specified
+      if (!domainId && externalDomains.length > 0) {
+        domainId = externalDomains[0].id;
+      }
+      
+      let domainOptions = '';
+      externalDomains.forEach(domain => {
+        const selected = domain.id == domainId ? 'selected' : '';
+        domainOptions += `<option value="${domain.id}" ${selected}>${domain.name}</option>`;
+      });
+      
+      cell.innerHTML = `
+        <div style="display: flex; gap: 5px; align-items: center;">
+          <input type="text" name="services[${index}][externalHostname]" value="${hostname}" placeholder="hostname" style="flex: 1; padding: 4px;">
+          <span>.</span>
+          <select name="services[${index}][externalDomainId]" style="flex: 1; padding: 4px;">
+            ${domainOptions}
+          </select>
+        </div>
+      `;
+    } else {
+      cell.innerHTML = `
+        <input type="text" value="autoassign" disabled style="width: 100%; padding: 4px; background-color: #e9ecef;">
+      `;
+    }
+  }
+
+  function removeServiceRow(index) {
+    const row = document.getElementById(`service-row-${index}`);
+    if (row) {
+      row.remove();
+    }
+  }
+
+  document.getElementById('addServiceBtn').addEventListener('click', () => {
+    addServiceRow();
+  });
+
+  document.getElementById('servicesTableBody').addEventListener('change', (e) => {
+    if (e.target.classList.contains('service-type')) {
+      const index = e.target.dataset.index;
+      const type = e.target.value;
+      updateExternalCell(index, type);
+    }
+  });
+
+  // Initialize services
+  const hostnameField = document.getElementById('hostname');
+  
+  if (isEdit && existingServices.length > 0) {
+    // Load existing services when editing
+    existingServices.forEach(service => {
+      addServiceRow(service.type, service.internalPort, service.externalHostname, service.externalDomainId);
+    });
+  } else {
+    // Add default HTTP service on port 80 with hostname from form for new containers
+    addServiceRow('http', '80', hostnameField.value || '', '');
+  }
+  
+  // Update externalHostname when hostname field changes (only for new containers)
+  if (!isEdit) {
+    hostnameField.addEventListener('input', (e) => {
+      // Update all HTTP service hostname inputs with the new hostname
+      document.querySelectorAll('input[name*="[externalHostname]"]').forEach(input => {
+        if (input.value === '' || input.placeholder === 'hostname') {
+          input.value = e.target.value;
+        }
+      });
+    });
+  }
+</script>
 
 <%- include('../layouts/footer') %>
