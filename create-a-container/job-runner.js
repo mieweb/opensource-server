@@ -15,24 +15,24 @@ const POLL_INTERVAL_MS = parseInt(process.env.JOB_RUNNER_POLL_MS || '2000', 10);
 const WORKDIR = process.env.JOB_RUNNER_CWD || process.cwd();
 
 let shuttingDown = false;
+// Map of jobId -> child process for active/running jobs
+const activeChildren = new Map();
 
 async function claimPendingJob() {
   const sequelize = db.sequelize;
-  const t = await sequelize.transaction();
-  try {
-    const job = await db.Job.findOne({ where: { status: 'pending' }, order: [['createdAt','ASC']], lock: t.LOCK.UPDATE, transaction: t });
-    if (!job) {
-      await t.commit();
-      return null;
-    }
+  return await sequelize.transaction(async (t) => {
+    const job = await db.Job.findOne({
+      where: { status: 'pending' },
+      order: [['createdAt', 'ASC']],
+      lock: db.Sequelize.Transaction.LOCK.UPDATE,
+      transaction: t,
+    });
+
+    if (!job) return null;
 
     await job.update({ status: 'running' }, { transaction: t });
-    await t.commit();
     return job;
-  } catch (err) {
-    await t.rollback();
-    throw err;
-  }
+  });
 }
 
 async function appendJobOutput(jobId, text) {
@@ -45,6 +45,7 @@ async function runJob(job) {
   console.log(`JobRunner: running job ${job.id}: ${job.command}`);
 
   const child = spawn(job.command, { shell: true, cwd: WORKDIR });
+  activeChildren.set(job.id, child);
 
   child.stdout.on('data', async chunk => {
     const text = chunk.toString();
@@ -61,15 +62,78 @@ async function runJob(job) {
   child.on('error', async err => {
     console.error(`Job ${job.id} spawn error:`, err);
     await appendJobOutput(job.id, `ERROR: ${err.message}`);
-    await job.update({ status: 'failure' });
+    activeChildren.delete(job.id);
+    try {
+      const fresh = await db.Job.findByPk(job.id);
+      if (fresh && fresh.status === 'running') {
+        await fresh.update({ status: 'failure' });
+      }
+    } catch (e) {
+      console.error('Error updating job status after spawn error:', e);
+    }
   });
 
   child.on('close', async code => {
+    activeChildren.delete(job.id);
     const finalStatus = code === 0 ? 'success' : 'failure';
     await appendJobOutput(job.id, `Process exited with code ${code}\n`);
-    await job.update({ status: finalStatus });
+    try {
+      const fresh = await db.Job.findByPk(job.id);
+      if (fresh && fresh.status === 'running') {
+        await fresh.update({ status: finalStatus });
+      }
+    } catch (e) {
+      console.error('Error updating job status on close:', e);
+    }
     console.log(`Job ${job.id} completed with status ${finalStatus}`);
   });
+}
+
+async function shutdownAndCancelJobs(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`JobRunner shutting down (${signal})`);
+
+  const entries = Array.from(activeChildren.entries());
+  if (entries.length === 0) {
+    process.exit(0);
+    return;
+  }
+
+  // Tell each job we're cancelling it, kill the process and mark cancelled in DB
+  for (const [jobId, child] of entries) {
+    try {
+      await appendJobOutput(jobId, `Runner shutting down (${signal}), cancelling job\n`);
+    } catch (e) {
+      console.error('appendJobOutput error during shutdown:', e);
+    }
+
+    try {
+      // Try graceful termination first
+      child.kill('SIGTERM');
+    } catch (e) {
+      console.error(`Error sending SIGTERM to job ${jobId}:`, e);
+    }
+
+    try {
+      await db.Job.update({ status: 'cancelled' }, { where: { id: jobId, status: 'running' } });
+    } catch (e) {
+      console.error(`Error marking job ${jobId} cancelled:`, e);
+    }
+  }
+
+  // Wait briefly for processes to exit, then force-kill any remaining
+  await new Promise(res => setTimeout(res, 2000));
+  for (const [jobId, child] of Array.from(activeChildren.entries())) {
+    try {
+      if (!child.killed) child.kill('SIGKILL');
+    } catch (e) {
+      console.error(`Error force-killing job ${jobId}:`, e);
+    }
+    activeChildren.delete(jobId);
+  }
+
+  process.exit(0);
 }
 
 async function loop() {
@@ -87,8 +151,8 @@ async function loop() {
   }
 }
 
-process.on('SIGINT', () => { shuttingDown = true; console.log('JobRunner shutting down (SIGINT)'); process.exit(0); });
-process.on('SIGTERM', () => { shuttingDown = true; console.log('JobRunner shutting down (SIGTERM)'); process.exit(0); });
+process.on('SIGINT', () => { shutdownAndCancelJobs('SIGINT').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
+process.on('SIGTERM', () => { shutdownAndCancelJobs('SIGTERM').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
 
 async function start() {
   console.log('JobRunner starting, working dir:', WORKDIR);
