@@ -91,6 +91,42 @@
         </div>
       </div>
 
+      <hr class="my-4">
+      <h5 class="mb-3">External Account Binding (EAB)</h5>
+      <p class="text-muted small mb-3">
+        Required for ACME providers like ZeroSSL, Google Public CA, and others that use EAB for account validation. Leave blank if using Let's Encrypt.
+      </p>
+
+      <div class="mb-3">
+        <label for="eabKid" class="form-label">EAB Key Identifier (KID)</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="eabKid" 
+          name="eabKid" 
+          value="<%= externalDomain && externalDomain.eabKid ? externalDomain.eabKid : '' %>"
+          placeholder="Optional - e.g., kid_1234567890"
+          autocomplete="off"
+        >
+        <div class="form-text">External Account Binding Key Identifier from your ACME provider</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="eabHmac" class="form-label">EAB HMAC Key</label>
+        <input 
+          type="password" 
+          class="form-control" 
+          id="eabHmac" 
+          name="eabHmac" 
+          value=""
+          placeholder="<%= isEdit ? '(unchanged)' : 'Optional' %>"
+          autocomplete="off"
+        >
+        <div class="form-text">
+          External Account Binding HMAC key. <%= isEdit ? 'Leave blank to keep existing key. Enter new key to update.' : '' %>
+        </div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/sites/<%= site.id %>/external-domains" class="btn btn-secondary" aria-label="Cancel and return to external domains list">Cancel</a>
         <button type="submit" class="btn btn-primary">

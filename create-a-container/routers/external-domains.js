@@ -95,7 +95,7 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 
   try {
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, eabKid, eabHmac } = req.body;
 
     const externalDomain = await ExternalDomain.create({
       name,
@@ -103,6 +103,8 @@ router.post('/', requireAdmin, async (req, res) => {
       acmeDirectoryUrl: acmeDirectoryUrl || null,
       cloudflareApiEmail: cloudflareApiEmail || null,
       cloudflareApiKey: cloudflareApiKey || null,
+      eabKid: eabKid || null,
+      eabHmac: eabHmac || null,
       siteId
     });
 
@@ -124,6 +126,13 @@ router.post('/', requireAdmin, async (req, res) => {
         // Add server URL if provided
         if (externalDomain.acmeDirectoryUrl) {
           legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
+        }
+
+        // Add EAB credentials if provided
+        if (externalDomain.eabKid && externalDomain.eabHmac) {
+          legoArgs.push('--eab');
+          legoArgs.push('--kid', externalDomain.eabKid);
+          legoArgs.push('--hmac', externalDomain.eabHmac);
         }
 
         const env = {
@@ -173,18 +182,24 @@ router.put('/:id', requireAdmin, async (req, res) => {
       return res.redirect(`/sites/${siteId}/external-domains`);
     }
 
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, eabKid, eabHmac } = req.body;
 
     const updateData = {
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
-      cloudflareApiEmail: cloudflareApiEmail || null
+      cloudflareApiEmail: cloudflareApiEmail || null,
+      eabKid: eabKid || null
     };
     
     // Only update cloudflareApiKey if a new value was provided
     if (cloudflareApiKey && cloudflareApiKey.trim() !== '') {
       updateData.cloudflareApiKey = cloudflareApiKey;
+    }
+
+    // Only update eabHmac if a new value was provided
+    if (eabHmac && eabHmac.trim() !== '') {
+      updateData.eabHmac = eabHmac;
     }
 
     await externalDomain.update(updateData);
