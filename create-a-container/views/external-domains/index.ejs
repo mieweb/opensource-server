@@ -1,0 +1,67 @@
+<%- include('../layouts/header', { 
+  title: 'External Domains - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/external-domains` }
+  ],
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="card-title mb-0">External Domains for <%= site.name %></h4>
+      <% if (req.session.isAdmin) { %>
+        <a class="btn btn-primary" href="/sites/<%= site.id %>/external-domains/new" role="button" aria-label="Create new external domain">New External Domain</a>
+      <% } %>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Domain Name</th>
+            <th>ACME Email</th>
+            <th>ACME Directory</th>
+            <th>Cloudflare API Email</th>
+            <% if (req.session.isAdmin) { %>
+              <th>Actions</th>
+            <% } %>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (rows && rows.length) { %>
+            <% rows.forEach(domain => { %>
+              <tr>
+                <td><strong><%= domain.name %></strong></td>
+                <td><%= domain.acmeEmail || '-' %></td>
+                <td><small class="text-muted"><%= domain.acmeDirectoryUrl || '-' %></small></td>
+                <td><%= domain.cloudflareApiEmail || '-' %></td>
+                <% if (req.session.isAdmin) { %>
+                  <td>
+                    <a href="/sites/<%= site.id %>/external-domains/<%= domain.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit domain <%= domain.name %>">Edit</a>
+                    <form method="POST" action="/sites/<%= site.id %>/external-domains/<%= domain.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete <%= domain.name %>? This action cannot be undone.');">
+                      <input type="hidden" name="_method" value="DELETE">
+                      <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete domain <%= domain.name %>">Delete</button>
+                    </form>
+                  </td>
+                <% } %>
+              </tr>
+            <% }) %>
+          <% } else { %>
+            <tr>
+              <td colspan="<%= req.session.isAdmin ? '5' : '4' %>" class="text-muted text-center py-4">
+                No external domains found. <% if (req.session.isAdmin) { %>Click "New External Domain" to create your first one.<% } %>
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

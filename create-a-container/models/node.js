@@ -12,6 +12,12 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       // A node has many containers
       Node.hasMany(models.Container, { foreignKey: 'nodeId', as: 'containers' });
+      
+      // A node belongs to a site
+      Node.belongsTo(models.Site, {
+        foreignKey: 'siteId',
+        as: 'site'
+      });
     }
   }
   Node.init({
@@ -19,6 +25,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false,
       unique: true
+    },
+    ipv4Address: {
+      type: DataTypes.STRING(15),
+      allowNull: true
     },
     apiUrl: {
       type: DataTypes.STRING(255),

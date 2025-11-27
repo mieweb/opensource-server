@@ -1,9 +1,15 @@
 {
+  "nodemonConfig": {
+    "ignore": [
+      "certs"
+    ]
+  },
   "scripts": {
     "dev": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate"
+    "db:migrate": "sequelize db:migrate && sequelize db:seed:all"
   },
   "dependencies": {
+    "argon2": "^0.44.0",
     "axios": "^1.12.2",
     "connect-flash": "^0.1.1",
     "dotenv": "^17.2.3",

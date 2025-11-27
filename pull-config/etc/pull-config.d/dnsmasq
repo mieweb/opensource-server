@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Dnsmasq instance configuration for pull-config
+
+# Site ID for this configuration
+SITE_ID=1
+
+# Configuration file to manage
+export CONF_FILE=/etc/dnsmasq.conf
+
+# URL to fetch configuration from
+export CONF_URL=http://localhost:3000/sites/${SITE_ID}/dnsmasq.conf
+
+# Command to test configuration validity before applying
+export TEST_COMMAND="dnsmasq --test"
+
+# Command to reload the service (empty means use SERVICE_NAME fallback)
+export RELOAD_COMMAND="systemctl restart dnsmasq"
+
+# Service name for systemctl reload-or-restart
+export SERVICE_NAME=""
+
+# Execute pull-config
+exec /opt/opensource-server/pull-config/bin/pull-config
+

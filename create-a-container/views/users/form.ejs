@@ -1,0 +1,151 @@
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit User' : 'New User') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Users', url: '/users' },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit User' : 'Create New User' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/users/${user.uidNumber}` : '/users' %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+
+      <div class="mb-3">
+        <label for="uid" class="form-label">Username <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="uid" 
+          name="uid" 
+          value="<%= user ? user.uid : '' %>" 
+          required
+          placeholder="e.g., jdoe"
+        >
+        <div class="form-text">The login username</div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="givenName" class="form-label">First Name <span class="text-danger">*</span></label>
+          <input 
+            type="text" 
+            class="form-control" 
+            id="givenName" 
+            name="givenName" 
+            value="<%= user ? user.givenName : '' %>" 
+            required
+            placeholder="e.g., John"
+          >
+        </div>
+
+        <div class="col-md-6 mb-3">
+          <label for="sn" class="form-label">Last Name <span class="text-danger">*</span></label>
+          <input 
+            type="text" 
+            class="form-control" 
+            id="sn" 
+            name="sn" 
+            value="<%= user ? user.sn : '' %>" 
+            required
+            placeholder="e.g., Doe"
+          >
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="mail" class="form-label">Email <span class="text-danger">*</span></label>
+        <input 
+          type="email" 
+          class="form-control" 
+          id="mail" 
+          name="mail" 
+          value="<%= user ? user.mail : '' %>" 
+          required
+          placeholder="e.g., jdoe@example.com"
+        >
+      </div>
+
+      <div class="mb-3">
+        <label for="userPassword" class="form-label">
+          Password<% if (!isEdit) { %> <span class="text-danger">*</span><% } %>
+        </label>
+        <input 
+          type="password" 
+          class="form-control" 
+          id="userPassword" 
+          name="userPassword" 
+          <%= isEdit ? '' : 'required' %>
+          placeholder="<%= isEdit ? 'Leave blank to keep current password' : 'Enter password' %>"
+        >
+        <% if (isEdit) { %>
+          <div class="form-text">Leave blank to keep the current password</div>
+        <% } %>
+      </div>
+
+      <div class="mb-3">
+        <label for="status" class="form-label">Status <span class="text-danger">*</span></label>
+        <select class="form-select" id="status" name="status" required>
+          <option value="pending" <%= user && user.status === 'pending' ? 'selected' : '' %>>Pending</option>
+          <option value="active" <%= user && user.status === 'active' ? 'selected' : '' %>>Active</option>
+          <option value="suspended" <%= user && user.status === 'suspended' ? 'selected' : '' %>>Suspended</option>
+        </select>
+        <div class="form-text">User account status</div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Groups</label>
+        <% groups.forEach(group => { %>
+          <div class="form-check">
+            <input 
+              class="form-check-input" 
+              type="checkbox" 
+              name="groupIds" 
+              value="<%= group.gidNumber %>" 
+              id="group-<%= group.gidNumber %>"
+              <%= user && user.groups && user.groups.some(g => g.gidNumber === group.gidNumber) ? 'checked' : '' %>
+            >
+            <label class="form-check-label" for="group-<%= group.gidNumber %>">
+              <%= group.cn %>
+              <% if (group.isAdmin) { %>
+                <span class="badge bg-danger ms-1">Admin</span>
+              <% } %>
+            </label>
+          </div>
+        <% }) %>
+        <div class="form-text">Select which groups this user belongs to</div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update User' : 'Create User' %>
+        </button>
+        <a href="/users" class="btn btn-secondary">Cancel</a>
+        
+        <% if (isEdit) { %>
+          <button 
+            type="button" 
+            class="btn btn-danger ms-auto" 
+            onclick="if(confirm('Are you sure you want to delete this user?')) { document.getElementById('deleteForm').submit(); }"
+          >
+            Delete User
+          </button>
+        <% } %>
+      </div>
+    </form>
+
+    <% if (isEdit) { %>
+      <form id="deleteForm" method="POST" action="/users/<%= user.uidNumber %>" style="display: none;">
+        <input type="hidden" name="_method" value="DELETE">
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
