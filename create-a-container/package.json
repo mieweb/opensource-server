@@ -1,4 +1,9 @@
 {
+  "nodemonConfig": {
+    "ignore": [
+      "certs"
+    ]
+  },
   "scripts": {
     "dev": "nodemon server.js",
     "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
