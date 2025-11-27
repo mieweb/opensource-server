@@ -46,19 +46,27 @@
       </div>
 
       <div class="mb-3">
-        <label for="acmeDirectoryUrl" class="form-label">ACME Directory URL</label>
-        <input 
-          type="url" 
-          class="form-control" 
+        <label for="acmeDirectoryUrl" class="form-label">ACME Directory</label>
+        <select 
+          class="form-select" 
           id="acmeDirectoryUrl" 
-          name="acmeDirectoryUrl" 
-          value="<%= externalDomain ? externalDomain.acmeDirectoryUrl : 'https://acme-v02.api.letsencrypt.org/directory' %>"
-          placeholder="https://acme-v02.api.letsencrypt.org/directory"
+          name="acmeDirectoryUrl"
         >
+          <option value="https://acme-v02.api.letsencrypt.org/directory" 
+            <%= (externalDomain && externalDomain.acmeDirectoryUrl === 'https://acme-v02.api.letsencrypt.org/directory') || !externalDomain ? 'selected' : '' %>>
+            Let's Encrypt (Production)
+          </option>
+          <option value="https://acme-staging-v02.api.letsencrypt.org/directory"
+            <%= externalDomain && externalDomain.acmeDirectoryUrl === 'https://acme-staging-v02.api.letsencrypt.org/directory' ? 'selected' : '' %>>
+            Let's Encrypt (Staging)
+          </option>
+          <option value="https://acme.zerossl.com/v2/DV90"
+            <%= externalDomain && externalDomain.acmeDirectoryUrl === 'https://acme.zerossl.com/v2/DV90' ? 'selected' : '' %>>
+            ZeroSSL
+          </option>
+        </select>
         <div class="form-text">
-          ACME directory URL. Use Let's Encrypt production: 
-          <code>https://acme-v02.api.letsencrypt.org/directory</code><br>
-          or staging: <code>https://acme-staging-v02.api.letsencrypt.org/directory</code>
+          Select the ACME certificate authority. ZeroSSL will automatically retrieve EAB credentials using your email.
         </div>
       </div>
 
@@ -88,42 +96,6 @@
         >
         <div class="form-text">
           API token with DNS:Edit permission. <%= isEdit ? 'Leave blank to keep existing API key. Enter new key to update.' : '' %>
-        </div>
-      </div>
-
-      <hr class="my-4">
-      <h5 class="mb-3">External Account Binding (EAB)</h5>
-      <p class="text-muted small mb-3">
-        Required for ACME providers like ZeroSSL, Google Public CA, and others that use EAB for account validation. Leave blank if using Let's Encrypt.
-      </p>
-
-      <div class="mb-3">
-        <label for="eabKid" class="form-label">EAB Key Identifier (KID)</label>
-        <input 
-          type="text" 
-          class="form-control" 
-          id="eabKid" 
-          name="eabKid" 
-          value="<%= externalDomain && externalDomain.eabKid ? externalDomain.eabKid : '' %>"
-          placeholder="Optional - e.g., kid_1234567890"
-          autocomplete="off"
-        >
-        <div class="form-text">External Account Binding Key Identifier from your ACME provider</div>
-      </div>
-
-      <div class="mb-3">
-        <label for="eabHmac" class="form-label">EAB HMAC Key</label>
-        <input 
-          type="password" 
-          class="form-control" 
-          id="eabHmac" 
-          name="eabHmac" 
-          value=""
-          placeholder="<%= isEdit ? '(unchanged)' : 'Optional' %>"
-          autocomplete="off"
-        >
-        <div class="form-text">
-          External Account Binding HMAC key. <%= isEdit ? 'Leave blank to keep existing key. Enter new key to update.' : '' %>
         </div>
       </div>
 

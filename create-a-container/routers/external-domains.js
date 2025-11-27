@@ -4,6 +4,7 @@ const { ExternalDomain, Site, Sequelize } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 const path = require('path');
 const { run } = require('../utils');
+const axios = require('axios');
 
 // All routes require authentication
 router.use(requireAuth);
@@ -95,7 +96,7 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 
   try {
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, eabKid, eabHmac } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
 
     const externalDomain = await ExternalDomain.create({
       name,
@@ -103,8 +104,6 @@ router.post('/', requireAdmin, async (req, res) => {
       acmeDirectoryUrl: acmeDirectoryUrl || null,
       cloudflareApiEmail: cloudflareApiEmail || null,
       cloudflareApiKey: cloudflareApiKey || null,
-      eabKid: eabKid || null,
-      eabHmac: eabHmac || null,
       siteId
     });
 
@@ -128,11 +127,27 @@ router.post('/', requireAdmin, async (req, res) => {
           legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
         }
 
-        // Add EAB credentials if provided
-        if (externalDomain.eabKid && externalDomain.eabHmac) {
-          legoArgs.push('--eab');
-          legoArgs.push('--kid', externalDomain.eabKid);
-          legoArgs.push('--hmac', externalDomain.eabHmac);
+        // If using ZeroSSL, retrieve EAB credentials automatically
+        if (externalDomain.acmeDirectoryUrl && externalDomain.acmeDirectoryUrl.includes('zerossl.com')) {
+          try {
+            console.log(`Retrieving ZeroSSL EAB credentials for ${externalDomain.acmeEmail}...`);
+            const eabResponse = await axios.post('https://api.zerossl.com/acme/eab-credentials-email', 
+              new URLSearchParams({ email: externalDomain.acmeEmail }),
+              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
+            
+            if (eabResponse.data.success && eabResponse.data.eab_kid && eabResponse.data.eab_hmac_key) {
+              legoArgs.unshift('--eab');
+              legoArgs.unshift('--kid', eabResponse.data.eab_kid);
+              legoArgs.unshift('--hmac', eabResponse.data.eab_hmac_key);
+              console.log('ZeroSSL EAB credentials retrieved successfully');
+            } else {
+              throw new Error('Failed to retrieve EAB credentials from ZeroSSL');
+            }
+          } catch (eabError) {
+            console.error('ZeroSSL EAB retrieval error:', eabError.response?.data || eabError.message);
+            throw new Error(`Failed to retrieve ZeroSSL EAB credentials: ${eabError.response?.data?.error?.type || eabError.message}`);
+          }
         }
 
         const env = {
@@ -182,24 +197,18 @@ router.put('/:id', requireAdmin, async (req, res) => {
       return res.redirect(`/sites/${siteId}/external-domains`);
     }
 
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, eabKid, eabHmac } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
 
     const updateData = {
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
-      cloudflareApiEmail: cloudflareApiEmail || null,
-      eabKid: eabKid || null
+      cloudflareApiEmail: cloudflareApiEmail || null
     };
     
     // Only update cloudflareApiKey if a new value was provided
     if (cloudflareApiKey && cloudflareApiKey.trim() !== '') {
       updateData.cloudflareApiKey = cloudflareApiKey;
-    }
-
-    // Only update eabHmac if a new value was provided
-    if (eabHmac && eabHmac.trim() !== '') {
-      updateData.eabHmac = eabHmac;
     }
 
     await externalDomain.update(updateData);

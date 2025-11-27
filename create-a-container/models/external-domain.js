@@ -44,16 +44,6 @@ module.exports = (sequelize) => {
       allowNull: true,
       comment: 'Cloudflare API key for DNS challenge'
     },
-    eabKid: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'External Account Binding Key Identifier (for ACME providers like ZeroSSL)'
-    },
-    eabHmac: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      comment: 'External Account Binding HMAC key (for ACME providers like ZeroSSL)'
-    },
     siteId: {
       type: DataTypes.INTEGER,
       allowNull: false,
