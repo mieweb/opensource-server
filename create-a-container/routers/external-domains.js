@@ -125,28 +125,28 @@ router.post('/', requireAdmin, async (req, res) => {
         // Add server URL if provided
         if (externalDomain.acmeDirectoryUrl) {
           legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
-        }
 
-        // If using ZeroSSL, retrieve EAB credentials automatically
-        if (externalDomain.acmeDirectoryUrl && externalDomain.acmeDirectoryUrl.includes('zerossl.com')) {
-          try {
-            console.log(`Retrieving ZeroSSL EAB credentials for ${externalDomain.acmeEmail}...`);
-            const eabResponse = await axios.post('https://api.zerossl.com/acme/eab-credentials-email', 
-              new URLSearchParams({ email: externalDomain.acmeEmail }),
-              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-            );
-            
-            if (eabResponse.data.success && eabResponse.data.eab_kid && eabResponse.data.eab_hmac_key) {
-              legoArgs.unshift('--eab');
-              legoArgs.unshift('--kid', eabResponse.data.eab_kid);
-              legoArgs.unshift('--hmac', eabResponse.data.eab_hmac_key);
-              console.log('ZeroSSL EAB credentials retrieved successfully');
-            } else {
-              throw new Error('Failed to retrieve EAB credentials from ZeroSSL');
+          // If using ZeroSSL, retrieve EAB credentials automatically
+          if (externalDomain.acmeDirectoryUrl == 'https://acme.zerossl.com/v2/DV90') {
+            try {
+              console.log(`Retrieving ZeroSSL EAB credentials for ${externalDomain.acmeEmail}...`);
+              const eabResponse = await axios.post('https://api.zerossl.com/acme/eab-credentials-email', 
+                new URLSearchParams({ email: externalDomain.acmeEmail }),
+                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+              );
+              
+              if (eabResponse.data.success && eabResponse.data.eab_kid && eabResponse.data.eab_hmac_key) {
+                legoArgs.unshift('--eab');
+                legoArgs.unshift('--kid', eabResponse.data.eab_kid);
+                legoArgs.unshift('--hmac', eabResponse.data.eab_hmac_key);
+                console.log('ZeroSSL EAB credentials retrieved successfully');
+              } else {
+                throw new Error('Failed to retrieve EAB credentials from ZeroSSL');
+              }
+            } catch (eabError) {
+              console.error('ZeroSSL EAB retrieval error:', eabError.response?.data || eabError.message);
+              throw new Error(`Failed to retrieve ZeroSSL EAB credentials: ${eabError.response?.data?.error?.type || eabError.message}`);
             }
-          } catch (eabError) {
-            console.error('ZeroSSL EAB retrieval error:', eabError.response?.data || eabError.message);
-            throw new Error(`Failed to retrieve ZeroSSL EAB credentials: ${eabError.response?.data?.error?.type || eabError.message}`);
           }
         }
 
