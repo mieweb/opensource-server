@@ -92,31 +92,61 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
     
+    // Type cell
     const typeCell = document.createElement('td');
     typeCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-    typeCell.innerHTML = `
-      <select name="services[${serviceCounter}][type]" class="service-type" data-index="${serviceCounter}" required style="width: 100%; padding: 4px;">
-        <option value="http" ${type === 'http' ? 'selected' : ''}>HTTP</option>
-        <option value="tcp" ${type === 'tcp' ? 'selected' : ''}>TCP</option>
-        <option value="udp" ${type === 'udp' ? 'selected' : ''}>UDP</option>
-      </select>
-    `;
     
+    const typeSelect = document.createElement('select');
+    typeSelect.name = `services[${serviceCounter}][type]`;
+    typeSelect.className = 'service-type';
+    typeSelect.dataset.index = serviceCounter;
+    typeSelect.required = true;
+    typeSelect.style.cssText = 'width: 100%; padding: 4px;';
+    
+    ['http', 'tcp', 'udp'].forEach(optionType => {
+      const option = document.createElement('option');
+      option.value = optionType;
+      option.textContent = optionType.toUpperCase();
+      if (optionType === type) {
+        option.selected = true;
+      }
+      typeSelect.appendChild(option);
+    });
+    
+    typeCell.appendChild(typeSelect);
+    
+    // Internal port cell
     const internalPortCell = document.createElement('td');
     internalPortCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
-    internalPortCell.innerHTML = `
-      <input type="number" name="services[${serviceCounter}][internalPort]" value="${internalPort}" min="1" max="65535" required style="width: 100%; padding: 4px;">
-    `;
     
+    const portInput = document.createElement('input');
+    portInput.type = 'number';
+    portInput.name = `services[${serviceCounter}][internalPort]`;
+    portInput.value = internalPort;
+    portInput.min = '1';
+    portInput.max = '65535';
+    portInput.required = true;
+    portInput.style.cssText = 'width: 100%; padding: 4px;';
+    
+    internalPortCell.appendChild(portInput);
+    
+    // External cell (will be populated by updateExternalCell)
     const externalCell = document.createElement('td');
     externalCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
     externalCell.id = `external-cell-${serviceCounter}`;
     
+    // Action cell
     const actionCell = document.createElement('td');
     actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
-    actionCell.innerHTML = `
-      <button type="button" onclick="removeServiceRow(${serviceCounter})" style="padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;">Remove</button>
-    `;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.style.cssText = 'padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;';
+    const currentIndex = serviceCounter; // Capture the current value
+    removeBtn.onclick = () => removeServiceRow(currentIndex);
+    
+    actionCell.appendChild(removeBtn);
     
     row.appendChild(typeCell);
     row.appendChild(internalPortCell);
@@ -132,31 +162,55 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   function updateExternalCell(index, type, hostname = '', domainId = '') {
     const cell = document.getElementById(`external-cell-${index}`);
     
+    // Clear existing content
+    while (cell.firstChild) {
+      cell.removeChild(cell.firstChild);
+    }
+    
     if (type === 'http') {
       // Auto-select first domain if no domain is specified
       if (!domainId && externalDomains.length > 0) {
         domainId = externalDomains[0].id;
       }
       
-      let domainOptions = '';
+      const container = document.createElement('div');
+      container.style.cssText = 'display: flex; gap: 5px; align-items: center;';
+      
+      const hostnameInput = document.createElement('input');
+      hostnameInput.type = 'text';
+      hostnameInput.name = `services[${index}][externalHostname]`;
+      hostnameInput.value = hostname;
+      hostnameInput.placeholder = 'hostname';
+      hostnameInput.style.cssText = 'flex: 1; padding: 4px;';
+      
+      const dot = document.createElement('span');
+      dot.textContent = '.';
+      
+      const domainSelect = document.createElement('select');
+      domainSelect.name = `services[${index}][externalDomainId]`;
+      domainSelect.style.cssText = 'flex: 1; padding: 4px;';
+      
       externalDomains.forEach(domain => {
-        const selected = domain.id == domainId ? 'selected' : '';
-        domainOptions += `<option value="${domain.id}" ${selected}>${domain.name}</option>`;
+        const option = document.createElement('option');
+        option.value = domain.id;
+        option.textContent = domain.name;
+        if (domain.id == domainId) {
+          option.selected = true;
+        }
+        domainSelect.appendChild(option);
       });
       
-      cell.innerHTML = `
-        <div style="display: flex; gap: 5px; align-items: center;">
-          <input type="text" name="services[${index}][externalHostname]" value="${hostname}" placeholder="hostname" style="flex: 1; padding: 4px;">
-          <span>.</span>
-          <select name="services[${index}][externalDomainId]" style="flex: 1; padding: 4px;">
-            ${domainOptions}
-          </select>
-        </div>
-      `;
+      container.appendChild(hostnameInput);
+      container.appendChild(dot);
+      container.appendChild(domainSelect);
+      cell.appendChild(container);
     } else {
-      cell.innerHTML = `
-        <input type="text" value="autoassign" disabled style="width: 100%; padding: 4px; background-color: #e9ecef;">
-      `;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = 'autoassign';
+      input.disabled = true;
+      input.style.cssText = 'width: 100%; padding: 4px; background-color: #e9ecef;';
+      cell.appendChild(input);
     }
   }
 
