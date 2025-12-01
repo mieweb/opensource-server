@@ -30,7 +30,7 @@
               <div class="d-flex align-items-center nav-link site-selector-wrapper">
                 <a href="/sites" class="sites-root-link" style="flex-shrink:0; color: inherit; text-decoration: none;" aria-label="View all sites">Sites</a>
                 <label for="site-selector" class="visually-hidden">Select current site</label>
-                <select id="site-selector" class="form-select form-select-sm" style="flex-grow:1; margin-left:0.5rem;" aria-label="Site selector" onchange="if(this.value) window.location.href=`/sites/${this.value}/containers`">
+                <select id="site-selector" class="form-select form-select-sm" style="flex-grow:1; margin-left:0.5rem;" aria-label="Site selector">
                   <option value="">Select...</option>
                   <% if (typeof sites !== 'undefined' && sites) { %>
                     <% sites.forEach(site => { %>
@@ -116,3 +116,19 @@
                 </div>
               <% }) %>
             <% } %>
+
+<script>
+  // Site selector navigation
+  document.addEventListener('DOMContentLoaded', () => {
+    const siteSelector = document.getElementById('site-selector');
+    if (siteSelector) {
+      siteSelector.addEventListener('change', function() {
+        const siteId = this.value;
+        if (siteId && !isNaN(parseInt(siteId, 10))) {
+          const encodedSiteId = encodeURIComponent(siteId);
+          window.location.href = `/sites/${encodedSiteId}/containers`;
+        }
+      });
+    }
+  });
+</script>
