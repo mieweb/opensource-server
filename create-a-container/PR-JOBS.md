@@ -31,8 +31,8 @@ Behavior: the creating user's username (from session) is recorded in the `create
 
 - `GET /jobs/:id` — job metadata
 
-- `GET /jobs/:id/status` — job output rows
-  - Query params: `sinceId` (optional), `limit` (optional, max 1000)
+-- `GET /jobs/:id/status` — job output rows
+  - Query params: `offset` (optional, default 0), `limit` (optional, max 1000)
 
 ## Systemd unit & env file
 - Unit (example) `job-runner.service` in repo. Install on target host as `/etc/systemd/system/job-runner.service`.
