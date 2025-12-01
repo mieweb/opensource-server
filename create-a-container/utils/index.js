@@ -26,7 +26,24 @@ function run(cmd, args, opts) {
   });
 }
 
+/**
+ * Helper to validate that a redirect URL is a safe relative path.
+ * @param {string} url - the URL to validate
+ * @returns {boolean}
+ */
+function isSafeRelativeUrl(url) {
+  if (typeof url !== 'string') return false;
+  // It must start with a single slash, not double slash, not backslash and not contain any backslash or encoded backslash, and not be protocol-relative.
+  return url.startsWith('/') &&
+    !url.startsWith('//') &&
+    !url.startsWith('/\\') &&
+    !url.includes('\\') &&
+    !url.includes('%5C') &&
+    !url.includes('%2F%2E%2E%2F'); // basic check against encoded path traversal
+}
+
 module.exports = {
   ProxmoxApi,
-  run
+  run,
+  isSafeRelativeUrl
 };

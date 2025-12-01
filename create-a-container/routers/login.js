@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { User } = require('../models');
+const { isSafeRelativeUrl } = require('../utils');
 
 // GET / - Display login form
 router.get('/', (req, res) => {
@@ -37,7 +38,14 @@ router.post('/', async (req, res) => {
   // Set session variables
   req.session.user = user.uid;
   req.session.isAdmin = user.groups?.some(group => group.isAdmin) || false;
-  return res.redirect(req.body.redirect || '/');
+
+  // Return redirect to original page or default to home
+  let redirectUrl = req.body.redirect || '/';
+  if (!isSafeRelativeUrl(redirectUrl)) {
+    // ensure redirect is a relative path
+    redirectUrl = '/';
+  }
+  return res.redirect(redirectUrl);
 });
 
 module.exports = router;
