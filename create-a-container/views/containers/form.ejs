@@ -79,18 +79,51 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
 
 <script>
   const isEdit = <%- isEdit ? 'true' : 'false' %>;
-  const existingServices = <%- isEdit ? JSON.stringify(container.services.map(s => ({
+  const existingServices = <%- isEdit && container && container.services ? JSON.stringify(container.services.map(s => ({
+    id: s.id,
     type: s.type,
     internalPort: s.internalPort,
-    externalHostname: s.externalHostname || '',
-    externalDomainId: s.externalDomainId || ''
+    httpService: s.httpService ? {
+      externalHostname: s.httpService.externalHostname,
+      externalDomainId: s.httpService.externalDomainId
+    } : null,
+    transportService: s.transportService ? {
+      protocol: s.transportService.protocol,
+      externalPort: s.transportService.externalPort
+    } : null
   }))) : '[]' %>;
   const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
   let serviceCounter = 0;
 
-  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '') {
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null) {
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
+    const isExisting = !!serviceId;
+    
+    // Hidden fields for serviceId and deleted flag
+    if (serviceId) {
+      const serviceIdInput = document.createElement('input');
+      serviceIdInput.type = 'hidden';
+      serviceIdInput.name = `services[${serviceCounter}][id]`;
+      serviceIdInput.value = serviceId;
+      row.appendChild(serviceIdInput);
+    }
+    
+    const deletedInput = document.createElement('input');
+    deletedInput.type = 'hidden';
+    deletedInput.name = `services[${serviceCounter}][deleted]`;
+    deletedInput.value = 'false';
+    deletedInput.id = `service-deleted-${serviceCounter}`;
+    row.appendChild(deletedInput);
+    
+    // Hidden field for external port (for transport services)
+    if (externalPort) {
+      const externalPortInput = document.createElement('input');
+      externalPortInput.type = 'hidden';
+      externalPortInput.name = `services[${serviceCounter}][externalPort]`;
+      externalPortInput.value = externalPort;
+      row.appendChild(externalPortInput);
+    }
     
     // Type cell
     const typeCell = document.createElement('td');
@@ -101,7 +134,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     typeSelect.className = 'service-type';
     typeSelect.dataset.index = serviceCounter;
     typeSelect.required = true;
-    typeSelect.style.cssText = 'width: 100%; padding: 4px;';
+    typeSelect.disabled = isExisting;
+    typeSelect.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
     ['http', 'tcp', 'udp'].forEach(optionType => {
       const option = document.createElement('option');
@@ -126,7 +160,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     portInput.min = '1';
     portInput.max = '65535';
     portInput.required = true;
-    portInput.style.cssText = 'width: 100%; padding: 4px;';
+    portInput.disabled = isExisting;
+    portInput.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
     internalPortCell.appendChild(portInput);
     
@@ -141,10 +176,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.textContent = 'Remove';
+    removeBtn.id = `remove-btn-${serviceCounter}`;
+    removeBtn.textContent = 'Delete';
     removeBtn.style.cssText = 'padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;';
     const currentIndex = serviceCounter; // Capture the current value
-    removeBtn.onclick = () => removeServiceRow(currentIndex);
+    removeBtn.onclick = () => toggleDeleteService(currentIndex);
     
     actionCell.appendChild(removeBtn);
     
@@ -155,11 +191,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     document.getElementById('servicesTableBody').appendChild(row);
     
-    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId);
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting);
     serviceCounter++;
   }
 
-  function updateExternalCell(index, type, hostname = '', domainId = '') {
+  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false) {
     const cell = document.getElementById(`external-cell-${index}`);
     
     // Clear existing content
@@ -181,14 +217,16 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       hostnameInput.name = `services[${index}][externalHostname]`;
       hostnameInput.value = hostname;
       hostnameInput.placeholder = 'hostname';
-      hostnameInput.style.cssText = 'flex: 1; padding: 4px;';
+      hostnameInput.disabled = isExisting;
+      hostnameInput.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
       
       const dot = document.createElement('span');
       dot.textContent = '.';
       
       const domainSelect = document.createElement('select');
       domainSelect.name = `services[${index}][externalDomainId]`;
-      domainSelect.style.cssText = 'flex: 1; padding: 4px;';
+      domainSelect.disabled = isExisting;
+      domainSelect.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
       
       externalDomains.forEach(domain => {
         const option = document.createElement('option');
@@ -207,17 +245,36 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     } else {
       const input = document.createElement('input');
       input.type = 'text';
-      input.value = 'autoassign';
+      input.value = externalPort ? externalPort : 'autoassign';
       input.disabled = true;
       input.style.cssText = 'width: 100%; padding: 4px; background-color: #e9ecef;';
       cell.appendChild(input);
     }
   }
 
-  function removeServiceRow(index) {
+  function toggleDeleteService(index) {
     const row = document.getElementById(`service-row-${index}`);
-    if (row) {
-      row.remove();
+    const deletedInput = document.getElementById(`service-deleted-${index}`);
+    const removeBtn = document.getElementById(`remove-btn-${index}`);
+    
+    if (!row || !deletedInput || !removeBtn) return;
+    
+    const isDeleted = deletedInput.value === 'true';
+    
+    if (isDeleted) {
+      // Undo deletion
+      deletedInput.value = 'false';
+      row.style.opacity = '1';
+      row.style.textDecoration = 'none';
+      removeBtn.textContent = 'Delete';
+      removeBtn.style.backgroundColor = '#dc3545';
+    } else {
+      // Mark for deletion
+      deletedInput.value = 'true';
+      row.style.opacity = '0.5';
+      row.style.textDecoration = 'line-through';
+      removeBtn.textContent = 'Undo';
+      removeBtn.style.backgroundColor = '#6c757d';
     }
   }
 
@@ -229,7 +286,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     if (e.target.classList.contains('service-type')) {
       const index = e.target.dataset.index;
       const type = e.target.value;
-      updateExternalCell(index, type);
+      // Try to find existing external port from hidden field
+      const row = document.getElementById(`service-row-${index}`);
+      const externalPortInput = row?.querySelector('input[name*="[externalPort]"]');
+      const externalPort = externalPortInput?.value || null;
+      updateExternalCell(index, type, '', '', externalPort);
     }
   });
 
@@ -239,7 +300,13 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   if (isEdit && existingServices.length > 0) {
     // Load existing services when editing
     existingServices.forEach(service => {
-      addServiceRow(service.type, service.internalPort, service.externalHostname, service.externalDomainId);
+      // For HTTP services, extract hostname and domain from httpService
+      // For transport services, use the protocol (tcp/udp) as the type
+      const type = service.type === 'http' ? 'http' : service.transportService?.protocol || 'tcp';
+      const externalHostname = service.httpService?.externalHostname || '';
+      const externalDomainId = service.httpService?.externalDomainId || '';
+      const externalPort = service.transportService?.externalPort || null;
+      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort);
     });
   } else {
     // Add default HTTP service on port 80 with hostname from form for new containers

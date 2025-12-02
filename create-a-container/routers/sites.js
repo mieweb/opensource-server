@@ -2,7 +2,7 @@ const dns = require('dns').promises;
 const path = require('path')
 const express = require('express');
 const stringify = require('dotenv-stringify');
-const { Site, Node, Container, Service, ExternalDomain, sequelize } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, sequelize } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
 
 const router = express.Router();
@@ -46,10 +46,20 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
         include: [{
           model: Service,
           as: 'services',
-          include: [{
-            model: ExternalDomain,
-            as: 'externalDomain'
-          }]
+          include: [
+            {
+              model: HTTPService,
+              as: 'httpService',
+              include: [{
+                model: ExternalDomain,
+                as: 'externalDomain'
+              }]
+            },
+            {
+              model: TransportService,
+              as: 'transportService'
+            }
+          ]
         }]
       }]
     }, {
@@ -72,7 +82,7 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   
   // Filter by type
   const httpServices = allServices.filter(s => s.type === 'http');
-  const streamServices = allServices.filter(s => s.type === 'tcp' || s.type === 'udp');
+  const streamServices = allServices.filter(s => s.type === 'transport');
   
   res.set('Content-Type', 'text/plain');
   return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
