@@ -98,27 +98,22 @@ module.exports = {
     const [services, _] = await queryInterface.sequelize.query(`
       SELECT * FROM ${servicesTable}
     `);
-    const httpServices = services.filter(s => s.type === 'http');
-    const transportServices = services.filter(s => s.type === 'tcp' || s.type === 'udp');
-    if (httpServices.length > 0) {
-      await queryInterface.bulkInsert('HTTPServices', httpServices.map(s => ({
-        serviceId: s.id,
-        externalHostname: s.externalHostname,
-        externalDomainId: s.externalDomainId,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt
-      })));
-    }
-    if (transportServices.length > 0) {
-      await queryInterface.bulkInsert('TransportServices', transportServices.map(s => ({
-        serviceId: s.id,
-        protocol: s.type,
-        externalPort: s.externalPort,
-        tls: s.tls,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt
-      })));
-    }
+    const httpServices = services.filter(s => s.type === 'http').map(s => ({
+      serviceId: s.id,
+      externalHostname: s.externalHostname,
+      externalDomainId: s.externalDomainId,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt
+    }));
+    // migrate existing data from Services to TransportServices
+    const transportServices = services.filter(s => s.type === 'tcp' || s.type === 'udp').map(s => ({
+      serviceId: s.id,
+      protocol: s.type,
+      externalPort: s.externalPort,
+      tls: s.tls,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt
+    }));
 
     // Remove columns from Services table that are now in child tables
     await queryInterface.removeColumn('Services', 'externalPort');
@@ -140,6 +135,12 @@ module.exports = {
       type: Sequelize.ENUM('http', 'transport'),
       allowNull: false
     });
+
+    // insert migrated data into new tables AFTER schema changes because of how sqlite3 handles cascades
+    if (httpServices.length > 0)
+      await queryInterface.bulkInsert('HTTPServices', httpServices);
+    if (transportServices.length > 0)
+      await queryInterface.bulkInsert('TransportServices', transportServices);
   },
 
   async down (queryInterface, Sequelize) {
