@@ -115,15 +115,15 @@ module.exports = {
       updatedAt: s.updatedAt
     }));
 
+    // Remove old indexes from Services table
+    await queryInterface.removeIndex('Services', 'services_http_unique_hostname_domain');
+    await queryInterface.removeIndex('Services', 'services_layer4_unique_port');
+
     // Remove columns from Services table that are now in child tables
     await queryInterface.removeColumn('Services', 'externalPort');
     await queryInterface.removeColumn('Services', 'tls');
     await queryInterface.removeColumn('Services', 'externalHostname');
     await queryInterface.removeColumn('Services', 'externalDomainId');
-
-    // Remove old indexes from Services table
-    await queryInterface.removeIndex('Services', 'services_http_unique_hostname_domain');
-    await queryInterface.removeIndex('Services', 'services_layer4_unique_port');
 
     // rename tcp and udp service types to transport
     await queryInterface.changeColumn('Services', 'type', {
