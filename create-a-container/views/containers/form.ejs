@@ -79,6 +79,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
 
 <script>
   const isEdit = <%- isEdit ? 'true' : 'false' %>;
+  const siteInternalDomain = <%- JSON.stringify(site.internalDomain || '') %>;
   const existingServices = <%- isEdit && container && container.services ? JSON.stringify(container.services.map(s => ({
     id: s.id,
     type: s.type,
@@ -90,12 +91,15 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     transportService: s.transportService ? {
       protocol: s.transportService.protocol,
       externalPort: s.transportService.externalPort
+    } : null,
+    dnsService: s.dnsService ? {
+      dnsName: s.dnsService.dnsName
     } : null
   }))) : '[]' %>;
   const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
   let serviceCounter = 0;
 
-  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null) {
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '') {
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
     const isExisting = !!serviceId;
@@ -137,7 +141,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     typeSelect.disabled = isExisting;
     typeSelect.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
-    ['http', 'tcp', 'udp'].forEach(optionType => {
+    ['http', 'tcp', 'udp', 'srv'].forEach(optionType => {
       const option = document.createElement('option');
       option.value = optionType;
       option.textContent = optionType.toUpperCase();
@@ -191,11 +195,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     document.getElementById('servicesTableBody').appendChild(row);
     
-    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting);
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting, dnsName);
     serviceCounter++;
   }
 
-  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false) {
+  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false, dnsName = '') {
     const cell = document.getElementById(`external-cell-${index}`);
     
     // Clear existing content
@@ -242,7 +246,32 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       container.appendChild(dot);
       container.appendChild(domainSelect);
       cell.appendChild(container);
+    } else if (type === 'srv') {
+      // SRV record - DNS name input with internal domain display
+      const container = document.createElement('div');
+      container.style.cssText = 'display: flex; gap: 5px; align-items: center;';
+      
+      const dnsNameInput = document.createElement('input');
+      dnsNameInput.type = 'text';
+      dnsNameInput.name = `services[${index}][dnsName]`;
+      dnsNameInput.value = dnsName;
+      dnsNameInput.placeholder = '_service._tcp';
+      dnsNameInput.disabled = isExisting;
+      dnsNameInput.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
+      
+      const dot = document.createElement('span');
+      dot.textContent = '.';
+      
+      const domainSpan = document.createElement('span');
+      domainSpan.textContent = siteInternalDomain;
+      domainSpan.style.cssText = 'padding: 4px; color: #666;';
+      
+      container.appendChild(dnsNameInput);
+      container.appendChild(dot);
+      container.appendChild(domainSpan);
+      cell.appendChild(container);
     } else {
+      // Transport services (tcp/udp)
       const input = document.createElement('input');
       input.type = 'text';
       input.value = externalPort ? externalPort : 'autoassign';
@@ -300,13 +329,22 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   if (isEdit && existingServices.length > 0) {
     // Load existing services when editing
     existingServices.forEach(service => {
-      // For HTTP services, extract hostname and domain from httpService
-      // For transport services, use the protocol (tcp/udp) as the type
-      const type = service.type === 'http' ? 'http' : service.transportService?.protocol || 'tcp';
-      const externalHostname = service.httpService?.externalHostname || '';
-      const externalDomainId = service.httpService?.externalDomainId || '';
-      const externalPort = service.transportService?.externalPort || null;
-      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort);
+      let type, externalHostname = '', externalDomainId = '', externalPort = null, dnsName = '';
+      
+      if (service.type === 'http') {
+        type = 'http';
+        externalHostname = service.httpService?.externalHostname || '';
+        externalDomainId = service.httpService?.externalDomainId || '';
+      } else if (service.type === 'dns') {
+        type = 'srv';
+        dnsName = service.dnsService?.dnsName || '';
+      } else {
+        // transport service
+        type = service.transportService?.protocol || 'tcp';
+        externalPort = service.transportService?.externalPort || null;
+      }
+      
+      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort, dnsName);
     });
   } else {
     // Add default HTTP service on port 80 with hostname from form for new containers

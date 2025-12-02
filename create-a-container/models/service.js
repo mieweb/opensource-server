@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       Service.belongsTo(models.Container, { foreignKey: 'containerId' });
       Service.hasOne(models.HTTPService, { foreignKey: 'serviceId', as: 'httpService' });
       Service.hasOne(models.TransportService, { foreignKey: 'serviceId', as: 'transportService' });
+      Service.hasOne(models.DnsService, { foreignKey: 'serviceId', as: 'dnsService' });
     }
   }
   Service.init({
@@ -14,7 +15,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     type: {
-      type: DataTypes.ENUM('http', 'transport'),
+      type: DataTypes.ENUM('http', 'transport', 'dns'),
       allowNull: false
     },
     internalPort: {

@@ -2,7 +2,7 @@ const dns = require('dns').promises;
 const path = require('path')
 const express = require('express');
 const stringify = require('dotenv-stringify');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, sequelize } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain, sequelize } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
 
 const router = express.Router();
@@ -18,7 +18,15 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
-        attributes: ['macAddress', 'ipv4Address', 'hostname']
+        attributes: ['macAddress', 'ipv4Address', 'hostname'],
+        include: [{
+          model: Service,
+          as: 'services',
+          include: [{
+            model: DnsService,
+            as: 'dnsService'
+          }]
+        }]
       }]
     }]
   });

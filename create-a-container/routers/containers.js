@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, HTTPService, TransportService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
+const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
@@ -173,6 +173,10 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
           {
             model: TransportService,
             as: 'transportService'
+          },
+          {
+            model: DnsService,
+            as: 'dnsService'
           }
         ]
       }
@@ -279,14 +283,24 @@ router.post('/', async (req, res) => {
   if (services && typeof services === 'object') {
     for (const key in services) {
       const service = services[key];
-      const { type, internalPort, externalHostname, externalDomainId } = service;
+      const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
       
       // Validate required fields
       if (!type || !internalPort) continue;
       
-      // Determine the service type (http or transport)
-      const serviceType = type === 'http' ? 'http' : 'transport';
-      const protocol = type === 'http' ? null : type; // tcp or udp
+      // Determine the service type (http, transport, or dns)
+      let serviceType;
+      let protocol = null;
+      
+      if (type === 'http') {
+        serviceType = 'http';
+      } else if (type === 'srv') {
+        serviceType = 'dns';
+      } else {
+        // tcp or udp
+        serviceType = 'transport';
+        protocol = type;
+      }
       
       const serviceData = {
         containerId: container.id,
@@ -309,6 +323,19 @@ router.post('/', async (req, res) => {
           serviceId: createdService.id,
           externalHostname,
           externalDomainId: parseInt(externalDomainId, 10)
+        });
+      } else if (serviceType === 'dns') {
+        // Validate DNS name is set
+        if (!dnsName) {
+          req.flash('error', 'DNS services must have a DNS name');
+          return res.redirect(`/sites/${siteId}/containers/new`);
+        }
+        
+        // Create DnsService entry
+        await DnsService.create({
+          serviceId: createdService.id,
+          recordType: 'SRV',
+          dnsName
         });
       } else {
         // For TCP/UDP services, auto-assign external port
@@ -388,7 +415,7 @@ router.put('/:id', requireAuth, async (req, res) => {
         // Phase 2: Create new services (those without an id or not marked as deleted)
         for (const key in services) {
           const service = services[key];
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId } = service;
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = service;
           
           // Skip if marked as deleted or if it's an existing service (has id)
           if (deleted === 'true' || id) continue;
@@ -396,9 +423,19 @@ router.put('/:id', requireAuth, async (req, res) => {
           // Validate required fields
           if (!type || !internalPort) continue;
           
-          // Determine the service type (http or transport)
-          const serviceType = type === 'http' ? 'http' : 'transport';
-          const protocol = type === 'http' ? null : type; // tcp or udp
+          // Determine the service type (http, transport, or dns)
+          let serviceType;
+          let protocol = null;
+          
+          if (type === 'http') {
+            serviceType = 'http';
+          } else if (type === 'srv') {
+            serviceType = 'dns';
+          } else {
+            // tcp or udp
+            serviceType = 'transport';
+            protocol = type;
+          }
           
           const serviceData = {
             containerId: container.id,
@@ -420,6 +457,18 @@ router.put('/:id', requireAuth, async (req, res) => {
               serviceId: createdService.id,
               externalHostname,
               externalDomainId: parseInt(externalDomainId, 10)
+            }, { transaction: t });
+          } else if (serviceType === 'dns') {
+            // Validate DNS name is set
+            if (!dnsName) {
+              throw new Error('DNS services must have a DNS name');
+            }
+            
+            // Create DnsService entry
+            await DnsService.create({
+              serviceId: createdService.id,
+              recordType: 'SRV',
+              dnsName
             }, { transaction: t });
           } else {
             // For TCP/UDP services, auto-assign external port
