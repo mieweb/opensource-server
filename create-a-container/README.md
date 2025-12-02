@@ -234,6 +234,174 @@ View container creation progress page
 SSE stream for real-time container creation progress
 - **Returns**: Server-Sent Events stream
 
+### Job Runner & Jobs API Routes
+
+#### `POST /jobs` (Admin Auth Required)
+Enqueue a job for background execution
+- **Body**: `{ "command": "<shell command>" }`
+- **Response**: `201 { id, status }`
+- **Authorization**: Admin only (prevents arbitrary command execution)
+- **Behavior**: Admin's username is recorded in `createdBy` column for audit trail
+
+#### `GET /jobs/:id` (Auth Required)
+Fetch job metadata (command, status, timestamps)
+- **Response**: `{ id, command, status, createdAt, updatedAt, createdBy }`
+- **Authorization**: Only the job owner or admins may view
+- **Returns**: `404` if unauthorized (prevents information leakage)
+
+#### `GET /jobs/:id/status` (Auth Required)
+Fetch job output rows with offset/limit pagination
+- **Query Params**: 
+  - `offset` (optional, default 0) - Skip first N rows
+  - `limit` (optional, max 1000) - Return up to N rows
+- **Response**: Array of JobStatus objects `[{ id, jobId, output, createdAt, updatedAt }, ...]`
+- **Authorization**: Only the job owner or admins may view
+- **Returns**: `404` if unauthorized
+
+### Job Runner System
+
+#### Background Job Execution
+The job runner (`job-runner.js`) is a background Node.js process that:
+1. Polls the `Jobs` table for `pending` status records
+2. Claims a job transactionally (sets status to `running` and acquires row lock)
+3. Spawns the job command in a shell subprocess
+4. Streams stdout/stderr into the `JobStatuses` table in real-time
+5. Updates job status to `success` or `failure` on process exit
+6. Gracefully cancels running jobs on shutdown (SIGTERM/SIGINT) and marks them `cancelled`
+
+#### Data Models
+
+**Job Model** (`models/job.js`)
+```
+id          INT PRIMARY KEY AUTO_INCREMENT
+command     VARCHAR(2000) NOT NULL - shell command to execute
+createdBy   VARCHAR(255) - username of admin who enqueued (nullable for legacy jobs)
+status      ENUM('pending', 'running', 'success', 'failure', 'cancelled')
+createdAt   DATETIME
+updatedAt   DATETIME
+```
+
+**JobStatus Model** (`models/jobstatus.js`)
+```
+id          INT PRIMARY KEY AUTO_INCREMENT
+jobId       INT NOT NULL (FK → Jobs.id, CASCADE delete)
+output      TEXT - chunk of stdout/stderr from the job
+createdAt   DATETIME
+updatedAt   DATETIME
+```
+
+**Migrations**
+- `migrations/20251117120000-create-jobs.js`
+- `migrations/20251117120001-create-jobstatuses.js` (includes `updatedAt`)
+- `migrations/20251117120002-add-job-createdby.js` (adds nullable `createdBy` column + index)
+
+#### Running the Job Runner
+
+**Development (foreground, logs to stdout)**
+```bash
+cd create-a-container
+npm run job-runner
+```
+
+**Production (systemd service)**
+Copy `systemd/job-runner.service` to `/etc/systemd/system/job-runner.service`:
+```bash
+sudo cp systemd/job-runner.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now job-runner.service
+sudo systemctl status job-runner.service
+```
+
+#### Configuration
+
+**Database** (via `.env`)
+- `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+
+**Runner Behavior** (environment variables)
+- `JOB_RUNNER_POLL_MS` (default 2000) - Polling interval in milliseconds
+- `JOB_RUNNER_CWD` (default cwd) - Working directory for spawned commands
+- `NODE_ENV=production` - Recommended for production
+
+**Systemd Setup** (recommended for production)
+Create `/etc/default/container-creator` with DB credentials:
+```bash
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=container_manager
+MYSQL_PASSWORD=secure_password_here
+MYSQL_DATABASE=opensource_containers
+```
+
+Update `job-runner.service` to include:
+```ini
+EnvironmentFile=/etc/default/container-creator
+```
+
+#### Security Considerations
+
+1. **Command Injection Risk**: The runner spawns commands via shell. Only admins can enqueue jobs via the API. Do not expose `POST /jobs` to untrusted users.
+2. **Job Ownership**: Jobs are scoped by `createdBy`. Only the admin who created the job (or other admins) can view its metadata and output. Non-owners receive `404` (not `403`) to prevent information leakage.
+3. **Legacy Jobs**: Jobs created before the `createdBy` migration will have `createdBy = NULL` and are visible only to admins.
+4. **Graceful Shutdown**: On SIGTERM/SIGINT, the runner kills all running child processes and marks their jobs as `cancelled`.
+
+#### Testing & Troubleshooting
+
+**Insert a test job (SQL)**
+```sql
+INSERT INTO Jobs (command, status, createdAt, updatedAt)
+VALUES ('echo "Hello" && sleep 5 && echo "World"', 'pending', NOW(), NOW());
+```
+
+**Inspect job status**
+```sql
+SELECT id, status, updatedAt FROM Jobs ORDER BY id DESC LIMIT 10;
+```
+
+**View job output**
+```sql
+SELECT id, output, createdAt FROM JobStatuses WHERE jobId = 1 ORDER BY id ASC;
+```
+
+**Long-running test (5 minutes)**
+1. Stop runner to keep job pending
+```bash
+sudo systemctl stop job-runner.service
+```
+2. Insert job
+```bash
+mysql ... -e "INSERT INTO Jobs (command, status, createdAt, updatedAt) VALUES ('for i in \$(seq 1 300); do echo \"line \$i\"; sleep 1; done', 'pending', NOW(), NOW()); SELECT LAST_INSERT_ID();"
+```
+3. Start runner and monitor
+```bash
+node job-runner.js
+# In another terminal:
+while sleep 15; do
+  mysql ... -e "SELECT id, output FROM JobStatuses WHERE jobId=<ID> ORDER BY id ASC;" 
+done
+```
+4. Check final status
+```sql
+SELECT id, status FROM Jobs WHERE id = <ID>;
+```
+
+#### Deployment Checklist
+
+- [ ] Run migrations: `npm run db:migrate`
+- [ ] Deploy `job-runner.js` to target host (e.g., `/opt/container-creator/`)
+- [ ] Copy `systemd/job-runner.service` to `/etc/systemd/system/`
+- [ ] Create `/etc/default/container-creator` with DB env vars
+- [ ] Reload systemd: `sudo systemctl daemon-reload`
+- [ ] Enable and start: `sudo systemctl enable --now job-runner.service`
+- [ ] Verify runner is running: `sudo systemctl status job-runner.service`
+- [ ] Test API by creating a job via `POST /jobs` (admin user)
+
+#### Future Enhancements
+
+- Replace raw `command` API with safe task names and parameter mapping
+- Add SSE or WebSocket streaming endpoint (`/jobs/:id/stream`) to push log lines to frontend in real-time
+- Add batching or file-based logs for high-volume output to reduce DB pressure
+- Implement job timeout/deadline and automatic cancellation
+
 ### Configuration Routes
 
 #### `GET /nginx.conf`
