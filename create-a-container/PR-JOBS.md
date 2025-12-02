@@ -90,5 +90,3 @@ Note: run migrations before testing so the `createdBy` column exists. Existing j
 - Replace raw `command` API with safe task names and parameter mapping.
 - Add SSE or WebSocket streaming endpoint (`/jobs/:id/stream`) to push log lines to the frontend.
 - Add batching or file-based logs for high-volume output to reduce DB pressure.
-
-If you want, I can prepare a GitHub-ready PR description using these notes and optionally implement a server-side task registry before merging.

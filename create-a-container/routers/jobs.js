@@ -49,7 +49,6 @@ router.get('/:id', async (req, res) => {
 });
 
 // GET /jobs/:id/status - fetch job status rows
-// Query params: sinceId (optional), limit (optional)
 router.get('/:id/status', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
