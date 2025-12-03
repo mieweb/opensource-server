@@ -31,3 +31,16 @@ dhcp-host=<%= container.macAddress %>,<%= container.ipv4Address.split('/')[0] %>
 host-record=<%= container.hostname %>.<%= site.internalDomain %>,<%= container.ipv4Address.split('/')[0] %>
 <%_ }) _%>
 <%_ }) _%>
+
+# DNS service records (SRV)
+<%_ site.nodes.forEach((node) => { _%>
+<%_ node.containers.forEach((container) => { _%>
+<%_ if (container.services) { _%>
+<%_ container.services.forEach((service) => { _%>
+<%_ if (service.type === 'dns' && service.dnsService && service.dnsService.recordType === 'SRV') { _%>
+srv-host=<%= service.dnsService.dnsName %>.<%= site.internalDomain %>,<%= container.hostname %>.<%= site.internalDomain %>,<%= service.internalPort %>,0,0
+<%_ } _%>
+<%_ }) _%>
+<%_ } _%>
+<%_ }) _%>
+<%_ }) _%>

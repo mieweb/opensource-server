@@ -110,11 +110,11 @@ http {
     http2 on;
     http3 on;
     
-    server_name <%= service.externalHostname %>.<%= service.externalDomain.name %>;
+    server_name <%= service.httpService.externalHostname %>.<%= service.httpService.externalDomain.name %>;
   
     # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= service.externalDomain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= service.externalDomain.name %>.key;
+    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.crt;
+    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -213,7 +213,7 @@ stream {
 
   <%_ streamServices.forEach((service, index) => { _%>
   server {
-    listen <%= service.externalPort %><%= service.type === 'udp' ? ' udp' : '' %>;
+    listen <%= service.transportService.externalPort %><%= service.transportService.protocol === 'udp' ? ' udp' : '' %>;
     proxy_pass <%= service.Container.ipv4Address %>:<%= service.internalPort %>;
   }
   <%_ }) _%>

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# ldap-gateway instance configuration for pull-config
+
+# Site ID for this configuration
+SITE_ID=1
+
+# Configuration file to manage
+export CONF_FILE=/etc/default/ldap-gateway
+
+# URL to fetch configuration from
+export CONF_URL=http://localhost:3000/sites/${SITE_ID}/ldap.conf
+
+# Command to test configuration validity before applying
+# The ldap gateway does not have a test command, so we use a no-op
+# and pray
+export TEST_COMMAND="true"
+
+# Command to reload the service (empty means use SERVICE_NAME fallback)
+export RELOAD_COMMAND=""
+
+# Service name for systemctl reload-or-restart
+export SERVICE_NAME="ldap-gateway"
+
+# Execute pull-config
+exec /opt/opensource-server/pull-config/bin/pull-config
+

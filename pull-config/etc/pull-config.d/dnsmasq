@@ -14,6 +14,8 @@ export CONF_URL=http://localhost:3000/sites/${SITE_ID}/dnsmasq.conf
 export TEST_COMMAND="dnsmasq --test"
 
 # Command to reload the service (empty means use SERVICE_NAME fallback)
+# We manually restart dnsmasq becuase it implements a systemd reload handler
+# that doesn't actually pick up configuration changes.
 export RELOAD_COMMAND="systemctl restart dnsmasq"
 
 # Service name for systemctl reload-or-restart
