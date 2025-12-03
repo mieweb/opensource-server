@@ -1,0 +1,262 @@
+<%
+const isEdit = typeof container !== 'undefined' && container;
+const pageTitle = isEdit ? 'Edit Container Services' : 'Create Your Container';
+const formAction = isEdit ? `/sites/${site.id}/containers/${container.id}` : `/sites/${site.id}/containers`;
+const breadcrumbLabel = isEdit ? 'Edit' : 'New';
+%>
+<%- include('../layouts/header', { 
+  title: pageTitle + ' - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/containers` },
+    { label: breadcrumbLabel, url: null }
+  ],
+  colWidth: 'col-12 col-lg-10',
+  req
+}) %>
+
+<div class="login-container" style="max-width: 900px;">
+  <img src="/logo.png" alt="Company Logo" class="logo">
+  <h2><%= pageTitle %></h2>
+  <form id="containerForm" method="POST" action="<%= formAction %>">
+    <% if (isEdit) { %>
+      <input type="hidden" name="_method" value="PUT">
+    <% } else { %>
+      <input type="hidden" name="init" value="true">
+    <% } %>
+    
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+      <div style="flex: 1;">
+        <label for="hostname">Container Hostname</label>
+        <input type="text" id="hostname" name="hostname" value="<%= isEdit ? container.hostname : '' %>" <%= isEdit ? 'readonly' : 'required' %> <%= isEdit ? 'style="background-color: #e9ecef;"' : '' %>>
+      </div>
+      
+      <div style="flex: 1;">
+        <label for="template">Container Template</label>
+        <% if (isEdit) { %>
+          <input type="text" id="template" value="<%= container.node.name %>" readonly style="background-color: #e9ecef;">
+        <% } else { %>
+          <select id="template" name="template" required>
+            <option value="">Select a template...</option>
+            <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
+              <% templates.forEach(template => { %>
+                <option value="<%= template.node %>,<%= template.volid %>">
+                  <%= template.name %> (<%= template.node %>)
+                </option>
+              <% }) %>
+            <% } else { %>
+              <option value="" disabled>No templates available</option>
+            <% } %>
+          </select>
+        <% } %>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <label style="margin-bottom: 0;">Services</label>
+      <button type="button" id="addServiceBtn" class="btn btn-sm btn-primary">Add Service</button>
+    </div>
+    <div style="margin-bottom: 20px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+        <thead>
+          <tr>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">External</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="servicesTableBody">
+          <!-- Services will be added here dynamically -->
+        </tbody>
+      </table>
+    </div>
+
+    <input type="submit" value="<%= isEdit ? 'Update Services' : 'Create Container' %>">
+  </form>
+  <div id="formError" style="color:red; margin-top:10px;"></div>
+</div>
+
+<script>
+  const isEdit = <%- isEdit ? 'true' : 'false' %>;
+  const existingServices = <%- isEdit ? JSON.stringify(container.services.map(s => ({
+    type: s.type,
+    internalPort: s.internalPort,
+    externalHostname: s.externalHostname || '',
+    externalDomainId: s.externalDomainId || ''
+  }))) : '[]' %>;
+  const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
+  let serviceCounter = 0;
+
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '') {
+    const row = document.createElement('tr');
+    row.id = `service-row-${serviceCounter}`;
+    
+    // Type cell
+    const typeCell = document.createElement('td');
+    typeCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    
+    const typeSelect = document.createElement('select');
+    typeSelect.name = `services[${serviceCounter}][type]`;
+    typeSelect.className = 'service-type';
+    typeSelect.dataset.index = serviceCounter;
+    typeSelect.required = true;
+    typeSelect.style.cssText = 'width: 100%; padding: 4px;';
+    
+    ['http', 'tcp', 'udp'].forEach(optionType => {
+      const option = document.createElement('option');
+      option.value = optionType;
+      option.textContent = optionType.toUpperCase();
+      if (optionType === type) {
+        option.selected = true;
+      }
+      typeSelect.appendChild(option);
+    });
+    
+    typeCell.appendChild(typeSelect);
+    
+    // Internal port cell
+    const internalPortCell = document.createElement('td');
+    internalPortCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    
+    const portInput = document.createElement('input');
+    portInput.type = 'number';
+    portInput.name = `services[${serviceCounter}][internalPort]`;
+    portInput.value = internalPort;
+    portInput.min = '1';
+    portInput.max = '65535';
+    portInput.required = true;
+    portInput.style.cssText = 'width: 100%; padding: 4px;';
+    
+    internalPortCell.appendChild(portInput);
+    
+    // External cell (will be populated by updateExternalCell)
+    const externalCell = document.createElement('td');
+    externalCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    externalCell.id = `external-cell-${serviceCounter}`;
+    
+    // Action cell
+    const actionCell = document.createElement('td');
+    actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.style.cssText = 'padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;';
+    const currentIndex = serviceCounter; // Capture the current value
+    removeBtn.onclick = () => removeServiceRow(currentIndex);
+    
+    actionCell.appendChild(removeBtn);
+    
+    row.appendChild(typeCell);
+    row.appendChild(internalPortCell);
+    row.appendChild(externalCell);
+    row.appendChild(actionCell);
+    
+    document.getElementById('servicesTableBody').appendChild(row);
+    
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId);
+    serviceCounter++;
+  }
+
+  function updateExternalCell(index, type, hostname = '', domainId = '') {
+    const cell = document.getElementById(`external-cell-${index}`);
+    
+    // Clear existing content
+    while (cell.firstChild) {
+      cell.removeChild(cell.firstChild);
+    }
+    
+    if (type === 'http') {
+      // Auto-select first domain if no domain is specified
+      if (!domainId && externalDomains.length > 0) {
+        domainId = externalDomains[0].id;
+      }
+      
+      const container = document.createElement('div');
+      container.style.cssText = 'display: flex; gap: 5px; align-items: center;';
+      
+      const hostnameInput = document.createElement('input');
+      hostnameInput.type = 'text';
+      hostnameInput.name = `services[${index}][externalHostname]`;
+      hostnameInput.value = hostname;
+      hostnameInput.placeholder = 'hostname';
+      hostnameInput.style.cssText = 'flex: 1; padding: 4px;';
+      
+      const dot = document.createElement('span');
+      dot.textContent = '.';
+      
+      const domainSelect = document.createElement('select');
+      domainSelect.name = `services[${index}][externalDomainId]`;
+      domainSelect.style.cssText = 'flex: 1; padding: 4px;';
+      
+      externalDomains.forEach(domain => {
+        const option = document.createElement('option');
+        option.value = domain.id;
+        option.textContent = domain.name;
+        if (domain.id == domainId) {
+          option.selected = true;
+        }
+        domainSelect.appendChild(option);
+      });
+      
+      container.appendChild(hostnameInput);
+      container.appendChild(dot);
+      container.appendChild(domainSelect);
+      cell.appendChild(container);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = 'autoassign';
+      input.disabled = true;
+      input.style.cssText = 'width: 100%; padding: 4px; background-color: #e9ecef;';
+      cell.appendChild(input);
+    }
+  }
+
+  function removeServiceRow(index) {
+    const row = document.getElementById(`service-row-${index}`);
+    if (row) {
+      row.remove();
+    }
+  }
+
+  document.getElementById('addServiceBtn').addEventListener('click', () => {
+    addServiceRow();
+  });
+
+  document.getElementById('servicesTableBody').addEventListener('change', (e) => {
+    if (e.target.classList.contains('service-type')) {
+      const index = e.target.dataset.index;
+      const type = e.target.value;
+      updateExternalCell(index, type);
+    }
+  });
+
+  // Initialize services
+  const hostnameField = document.getElementById('hostname');
+  
+  if (isEdit && existingServices.length > 0) {
+    // Load existing services when editing
+    existingServices.forEach(service => {
+      addServiceRow(service.type, service.internalPort, service.externalHostname, service.externalDomainId);
+    });
+  } else {
+    // Add default HTTP service on port 80 with hostname from form for new containers
+    addServiceRow('http', '80', hostnameField.value || '', '');
+  }
+  
+  // Update externalHostname when hostname field changes (only for new containers)
+  if (!isEdit) {
+    hostnameField.addEventListener('input', (e) => {
+      // Update all HTTP service hostname inputs with the new hostname
+      document.querySelectorAll('input[name*="[externalHostname]"]').forEach(input => {
+        if (input.value === '' || input.placeholder === 'hostname') {
+          input.value = e.target.value;
+        }
+      });
+    });
+  }
+</script>
+
+<%- include('../layouts/footer') %>

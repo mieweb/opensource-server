@@ -1,0 +1,132 @@
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit Site' : 'New Site') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit Site' : 'Create New Site' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/sites/${site.id}` : '/sites' %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+
+      <div class="mb-3">
+        <label for="name" class="form-label">Site Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="name" 
+          name="name" 
+          value="<%= site ? site.name : '' %>" 
+          required
+          placeholder="e.g., Phoenix DC"
+        >
+        <div class="form-text">Friendly name for this site</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="internalDomain" class="form-label">Internal Domain</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="internalDomain" 
+          name="internalDomain" 
+          value="<%= site ? site.internalDomain : '' %>" 
+          placeholder="e.g., phx.internal"
+        >
+        <div class="form-text">Internal DNS domain for this site</div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label for="dhcpRange" class="form-label">DHCP Range</label>
+          <input 
+            type="text" 
+            class="form-control" 
+            id="dhcpRange" 
+            name="dhcpRange" 
+            value="<%= site ? site.dhcpRange : '' %>" 
+            placeholder="e.g., 10.0.0.100,10.0.0.200"
+          >
+          <div class="form-text">Comma-separated start and end IPs for DHCP range</div>
+        </div>
+
+        <div class="col-md-6 mb-3">
+          <label for="subnetMask" class="form-label">Subnet Mask</label>
+          <input 
+            type="text" 
+            class="form-control" 
+            id="subnetMask" 
+            name="subnetMask" 
+            value="<%= site ? site.subnetMask : '' %>" 
+            placeholder="e.g., 255.255.255.0"
+          >
+          <div class="form-text">Subnet mask for DHCP configuration</div>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="gateway" class="form-label">Gateway</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="gateway" 
+          name="gateway" 
+          value="<%= site ? site.gateway : '' %>" 
+          placeholder="e.g., 10.0.0.1"
+        >
+        <div class="form-text">Gateway IP address</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="dnsForwarders" class="form-label">DNS Forwarders</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="dnsForwarders" 
+          name="dnsForwarders" 
+          value="<%= site ? site.dnsForwarders : '' %>" 
+          placeholder="e.g., 8.8.8.8,8.8.4.4"
+        >
+        <div class="form-text">Comma-separated list of DNS server IPs</div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <a href="/sites" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update Site' : 'Create Site' %>
+        </button>
+      </div>
+    </form>
+
+    <% if (isEdit) { %>
+      <hr class="my-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="text-danger mb-1">Danger Zone</h5>
+          <p class="text-muted small mb-0">Permanently delete this site</p>
+        </div>
+        <button 
+          type="button" 
+          class="btn btn-danger" 
+          onclick="document.getElementById('deleteForm').submit();"
+        >
+          Delete Site
+        </button>
+      </div>
+
+      <form id="deleteForm" method="POST" action="/sites/<%= site.id %>" style="display: none;" onsubmit="return confirm('Are you sure you want to delete this site? This action cannot be undone.');">
+        <input type="hidden" name="_method" value="DELETE">
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

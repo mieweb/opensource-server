@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Required variables (must be set by calling script)
+if [[ -z "${CONF_FILE:-}" ]] || [[ -z "${CONF_URL:-}" ]]; then
+  echo "ERROR: CONF_FILE and CONF_URL must be set by the calling script" >&2
+  exit 1
+fi
+
+# Set defaults for optional variables
+TEST_COMMAND="${TEST_COMMAND:-}"
+RELOAD_COMMAND="${RELOAD_COMMAND:-}"
+SERVICE_NAME="${SERVICE_NAME:-}"
+
+# Derived file paths
+ETAG_FILE="${CONF_FILE}.etag"
+TEMP_FILE="${CONF_FILE}.tmp"
+HEADERS_FILE="${CONF_FILE}.headers"
+BACKUP_FILE="${CONF_FILE}.bak"
+
+# Cleanup function
+cleanup() {
+  rm -f "${TEMP_FILE}" "${HEADERS_FILE}" "${BACKUP_FILE}"
+}
+
+# Set trap to always cleanup on exit
+trap cleanup EXIT
+
+# Function to download config and extract ETag
+download_config() {
+  local url="$1"
+  
+  # Build curl command as array
+  local curl_cmd=(
+    curl
+    -w "%{http_code}"
+    -D "${HEADERS_FILE}"
+    -o "${TEMP_FILE}"
+    -sSL
+  )
+  
+  # Add ETag header if it exists and conf file exists
+  if [[ -f "${CONF_FILE}" ]] && [[ -f "${ETAG_FILE}" ]]; then
+    local etag
+    etag=$(cat "${ETAG_FILE}")
+    curl_cmd+=(-H "If-None-Match: ${etag}")
+  fi
+  
+  # Add URL
+  curl_cmd+=("${url}")
+  
+  # Execute curl and capture HTTP status code
+  local http_code
+  http_code=$("${curl_cmd[@]}" 2>/dev/null || echo "000")
+  
+  # Return the http_code
+  echo "${http_code}"
+}
+
+# Download configuration
+HTTP_CODE=$(download_config "${CONF_URL}")
+
+# Check if we got a 304 Not Modified
+if [[ ${HTTP_CODE} -eq 304 ]]; then
+  # No changes, exit (cleanup handled by trap)
+  exit 0
+fi
+
+# Check if we got a successful response
+if [[ ${HTTP_CODE} -ne 200 ]]; then
+  echo "Failed to download configuration (HTTP ${HTTP_CODE})" >&2
+  exit 1
+fi
+
+# Extract new ETag from headers
+NEW_ETAG=""
+if [[ -f "${HEADERS_FILE}" ]]; then
+  NEW_ETAG=$(grep -i '^etag:' "${HEADERS_FILE}" | sed 's/^etag: *//i' | tr -d '\r\n' || echo "")
+fi
+
+# Backup existing config if it exists
+if [[ -f "${CONF_FILE}" ]]; then
+  mv "${CONF_FILE}" "${BACKUP_FILE}"
+fi
+
+# Move new config into place
+mv "${TEMP_FILE}" "${CONF_FILE}"
+
+# Test the new configuration if TEST_COMMAND is provided
+if [[ -n "${TEST_COMMAND}" ]]; then
+  if ! eval "${TEST_COMMAND}" >/dev/null 2>&1; then
+    echo "Configuration test failed" >&2
+    # Restore backup if it exists
+    if [[ -f "${BACKUP_FILE}" ]]; then
+      mv "${BACKUP_FILE}" "${CONF_FILE}"
+    else
+      # No backup, just remove the bad config
+      rm -f "${CONF_FILE}"
+    fi
+    exit 1
+  fi
+fi
+
+# Configuration is valid, save new ETag (cleanup handled by trap)
+if [[ -n "${NEW_ETAG}" ]]; then
+  echo "${NEW_ETAG}" > "${ETAG_FILE}"
+fi
+
+# Reload/restart the service
+if [[ -n "${RELOAD_COMMAND}" ]]; then
+  # Use custom reload command
+  eval "${RELOAD_COMMAND}" >/dev/null 2>&1
+elif [[ -n "${SERVICE_NAME}" ]]; then
+  # Fall back to systemctl reload-or-restart
+  systemctl reload-or-restart "${SERVICE_NAME}" >/dev/null 2>&1
+fi

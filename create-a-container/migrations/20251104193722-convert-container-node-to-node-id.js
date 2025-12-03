@@ -28,7 +28,10 @@ module.exports = {
       });
     }
 
-    // Step 3: Make nodeId NOT NULL
+    // Step 3: Remove old unique constraint on (node, containerId)
+    await queryInterface.removeIndex('Containers', 'containers_node_container_id_unique');
+
+    // Step 4: Make nodeId NOT NULL
     await queryInterface.changeColumn('Containers', 'nodeId', {
       type: Sequelize.INTEGER,
       allowNull: false,
@@ -37,20 +40,17 @@ module.exports = {
         key: 'id'
       },
       onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT'
+      onDelete: 'RESTRICT',
     });
 
-    // Step 4: Remove old unique constraint on (node, containerId)
-    await queryInterface.removeIndex('Containers', 'containers_node_container_id_unique');
+    // Step 5: Remove the old node column
+    await queryInterface.removeColumn('Containers', 'node');
 
-    // Step 5: Add new unique constraint on (nodeId, containerId)
+    // Step 6: Add new unique constraint on (nodeId, containerId)
     await queryInterface.addIndex('Containers', ['nodeId', 'containerId'], {
       name: 'containers_node_id_container_id_unique',
       unique: true
     });
-
-    // Step 6: Remove the old node column
-    await queryInterface.removeColumn('Containers', 'node');
   },
 
   async down (queryInterface, Sequelize) {

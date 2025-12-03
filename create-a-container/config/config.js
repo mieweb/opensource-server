@@ -16,7 +16,7 @@ if (config.dialect === 'mysql') {
 } else if (config.dialect === 'sqlite') {
   config.storage = process.env.SQLITE_STORAGE || 'data/database.sqlite';
 } else {
-  throw new Error(`Unsupported Database Dialect: ${process.env.DB_DIALECT}`);
+  throw new Error(`Unsupported Database Dialect: ${config.dialect}`);
 }
 
 module.exports = {
