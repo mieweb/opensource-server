@@ -13,6 +13,7 @@
     "argon2": "^0.44.0",
     "axios": "^1.12.2",
     "connect-flash": "^0.1.1",
+    "cron-parser": "^4.1.0",
     "dotenv": "^17.2.3",
     "ejs": "^3.1.10",
     "express": "^5.2.1",

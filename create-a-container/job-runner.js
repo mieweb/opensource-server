@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * job-runner.js
+ * - Checks ScheduledJobs and creates pending Jobs when schedule conditions are met
  * - Polls the Jobs table for pending jobs
  * - Claims a job (transactionally), sets status to 'running'
  * - Spawns the configured command and streams stdout/stderr into JobStatuses
@@ -9,6 +10,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const parser = require('cron-parser');
 const db = require('./models');
 
 const POLL_INTERVAL_MS = parseInt(process.env.JOB_RUNNER_POLL_MS || '2000', 10);
@@ -17,6 +19,59 @@ const WORKDIR = process.env.JOB_RUNNER_CWD || process.cwd();
 let shuttingDown = false;
 // Map of jobId -> child process for active/running jobs
 const activeChildren = new Map();
+// Track last scheduled job execution time to avoid duplicate runs
+const lastScheduledExecution = new Map();
+
+async function shouldScheduledJobRun(scheduledJob) {
+  try {
+    const interval = parser.parseExpression(scheduledJob.schedule);
+    const now = new Date();
+    const lastExecution = lastScheduledExecution.get(scheduledJob.id);
+    
+    // Get the next occurrence from the schedule
+    const nextExecution = interval.next().toDate();
+    const currentMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+    const nextMinute = new Date(nextExecution.getFullYear(), nextExecution.getMonth(), nextExecution.getDate(), nextExecution.getHours(), nextExecution.getMinutes());
+    
+    // If the next scheduled time is now and we haven't executed in this minute
+    if (currentMinute.getTime() === nextMinute.getTime()) {
+      if (!lastExecution || lastExecution.getTime() < currentMinute.getTime()) {
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.error(`Error parsing schedule for job ${scheduledJob.id}: ${err.message}`);
+    return false;
+  }
+}
+
+async function processScheduledJobs() {
+  try {
+    const scheduledJobs = await db.ScheduledJob.findAll();
+    
+    for (const scheduledJob of scheduledJobs) {
+      if (await shouldScheduledJobRun(scheduledJob)) {
+        console.log(`JobRunner: Creating job from scheduled job ${scheduledJob.id}: ${scheduledJob.schedule}`);
+        
+        try {
+          await db.Job.create({
+            command: scheduledJob.command,
+            status: 'pending',
+            createdBy: `ScheduledJob#${scheduledJob.id}`
+          });
+          
+          // Mark that we've executed this scheduled job at this time
+          lastScheduledExecution.set(scheduledJob.id, new Date());
+        } catch (err) {
+          console.error(`Error creating job from scheduled job ${scheduledJob.id}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error processing scheduled jobs:', err);
+  }
+}
 
 async function claimPendingJob() {
   const sequelize = db.sequelize;
@@ -139,6 +194,10 @@ async function shutdownAndCancelJobs(signal) {
 async function loop() {
   if (shuttingDown) return;
   try {
+    // Check for scheduled jobs that should run
+    await processScheduledJobs();
+    
+    // Check for pending jobs
     const job = await claimPendingJob();
     if (job) {
       // Run job but don't block polling loop; we will wait for job to update

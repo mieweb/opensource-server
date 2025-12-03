@@ -98,6 +98,19 @@
         <div class="form-text">Whether to verify TLS certificates when connecting to this node</div>
       </div>
 
+      <div class="mb-3">
+        <label for="defaultStorage" class="form-label">Default Storage</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="defaultStorage" 
+          name="defaultStorage" 
+          value="<%= node && node.defaultStorage ? node.defaultStorage : '' %>"
+          placeholder="e.g., local"
+        >
+        <div class="form-text">Default storage target for container templates and images (optional)</div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
         <button type="submit" class="btn btn-primary">
