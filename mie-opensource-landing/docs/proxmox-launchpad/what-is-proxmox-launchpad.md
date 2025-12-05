@@ -9,7 +9,7 @@ Proxmox Launchpad is a powerful GitHub Action that automatically provisions and 
 ![Proxmox Launchpad Marketplace Image](./img/proxmox-launchpad-page.png)
 
 :::note Public Marketplace Page
-The link to Proxmox Launchpad on the GitHub Actions Marketplace Site is [https://github.com/marketplace/actions/proxmox-launchpad](https://github.com/marketplace/actions/proxmox-launchpad)
+The link to Proxmox Launchpad on the GitHub Actions Marketplace Site is [https://github.com/marketplace/actions/mieweb-launchpad](https://github.com/marketplace/actions/mieweb-launchpad)
 :::
 ## Key Features
 

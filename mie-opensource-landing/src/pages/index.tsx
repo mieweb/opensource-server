@@ -323,7 +323,7 @@ function ProxmoxLaunchpad({Button, Icon, FaGithub, FaRocket, FaCheckCircle, FaCo
                                     <Icon icon="vaadin:arrow-right" slot={'suffix'} />
                                 </Button>
                             </Link>
-                            <Link to="https://github.com/marketplace/actions/proxmox-launchpad" style={{ textDecoration: 'none' }}>
+                            <Link to="https://github.com/marketplace/actions/mieweb-launchpad" style={{ textDecoration: 'none' }}>
                                 <Button theme="tertiary" className={styles.Button}>
                                     View on GitHub
                                     <Icon icon="vaadin:external-link" slot={'suffix'} />

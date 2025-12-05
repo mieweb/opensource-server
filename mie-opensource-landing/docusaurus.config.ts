@@ -57,7 +57,7 @@ const config: Config = {
                     position: "left",
                 },
                 {
-                    to: "https://github.com/marketplace/actions/proxmox-launchpad",
+                    to: "https://github.com/marketplace/actions/mieweb-launchpad",
                     label: "Proxmox Launchpad",
                     position: "left",
                 },
