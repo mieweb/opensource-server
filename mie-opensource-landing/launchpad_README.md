@@ -113,7 +113,7 @@ jobs:
   manage-container:
     runs-on: self-hosted  # or your runner label
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -168,7 +168,7 @@ jobs:
         run: |
           sudo apt install -y sshpass jq
 
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
@@ -178,7 +178,7 @@ jobs:
     runs-on: self-hosted
     needs: setup-runner
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
@@ -304,7 +304,7 @@ jobs:
   manage-container:
     runs-on: self-hosted  # Use your own runner
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
@@ -332,7 +332,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt install -y sshpass jq
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
@@ -342,7 +342,7 @@ jobs:
     runs-on: self-hosted
     needs: setup-runner
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
           proxmox_username: ${{ secrets.PROXMOX_USERNAME }}

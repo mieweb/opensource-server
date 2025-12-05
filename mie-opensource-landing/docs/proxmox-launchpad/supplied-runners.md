@@ -62,7 +62,7 @@ jobs:
   manage-container:
     runs-on: self-hosted  # Use your runner label here
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_username: your-username
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -77,7 +77,7 @@ This creates basic containers without automatic deployment.
 Configure your container's fundamental settings:
 
 ```yaml
-- uses: maxklema/proxmox-launchpad@main
+- uses: mieweb/launchpad@main
   with:
     proxmox_username: your-username
     proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -133,7 +133,7 @@ If you want Proxmox Launchpad to automatically deploy your application, consider
 For applications with a single service (React app, Flask server, etc.):
 
 ```yaml
-- uses: maxklema/proxmox-launchpad@main
+- uses: mieweb/launchpad@main
   with:
     proxmox_username: your-username
     proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -159,7 +159,7 @@ For applications with a single service (React app, Flask server, etc.):
 For applications with multiple services (frontend + backend, microservices, etc.):
 
 ```yaml
-- uses: maxklema/proxmox-launchpad@main
+- uses: mieweb/launchpad@main
   with:
     proxmox_username: your-username
     proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -270,7 +270,7 @@ jobs:
   manage-container:
     runs-on: self-hosted
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_username: your-username
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -305,7 +305,7 @@ jobs:
   manage-container:
     runs-on: self-hosted
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_username: your-username
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
@@ -338,7 +338,7 @@ jobs:
   manage-container:
     runs-on: self-hosted
     steps:
-      - uses: maxklema/proxmox-launchpad@main
+      - uses: mieweb/launchpad@main
         with:
           proxmox_username: your-username
           proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
