@@ -1,4 +1,5 @@
 const dns = require('dns').promises;
+const os = require('os');
 const path = require('path')
 const express = require('express');
 const stringify = require('dotenv-stringify');
@@ -112,9 +113,18 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
   };
 
   // Get the real IP from the request or the x-forwarded-for header
-  // and do a reverse DNS lookup to get the hostname
+  // and do a reverse DNS lookup to get the hostname. If the clientIP is any
+  // localhost address, use the FQDN of the server instead.
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-  env.LDAP_COMMON_NAME = await dns.reverse(clientIp).then(names => names[0]).catch(() => clientIp);
+  const isLocalhost = clientIp === '127.0.0.1' || 
+                      clientIp === '::1' || 
+                      clientIp === '::ffff:127.0.0.1' ||
+                      clientIp === 'localhost';
+  if (isLocalhost) {
+    env.LDAP_COMMON_NAME = os.hostname();
+  } else {
+    env.LDAP_COMMON_NAME = await dns.reverse(clientIp).then(names => names[0]).catch(() => clientIp);
+  }
 
   // Parse site.internalDomain into DN format, i.e. dc=example,dc=com
   env.LDAP_BASE_DN = site.internalDomain
