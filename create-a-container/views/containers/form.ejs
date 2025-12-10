@@ -62,7 +62,22 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
           <tr>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">External</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">
+              External
+              <a href="#" 
+                 tabindex="0" 
+                 role="button"
+                 data-bs-toggle="popover" 
+                 data-bs-trigger="click"
+                 data-bs-placement="top"
+                 data-bs-html="true"
+                 data-bs-title="External Field Guide"
+                 data-bs-content="<strong>HTTP:</strong> Enter a hostname and select an external domain.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
+                 onclick="event.preventDefault();"
+                 style="text-decoration: none; margin-left: 5px; color: #0d6efd; cursor: pointer;">
+                <i class="bi bi-question-circle"></i>
+              </a>
+            </th>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
           </tr>
         </thead>
