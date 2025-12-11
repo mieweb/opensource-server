@@ -20,13 +20,13 @@ function getOciImages() {
   return [
     {
       name: 'debian13',
-      registry: process.env.OCI_REGISTRY || 'ghcr.io',
+      registry: process.env.LOCAL_REGISTRY || process.env.OCI_REGISTRY || 'localhost:5000',
       image: 'mieweb/opensource-server/debian13',
       tag: process.env.OCI_IMAGE_TAG || 'latest'
     },
     {
       name: 'rocky9',
-      registry: process.env.OCI_REGISTRY || 'ghcr.io',
+      registry: process.env.LOCAL_REGISTRY || process.env.OCI_REGISTRY || 'localhost:5000',
       image: 'mieweb/opensource-server/rocky9',
       tag: process.env.OCI_IMAGE_TAG || 'latest'
     }

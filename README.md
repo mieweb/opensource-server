@@ -22,7 +22,7 @@ With Proxmox 9's native OCI container support, the easiest installation method i
 
 ```bash
 # Pull and run the container from GHCR
-pct create <VMID> ghcr.io/mieweb/opensource-server:latest \
+   pct create <VMID> localhost:5000/mieweb/opensource-server:latest \
   --hostname opensource-server \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp \
   --features nesting=1 \
