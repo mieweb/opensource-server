@@ -9,7 +9,6 @@
  * then pulls OCI images from a container registry and makes them available in Proxmox storage.
  */
 
-const axios = require('axios');
 const db = require('../models');
 const ProxmoxApi = require('./proxmox-api');
 
@@ -81,79 +80,44 @@ async function pullImageToNode(node, imageSpec) {
 
     console.log(`[OCI Build] Using storage ${targetStorage.storage} on ${node.name}`);
 
-    // Call the Proxmox API to pull the OCI image
-    // This uses the pct pull-image API endpoint available in Proxmox 9+
-    const pullResponse = await axios.post(
-      `${node.apiUrl}/api2/json/nodes/${encodeURIComponent(node.name)}/pull-image`,
-      {
-        image: imageSpec,
-        storage: targetStorage.storage
-      },
-      {
-        headers: {
-          'Authorization': `PVEAPIToken=${node.tokenId}=${node.secret}`
-        },
-        httpsAgent: { rejectUnauthorized: node.tlsVerify !== false }
-      }
-    );
-
-    // The response contains a task ID that we should monitor
-    const upid = pullResponse.data.data;
+    // Use ProxmoxApi.pullImage to request the node pull the OCI image
+    const upid = await api.pullImage(node.name, imageSpec, targetStorage.storage);
     console.log(`[OCI Build] Image pull started on ${node.name}, task: ${upid}`);
 
-    // Optionally wait for task completion
-    await waitForTaskCompletion(node, upid);
+    // Poll task status until stopped or timeout
+    try {
+      const pollIntervalMs = parseInt(process.env.PULL_POLL_MS || '5000', 10);
+      const maxWaitMs = parseInt(process.env.PULL_MAX_WAIT_MS || '600000', 10);
+      const start = Date.now();
+      let statusObj = null;
 
-    console.log(`[OCI Build] Successfully pulled ${imageSpec} to ${node.name}`);
-    return true;
+      while (Date.now() - start < maxWaitMs) {
+        statusObj = await api.taskStatus(node.name, upid);
+        if (statusObj && statusObj.status === 'stopped') break;
+        await new Promise(r => setTimeout(r, pollIntervalMs));
+      }
+
+      if (!statusObj) {
+        throw new Error(`Could not retrieve status for task ${upid}`);
+      }
+
+      if (statusObj.exitstatus && statusObj.exitstatus !== 'OK') {
+        throw new Error(`Task ${upid} failed with exitstatus=${statusObj.exitstatus}`);
+      }
+
+      console.log(`[OCI Build] Successfully pulled ${imageSpec} to ${node.name}`);
+      return true;
+    } catch (err) {
+      console.error(`[OCI Build] Error waiting for task ${upid} on ${node.name}: ${err.message}`);
+      return false;
+    }
   } catch (err) {
     console.error(`[OCI Build] Error pulling image to ${node.name}: ${err.message}`);
     return false;
   }
 }
 
-/**
- * Wait for a Proxmox task to complete
- */
-async function waitForTaskCompletion(node, upid, maxWaitMs = 600000) {
-  const startTime = Date.now();
-  const pollIntervalMs = 5000;
 
-  try {
-    const api = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-      httpsAgent: { rejectUnauthorized: node.tlsVerify !== false }
-    });
-
-    while (Date.now() - startTime < maxWaitMs) {
-      try {
-        const taskStatus = await api.taskStatus(node.name, upid);
-
-        if (taskStatus.status === 'stopped') {
-          if (taskStatus.exitstatus === 'OK') {
-            console.log(`[OCI Build] Task ${upid} completed successfully`);
-            return true;
-          } else {
-            throw new Error(`Task failed: ${taskStatus.exitstatus}`);
-          }
-        }
-
-        // Task still running, wait and retry
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-      } catch (err) {
-        if (err.response?.status === 404) {
-          // Task might have completed and been cleaned up
-          return true;
-        }
-        throw err;
-      }
-    }
-
-    throw new Error(`Task did not complete within ${maxWaitMs}ms`);
-  } catch (err) {
-    console.warn(`[OCI Build] Could not verify task completion: ${err.message}. Continuing...`);
-    return true; // Don't fail, the task might still complete
-  }
-}
 
 /**
  * Main job execution

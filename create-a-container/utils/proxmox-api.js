@@ -235,6 +235,57 @@ class ProxmoxApi {
   }
 
   /**
+   * Pull an OCI image into node storage using Proxmox's pull-image endpoint
+   * @param {string} nodeName
+   * @param {string} image - full image ref (registry/repo:tag)
+   * @param {string} storage
+   * @returns {Promise<string>} - UPID task id
+   */
+  async pullImage(nodeName, image, storage) {
+    // Use global fetch (Node 18+). If not available, this will throw and the caller
+    // can fallback or install a fetch polyfill.
+    if (typeof fetch !== 'function') {
+      throw new Error('Global fetch is not available in this Node runtime. Upgrade to Node 18+ or provide a fetch polyfill.');
+    }
+
+    const url = `${this.baseUrl}/api2/json/nodes/${encodeURIComponent(nodeName)}/pull-image`;
+    const headers = Object.assign({}, this.options && this.options.headers ? this.options.headers : {});
+    headers['Content-Type'] = 'application/json';
+
+    // Determine agent for TLS options if provided
+    let agent = null;
+    try {
+      const https = require('https');
+      const httpsAgent = this.options && this.options.httpsAgent ? this.options.httpsAgent : null;
+      if (httpsAgent) {
+        if (httpsAgent instanceof https.Agent) {
+          agent = httpsAgent;
+        } else if (typeof httpsAgent === 'object' && httpsAgent.rejectUnauthorized !== undefined) {
+          agent = new https.Agent({ rejectUnauthorized: !!httpsAgent.rejectUnauthorized });
+        }
+      }
+    } catch (e) {
+      // ignore if https module not available (unlikely)
+    }
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ image, storage }),
+      // node-fetch / undici supports 'agent' option
+      agent
+    });
+
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) {
+      const errMsg = body && (body.error || JSON.stringify(body)) ? (body.error || JSON.stringify(body)) : resp.statusText;
+      throw new Error(`Proxmox pull-image failed: ${resp.status} ${errMsg}`);
+    }
+
+    return body && body.data ? body.data : null;
+  }
+
+  /**
    * Delete a container
    * @param {string} nodeName 
    * @param {number} containerId 

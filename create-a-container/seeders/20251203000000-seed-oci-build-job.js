@@ -6,7 +6,7 @@ module.exports = {
     await queryInterface.bulkInsert('ScheduledJobs', [
       {
         schedule: '0 2 * * *',
-        command: 'node -e "require(\'./utils/oci-build-job\').run()"',
+        command: 'node create-a-container/bin/oci-build-job.js',
         createdAt: new Date(),
         updatedAt: new Date()
       }

@@ -194,8 +194,8 @@ async function shutdownAndCancelJobs(signal) {
 async function loop() {
   if (shuttingDown) return;
   try {
-    // Check for scheduled jobs that should run
-    await processScheduledJobs();
+    // Check for scheduled jobs that should run (run async so it doesn't block the loop)
+    processScheduledJobs().catch(err => console.error('processScheduledJobs error', err));
     
     // Check for pending jobs
     const job = await claimPendingJob();

@@ -23,8 +23,6 @@
 
 const { spawn } = require('child_process');
 const db = require('../models');
-const axios = require('axios');
-const ociJob = require('./oci-build-job'); // reuse waitForTaskCompletion
 const ProxmoxApi = require('./proxmox-api');
 
 function sanitizeTag(s) {
@@ -93,21 +91,35 @@ async function triggerPullOnNode(node, imageRef) {
 
     console.log(`[build-push-oci] Instructing node ${node.name} to pull ${imageRef} into storage ${targetStorage.storage}`);
 
-    const resp = await axios.post(
-      `${node.apiUrl}/api2/json/nodes/${encodeURIComponent(node.name)}/pull-image`,
-      { image: imageRef, storage: targetStorage.storage },
-      {
-        headers: { 'Authorization': `PVEAPIToken=${node.tokenId}=${node.secret}` },
-        httpsAgent: { rejectUnauthorized: node.tlsVerify !== false }
-      }
-    );
-
-    const upid = resp.data?.data;
+    const upid = await api.pullImage(node.name, imageRef, targetStorage.storage);
     console.log(`[build-push-oci] Pull started on ${node.name}, upid: ${upid}`);
 
-    // reuse waitForTaskCompletion from oci-build-job
-    await ociJob.waitForTaskCompletion(node, upid);
-    return true;
+    // Poll task status until stopped or timeout
+    try {
+      const pollIntervalMs = parseInt(process.env.PULL_POLL_MS || '5000', 10);
+      const maxWaitMs = parseInt(process.env.PULL_MAX_WAIT_MS || '600000', 10);
+      const start = Date.now();
+      let statusObj = null;
+
+      while (Date.now() - start < maxWaitMs) {
+        statusObj = await api.taskStatus(node.name, upid);
+        if (statusObj && statusObj.status === 'stopped') break;
+        await new Promise(r => setTimeout(r, pollIntervalMs));
+      }
+
+      if (!statusObj) {
+        throw new Error(`Could not retrieve status for task ${upid}`);
+      }
+
+      if (statusObj.exitstatus && statusObj.exitstatus !== 'OK') {
+        throw new Error(`Task ${upid} failed with exitstatus=${statusObj.exitstatus}`);
+      }
+
+      return true;
+    } catch (err) {
+      console.error(`[build-push-oci] Error waiting for task ${upid} on ${node.name}: ${err.message}`);
+      return false;
+    }
   } catch (err) {
     console.error(`[build-push-oci] Failed to trigger pull on ${node.name}: ${err.message}`);
     return false;
