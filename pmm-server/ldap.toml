@@ -6,12 +6,14 @@ start_tls = false
 ssl_skip_verify = true
 search_filter = "(uid=%s)"
 search_base_dns = ["dc=mieweb,dc=com"]
+group_search_filter = "(&(objectClass=posixGroup)(memberUid=%s))"
+group_search_filter_base_dns = ["dc=mieweb,dc=com"]
+group_search_filter_user_attribute = "uid"
 
 [servers.attributes]
 name = "givenName"
 surname = "sn"
 username = "uid"
-member_of = "memberOf"
 email = "mail"
 
 [[servers.group_mappings]]
