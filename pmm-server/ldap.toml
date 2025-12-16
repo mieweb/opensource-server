@@ -1,0 +1,20 @@
+[[servers]]
+host = "10.15.81.210"
+port = 636
+use_ssl = true
+start_tls = false
+ssl_skip_verify = true
+search_filter = "(uid=%s)"
+search_base_dns = ["dc=mieweb,dc=com"]
+
+[servers.attributes]
+name = "givenName"
+surname = "sn"
+username = "uid"
+member_of = "memberOf"
+email = "mail"
+
+[[servers.group_mappings]]
+group_dn = "cn=administrators,dc=mieweb,dc=com"
+org_role = "Admin"
+grafana_admin = true
