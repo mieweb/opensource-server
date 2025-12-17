@@ -3,14 +3,9 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.bulkInsert('ScheduledJobs', [
-      {
-        schedule: '0 3 * * *',
-        command: 'node create-a-container/utils/build-push-oci.js',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ], {});
+    // This seeder is now superseded by 20251203000000-seed-oci-build-job.js
+    // which uses the combined oci-build-push-pull.js job.
+    // Keeping this file for migration rollback support only.
   },
 
   async down(queryInterface, Sequelize) {
