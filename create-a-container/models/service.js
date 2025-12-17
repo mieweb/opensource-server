@@ -4,34 +4,9 @@ module.exports = (sequelize, DataTypes) => {
   class Service extends Model {
     static associate(models) {
       Service.belongsTo(models.Container, { foreignKey: 'containerId' });
-      Service.belongsTo(models.ExternalDomain, { foreignKey: 'externalDomainId', as: 'externalDomain' });
-    }
-
-    // finds the next available external port for the given type in the specified range
-    static async nextAvailablePortInRange(type, minPort, maxPort) {
-      // Get all used ports for this type
-      const usedServices = await Service.findAll({
-        where: {
-          type: type,
-          externalPort: {
-            [sequelize.Sequelize.Op.between]: [minPort, maxPort]
-          }
-        },
-        attributes: ['externalPort'],
-        order: [['externalPort', 'ASC']]
-      });
-
-      const usedPorts = new Set(usedServices.map(s => s.externalPort));
-
-      // Find the first available port in the range
-      for (let port = minPort; port <= maxPort; port++) {
-        if (!usedPorts.has(port)) {
-          return port;
-        }
-      }
-
-      // No available ports in range
-      throw new Error(`No available ports in range ${minPort}-${maxPort} for type ${type}`);
+      Service.hasOne(models.HTTPService, { foreignKey: 'serviceId', as: 'httpService' });
+      Service.hasOne(models.TransportService, { foreignKey: 'serviceId', as: 'transportService' });
+      Service.hasOne(models.DnsService, { foreignKey: 'serviceId', as: 'dnsService' });
     }
   }
   Service.init({
@@ -40,52 +15,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     type: {
-      type: DataTypes.ENUM('tcp','udp','http'),
+      type: DataTypes.ENUM('http', 'transport', 'dns'),
       allowNull: false
     },
     internalPort: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false
-    },
-    externalPort: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: true  // NULL for http services
-    },
-    tls: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true  // only used for tcp services
-    },
-    externalHostname: {
-      type: DataTypes.STRING(255),
-      allowNull: true  // only used for http services
-    },
-    externalDomainId: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: {
-        model: 'ExternalDomains',
-        key: 'id'
-      },
-      comment: 'External domain for http services'
-    },
+    }
   }, {
     sequelize,
-    modelName: 'Service',
-    indexes: [
-      {
-        name: 'services_http_unique_hostname_domain',
-        unique: true,
-        fields: ['externalHostname', 'externalDomainId'],
-        where: {
-          type: 'http'
-        }
-      },
-      {
-        name: 'services_layer4_unique_port',
-        unique: true,
-        fields: ['type', 'externalPort']
-      }
-    ]
+    modelName: 'Service'
   });
   return Service;
 };

@@ -138,7 +138,6 @@ textarea,
 select {
     width: 100%;
     padding: 0.75rem;
-    margin-bottom: 1.2rem;
     border: 1px solid #ccc;
     border-radius: 6px;
     font-size: 16px;
@@ -154,6 +153,7 @@ input[type="submit"] {
     color: white;
     font-weight: bold;
     cursor: pointer;
+    margin-top: 1rem;
 }
 
 input[type="submit"]:hover {
@@ -300,7 +300,6 @@ select:focus {
   background-color: #34495e;
   color: #ecf0f1;
   border: 1px solid #4a5f7f;
-  margin-bottom: 0.5rem;
 }
 
 .sidebar #site-selector:focus {
