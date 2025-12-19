@@ -227,13 +227,12 @@ router.post('/', async (req, res) => {
     })
   });
   const vmid = await client.nextId();
-  const upid = await client.createLxc(node.name, {
+  const lxcData = {
     ostemplate,
     vmid,
     cores: 4,
     features: 'nesting=1,keyctl=1,fuse=1',  // allow nested containers with Docker/Podman
     hostname,
-    hookscript: 'local:snippets/hookscript.sh',
     memory: 4096,  // 4GB RAM
     net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
     rootfs: `${ostemplate.split(':')[0]}:50`,  // 50GB root disk on the template's storage
@@ -243,7 +242,14 @@ router.post('/', async (req, res) => {
     start: 1,  // start the container immediately after creation
     tags: req.session.user,
     unprivileged: 1 
-  });
+  };
+  // check if the hookscript is available
+  const availableSnippets = await client.listStorageContent(node.name, 'local', 'snippets');
+  const hookscript = availableSnippets.find(s => s.volid === 'local:snippets/hookscript.sh')?.volid;
+  if (hookscript) {
+    lxcData.hookscript = hookscript;
+  }
+  const upid = await client.createLxc(node.name, lxcData);
   
   // wait for the task to complete
   while (true) {
@@ -268,7 +274,7 @@ router.post('/', async (req, res) => {
       }
     }
     console.error('DNS lookup failed after maximum retries');
-    return null
+    return null;
   })();
   
   const container = await Container.create({
