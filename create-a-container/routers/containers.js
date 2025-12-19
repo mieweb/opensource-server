@@ -231,8 +231,9 @@ router.post('/', async (req, res) => {
     ostemplate,
     vmid,
     cores: 4,
-    features: 'nesting=1',  // allow nested containers
+    features: 'nesting=1,keyctl=1,fuse=1',  // allow nested containers with Docker/Podman
     hostname,
+    hookscript: 'local:snippets/hookscript.sh',
     memory: 4096,  // 4GB RAM
     net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
     rootfs: `${ostemplate.split(':')[0]}:50`,  // 50GB root disk on the template's storage
