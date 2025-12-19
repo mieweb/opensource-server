@@ -1,0 +1,21 @@
+---
+services:
+  pmm-server:
+    image: percona/pmm-server:2
+    restart: unless-stopped
+    ports:
+      - 80:80
+    volumes:
+      - ./data:/srv
+      - ./ldap.toml:/etc/grafana/ldap.toml:ro
+    environment:
+      GF_AUTH_LDAP_ENABLED: true
+      GF_AUTH_LDAP_CONFIG_FILE: /etc/grafana/ldap.toml
+      GF_AUTH_LDAP_ALLOW_SIGNUP: true
+
+  percona-watchtower:
+    image: percona/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --cleanup

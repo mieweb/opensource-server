@@ -1,0 +1,22 @@
+[[servers]]
+host = "10.15.81.210"
+port = 636
+use_ssl = true
+start_tls = false
+ssl_skip_verify = true
+search_filter = "(uid=%s)"
+search_base_dns = ["dc=mieweb,dc=com"]
+group_search_filter = "(&(objectClass=posixGroup)(memberUid=%s))"
+group_search_filter_base_dns = ["dc=mieweb,dc=com"]
+group_search_filter_user_attribute = "uid"
+
+[servers.attributes]
+name = "givenName"
+surname = "sn"
+username = "uid"
+email = "mail"
+
+[[servers.group_mappings]]
+group_dn = "cn=administrators,dc=mieweb,dc=com"
+org_role = "Admin"
+grafana_admin = true
