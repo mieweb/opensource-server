@@ -242,31 +242,14 @@ class ProxmoxApi {
    * @returns {Promise<string>} - UPID task id
    */
   async pullImage(nodeName, image, storage) {
-    // Use global fetch (Node 18+). If not available, this will throw and the caller
-    // can fallback or install a fetch polyfill.
-    if (typeof fetch !== 'function') {
-      throw new Error('Global fetch is not available in this Node runtime. Upgrade to Node 18+ or provide a fetch polyfill.');
-    }
+    // Use global fetch.
 
     const url = `${this.baseUrl}/api2/json/nodes/${encodeURIComponent(nodeName)}/pull-image`;
     const headers = Object.assign({}, this.options && this.options.headers ? this.options.headers : {});
     headers['Content-Type'] = 'application/json';
 
-    // Determine agent for TLS options if provided
-    let agent = null;
-    try {
-      const https = require('https');
-      const httpsAgent = this.options && this.options.httpsAgent ? this.options.httpsAgent : null;
-      if (httpsAgent) {
-        if (httpsAgent instanceof https.Agent) {
-          agent = httpsAgent;
-        } else if (typeof httpsAgent === 'object' && httpsAgent.rejectUnauthorized !== undefined) {
-          agent = new https.Agent({ rejectUnauthorized: !!httpsAgent.rejectUnauthorized });
-        }
-      }
-    } catch (e) {
-      // ignore if https module not available (unlikely)
-    }
+    // Use httpsAgent from options if provided; consumer is responsible for creating it
+    const agent = this.options && this.options.httpsAgent ? this.options.httpsAgent : undefined;
 
     const resp = await fetch(url, {
       method: 'POST',
@@ -283,6 +266,52 @@ class ProxmoxApi {
     }
 
     return body && body.data ? body.data : null;
+  }
+
+  /**
+   * Choose a suitable storage for container templates on a node.
+   * @param {string} nodeName
+   * @param {string|null} preferredStorage
+   * @returns {Promise<string|null>} - storage name or null if none found
+   */
+  async chooseStorageForVztmpl(nodeName, preferredStorage = null) {
+    const storages = await this.datastores(nodeName, 'vztmpl');
+    if (!storages || storages.length === 0) return null;
+    if (preferredStorage) {
+      const found = storages.find(s => s.storage === preferredStorage);
+      if (found) return found.storage;
+    }
+    return storages[0].storage;
+  }
+
+  /**
+   * Pull an image and wait for task completion.
+   * @param {string} nodeName
+   * @param {string} image
+   * @param {string} storage
+   * @param {object} [opts]
+   * @param {number} [opts.pollIntervalMs]
+   * @param {number} [opts.maxWaitMs]
+   * @returns {Promise<boolean>} - true if succeeded
+   */
+  async pullImageAndWait(nodeName, image, storage, opts = {}) {
+    const upid = await this.pullImage(nodeName, image, storage);
+    const pollIntervalMs = opts.pollIntervalMs || parseInt(process.env.PULL_POLL_MS || '5000', 10);
+    const maxWaitMs = opts.maxWaitMs || parseInt(process.env.PULL_MAX_WAIT_MS || '600000', 10);
+    const start = Date.now();
+    let statusObj = null;
+
+    while (Date.now() - start < maxWaitMs) {
+      statusObj = await this.taskStatus(nodeName, upid);
+      if (statusObj && statusObj.status === 'stopped') break;
+      await new Promise(r => setTimeout(r, pollIntervalMs));
+    }
+
+    if (!statusObj) throw new Error(`Could not retrieve status for task ${upid}`);
+    if (statusObj.exitstatus && statusObj.exitstatus !== 'OK') {
+      throw new Error(`Task ${upid} failed with exitstatus=${statusObj.exitstatus}`);
+    }
+    return true;
   }
 
   /**
