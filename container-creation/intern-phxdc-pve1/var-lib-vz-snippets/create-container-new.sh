@@ -159,7 +159,9 @@ if [[ "${AI_CONTAINER^^}" == "PHOENIX" ]]; then
         --tags "$PROXMOX_USERNAME" \
         --tags "$LINUX_DISTRO" \
         --tags "AI" \
-        --onboot 1
+        --onboot 1 \
+        --features fuse=1,keyctl=1,nesting=1 \
+        --hookscript local:snippets/hookscript.sh
 
     run_pct start $CONTAINER_ID
     run_pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
@@ -179,7 +181,9 @@ elif [[ "${AI_CONTAINER^^}" == "FORTWAYNE" ]]; then
         --tags "$PROXMOX_USERNAME" \
         --tags "$LINUX_DISTRO" \
         --tags "AI" \
-        --onboot 1
+        --onboot 1 \
+        --features fuse=1,keyctl=1,nesting=1 \
+        --hookscript local:snippets/hookscript.sh
 
     ssh root@10.250.0.2 pct start $CONTAINER_ID
     ssh root@10.250.0.2 pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser
@@ -217,7 +221,9 @@ else
         --tags "$PROXMOX_USERNAME" \
         --tags "$LINUX_DISTRO" \
         --tags "LDAP" \
-        --onboot 1
+        --onboot 1 \
+        --features fuse=1,keyctl=1,nesting=1 \
+        --hookscript local:snippets/hookscript.sh
 
     run_pct start $CONTAINER_ID
     run_pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role PVEVMUser

@@ -115,7 +115,10 @@ if [ "${GH_ACTION^^}" != "Y" ] || [ "${SELF_HOSTED_RUNNER^^}" == "N" ]; then
 		--tags "$PROXMOX_USERNAME" \
 		--tags "$LINUX_DISTRO" \
 		--tags "LDAP" \
-		--onboot 1 > /dev/null 2>&1
+		--onboot 1 \
+                --features fuse=1,keyctl=1,nesting=1 \
+                --hookscript local:snippets/hookscript.sh \
+                > /dev/null 2>&1
 
 	pct start $CONTAINER_ID > /dev/null 2>&1
 	pveum aclmod /vms/$CONTAINER_ID --user "$PROXMOX_USERNAME@pve" --role VMUser2 > /dev/null 2>&1
