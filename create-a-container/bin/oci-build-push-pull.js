@@ -52,13 +52,6 @@ function runCommandStreamed(cmd, args, opts = {}) {
 }
 
 /**
- * Get list of pre-built OCI images to pull from registry.
- * Reads environment variables to determine registry and image tags.
- * @returns {Array<{name: string, registry: string, image: string, tag: string}>} List of pre-built image specifications
- */
-// No pre-built images are used; we only operate on site-built images.
-
-/**
  * Build and push a site-specific OCI image using Docker.
  * @param {object} site - Site database object with id, name, domain, internalDomain properties
  * @param {string} registry - Container registry URL (e.g., localhost:5000)
@@ -70,7 +63,7 @@ function runCommandStreamed(cmd, args, opts = {}) {
  * @throws {Error} If docker build or push fails
  */
 async function buildAndPushImageForSite(site, registry, repoBase, buildContext, dockerfilePath, tagSuffix = 'latest') {
-  const domain = site.internalDomain || site.domain || site.name || `site-${site.id}`;
+  const domain = site.internalDomain;
   const sanitized = sanitizeTag(domain);
   const imageRef = `${registry}/${repoBase}/${sanitized}:${tagSuffix}`;
 

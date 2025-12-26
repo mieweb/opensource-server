@@ -25,7 +25,3 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Final image uses the unpacked rootfs
 FROM scratch
 COPY --from=builder /rootfs /
-
-# Optional: allow customizations at build-time (example: run site installer)
-ARG DOMAIN
-RUN true

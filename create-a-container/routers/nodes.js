@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, defaultStorage } = req.body;
     
     await Node.create({
       name,
@@ -126,6 +126,7 @@ router.post('/', async (req, res) => {
       tokenId: tokenId || null,
       secret: secret || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+      defaultStorage: defaultStorage || null,
       siteId
     });
 
@@ -245,13 +246,14 @@ router.put('/:id', async (req, res) => {
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, defaultStorage } = req.body;
     
     const updateData = {
       name,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
+      defaultStorage: defaultStorage || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
     };
 
