@@ -356,9 +356,24 @@ router.post('/', async (req, res) => {
 
   return res.redirect(`/sites/${siteId}/containers`);
 } catch (err) {
-  console.log(err);
-  console.log(err.response?.data?.errors);
-  throw err;
+  console.error('Error creating container:', err);
+  
+  // Handle axios errors with detailed messages
+  let errorMessage = 'Failed to create container: ';
+  if (err.response?.data) {
+    if (err.response.data.errors) {
+      errorMessage += JSON.stringify(err.response.data.errors);
+    } else if (err.response.data.message) {
+      errorMessage += err.response.data.message;
+    } else {
+      errorMessage += err.message;
+    }
+  } else {
+    errorMessage += err.message;
+  }
+  
+  req.flash('error', errorMessage);
+  return res.redirect(`/sites/${siteId}/containers/new`);
 }
 });
 
