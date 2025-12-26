@@ -235,6 +235,86 @@ class ProxmoxApi {
   }
 
   /**
+   * Pull an OCI image into node storage using Proxmox's pull-image endpoint
+   * @param {string} nodeName
+   * @param {string} image - full image ref (registry/repo:tag)
+   * @param {string} storage
+   * @returns {Promise<string>} - UPID task id
+   */
+  async pullImage(nodeName, image, storage) {
+    // Use global fetch.
+
+    const url = `${this.baseUrl}/api2/json/nodes/${encodeURIComponent(nodeName)}/pull-image`;
+    const headers = Object.assign({}, this.options && this.options.headers ? this.options.headers : {});
+    headers['Content-Type'] = 'application/json';
+
+    // Use httpsAgent from options if provided; consumer is responsible for creating it
+    const agent = this.options && this.options.httpsAgent ? this.options.httpsAgent : undefined;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ image, storage }),
+      // node-fetch / undici supports 'agent' option
+      agent
+    });
+
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok) {
+      const errMsg = body && (body.error || JSON.stringify(body)) ? (body.error || JSON.stringify(body)) : resp.statusText;
+      throw new Error(`Proxmox pull-image failed: ${resp.status} ${errMsg}`);
+    }
+
+    return body && body.data ? body.data : null;
+  }
+
+  /**
+   * Choose a suitable storage for container templates on a node.
+   * @param {string} nodeName
+   * @param {string|null} preferredStorage
+   * @returns {Promise<string|null>} - storage name or null if none found
+   */
+  async chooseStorageForVztmpl(nodeName, preferredStorage = null) {
+    const storages = await this.datastores(nodeName, 'vztmpl');
+    if (!storages || storages.length === 0) return null;
+    if (preferredStorage) {
+      const found = storages.find(s => s.storage === preferredStorage);
+      if (found) return found.storage;
+    }
+    return storages[0].storage;
+  }
+
+  /**
+   * Pull an image and wait for task completion.
+   * @param {string} nodeName
+   * @param {string} image
+   * @param {string} storage
+   * @param {object} [opts]
+   * @param {number} [opts.pollIntervalMs]
+   * @param {number} [opts.maxWaitMs]
+   * @returns {Promise<boolean>} - true if succeeded
+   */
+  async pullImageAndWait(nodeName, image, storage, opts = {}) {
+    const upid = await this.pullImage(nodeName, image, storage);
+    const pollIntervalMs = opts.pollIntervalMs || parseInt(process.env.PULL_POLL_MS || '5000', 10);
+    const maxWaitMs = opts.maxWaitMs || parseInt(process.env.PULL_MAX_WAIT_MS || '600000', 10);
+    const start = Date.now();
+    let statusObj = null;
+
+    while (Date.now() - start < maxWaitMs) {
+      statusObj = await this.taskStatus(nodeName, upid);
+      if (statusObj && statusObj.status === 'stopped') break;
+      await new Promise(r => setTimeout(r, pollIntervalMs));
+    }
+
+    if (!statusObj) throw new Error(`Could not retrieve status for task ${upid}`);
+    if (statusObj.exitstatus && statusObj.exitstatus !== 'OK') {
+      throw new Error(`Task ${upid} failed with exitstatus=${statusObj.exitstatus}`);
+    }
+    return true;
+  }
+
+  /**
    * Delete a container
    * @param {string} nodeName 
    * @param {number} containerId 
