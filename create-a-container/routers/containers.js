@@ -227,11 +227,11 @@ router.post('/', async (req, res) => {
     })
   });
   const vmid = await client.nextId();
-  const upid = await client.createLxc(node.name, {
+  const lxcData = {
     ostemplate,
     vmid,
     cores: 4,
-    features: 'nesting=1',  // allow nested containers
+    features: 'nesting=1,keyctl=1,fuse=1',  // allow nested containers with Docker/Podman
     hostname,
     memory: 4096,  // 4GB RAM
     net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
@@ -242,7 +242,14 @@ router.post('/', async (req, res) => {
     start: 1,  // start the container immediately after creation
     tags: req.session.user,
     unprivileged: 1 
-  });
+  };
+  // check if the hookscript is available
+  const availableSnippets = await client.listStorageContent(node.name, 'local', 'snippets');
+  const hookscript = availableSnippets.find(s => s.volid === 'local:snippets/hookscript.sh')?.volid;
+  if (hookscript) {
+    lxcData.hookscript = hookscript;
+  }
+  const upid = await client.createLxc(node.name, lxcData);
   
   // wait for the task to complete
   while (true) {
@@ -267,7 +274,7 @@ router.post('/', async (req, res) => {
       }
     }
     console.error('DNS lookup failed after maximum retries');
-    return null
+    return null;
   })();
   
   const container = await Container.create({
@@ -355,9 +362,24 @@ router.post('/', async (req, res) => {
 
   return res.redirect(`/sites/${siteId}/containers`);
 } catch (err) {
-  console.log(err);
-  console.log(err.response?.data?.errors);
-  throw err;
+  console.error('Error creating container:', err);
+  
+  // Handle axios errors with detailed messages
+  let errorMessage = 'Failed to create container: ';
+  if (err.response?.data) {
+    if (err.response.data.errors) {
+      errorMessage += JSON.stringify(err.response.data.errors);
+    } else if (err.response.data.message) {
+      errorMessage += err.response.data.message;
+    } else {
+      errorMessage += err.message;
+    }
+  } else {
+    errorMessage += err.message;
+  }
+  
+  req.flash('error', errorMessage);
+  return res.redirect(`/sites/${siteId}/containers/new`);
 }
 });
 

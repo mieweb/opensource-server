@@ -256,6 +256,30 @@ class ProxmoxApi {
 
     return response.data;
   }
+
+  /**
+   * List storage content
+   * @param {string} node - The cluster node name
+   * @param {string} storage - The storage identifier
+   * @param {string} [content] - Only list content of this type
+   * @param {number} [vmid] - Only list content for this VMID
+   * @returns {Promise<object[]>} - The storage content list
+   */
+  async listStorageContent(node, storage, content = null, vmid = null) {
+    const params = {};
+    if (content) params.content = content;
+    if (vmid) params.vmid = vmid;
+
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/storage/${storage}/content`,
+      {
+        params,
+        ...this.options
+      }
+    );
+    
+    return response.data.data;
+  }
 }
 
 module.exports = ProxmoxApi;
