@@ -1,0 +1,57 @@
+<%- include('../layouts/header', { 
+  title: 'Templates - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/templates` }
+  ],
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="card-title mb-0">Templates for <%= site.name %></h4>
+      <a class="btn btn-primary" href="/sites/<%= site.id %>/templates/new" role="button" aria-label="Create new template">New Template</a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Display Name</th>
+            <th>Proxmox Template</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (templates && templates.length) { %>
+            <% templates.forEach(template => { %>
+              <tr>
+                <td><strong><%= template.displayName %></strong></td>
+                <td><small class="text-muted"><%= template.proxmoxTemplateName %></small></td>
+                <td>
+                  <a href="/sites/<%= site.id %>/templates/<%= template.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit template <%= template.displayName %>">Edit</a>
+                  <form method="POST" action="/sites/<%= site.id %>/templates/<%= template.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete <%= template.displayName %>? This action cannot be undone.');">
+                    <input type="hidden" name="_method" value="DELETE">
+                    <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete template <%= template.displayName %>">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          <% } else { %>
+            <tr>
+              <td colspan="3" class="text-muted text-center py-4">
+                No templates found. Click "New Template" to create your first one.
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

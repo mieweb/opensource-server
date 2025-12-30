@@ -191,9 +191,11 @@ router.use('/:siteId', setCurrentSite);
 const nodesRouter = require('./nodes');
 const containersRouter = require('./containers');
 const externalDomainsRouter = require('./external-domains');
+const templatesRouter = require('./templates');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
 router.use('/:siteId/external-domains', externalDomainsRouter);
+router.use('/:siteId/templates', templatesRouter);
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {

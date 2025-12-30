@@ -1,0 +1,76 @@
+<%- include('../layouts/header', { 
+  title: (isEdit ? 'Edit Template' : 'New Template') + ' - MIE',
+  breadcrumbs: [
+    { label: 'Sites', url: '/sites' },
+    { label: site.name, url: `/sites/${site.id}/templates` },
+    { label: isEdit ? 'Edit' : 'New', url: '#' }
+  ],
+  colWidth: 'col-lg-8',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4"><%= isEdit ? 'Edit Template' : 'Create New Template' %></h4>
+
+    <form method="POST" action="<%= isEdit ? `/sites/${site.id}/templates/${template.id}` : `/sites/${site.id}/templates` %>">
+      <% if (isEdit) { %>
+        <input type="hidden" name="_method" value="PUT">
+      <% } %>
+      
+      <div class="mb-3">
+        <label for="displayName" class="form-label">Display Name <span class="text-danger">*</span></label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="displayName" 
+          name="displayName" 
+          value="<%= template ? template.displayName : '' %>"
+          required
+          placeholder="Debian 12"
+        >
+        <div class="form-text">Human-readable name for this template</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="proxmoxTemplateName" class="form-label">Proxmox Template <span class="text-danger">*</span></label>
+        <select 
+          class="form-select" 
+          id="proxmoxTemplateName" 
+          name="proxmoxTemplateName"
+          required
+        >
+          <option value="">-- Select a template --</option>
+          <% if (availableTemplates && availableTemplates.length) { %>
+            <% availableTemplates.forEach(tmpl => { %>
+              <option 
+                value="<%= tmpl.volid %>"
+                <%= template && template.proxmoxTemplateName === tmpl.volid ? 'selected' : '' %>
+              >
+                <%= tmpl.name %> (<%= tmpl.node %>)
+              </option>
+            <% }) %>
+          <% } %>
+        </select>
+        <div class="form-text">
+          Select the Proxmox template from available nodes. 
+          <% if (!availableTemplates || availableTemplates.length === 0) { %>
+            <span class="text-warning">No templates found. Please ensure nodes are configured with templates.</span>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <%= isEdit ? 'Update Template' : 'Create Template' %>
+        </button>
+        <a href="/sites/<%= site.id %>/templates" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
