@@ -36,12 +36,12 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         <% if (isEdit) { %>
           <input type="text" id="template" value="<%= container.node.name %>" readonly style="background-color: #e9ecef;">
         <% } else { %>
-          <select id="template" name="template" required>
+          <select id="templateId" name="templateId" required>
             <option value="">Select a template...</option>
             <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
               <% templates.forEach(template => { %>
-                <option value="<%= template.node %>,<%= template.volid %>">
-                  <%= template.name %> (<%= template.node %>)
+                <option value="<%= template.id %>">
+                  <%= template.displayName %>
                 </option>
               <% }) %>
             <% } else { %>

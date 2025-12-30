@@ -21,6 +21,12 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'siteId',
         as: 'externalDomains'
       });
+      
+      // A Site has many Templates
+      Site.hasMany(models.Template, {
+        foreignKey: 'siteId',
+        as: 'templates'
+      });
     }
   }
   Site.init({

@@ -26,6 +26,7 @@
               const containersActive = hasCurrentSite && path.includes(`/sites/${currentSite}/containers`); 
               const nodesActive = hasCurrentSite && path.includes(`/sites/${currentSite}/nodes`); 
               const externalDomainsActive = hasCurrentSite && path.includes(`/sites/${currentSite}/external-domains`); 
+              const templatesActive = hasCurrentSite && path.includes(`/sites/${currentSite}/templates`); 
             %>
             <li class="nav-item site-group" aria-label="Site navigation">
               <div class="d-flex align-items-center nav-link site-selector-wrapper">
@@ -51,6 +52,9 @@
                     </li>
                     <li>
                       <a class="nav-link child-link <%= externalDomainsActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/external-domains" aria-current="<%= externalDomainsActive ? 'page' : '' %>">External Domains</a>
+                    </li>
+                    <li>
+                      <a class="nav-link child-link <%= templatesActive ? 'active' : '' %>" href="/sites/<%= currentSite %>/templates" aria-current="<%= templatesActive ? 'page' : '' %>">Templates</a>
                     </li>
                   <% } %>
                 </ul>

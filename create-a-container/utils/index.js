@@ -1,5 +1,7 @@
 const { spawn } = require('child_process');
+const https = require('https');
 const ProxmoxApi = require('./proxmox-api');
+const { Node, Sequelize } = require('../models');
 
 function run(cmd, args, opts) {
   return new Promise((resolve, reject) => {
@@ -42,8 +44,54 @@ function isSafeRelativeUrl(url) {
     !url.includes('%2F%2E%2E%2F'); // basic check against encoded path traversal
 }
 
+/**
+ * Get available Proxmox templates from all configured nodes for a site
+ * @param {number} siteId - The site ID to query nodes for
+ * @returns {Promise<Array>} - Array of template objects with volid, name, size, node, storage
+ */
+async function getAvailableProxmoxTemplates(siteId) {
+  const templates = [];
+  const nodes = await Node.findAll({
+    where: {
+      [Sequelize.Op.and]: {
+        siteId,
+        apiUrl: { [Sequelize.Op.ne]: null },
+        tokenId: { [Sequelize.Op.ne]: null },
+        secret: { [Sequelize.Op.ne]: null }
+      }
+    },
+  });
+
+  for (const node of nodes) {
+    const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: node.tlsVerify !== false
+      })
+    });
+
+    const datastores = await client.datastores(node.name, 'vztmpl', true);
+
+    for (const datastore of datastores) {
+      const contents = await client.storageContents(node.name, datastore.storage, 'vztmpl');
+      
+      for (const item of contents) {
+        templates.push({
+          volid: item.volid,
+          name: item.volid.split('/').pop(),
+          size: item.size,
+          node: node.name,
+          storage: datastore.storage
+        });
+      }
+    }
+  }
+
+  return templates;
+}
+
 module.exports = {
   ProxmoxApi,
   run,
-  isSafeRelativeUrl
+  isSafeRelativeUrl,
+  getAvailableProxmoxTemplates
 };

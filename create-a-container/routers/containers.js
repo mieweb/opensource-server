@@ -2,14 +2,13 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
+const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Template, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 
 // GET /sites/:siteId/containers/new - Display form for creating a new container
 router.get('/new', requireAuth, async (req, res) => {
-  // verify site exists
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
   if (!site) {
@@ -17,48 +16,11 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get valid container templates from all nodes in this site
-  const templates = [];
-  const nodes = await Node.findAll({
-    where: {
-      [Sequelize.Op.and]: {
-        siteId,
-        apiUrl: { [Sequelize.Op.ne]: null },
-        tokenId: { [Sequelize.Op.ne]: null },
-        secret: { [Sequelize.Op.ne]: null }
-      }
-    },
+  const templates = await Template.findAll({
+    where: { siteId },
+    order: [['displayName', 'ASC']]
   });
 
-  // TODO: use datamodel backed templates instead of querying Proxmox here
-  for (const node of nodes) {
-    const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: node.tlsVerify !== false
-      })
-    });
-
-    // Get datastores for this node
-    const datastores = await client.datastores(node.name, 'vztmpl', true);
-
-    // Iterate over each datastore and get its contents
-    for (const datastore of datastores) {
-      const contents = await client.storageContents(node.name, datastore.storage, 'vztmpl');
-      
-      // Add templates from this storage
-      for (const item of contents) {
-        templates.push({
-          volid: item.volid,
-          name: item.volid.split('/').pop(), // Extract filename from volid
-          size: item.size,
-          node: node.name,
-          storage: datastore.storage
-        });
-      }
-    }
-  }
-
-  // Get external domains for this site
   const externalDomains = await ExternalDomain.findAll({
     where: { siteId },
     order: [['name', 'ASC']]
@@ -68,7 +30,7 @@ router.get('/new', requireAuth, async (req, res) => {
     site,
     templates,
     externalDomains,
-    container: undefined, // Not editing
+    container: undefined,
     req 
   });
 });
@@ -217,10 +179,37 @@ router.post('/', async (req, res) => {
 
   // TODO: build the container async in a Job
   try {
-  // clone the template
-  const { hostname, template, services } = req.body;
-  const [ nodeName, ostemplate ] = template.split(',');
-  const node = await Node.findOne({ where: { name: nodeName, siteId } });
+  const { hostname, templateId, services } = req.body;
+  
+  const template = await Template.findOne({
+    where: { id: templateId, siteId }
+  });
+  
+  if (!template) {
+    req.flash('error', 'Template not found');
+    return res.redirect(`/sites/${siteId}/containers/new`);
+  }
+  
+  const ostemplate = template.proxmoxTemplateName;
+  const [ storage ] = ostemplate.split(':');
+  
+  const nodes = await Node.findAll({
+    where: {
+      [Sequelize.Op.and]: {
+        siteId,
+        apiUrl: { [Sequelize.Op.ne]: null },
+        tokenId: { [Sequelize.Op.ne]: null },
+        secret: { [Sequelize.Op.ne]: null }
+      }
+    },
+  });
+  
+  if (nodes.length === 0) {
+    req.flash('error', 'No configured nodes available for this site');
+    return res.redirect(`/sites/${siteId}/containers/new`);
+  }
+  
+  const node = nodes[0];
   const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
     httpsAgent: new https.Agent({
       rejectUnauthorized: node.tlsVerify !== false
