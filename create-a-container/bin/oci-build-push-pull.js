@@ -103,7 +103,7 @@ async function run(opts = {}) {
   const registry = opts.registry || process.env.LOCAL_REGISTRY || 'localhost:5000';
   const repoBase = opts.repoBase || process.env.OCI_REPO || 'opensource-server';
   const buildContext = opts.buildContext || process.env.BUILD_CONTEXT || '/opt/opensource-server';
-  const dockerfilePath = opts.dockerfilePath || process.env.DOCKERFILE_PATH || '/opt/opensource-server/templates/debian.Dockerfile';
+  const dockerfilePath = opts.dockerfilePath || process.env.DOCKERFILE_PATH || '/opt/opensource-server/create-a-container/templates/debian.Dockerfile';
   const tagSuffix = opts.tagSuffix || process.env.IMAGE_TAG_SUFFIX || 'latest';
 
   try {
