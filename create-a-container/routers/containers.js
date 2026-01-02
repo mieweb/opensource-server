@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, Node, Site, ExternalDomain, Sequelize } = require('../models');
+const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
@@ -97,7 +97,13 @@ router.get('/', requireAuth, async (req, res) => {
       nodeId: nodeIds
     },
     include: [
-      { association: 'services' },
+      { 
+        association: 'services',
+        include: [
+          { association: 'httpService' },
+          { association: 'transportService' }
+        ]
+      },
       { association: 'node', attributes: ['id', 'name'] }
     ]
   });
@@ -105,9 +111,9 @@ router.get('/', requireAuth, async (req, res) => {
   // Map containers to view models
   const rows = containers.map(c => {
     const services = c.services || [];
-    // sshPort: externalPort of service with type tcp and internalPort 22
-    const ssh = services.find(s => s.type === 'tcp' && Number(s.internalPort) === 22);
-    const sshPort = ssh ? ssh.externalPort : null;
+    // sshPort: externalPort of service with type transport, protocol tcp, and internalPort 22
+    const ssh = services.find(s => s.type === 'transport' && s.transportService?.protocol === 'tcp' && Number(s.internalPort) === 22);
+    const sshPort = ssh?.transportService?.externalPort || null;
     // httpPort: internalPort of first service type http
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
@@ -155,10 +161,24 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
       {
         model: Service,
         as: 'services',
-        include: [{
-          model: ExternalDomain,
-          as: 'externalDomain'
-        }]
+        include: [
+          {
+            model: HTTPService,
+            as: 'httpService',
+            include: [{
+              model: ExternalDomain,
+              as: 'externalDomain'
+            }]
+          },
+          {
+            model: TransportService,
+            as: 'transportService'
+          },
+          {
+            model: DnsService,
+            as: 'dnsService'
+          }
+        ]
       }
     ]
   });
@@ -263,41 +283,73 @@ router.post('/', async (req, res) => {
   if (services && typeof services === 'object') {
     for (const key in services) {
       const service = services[key];
-      const { type, internalPort, externalHostname, externalDomainId } = service;
+      const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
       
       // Validate required fields
       if (!type || !internalPort) continue;
       
+      // Determine the service type (http, transport, or dns)
+      let serviceType;
+      let protocol = null;
+      
+      if (type === 'http') {
+        serviceType = 'http';
+      } else if (type === 'srv') {
+        serviceType = 'dns';
+      } else {
+        // tcp or udp
+        serviceType = 'transport';
+        protocol = type;
+      }
+      
       const serviceData = {
         containerId: container.id,
-        type,
+        type: serviceType,
         internalPort: parseInt(internalPort, 10)
       };
 
-      if (type === 'http') {
-        // For HTTP services, set hostname and domain
-        if (externalHostname) {
-          serviceData.externalHostname = externalHostname;
-        }
-        if (externalDomainId && externalDomainId !== '') {
-          serviceData.externalDomainId = parseInt(externalDomainId, 10);
-        }
-        
+      // Create the base service
+      const createdService = await Service.create(serviceData);
+
+      if (serviceType === 'http') {
         // Validate that both hostname and domain are set
-        if (!serviceData.externalHostname || !serviceData.externalDomainId) {
+        if (!externalHostname || !externalDomainId || externalDomainId === '') {
           req.flash('error', 'HTTP services must have both an external hostname and external domain');
           return res.redirect(`/sites/${siteId}/containers/new`);
         }
         
-        serviceData.externalPort = null; // HTTP services don't use external ports
+        // Create HTTPService entry
+        await HTTPService.create({
+          serviceId: createdService.id,
+          externalHostname,
+          externalDomainId: parseInt(externalDomainId, 10)
+        });
+      } else if (serviceType === 'dns') {
+        // Validate DNS name is set
+        if (!dnsName) {
+          req.flash('error', 'DNS services must have a DNS name');
+          return res.redirect(`/sites/${siteId}/containers/new`);
+        }
+        
+        // Create DnsService entry
+        await DnsService.create({
+          serviceId: createdService.id,
+          recordType: 'SRV',
+          dnsName
+        });
       } else {
         // For TCP/UDP services, auto-assign external port
         const minPort = 2000;
         const maxPort = 65565;
-        serviceData.externalPort = await Service.nextAvailablePortInRange(type, minPort, maxPort);
+        const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort);
+        
+        // Create TransportService entry
+        await TransportService.create({
+          serviceId: createdService.id,
+          protocol: protocol,
+          externalPort
+        });
       }
-
-      await Service.create(serviceData);
     }
   }
 
@@ -343,53 +395,97 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     const { services } = req.body;
 
-    // TODO: improve this
-    // Delete all existing services for this container
-    await Service.destroy({
-      where: { containerId: container.id }
-    });
-
-    // Create new services if provided
-    if (services && typeof services === 'object') {
-      for (const key in services) {
-        const service = services[key];
-        const { type, internalPort, externalHostname, externalDomainId } = service;
-        
-        // Validate required fields
-        if (!type || !internalPort) continue;
-        
-        const serviceData = {
-          containerId: container.id,
-          type,
-          internalPort: parseInt(internalPort, 10)
-        };
-
-        if (type === 'http') {
-          // For HTTP services, set hostname and domain
-          if (externalHostname) {
-            serviceData.externalHostname = externalHostname;
-          }
-          if (externalDomainId && externalDomainId !== '') {
-            serviceData.externalDomainId = parseInt(externalDomainId, 10);
-          }
+    // Wrap all database operations in a transaction
+    await sequelize.transaction(async (t) => {
+      // Process services in two phases: delete first, then create new
+      if (services && typeof services === 'object') {
+        // Phase 1: Delete marked services
+        for (const key in services) {
+          const service = services[key];
+          const { id, deleted } = service;
           
-          // Validate that both hostname and domain are set
-          if (!serviceData.externalHostname || !serviceData.externalDomainId) {
-            req.flash('error', 'HTTP services must have both an external hostname and external domain');
-            return res.redirect(`/sites/${siteId}/containers/${containerId}/edit`);
+          if (deleted === 'true' && id) {
+            await Service.destroy({ 
+              where: { id: parseInt(id, 10), containerId: container.id },
+              transaction: t
+            });
           }
-          
-          serviceData.externalPort = null; // HTTP services don't use external ports
-        } else {
-          // For TCP/UDP services, auto-assign external port
-          const minPort = 2000;
-          const maxPort = 65565;
-          serviceData.externalPort = await Service.nextAvailablePortInRange(type, minPort, maxPort);
         }
 
-        await Service.create(serviceData);
+        // Phase 2: Create new services (those without an id or not marked as deleted)
+        for (const key in services) {
+          const service = services[key];
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = service;
+          
+          // Skip if marked as deleted or if it's an existing service (has id)
+          if (deleted === 'true' || id) continue;
+          
+          // Validate required fields
+          if (!type || !internalPort) continue;
+          
+          // Determine the service type (http, transport, or dns)
+          let serviceType;
+          let protocol = null;
+          
+          if (type === 'http') {
+            serviceType = 'http';
+          } else if (type === 'srv') {
+            serviceType = 'dns';
+          } else {
+            // tcp or udp
+            serviceType = 'transport';
+            protocol = type;
+          }
+          
+          const serviceData = {
+            containerId: container.id,
+            type: serviceType,
+            internalPort: parseInt(internalPort, 10)
+          };
+
+          // Create new service
+          const createdService = await Service.create(serviceData, { transaction: t });
+
+          if (serviceType === 'http') {
+            // Validate that both hostname and domain are set
+            if (!externalHostname || !externalDomainId || externalDomainId === '') {
+              throw new Error('HTTP services must have both an external hostname and external domain');
+            }
+            
+            // Create HTTPService entry
+            await HTTPService.create({
+              serviceId: createdService.id,
+              externalHostname,
+              externalDomainId: parseInt(externalDomainId, 10)
+            }, { transaction: t });
+          } else if (serviceType === 'dns') {
+            // Validate DNS name is set
+            if (!dnsName) {
+              throw new Error('DNS services must have a DNS name');
+            }
+            
+            // Create DnsService entry
+            await DnsService.create({
+              serviceId: createdService.id,
+              recordType: 'SRV',
+              dnsName
+            }, { transaction: t });
+          } else {
+            // For TCP/UDP services, auto-assign external port
+            const minPort = 2000;
+            const maxPort = 65565;
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort);
+            
+            // Create TransportService entry
+            await TransportService.create({
+              serviceId: createdService.id,
+              protocol: protocol,
+              externalPort
+            }, { transaction: t });
+          }
+        }
       }
-    }
+    });
 
     req.flash('success', 'Container services updated successfully');
     return res.redirect(`/sites/${siteId}/containers`);

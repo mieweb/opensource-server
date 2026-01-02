@@ -56,13 +56,28 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       <label style="margin-bottom: 0;">Services</label>
       <button type="button" id="addServiceBtn" class="btn btn-sm btn-primary">Add Service</button>
     </div>
-    <div style="margin-bottom: 20px;">
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+    <div>
+      <table style="width: 100%; border-collapse: collapse;">
         <thead>
           <tr>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">External</th>
+            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">
+              External
+              <a href="#" 
+                 tabindex="0" 
+                 role="button"
+                 data-bs-toggle="popover" 
+                 data-bs-trigger="click"
+                 data-bs-placement="top"
+                 data-bs-html="true"
+                 data-bs-title="External Field Guide"
+                 data-bs-content="<strong>HTTP:</strong> Enter a hostname and select an external domain.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
+                 onclick="event.preventDefault();"
+                 style="text-decoration: none; margin-left: 5px; color: #0d6efd; cursor: pointer;">
+                <i class="bi bi-question-circle"></i>
+              </a>
+            </th>
             <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
           </tr>
         </thead>
@@ -79,18 +94,55 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
 
 <script>
   const isEdit = <%- isEdit ? 'true' : 'false' %>;
-  const existingServices = <%- isEdit ? JSON.stringify(container.services.map(s => ({
+  const siteInternalDomain = <%- JSON.stringify(site.internalDomain || '') %>;
+  const existingServices = <%- isEdit && container && container.services ? JSON.stringify(container.services.map(s => ({
+    id: s.id,
     type: s.type,
     internalPort: s.internalPort,
-    externalHostname: s.externalHostname || '',
-    externalDomainId: s.externalDomainId || ''
+    httpService: s.httpService ? {
+      externalHostname: s.httpService.externalHostname,
+      externalDomainId: s.httpService.externalDomainId
+    } : null,
+    transportService: s.transportService ? {
+      protocol: s.transportService.protocol,
+      externalPort: s.transportService.externalPort
+    } : null,
+    dnsService: s.dnsService ? {
+      dnsName: s.dnsService.dnsName
+    } : null
   }))) : '[]' %>;
   const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
   let serviceCounter = 0;
 
-  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '') {
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '') {
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
+    const isExisting = !!serviceId;
+    
+    // Hidden fields for serviceId and deleted flag
+    if (serviceId) {
+      const serviceIdInput = document.createElement('input');
+      serviceIdInput.type = 'hidden';
+      serviceIdInput.name = `services[${serviceCounter}][id]`;
+      serviceIdInput.value = serviceId;
+      row.appendChild(serviceIdInput);
+    }
+    
+    const deletedInput = document.createElement('input');
+    deletedInput.type = 'hidden';
+    deletedInput.name = `services[${serviceCounter}][deleted]`;
+    deletedInput.value = 'false';
+    deletedInput.id = `service-deleted-${serviceCounter}`;
+    row.appendChild(deletedInput);
+    
+    // Hidden field for external port (for transport services)
+    if (externalPort) {
+      const externalPortInput = document.createElement('input');
+      externalPortInput.type = 'hidden';
+      externalPortInput.name = `services[${serviceCounter}][externalPort]`;
+      externalPortInput.value = externalPort;
+      row.appendChild(externalPortInput);
+    }
     
     // Type cell
     const typeCell = document.createElement('td');
@@ -101,9 +153,10 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     typeSelect.className = 'service-type';
     typeSelect.dataset.index = serviceCounter;
     typeSelect.required = true;
-    typeSelect.style.cssText = 'width: 100%; padding: 4px;';
+    typeSelect.disabled = isExisting;
+    typeSelect.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
-    ['http', 'tcp', 'udp'].forEach(optionType => {
+    ['http', 'tcp', 'udp', 'srv'].forEach(optionType => {
       const option = document.createElement('option');
       option.value = optionType;
       option.textContent = optionType.toUpperCase();
@@ -126,7 +179,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     portInput.min = '1';
     portInput.max = '65535';
     portInput.required = true;
-    portInput.style.cssText = 'width: 100%; padding: 4px;';
+    portInput.disabled = isExisting;
+    portInput.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
     internalPortCell.appendChild(portInput);
     
@@ -141,10 +195,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.textContent = 'Remove';
+    removeBtn.id = `remove-btn-${serviceCounter}`;
+    removeBtn.textContent = 'Delete';
     removeBtn.style.cssText = 'padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;';
     const currentIndex = serviceCounter; // Capture the current value
-    removeBtn.onclick = () => removeServiceRow(currentIndex);
+    removeBtn.onclick = () => toggleDeleteService(currentIndex);
     
     actionCell.appendChild(removeBtn);
     
@@ -155,11 +210,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     document.getElementById('servicesTableBody').appendChild(row);
     
-    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId);
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting, dnsName);
     serviceCounter++;
   }
 
-  function updateExternalCell(index, type, hostname = '', domainId = '') {
+  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false, dnsName = '') {
     const cell = document.getElementById(`external-cell-${index}`);
     
     // Clear existing content
@@ -181,14 +236,16 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       hostnameInput.name = `services[${index}][externalHostname]`;
       hostnameInput.value = hostname;
       hostnameInput.placeholder = 'hostname';
-      hostnameInput.style.cssText = 'flex: 1; padding: 4px;';
+      hostnameInput.disabled = isExisting;
+      hostnameInput.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
       
       const dot = document.createElement('span');
       dot.textContent = '.';
       
       const domainSelect = document.createElement('select');
       domainSelect.name = `services[${index}][externalDomainId]`;
-      domainSelect.style.cssText = 'flex: 1; padding: 4px;';
+      domainSelect.disabled = isExisting;
+      domainSelect.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
       
       externalDomains.forEach(domain => {
         const option = document.createElement('option');
@@ -204,20 +261,64 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       container.appendChild(dot);
       container.appendChild(domainSelect);
       cell.appendChild(container);
+    } else if (type === 'srv') {
+      // SRV record - DNS name input with internal domain display
+      const container = document.createElement('div');
+      container.style.cssText = 'display: flex; gap: 5px; align-items: center;';
+      
+      const dnsNameInput = document.createElement('input');
+      dnsNameInput.type = 'text';
+      dnsNameInput.name = `services[${index}][dnsName]`;
+      dnsNameInput.value = dnsName;
+      dnsNameInput.placeholder = '_service._tcp';
+      dnsNameInput.disabled = isExisting;
+      dnsNameInput.style.cssText = `flex: 1; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
+      
+      const dot = document.createElement('span');
+      dot.textContent = '.';
+      
+      const domainSpan = document.createElement('span');
+      domainSpan.textContent = siteInternalDomain;
+      domainSpan.style.cssText = 'padding: 4px; color: #666;';
+      
+      container.appendChild(dnsNameInput);
+      container.appendChild(dot);
+      container.appendChild(domainSpan);
+      cell.appendChild(container);
     } else {
+      // Transport services (tcp/udp)
       const input = document.createElement('input');
       input.type = 'text';
-      input.value = 'autoassign';
+      input.value = externalPort ? externalPort : 'autoassign';
       input.disabled = true;
       input.style.cssText = 'width: 100%; padding: 4px; background-color: #e9ecef;';
       cell.appendChild(input);
     }
   }
 
-  function removeServiceRow(index) {
+  function toggleDeleteService(index) {
     const row = document.getElementById(`service-row-${index}`);
-    if (row) {
-      row.remove();
+    const deletedInput = document.getElementById(`service-deleted-${index}`);
+    const removeBtn = document.getElementById(`remove-btn-${index}`);
+    
+    if (!row || !deletedInput || !removeBtn) return;
+    
+    const isDeleted = deletedInput.value === 'true';
+    
+    if (isDeleted) {
+      // Undo deletion
+      deletedInput.value = 'false';
+      row.style.opacity = '1';
+      row.style.textDecoration = 'none';
+      removeBtn.textContent = 'Delete';
+      removeBtn.style.backgroundColor = '#dc3545';
+    } else {
+      // Mark for deletion
+      deletedInput.value = 'true';
+      row.style.opacity = '0.5';
+      row.style.textDecoration = 'line-through';
+      removeBtn.textContent = 'Undo';
+      removeBtn.style.backgroundColor = '#6c757d';
     }
   }
 
@@ -229,7 +330,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     if (e.target.classList.contains('service-type')) {
       const index = e.target.dataset.index;
       const type = e.target.value;
-      updateExternalCell(index, type);
+      // Try to find existing external port from hidden field
+      const row = document.getElementById(`service-row-${index}`);
+      const externalPortInput = row?.querySelector('input[name*="[externalPort]"]');
+      const externalPort = externalPortInput?.value || null;
+      updateExternalCell(index, type, '', '', externalPort);
     }
   });
 
@@ -239,7 +344,22 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   if (isEdit && existingServices.length > 0) {
     // Load existing services when editing
     existingServices.forEach(service => {
-      addServiceRow(service.type, service.internalPort, service.externalHostname, service.externalDomainId);
+      let type, externalHostname = '', externalDomainId = '', externalPort = null, dnsName = '';
+      
+      if (service.type === 'http') {
+        type = 'http';
+        externalHostname = service.httpService?.externalHostname || '';
+        externalDomainId = service.httpService?.externalDomainId || '';
+      } else if (service.type === 'dns') {
+        type = 'srv';
+        dnsName = service.dnsService?.dnsName || '';
+      } else {
+        // transport service
+        type = service.transportService?.protocol || 'tcp';
+        externalPort = service.transportService?.externalPort || null;
+      }
+      
+      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort, dnsName);
     });
   } else {
     // Add default HTTP service on port 80 with hostname from form for new containers

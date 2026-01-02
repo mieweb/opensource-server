@@ -1,7 +1,12 @@
+const dns = require('dns').promises;
+const os = require('os');
+const path = require('path')
 const express = require('express');
-const router = express.Router();
-const { Site, Node, Container, Service, ExternalDomain } = require('../models');
+const stringify = require('dotenv-stringify');
+const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain, sequelize } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
+
+const router = express.Router();
 
 // GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
 router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
@@ -14,7 +19,15 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
-        attributes: ['macAddress', 'ipv4Address', 'hostname']
+        attributes: ['macAddress', 'ipv4Address', 'hostname'],
+        include: [{
+          model: Service,
+          as: 'services',
+          include: [{
+            model: DnsService,
+            as: 'dnsService'
+          }]
+        }]
       }]
     }]
   });
@@ -42,10 +55,20 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
         include: [{
           model: Service,
           as: 'services',
-          include: [{
-            model: ExternalDomain,
-            as: 'externalDomain'
-          }]
+          include: [
+            {
+              model: HTTPService,
+              as: 'httpService',
+              include: [{
+                model: ExternalDomain,
+                as: 'externalDomain'
+              }]
+            },
+            {
+              model: TransportService,
+              as: 'transportService'
+            }
+          ]
         }]
       }]
     }, {
@@ -53,7 +76,7 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
       as: 'externalDomains'
     }]
   });
-  
+
   // Flatten services from site→nodes→containers→services
   const allServices = [];
   site?.nodes?.forEach(node => {
@@ -68,10 +91,94 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   
   // Filter by type
   const httpServices = allServices.filter(s => s.type === 'http');
-  const streamServices = allServices.filter(s => s.type === 'tcp' || s.type === 'udp');
+  const streamServices = allServices.filter(s => s.type === 'transport');
   
   res.set('Content-Type', 'text/plain');
   return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
+});
+
+// GET /sites/:siteId/ldap.conf - Public endpoint for LDAP configuration
+router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  const site = await Site.findByPk(siteId);
+  if (!site) {
+    return res.status(404).send('Site not found');
+  }
+
+  // define the environment object
+  const env = {
+    AUTH_BACKENDS: 'sql',
+    DIRECTORY_BACKEND: 'sql',
+  };
+
+  // Get the real IP from the request or the x-forwarded-for header
+  // and do a reverse DNS lookup to get the hostname. If the clientIP is any
+  // localhost address, use the FQDN of the server instead.
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+  const isLocalhost = clientIp === '127.0.0.1' || 
+                      clientIp === '::1' || 
+                      clientIp === '::ffff:127.0.0.1' ||
+                      clientIp === 'localhost';
+  if (isLocalhost) {
+    env.LDAP_COMMON_NAME = os.hostname();
+  } else {
+    env.LDAP_COMMON_NAME = await dns.reverse(clientIp).then(names => names[0]).catch(() => clientIp);
+  }
+
+  // Parse site.internalDomain into DN format, i.e. dc=example,dc=com
+  env.LDAP_BASE_DN = site.internalDomain
+    .split('.')
+    .map(part => `dc=${part}`)
+    .join(',');
+
+  // Parse the DB config from the environment variables used in
+  // config/config.js and construct the SQL URL
+  const config = require('../config/config')[process.env.NODE_ENV || 'development'];   
+  const sqlUrlBuilder = new URL(`${config.dialect}://`);
+  sqlUrlBuilder.username = config.username || '';
+  sqlUrlBuilder.password = config.password || '';
+  sqlUrlBuilder.hostname = config.host || '';
+  sqlUrlBuilder.port = config.port || '';
+  sqlUrlBuilder.pathname = config.database || path.resolve(config.storage);
+  env.SQL_URI = sqlUrlBuilder.toString();
+
+  // Use sequelize to generate properly quoted queries for the current database dialect
+  const qi = sequelize.getQueryInterface();
+  env.SQL_QUERY_ALL_USERS = `
+    SELECT
+      ${qi.quoteIdentifier('uid')} AS username,
+      ${qi.quoteIdentifier('uidNumber')} AS uid_number,
+      ${qi.quoteIdentifier('gidNumber')} AS gid_number,
+      ${qi.quoteIdentifier('cn')} AS full_name,
+      ${qi.quoteIdentifier('sn')} AS surname,
+      ${qi.quoteIdentifier('mail')},
+      ${qi.quoteIdentifier('homeDirectory')} AS home_directory,
+      ${qi.quoteIdentifier('userPassword')} AS password
+    FROM ${qi.quoteIdentifier('Users')}
+  `.replace(/\n/g, ' ');
+  env.SQL_QUERY_ONE_USER = `
+    ${env.SQL_QUERY_ALL_USERS}
+    WHERE ${qi.quoteIdentifier('uid')} = ?
+  `.replace(/\n/g, ' ');
+
+  env.SQL_QUERY_ALL_GROUPS = `
+    SELECT
+      g.${qi.quoteIdentifier('cn')} AS name,
+      g.${qi.quoteIdentifier('gidNumber')} AS gid_number
+    FROM ${qi.quoteIdentifier('Groups')} g
+  `.replace(/\n/g, ' ');
+  env.SQL_QUERY_GROUPS_BY_MEMBER = `
+    ${env.SQL_QUERY_ALL_GROUPS}
+    INNER JOIN ${qi.quoteIdentifier('UserGroups')} ug
+      ON g.${qi.quoteIdentifier('gidNumber')} = ug.${qi.quoteIdentifier('gidNumber')}
+    INNER JOIN ${qi.quoteIdentifier('Users')} u
+      ON ug.${qi.quoteIdentifier('uidNumber')} = u.${qi.quoteIdentifier('uidNumber')}
+    WHERE u.${qi.quoteIdentifier('uid')} = ?
+  `.replace(/\n/g, ' ');
+
+  res.set('Content-Type', 'text/plain');
+  return res.send(stringify(env));
 });
 
 // Apply auth to all routes below this point

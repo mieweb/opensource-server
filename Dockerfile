@@ -45,9 +45,38 @@ RUN apt update && apt -y install git make npm
 
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
-COPY . /opt/opensource-server
-WORKDIR /opt/opensource-server
-RUN make install
+ARG OPENSOURCE_SERVER_BRANCH=main
+RUN git clone \
+        --branch=${OPENSOURCE_SERVER_BRANCH} \
+        https://github.com/mieweb/opensource-server.git \
+        /opt/opensource-server \
+    && cd /opt/opensource-server \
+    && make install
+
+# Install the ldap-gateway package
+ARG LDAP_GATEWAY_BRANCH=main
+RUN git clone \
+        --branch=${LDAP_GATEWAY_BRANCH} \
+        https://github.com/mieweb/LDAPServer.git \
+        /opt/ldap-gateway \
+    && cd /opt/ldap-gateway \
+    && npm install \
+    && npm run build \
+    && adduser --system --group --disabled-login --no-create-home --home /nonexistent ldap-gateway \
+    && chown -R ldap-gateway:ldap-gateway /opt/ldap-gateway \
+    && cp /opt/ldap-gateway/nfpm/systemd/ldap-gateway.service /etc/systemd/system/ldap-gateway.service \
+    && systemctl enable ldap-gateway
+
+# Tag the exposed ports for services handled by the container
+# NGINX (http, https, quic)
+EXPOSE 80
+EXPOSE 443
+EXPOSE 443/udp
+# DNSMASQ
+EXPOSE 53
+EXPOSE 53/udp
+# LDAP Gateway
+EXPOSE 686
 
 # Configure systemd to run properly in a container. This isn't nessary for LXC
 # in Proxmox, but is useful for testing with Docker directly.
