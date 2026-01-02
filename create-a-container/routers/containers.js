@@ -38,23 +38,15 @@ router.get('/new', requireAuth, async (req, res) => {
       })
     });
 
-    // Get datastores for this node
-    const datastores = await client.datastores(node.name, 'vztmpl', true);
-
-    // Iterate over each datastore and get its contents
-    for (const datastore of datastores) {
-      const contents = await client.storageContents(node.name, datastore.storage, 'vztmpl');
-      
-      // Add templates from this storage
-      for (const item of contents) {
-        templates.push({
-          volid: item.volid,
-          name: item.volid.split('/').pop(), // Extract filename from volid
-          size: item.size,
-          node: node.name,
-          storage: datastore.storage
-        });
-      }
+    const lxcTemplates = await client.getLxcTemplates(node.name);
+    
+    for (const lxc of lxcTemplates) {
+      templates.push({
+        vmid: lxc.vmid,
+        name: lxc.name,
+        status: lxc.status,
+        node: node.name
+      });
     }
   }
 
@@ -217,9 +209,8 @@ router.post('/', async (req, res) => {
 
   // TODO: build the container async in a Job
   try {
-  // clone the template
   const { hostname, template, services } = req.body;
-  const [ nodeName, ostemplate ] = template.split(',');
+  const [ nodeName, templateVmid ] = template.split(',');
   const node = await Node.findOne({ where: { name: nodeName, siteId } });
   const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
     httpsAgent: new https.Agent({
@@ -227,26 +218,36 @@ router.post('/', async (req, res) => {
     })
   });
   const vmid = await client.nextId();
-  const upid = await client.createLxc(node.name, {
-    ostemplate,
-    vmid,
-    cores: 4,
-    features: 'nesting=1',  // allow nested containers
+  const upid = await client.cloneLxc(node.name, parseInt(templateVmid, 10), vmid, {
     hostname,
-    memory: 4096,  // 4GB RAM
-    net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
-    rootfs: `${ostemplate.split(':')[0]}:50`,  // 50GB root disk on the template's storage
-    searchdomain: site.internalDomain,  // use the site's search domain
-    swap: 0,
-    onboot: 1,  // start the container automatically on node boot
-    start: 1,  // start the container immediately after creation
-    tags: req.session.user,
-    unprivileged: 1 
+    description: `Cloned from template ${templateVmid}`,
+    full: 1
   });
   
   // wait for the task to complete
   while (true) {
     const status = await client.taskStatus(node.name, upid);
+    if (status.status === 'stopped') break;
+  }
+
+  // Configure the cloned container
+  await client.updateLxcConfig(node.name, vmid, {
+    cores: 4,
+    features: 'nesting=1',
+    memory: 4096,
+    net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
+    searchdomain: site.internalDomain,
+    swap: 0,
+    onboot: 1,
+    tags: req.session.user,
+  });
+
+  // Start the container
+  const startUpid = await client.startLxc(node.name, vmid);
+  
+  // wait for the start task to complete
+  while (true) {
+    const status = await client.taskStatus(node.name, startUpid);
     if (status.status === 'stopped') break;
   }
 
@@ -355,9 +356,24 @@ router.post('/', async (req, res) => {
 
   return res.redirect(`/sites/${siteId}/containers`);
 } catch (err) {
-  console.log(err);
-  console.log(err.response?.data?.errors);
-  throw err;
+  console.error('Error creating container:', err);
+  
+  // Handle axios errors with detailed messages
+  let errorMessage = 'Failed to create container: ';
+  if (err.response?.data) {
+    if (err.response.data.errors) {
+      errorMessage += JSON.stringify(err.response.data.errors);
+    } else if (err.response.data.message) {
+      errorMessage += err.response.data.message;
+    } else {
+      errorMessage += err.message;
+    }
+  } else {
+    errorMessage += err.message;
+  }
+  
+  req.flash('error', errorMessage);
+  return res.redirect(`/sites/${siteId}/containers/new`);
 }
 });
 
