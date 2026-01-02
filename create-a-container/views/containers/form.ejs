@@ -40,7 +40,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
             <option value="">Select a template...</option>
             <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
               <% templates.forEach(template => { %>
-                <option value="<%= template.node %>,<%= template.volid %>">
+                <option value="<%= template.node %>,<%= template.vmid %>">
                   <%= template.name %> (<%= template.node %>)
                 </option>
               <% }) %>

@@ -256,6 +256,69 @@ class ProxmoxApi {
 
     return response.data;
   }
+
+  /**
+   * Get LXC template containers on a node
+   * @param {string} node - The node name
+   * @returns {Promise<Array>} - Array of LXC templates
+   */
+  async getLxcTemplates(node) {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc`,
+      this.options
+    );
+    return response.data.data.filter(lxc => lxc.template === 1);
+  }
+
+  /**
+   * Clone an LXC container from a template
+   * @param {string} node - The node name
+   * @param {number} vmid - The template container VMID to clone from
+   * @param {number} newid - The new container VMID
+   * @param {object} options - Additional options (hostname, description, storage, etc.)
+   * @returns {Promise<string>} - The task UPID
+   */
+  async cloneLxc(node, vmid, newid, options = {}) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/clone`,
+      {
+        newid,
+        ...options
+      },
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
+   * Update LXC container configuration
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @param {object} config - Configuration options to update
+   * @returns {Promise<void>}
+   */
+  async updateLxcConfig(node, vmid, config) {
+    await axios.put(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/config`,
+      config,
+      this.options
+    );
+  }
+
+  /**
+   * Start an LXC container
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @returns {Promise<string>} - The task UPID
+   */
+  async startLxc(node, vmid) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/status/start`,
+      {},
+      this.options
+    );
+    return response.data.data;
+  }
 }
 
 module.exports = ProxmoxApi;
