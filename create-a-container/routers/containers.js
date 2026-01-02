@@ -241,7 +241,6 @@ router.post('/', async (req, res) => {
     onboot: 1,  // start the container automatically on node boot
     start: 1,  // start the container immediately after creation
     tags: req.session.user,
-    unprivileged: 1 
   };
   // check if the hookscript is available
   const availableSnippets = await client.listStorageContent(node.name, 'local', 'snippets');
@@ -579,14 +578,14 @@ router.delete('/:id', requireAuth, async (req, res) => {
     );
 
     await api.deleteContainer(node.name, container.containerId, true, true);
+  
+    // Delete from database (cascade deletes associated services)
+    await container.destroy();
   } catch (error) {
     console.error(error);
-    req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
+    req.flash('error', `Failed to delete container: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
-  
-  // Delete from database (cascade deletes associated services)
-  await container.destroy();
   
   req.flash('success', `Container ${container.hostname} deleted successfully`);
   return res.redirect(`/sites/${siteId}/containers`);
