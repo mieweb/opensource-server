@@ -2,10 +2,12 @@
 sidebar_position: 2
 ---
 
+import { ProxmoxUrl } from '@site/src/components/InstanceUrl';
+
 # Using The Command Line
 
 :::note Note
-This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro.md).
+This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro).
 :::
 
 This guide shows you how to set up a basic LXC container on the MIE Opensource Proxmox Cluster using the command line. We will walk you through several configuration steps, with exact prompts shown below.
@@ -111,7 +113,7 @@ Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Prot
 - Duplicate protocols are not allowed
 
 :::note Note
-To see a full list of protocols supported by our cluster, see the [Protocol Master List](/docs/intro.md).
+To see a full list of protocols supported by our cluster, see the [Protocol Master List](/docs/intro).
 :::
 
 
@@ -128,7 +130,7 @@ Do you want to deploy your project automatically? (y/n) →
 - `n` - No, I'll deploy manually later
 
 :::note Note
-If you choose to deploy automatically, see the documentation for doing so [here](/docs/intro.md).
+If you choose to deploy automatically, see the documentation for doing so [here](/docs/intro).
 :::
 
 ## 8. Container Creation Process
@@ -210,7 +212,7 @@ Save your SSH port number, as well as any port numbers, because you will not be 
 
 ## 10. Viewing your Container on Proxmox
 
-To see your container on the Proxmox GUI, navigate to [https://opensource.mieweb.org:8006](https://opensource.mieweb.org:8006). Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
+To see your container on the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
 
 ![Hostname](img/proxmox-lxc.jpg)
 

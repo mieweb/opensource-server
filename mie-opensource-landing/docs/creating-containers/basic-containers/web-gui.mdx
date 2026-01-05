@@ -2,12 +2,14 @@
 sidebar_position: 1
 ---
 
-# Using a Web GUI
+import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceUrl';
+
+# Using the Web GUI
 :::note Note
-This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro.md).
+This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro).
 :::
 
-This guide shows you how to set up a basic LXC container on the MIE Opensource Proxmox Cluster using the a Web GUI. The Web GUI can be accessed at [https://create-a-container.opensource.mieweb.org](https://create-a-container.opensource.mieweb.org).
+This guide shows you how to set up a basic LXC container on the MIE Opensource Proxmox Cluster using the a Web GUI. The Web GUI can be accessed at <ContainerCreationUrl><ContainerCreationUrl /></ContainerCreationUrl>.
 
 ## 1. Authenticate Your Proxmox Account
  
@@ -148,7 +150,7 @@ Save your SSH port number, as well as any port numbers, because you will not be 
 
 ## 8. Viewing your Container on Proxmox
 
-To see your container on the Proxmox GUI, navigate to [https://opensource.mieweb.org:8006](https://opensource.mieweb.org:8006). Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
+To see your container on the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
 
 ![Hostname](img/proxmox-lxc.jpg)
 
