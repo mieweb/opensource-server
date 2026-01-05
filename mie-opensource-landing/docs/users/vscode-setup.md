@@ -11,7 +11,7 @@ When managing an entire repository, many developers prefer to work in an IDE, su
 Before getting started, ensure you have:
 
 - **VSCode installed** on your local machine
-- **Container created** with Proxmox Launchpad (either [Path 1](/docs/proxmox-launchpad/supplied-runners) or [Path 2](/docs/proxmox-launchpad/automatic-runner-provisioning))
+- **Container created** with Proxmox Launchpad (either [Path 1](/docs/users/proxmox-launchpad/supplied-runners) or [Path 2](/docs/users/proxmox-launchpad/automatic-runner-provisioning))
 - **Container access details** from your deployment output (SSH port, hostname, etc.)
 
 ## 1: Install Remote SSH Extension
@@ -239,4 +239,4 @@ Host dev-environment
 
 ---
 
-**Next Steps**: With VSCode connected to your container, you can now develop directly in your remote environment. Consider exploring [container deployment guides](/docs/creating-containers/advanced-containers/deploying-containers-overview) for automatic application setup.
+**Next Steps**: With VSCode connected to your container, you can now develop directly in your remote environment. Consider exploring [container deployment guides](/docs/users/creating-containers/advanced-containers/deploying-containers-overview) for automatic application setup.

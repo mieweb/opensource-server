@@ -651,10 +651,10 @@ sudo systemctl status actions.runner.*
 ### Alternative Approaches
 
 If you're uncomfortable sharing your PAT:
-- Consider using [Path 1: Supplied Runners](/docs/proxmox-launchpad/supplied-runners) instead
+- Consider using [Path 1: Supplied Runners](/docs/users/proxmox-launchpad/supplied-runners) instead
 - Set up your own self-hosted runners for enhanced security
 - Use organization-level runners with restricted permissions
 
 ---
 
-**Next Steps**: Explore [Path 1: Supplied Runners](/docs/proxmox-launchpad/supplied-runners) for a more secure alternative.
+**Next Steps**: Explore [Path 1: Supplied Runners](/docs/users/proxmox-launchpad/supplied-runners) for a more secure alternative.

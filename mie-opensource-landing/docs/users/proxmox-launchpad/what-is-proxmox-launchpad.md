@@ -105,5 +105,5 @@ Ready to start using Proxmox Launchpad? Check out our [setup guides](/docs/categ
 
 ---
 
-**Next Steps**: Jump to [Path 1 Setup](/docs/proxmox-launchpad/supplied-runners) or [Path 2 Setup](/docs/proxmox-launchpad/automatic-runner-provisioning) to get started.
+**Next Steps**: Jump to [Path 1 Setup](/docs/users/proxmox-launchpad/supplied-runners) or [Path 2 Setup](/docs/users/proxmox-launchpad/automatic-runner-provisioning) to get started.
 

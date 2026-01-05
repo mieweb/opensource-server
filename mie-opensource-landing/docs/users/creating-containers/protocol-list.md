@@ -7,7 +7,7 @@ sidebar_position: 3
 Below is a list of all protocols supported by the MIE Proxmox cluster.
 
 :::note Note
-You must specify any additional protocols that you want to use during the container creation process in the command line. If you need to, you can reference that documentation [here](/docs/creating-containers/basic-containers/command-line).
+You must specify any additional protocols that you want to use during the container creation process in the command line. If you need to, you can reference that documentation [here](/docs/users/creating-containers/basic-containers/command-line).
 :::
 
 :::important Important

@@ -15,7 +15,7 @@ This guide walks you through deploying a multi-component application automatical
 
 ## Getting Started
 
-Follow the [basic container creation steps](/docs/creating-containers/basic-containers/command-line) until you reach the automatic deployment prompt:
+Follow the [basic container creation steps](/docs/users/creating-containers/basic-containers/command-line) until you reach the automatic deployment prompt:
 
 ```
 Do you want to deploy your project automatically? (y/n) →  

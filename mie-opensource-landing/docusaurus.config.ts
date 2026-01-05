@@ -1,6 +1,9 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -88,24 +91,24 @@ const config: Config = {
                             to: "/docs/intro",
                         },
                         {
-                            label: "Proxmox",
-                            to: "/docs/category/introduction-to-proxmox"
-                        },
-                        {
                             label: "Creating Containers",
-                            to: "/docs/creating-containers/basic-containers/web-gui",
+                            to: "/docs/users/creating-containers/basic-containers/web-gui",
                         },
                         {
                             label: "Proxmox Launchpad",
-                            to: "/docs/proxmox-launchpad/what-is-proxmox-launchpad",
+                            to: "/docs/users/proxmox-launchpad/what-is-proxmox-launchpad",
                         },
                         {
                             label: "Monitoring Containers",
-                            to: "/docs/monitoring-container",
+                            to: "/docs/users/monitoring-container",
                         },
                         {
                             label: "VSCode Integration",
-                            to: "/docs/vscode-setup",
+                            to: "/docs/users/vscode-setup",
+                        },
+                        {
+                            label: "Cluster Architecture",
+                            to: "/docs/developers/how-our-cluster-works",
                         },
                     ],
                 },

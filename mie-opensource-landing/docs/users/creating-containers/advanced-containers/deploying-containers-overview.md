@@ -27,7 +27,7 @@ A **single component application** consists of one independent service or proces
 - A Meteor application
 
 :::tip Tip
-See the documentation for deploying single-component applications [here](/docs/creating-containers/advanced-containers/single-component).
+See the documentation for deploying single-component applications [here](/docs/users/creating-containers/advanced-containers/single-component).
 :::
 
 ### Multi-Component Applications
@@ -45,7 +45,7 @@ A **multi-component application** consists of multiple independent services that
 - Multiple microservices working together
 
 :::tip Tip
-See the documentation for deploying multi-component applications [here](/docs/creating-containers/advanced-containers/multi-component).
+See the documentation for deploying multi-component applications [here](/docs/users/creating-containers/advanced-containers/multi-component).
 :::
 
 ### Key Differences
@@ -95,6 +95,6 @@ It is recommended to deploy your application on a test container via the command
 ---
 
 Ready to deploy? Choose your deployment method:
-- [Single Component Deployment Guide](/docs/creating-containers/advanced-containers/single-component)
-- [Multi-Component Deployment Guide](/docs/creating-containers/advanced-containers/multi-component)
+- [Single Component Deployment Guide](/docs/users/creating-containers/advanced-containers/single-component)
+- [Multi-Component Deployment Guide](/docs/users/creating-containers/advanced-containers/multi-component)
 

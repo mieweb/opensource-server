@@ -14,7 +14,7 @@ This guide walks you through deploying a single-component application automatica
 
 ## Getting Started
 
-Follow the [basic container creation steps](/docs/creating-containers/basic-containers/command-line) until you reach the automatic deployment prompt:
+Follow the [basic container creation steps](/docs/users/creating-containers/basic-containers/command-line) until you reach the automatic deployment prompt:
 
 ```
 Do you want to deploy your project automatically? (y/n) →  
@@ -293,4 +293,4 @@ Wait up to two minutes for all processes to complete.
 
 ---
 
-**Next Steps:** Once your single-component application is deployed, you can SSH into your container, view logs, or explore [multi-component deployment](/docs/creating-containers/advanced-containers/multi-component) for more complex applications.
+**Next Steps:** Once your single-component application is deployed, you can SSH into your container, view logs, or explore [multi-component deployment](/docs/users/creating-containers/advanced-containers/multi-component) for more complex applications.
