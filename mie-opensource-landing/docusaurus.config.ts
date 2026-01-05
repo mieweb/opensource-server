@@ -28,14 +28,17 @@ const config: Config = {
         locales: ["en"],
     },
 
+    customFields: {
+        proxmoxUrl: process.env.PROXMOX_URL || "https://localhost:8006",
+        containerCreationUrl: process.env.CONTAINER_CREATION_URL || "https://localhost",
+    },
+
     presets: [
         [
             "classic",
             {
                 docs: {
                     sidebarPath: "./sidebars.ts",
-                    editUrl:
-                        "https://github.com/maxklema/mie-opensource-landing/tree/master/",
                 }
                
             } satisfies Preset.Options,
@@ -52,18 +55,13 @@ const config: Config = {
             },
             items: [
                 {
-                    to: "https://create-a-container.opensource.mieweb.org",
+                    to: process.env.CONTAINER_CREATION_URL || "https://create-a-container.opensource.mieweb.org",
                     label: "Create a Container",
                     position: "left",
                 },
                 {
                     to: "https://github.com/marketplace/actions/proxmox-launchpad",
                     label: "Proxmox Launchpad",
-                    position: "left",
-                },
-                {
-                    to: "/projects",
-                    label: "Projects",
                     position: "left",
                 },
                 {
@@ -115,16 +113,12 @@ const config: Config = {
                     title: "Resources",
                     items: [
                         {
-                            label: "Site Source",
-                            href: "https://github.com/maxklema/mie-opensource-landing",
-                        },
-                        {
                             label: "Opensource Cluster Source",
                             href: "https://github.com/mieweb/opensource-server",
                         },
                         {
                             label: "Proxmox Launchpad Source",
-                            href: "https://github.com/maxklema/proxmox-launchpad",
+                            href: "https://github.com/mieweb/launchpad",
                         },
                         {
                             label: "Mieweb Github Organization",

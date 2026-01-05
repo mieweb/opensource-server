@@ -9,6 +9,7 @@ import Heading from "@theme/Heading";
 import Link from "@docusaurus/Link";
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { github } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { useInstanceUrls } from "@site/src/hooks/useInstanceUrls";
 
 function HomepageHeader() {
     return (
@@ -25,11 +26,6 @@ function HomepageHeader() {
                             
                             return (
                                 <HorizontalLayout theme="spacing" className={styles.buttons}>
-                                    <NavButton 
-                                        href="/projects" 
-                                        icon="vaadin:cubes" 
-                                        text="Projects" 
-                                    />
                                     <NavButton 
                                         href="/docs/intro" 
                                         icon="vaadin:arrow-right" 
@@ -179,7 +175,7 @@ function ManagingContainers({GrAdd, GrView, Snippet, Button, Icon, FaCode, FaTer
                             Use the Web GUI
                         </h4>
                         <p>Deploy and manage containers easily through the Proxmox Web GUI. While this approach is less flexible for more complex container setups, its a lot faster.</p>
-                        <Link to="https://create-a-container.opensource.mieweb.org" style={{ textDecoration: 'none' }}>
+                        <Link to={useInstanceUrls().containerCreationUrl} style={{ textDecoration: 'none' }}>
                             <Button theme="primary" className={styles.Button}>
                                 Open Web Interface
                                 <Icon icon="vaadin:arrow-right" slot={'suffix'} />
@@ -213,7 +209,7 @@ function ManagingContainers({GrAdd, GrView, Snippet, Button, Icon, FaCode, FaTer
                             Access via Proxmox Web GUI
                         </h4>
                         <p>Manage all of your containers right from the Proxmox Web GUI. This provides a user-friendly interface for monitoring container metrics and interacting with your applications.</p>
-                        <Link to="https://opensource.mieweb.org:8006" style={{ textDecoration: 'none' }}>
+                        <Link to={useInstanceUrls().proxmoxUrl} style={{ textDecoration: 'none' }}>
                             <Button theme="primary" className={styles.Button}>
                                 Login to Proxmox
                                 <Icon icon="vaadin:arrow-right" slot={'suffix'} />
@@ -374,22 +370,6 @@ export default function Home(): ReactNode {
                             <>
                                 <ManagingContainers GrAdd={GrAdd} GrView={GrView} Snippet={Snippet} Button={Button} Icon={Icon} FaCode={FaCode} FaTerminal={FaTerminal} FaGlobe={FaGlobe} FaShieldVirus={FaShieldVirus} FaRocket={FaRocket} FaEye={FaEye} />
                                 <ProxmoxLaunchpad Button={Button} Icon={Icon} FaGithub={FaGithub} FaRocket={FaRocket} FaCheckCircle={FaCheckCircle} FaComments={FaComments} />
-                                <div className={styles.projectShowcase}>
-                                    <Heading as="h2" className={styles.projectTitle}>Featured Projects</Heading>
-                                    <p>Explore some of our open source projects</p>
-                                    <BrowserOnly fallback={<div>Loading projects...</div>}>
-                                        {() => {
-                                            const ProjectGrid = require("@site/src/components/projectGrid").default;
-                                            return <ProjectGrid />;
-                                        }}
-                                    </BrowserOnly>
-                                    <Link to="/projects" style={{ textDecoration: 'none' }}>
-                                        <Button className={styles.Button} theme="primary">
-                                            View all Projects
-                                            <Icon icon="vaadin:arrow-right" slot={'suffix'} />
-                                        </Button>
-                                    </Link>
-                                </div>
                                 <DocumentationHighlites DiCode={DiCode} GrCpu={GrCpu} GrCheckmark={GrCheckmark} GrCube={GrCube} Button={Button} Icon={Icon} />
                             </>
                         );
