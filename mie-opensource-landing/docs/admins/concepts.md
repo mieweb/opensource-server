@@ -2,50 +2,50 @@
 sidebar_position: 2
 ---
 
-# Concepts
+# Core Concepts
 
-:::note Coming Soon
-This section is under development and will cover the core concepts of administering the MIE Opensource Proxmox Cluster.
-:::
+Understanding the data model and organizational structure is essential for effectively administering the MIE Opensource Proxmox Cluster. This section covers the key concepts you'll work with daily.
 
-## What Will Be Covered
+## Organizational Hierarchy
 
-This guide will explain the fundamental concepts administrators need to understand:
+The cluster management system is organized hierarchically:
 
-### Cluster Architecture
-- How nodes are organized and managed
-- Network topology and isolation
-- Resource allocation strategies
+**Sites** → **Nodes** → **Containers**
 
-### User Management
-- User roles and permissions
-- Account approval workflows
-- Access control policies
+Each level serves a specific purpose in managing your infrastructure.
 
-### Container Management
-- Container lifecycle and states
-- Resource limits and quotas
-- Automated provisioning
+## Key Concepts
 
-### Service Exposure
-- Network protocols and ports
-- Reverse proxy configuration
-- SSL/TLS certificate management
+### [Users & Groups →](users-and-groups)
 
-### Monitoring & Maintenance
-- Health checks and alerts
-- Backup strategies
-- Update procedures
-- Troubleshooting common issues
+User accounts and group-based permissions for access control and LDAP authentication.
 
-## Additional Topics
+### [Sites →](sites)
 
-Future sections will cover:
-- Integration with external authentication (LDAP/SSO)
-- High availability configuration
-- Disaster recovery planning
-- Performance tuning and optimization
+Top-level organization units that define network configuration and house nodes and containers.
+
+### [External Domains →](external-domains)
+
+Domain configuration for exposing HTTP services with automatic SSL/TLS certificate management.
+
+### [Nodes →](nodes)
+
+Individual Proxmox VE servers within a site that host containers.
+
+### [Containers →](containers)
+
+Linux containers (LXC) running on nodes - see the [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for creation guides.
 
 ---
 
-*Check back soon for detailed documentation on these concepts.*
+## Getting Started
+
+New administrators should configure these elements in order:
+
+1. **Users & Groups**: Set up your team's accounts and permissions
+2. **Sites**: Create your first site with network configuration
+3. **External Domains**: Configure domains for service exposure (optional)
+4. **Nodes**: Import or add your Proxmox nodes
+5. **Containers**: Begin deploying containers for your users
+
+Each concept page includes detailed explanations and step-by-step guides for using the web interface.
