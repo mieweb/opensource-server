@@ -48,6 +48,12 @@ const config: Config = {
         ],
     ],
 
+    themes: ["@docusaurus/theme-mermaid"],
+    
+    markdown: {
+        mermaid: true,
+    },
+
     themeConfig: {
         image: "img/docusaurus-social-card.jpg",
         navbar: {
@@ -108,7 +114,7 @@ const config: Config = {
                         },
                         {
                             label: "Cluster Architecture",
-                            to: "/docs/developers/how-our-cluster-works",
+                            to: "/docs/developers/system-architecture",
                         },
                     ],
                 },
