@@ -34,7 +34,7 @@ Individual Proxmox VE servers within a site that host containers.
 
 ### [Containers →](containers)
 
-Linux containers (LXC) running on nodes - see the [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for creation guides.
+Linux containers (LXC) running on nodes - see the [User Documentation](/docs/users/creating-containers/web-gui) for creation guides.
 
 ---
 

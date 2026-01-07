@@ -98,7 +98,7 @@ const config: Config = {
                         },
                         {
                             label: "Creating Containers",
-                            to: "/docs/users/creating-containers/basic-containers/web-gui",
+                            to: "/docs/users/creating-containers/web-gui",
                         },
                         {
                             label: "Proxmox Launchpad",

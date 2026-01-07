@@ -161,7 +161,7 @@ By contributing, you agree that your contributions will be licensed under the sa
 - [System Architecture](system-architecture): Understand the system design
 - [GitHub Repository](https://github.com/mieweb/opensource-server): View code and issues
 - [Administrator Documentation](/docs/admins/): Learn about cluster management
-- [User Documentation](/docs/users/creating-containers/basic-containers/web-gui): Understand user workflows
+- [User Documentation](/docs/users/creating-containers/web-gui): Understand user workflows
 
 ---
 

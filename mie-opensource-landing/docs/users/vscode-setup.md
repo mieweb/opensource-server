@@ -239,4 +239,4 @@ Host dev-environment
 
 ---
 
-**Next Steps**: With VSCode connected to your container, you can now develop directly in your remote environment. Consider exploring [container deployment guides](/docs/users/creating-containers/advanced-containers/deploying-containers-overview) for automatic application setup.
+**Next Steps**: With VSCode connected to your container, you can now develop directly in your remote environment.

@@ -98,7 +98,7 @@ function DocumentationHighlites({ DiCode, GrCpu, GrCheckmark, GrCube, Button, Ic
                             <span>Predefined templates</span>
                         </div>
                         
-                        <Link to="/docs/creating-containers/basic-containers/web-gui" className={styles.docLink}>
+                        <Link to="/docs/users/creating-containers/web-gui" className={styles.docLink}>
                             Get started with containers →
                         </Link>
                     </div>
@@ -163,7 +163,7 @@ function ManagingContainers({GrAdd, GrView, Snippet, Button, Icon, FaCode, FaTer
                             API with curl
                         </h4>
                         <p>Create containers programmatically using our REST API. Authenticate with your credentials and configure services through simple HTTP requests.</p>
-                        <Link to="/docs/users/creating-containers/basic-containers/command-line" className={styles.docLink}>
+                        <Link to="/docs/users/creating-containers/command-line" className={styles.docLink}>
                             View API documentation →
                         </Link>
                     </div>

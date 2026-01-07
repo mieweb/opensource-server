@@ -116,7 +116,7 @@ When creating a service in a container, users can:
    - Requests SSL certificate via ACME
    - Configures reverse proxy routing
 
-See the [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for details on exposing services.
+See the [User Documentation](/docs/users/creating-containers/web-gui) for details on exposing services.
 
 ## Multiple External Domains
 
@@ -208,4 +208,4 @@ After configuring external domains:
 
 1. **[Nodes](nodes)**: Import your Proxmox nodes
 2. **[Containers](containers)**: Deploy containers and expose services
-3. Review the [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for service exposure guides
+3. Review the [User Documentation](/docs/users/creating-containers/web-gui) for service exposure guides

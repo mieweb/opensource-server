@@ -219,7 +219,7 @@ For more information:
 - [Development Workflow](development-workflow): Set up your development environment
 - [Contributing](contributing): Learn how to contribute to the project
 - [Administrator Documentation](/docs/admins/): Configure and manage the cluster
-- [User Documentation](/docs/users/creating-containers/basic-containers/web-gui): Create and deploy containers
+- [User Documentation](/docs/users/creating-containers/web-gui): Create and deploy containers
 - [GitHub Repository](https://github.com/mieweb/opensource-server): Source code and issues
 - [GitHub Repository](https://github.com/mieweb/opensource-server): Source code and issues
 

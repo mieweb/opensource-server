@@ -22,10 +22,8 @@ Most container operations are performed by end users through the web interface o
 
 For detailed guides on creating and managing containers, see the User Documentation:
 
-- **[Web GUI Guide →](/docs/users/creating-containers/basic-containers/web-gui)**: Step-by-step container creation via web interface
-- **[Command Line Guide →](/docs/users/creating-containers/basic-containers/command-line)**: Creating containers via SSH
-- **[Advanced Deployments →](/docs/users/creating-containers/advanced-containers/deploying-containers-overview)**: Automated application deployment
-- **[Protocol List →](/docs/users/creating-containers/protocol-list)**: Supported network protocols for services
+- **[Web GUI Guide →](/docs/users/creating-containers/web-gui)**: Step-by-step container creation via web interface
+- **[Command Line Guide →](/docs/users/creating-containers/command-line)**: Creating containers via API with curl
 
 ## Administrative Tasks
 
@@ -219,7 +217,7 @@ Distribute containers across nodes based on:
 
 For more detailed container management:
 
-- Review [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for creation workflows
+- Review [User Documentation](/docs/users/creating-containers/web-gui) for creation workflows
 - Set up monitoring for container health and resource usage
 - Configure automated backups in Proxmox
 - Review Proxmox documentation for advanced LXC features

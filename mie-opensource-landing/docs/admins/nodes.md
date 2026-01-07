@@ -256,5 +256,5 @@ If seeing SSL certificate errors:
 After adding nodes to your site:
 
 1. **[Containers](containers)**: Learn about container deployment
-2. Review the [User Documentation](/docs/users/creating-containers/basic-containers/web-gui) for creating containers
+2. Review the [User Documentation](/docs/users/creating-containers/web-gui) for creating containers
 3. Set up monitoring and maintenance procedures
