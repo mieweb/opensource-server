@@ -2,224 +2,251 @@
 sidebar_position: 2
 ---
 
-import { ProxmoxUrl } from '@site/src/components/InstanceUrl';
+import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceUrl';
 
-# Using The Command Line
+# Using the API with curl
 
 :::note Note
-This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro).
+This walkthrough assumes that you already have a registered account in the cluster. If not, see [Introduction](/docs/intro).
 :::
 
-This guide shows you how to set up a basic LXC container on the MIE Opensource Proxmox Cluster using the command line. We will walk you through several configuration steps, with exact prompts shown below.
+This guide shows you how to create a basic LXC container on the MIE Opensource Proxmox Cluster using the REST API with curl commands.
 
-## 1. Authenticate Your Proxmox Account
+The API endpoint is: <ContainerCreationUrl />
 
-You'll be prompted for your credentials:
+## Prerequisites
 
-```
-Enter Proxmox Username →  
-Enter Proxmox Password →  
-```
+- Active user account with appropriate permissions
+- Access to a terminal with `curl` installed
+- Knowledge of your site ID (available from the web interface)
+- Cookie storage file for maintaining session authentication
 
-**Options:**
-- Enter your valid Proxmox username and password
-- If authentication fails, you'll see a "Authentication Failed. Try Again" message and be prompted again
+## 1. Authenticate and Establish Session
 
-## 2. Choose a Container Hostname
+First, log in to establish a session. The API uses cookie-based authentication:
 
-This will be your container's subdomain:
-
-```
-Enter Application Name (One-Word) →  
-```
-
-**Options:**
-- Use a single word containing only letters, numbers, and hyphens (e.g., `myapp`, `test-api`)
-- The hostname will be available at `your-hostname.opensource.mieweb.org`
-- If the name is already taken or contains invalid characters, you'll be asked to choose another
-
-## 3. Select a Linux Distribution
-
-The script presents available distributions:
-
-```
-Available Linux Distributions:
-1. Debian 12 (Bookworm)
-2. Rocky 9 
-Choose a Linux Distribution (debian/rocky) →  
+```bash
+curl -X POST 'https://create-a-container.opensource.mieweb.org/login' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -c cookies.txt \
+  --data-urlencode 'username=your_username' \
+  --data-urlencode 'password=your_password'
 ```
 
-**Options:**
-- Type `debian` for Debian 12 (Bookworm)
-- Type `rocky` for Rocky Linux 9
-- Any invalid input defaults to Debian
+**Parameters:**
+- `username` - Your cluster account username
+- `password` - Your cluster account password
+- `-c cookies.txt` - Saves session cookies to a file for subsequent requests
 
-## 4. Configure SSH Access
-
-The script attempts to detect your SSH public key:
-
-```
-Attempting to Detect SSH Public Key...
-```
-
-If no key is detected:
-```
-Could not detect Public Key
-Enter Public Key (Allows Easy Access to Container) [OPTIONAL - LEAVE BLANK TO SKIP] →  
-```
-
-**Options:**
-- Enter your SSH public key (starts with `ssh-rsa`, `ssh-ed25519`, etc.)
-- Leave blank to skip SSH key configuration
-- Invalid keys will prompt for a valid key or blank entry
+**Response:**
+- On success: Redirects to home page (302) with session cookie set
+- On failure: Returns login page with error message
 
 :::important Important
-Entering a public key is highly recommended. It will allow you to access the create-container command line setup without entering a password. Additionally, it will allow you to SSH to your container without having to input your proxmox password, making the connection process faster and more secure.
-
-To create a private/public key pair on your machine, reference [this guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#generating-a-new-ssh-key).
+The `cookies.txt` file contains your authentication session. Keep it secure and delete it when done. The session expires after 24 hours of inactivity.
 :::
 
-## 5. Set the HTTP Port
+## 2. List Available Templates
 
-Specify which port your application will listen on:
+Before creating a container, you need to know what templates are available. Access the container creation form to see available templates:
 
-```
-Enter HTTP Port for your container to listen on (80-60000) →  
-```
-
-**Options:**
-- Any number between 80 and 60,000
-- Common choices: 80, 3000, 8080, 5000, 8000
-- Invalid entries will prompt you to try again
-
-## 6. Add Additional Protocols (Optional)
-
-Configure additional protocols beyond SSH and HTTP:
-
-```
-Does your Container require any protocols other than SSH and HTTP? (y/n) →  
+```bash
+curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers/new' \
+  -b cookies.txt \
+  -L
 ```
 
-If you answer `y`:
-```
-Enter the protocol abbreviation (e.g, LDAP for Lightweight Directory Access Protocol). Type "e" to exit →  
-```
+**Parameters:**
+- Replace `1` with your actual site ID
+- `-b cookies.txt` - Sends authentication cookies with the request
+- `-L` - Follows redirects
 
-**Options:**
-- Answer `y` (yes) or `n` (no)
-- If yes, enter protocol abbreviations one at a time (e.g., `LDAP`, `FTP`, `SMTP`)
-- Type `e` when finished adding protocols
-- The system validates each protocol against a master list
-- Duplicate protocols are not allowed
+This returns an HTML page listing available templates with their node and VMID. Look for template entries in the format `nodeName,templateVmid`.
 
-:::note Note
-To see a full list of protocols supported by our cluster, see the [Protocol Master List](/docs/intro).
-:::
+## 3. Get External Domain IDs
 
+To configure HTTP services, you need the external domain ID:
 
-## 7. Automatic Project Deployment (Optional)
-
-Choose whether to deploy your project when the container starts:
-
-```
-Do you want to deploy your project automatically? (y/n) →  
+```bash
+curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers/new' \
+  -b cookies.txt \
+  -L | grep -o 'externalDomainId" value="[0-9]*"'
 ```
 
-**Options:**
-- `y` - Yes, deploy automatically (opens additional configuration options)
-- `n` - No, I'll deploy manually later
+This extracts available external domain IDs from the form. Note the domain ID you want to use for your HTTP service.
 
-:::note Note
-If you choose to deploy automatically, see the documentation for doing so [here](/docs/intro).
-:::
+## 4. Create a Container
 
-## 8. Container Creation Process
+Create a new container by POSTing to the containers endpoint:
 
-After providing all required information, the system will:
-1. Transfer your configuration to the hypervisor
-2. Begin the container creation process
-3. Set up networking, DNS, and reverse proxy
-4. Configure the container with your specified settings
-5. Deploy your application if requested
-
-Once the container creation process is complete, your container will be accessible via an ssh command in the form of:
-
-```
-ssh -p <your-container-port> <proxmox-username>@opensource.mieweb.org
+```bash
+curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
+  -b cookies.txt \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'hostname=my-app' \
+  --data-urlencode 'template=pve1,100' \
+  --data-urlencode 'services[0][type]=tcp' \
+  --data-urlencode 'services[0][internalPort]=22' \
+  --data-urlencode 'services[1][type]=http' \
+  --data-urlencode 'services[1][internalPort]=3000' \
+  --data-urlencode 'services[1][externalHostname]=my-app' \
+  --data-urlencode 'services[1][externalDomainId]=1'
 ```
 
-## 9. Understanding the Output
+**Required Parameters:**
+- `hostname` - Container hostname (letters, numbers, hyphens only)
+- `template` - Template to clone, format: `nodeName,templateVmid`
 
-Once your container is created, you will receieve an output that looks somthing like this:
+**Service Configuration:**
+
+Services are configured using a zero-indexed array. Each service needs an index starting from 0:
+
+**SSH Service (TCP) - Index 0:**
+```bash
+--data-urlencode 'services[0][type]=tcp' \
+--data-urlencode 'services[0][internalPort]=22'
+```
+- `type` - Must be `tcp` for SSH
+- `internalPort` - Internal SSH port (typically 22)
+- External port is automatically assigned
+
+**HTTP Service - Index 1:**
+```bash
+--data-urlencode 'services[1][type]=http' \
+--data-urlencode 'services[1][internalPort]=3000' \
+--data-urlencode 'services[1][externalHostname]=my-app' \
+--data-urlencode 'services[1][externalDomainId]=1'
+```
+- `type` - Must be `http`
+- `internalPort` - Port your app listens on (80, 3000, 8080, etc.)
+- `externalHostname` - Subdomain for your service
+- `externalDomainId` - ID of the external domain to use
+
+**Additional TCP/UDP Services - Index 2, 3, etc.:**
+```bash
+--data-urlencode 'services[2][type]=tcp' \
+--data-urlencode 'services[2][internalPort]=5432'
+```
+- `type` - Either `tcp` or `udp`
+- `internalPort` - Internal port number
+- External port is automatically assigned in range 2000-65565
+
+**DNS (SRV) Services:**
+```bash
+--data-urlencode 'services[3][type]=srv' \
+--data-urlencode 'services[3][internalPort]=389' \
+--data-urlencode 'services[3][dnsName]=_ldap._tcp'
+```
+- `type` - Must be `srv`
+- `internalPort` - Service port
+- `dnsName` - SRV record name (e.g., `_ldap._tcp`)
+
+## 5. Complete Example
+
+Here's a complete example creating a container with SSH, HTTP, and a custom TCP service:
+
+```bash
+# Step 1: Authenticate
+curl -X POST 'https://create-a-container.opensource.mieweb.org/login' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -c cookies.txt \
+  --data-urlencode 'username=myuser' \
+  --data-urlencode 'password=mypass'
+
+# Step 2: Create container with multiple services
+curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
+  -b cookies.txt \
+  -L \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'hostname=my-web-app' \
+  --data-urlencode 'template=pve1,100' \
+  --data-urlencode 'services[0][type]=tcp' \
+  --data-urlencode 'services[0][internalPort]=22' \
+  --data-urlencode 'services[1][type]=http' \
+  --data-urlencode 'services[1][internalPort]=8080' \
+  --data-urlencode 'services[1][externalHostname]=my-web-app' \
+  --data-urlencode 'services[1][externalDomainId]=1' \
+  --data-urlencode 'services[2][type]=tcp' \
+  --data-urlencode 'services[2][internalPort]=5432'
+
+# Step 3: Clean up
+rm cookies.txt
+```
+
+**Response:**
+- On success: Redirects to the containers list page (302)
+- On failure: Returns error message with details
+
+## 6. Understanding Container Creation
+
+The API performs these steps automatically:
+
+1. **Clone Template** - Clones the specified LXC template
+2. **Configure Resources** - Sets CPU (4 cores), memory (4GB), networking
+3. **Start Container** - Boots the container and waits for it to start
+4. **DNS Registration** - Waits for DHCP lease and DNS propagation
+5. **Service Registration** - Creates service records and configures reverse proxy
+6. **Network Configuration** - Sets up port forwarding and firewall rules
+
+This process typically takes 2-5 minutes. The container will be accessible once DNS propagates and services are configured.
+
+## 7. Listing Your Containers
+
+To view your containers, access the containers list page:
+
+```bash
+curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
+  -b cookies.txt \
+  -L
+```
+
+This returns an HTML page listing all your containers with their details, including hostnames, IP addresses, and port assignments.
+
+## 8. Accessing Your Container
+
+Once created, you can access your container via SSH:
+
+```bash
+ssh -p <assigned-ssh-port> <username>@<hostname>.<internal-domain>
+```
+
+The SSH port is automatically assigned and displayed in the containers list. HTTP services are accessible via:
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔔  COPY THESE PORTS DOWN — For External Access
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌  Note: Your container listens on SSH Port 22 internally,
-    but EXTERNAL traffic must use the SSH port listed below:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅  Hostname Registration: max-demo-container → 10.15.19.181
-🔐  SSH Port               : 2376
-🌐  HTTP Port              : 3000
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦  Container ID        : 116
-🌐  Internal IP         : 10.15.19.181
-🔗  Domain Name         : https://max-demo-container.opensource.mieweb.org
-🛠️  SSH Access          : ssh -p 2376 demouser@max-demo-container.opensource.mieweb.org
-🔑  Container Password  : Your proxmox account password
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NOTE: Additional background scripts are being ran in detached terminal sessions.
-Wait up to two minutes for all processes to complete.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Still not working? Contact Max K. at maxklema@gmail.com
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+https://<externalHostname>.<externalDomain>
 ```
 
-:::important Important
-Your container password is the same as your Proxmox Account Password.
-:::
+## 9. Viewing on Proxmox
 
-The first block will list all of the ports that your container uses. By default, it will display an SSH Port and an HTTP Port. If you added any other special protocols, they will appear there as well.
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅  Hostname Registration: max-demo-container → 10.15.19.181
-🔐  SSH Port               : 2376
-🌐  HTTP Port              : 3000
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-The second block contains network information about your container specifically, including its IP address, public domain name, and ssh command:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦  Container ID        : 116
-🌐  Internal IP         : 10.15.19.181
-🔗  Domain Name         : https://max-demo-container.opensource.mieweb.org
-🛠️  SSH Access          : ssh -p 2376 demouser@max-demo-container.opensource.mieweb.org
-🔑  Container Password  : Your proxmox account password
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-:::note Note
-The IP that is given is an **internal IP** allocated by our local DHCP server. It is not public. Additionally, since we are setting up a basic container, nothing will be deployed yet, so navigating to the domain will return a 502 bad gateway error from our nginx server. This is expected.
-:::
-
-:::warning Warning
-Save your SSH port number, as well as any port numbers, because you will not be able to see them again. This will be fixed at a later time.
-:::
-
-## 10. Viewing your Container on Proxmox
-
-To see your container on the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
+To see your container in the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Your container will be listed with your username in the tags field.
 
 ![Hostname](img/proxmox-lxc.jpg)
 
 :::note Note
-As of writing, you are able to reboot, start, and shutdown your container as you please. However, you must reach out to a cluster admin to delete your container.
+You can start, stop, and reboot your container through the Proxmox interface. To delete a container, contact a cluster administrator.
 :::
+
+## Troubleshooting
+
+**Authentication Failed:**
+- Verify your username and password are correct
+- Check that your account status is active
+- Ensure cookies.txt is being saved correctly
+
+**Template Not Found:**
+- Verify the template exists on the specified node
+- Check that your site ID is correct
+- Ensure the node has templates configured
+
+**Hostname Already Exists:**
+- Choose a different hostname
+- Check the containers list for existing containers
+
+**Service Configuration Errors:**
+- HTTP services require both externalHostname and externalDomainId
+- DNS services require a dnsName
+- Port numbers must be valid integers
 
 ---
 
-**Advanced Options**: For multi-component deployments, custom environment variables, or specific service configurations, refer to the [Advanced Container Configuration](/docs/category/creating-advanced-containers) documentation or contact the MIE team.
+**Advanced Options**: For multi-component deployments or automation, consider using the web interface or scripting with the API. See [Advanced Container Configuration](/docs/category/creating-advanced-containers) for more details.

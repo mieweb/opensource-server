@@ -158,14 +158,14 @@ function ManagingContainers({GrAdd, GrView, Snippet, Button, Icon, FaCode, FaTer
                     <div className={styles.mcInnerDiv}>
                         <h4>
                             <span className={styles.mcInnerDivIcon}>
-                                <FaTerminal size={16} color="#2196F3" />
+                                <FaCode size={16} color="#2196F3" />
                             </span>
-                            SSH Command
+                            API with curl
                         </h4>
-                        <p>Get started quickly with Docker by running a simple container. This command creates and starts a new nginx web server container in detached mode.</p>
-                         <SyntaxHighlighter className={styles.codeSnippet} language="bash" style={github} wrapLongLines={true}>
-                            {"ssh create-container@opensource.mieweb.org"}
-                        </SyntaxHighlighter>
+                        <p>Create containers programmatically using our REST API. Authenticate with your credentials and configure services through simple HTTP requests.</p>
+                        <Link to="/docs/users/creating-containers/basic-containers/command-line" className={styles.docLink}>
+                            View API documentation →
+                        </Link>
                     </div>
                     <div className={styles.mcInnerDiv}>
                         <h4>
