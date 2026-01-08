@@ -20,6 +20,7 @@
   "dependencies": {
     "@docusaurus/core": "3.8.1",
     "@docusaurus/preset-classic": "3.8.1",
+    "@docusaurus/theme-mermaid": "^3.8.1",
     "@heroui/react": "^2.8.2",
     "@heroui/snippet": "^2.2.25",
     "@heroui/system": "^2.4.20",
@@ -33,6 +34,7 @@
     "beautiful-backgrounds": "^0.0.7",
     "clsx": "^2.0.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "framer-motion": "^12.23.12",
     "http-proxy-middleware": "^3.0.5",

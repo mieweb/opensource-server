@@ -74,6 +74,13 @@
 - Use clear cross-references between related documentation files
 - Update the main architecture document when workflow structure changes
 
+### Database Schema Documentation
+- **Keep it current**: When adding or modifying Sequelize models, update `mie-opensource-landing/docs/developers/database-schema.md`
+- **Update the ER diagram**: Add new entities and relationships to the Mermaid diagram
+- **Document all fields**: Include field names, types, constraints, and purpose
+- **Document relationships**: Specify all foreign keys and associations (hasMany, belongsTo, etc.)
+- **Explain patterns**: If using special patterns (STI, polymorphism, etc.), document the reasoning
+
 ## Working with GitHub Actions Workflows
 
 ### Development Philosophy
