@@ -15,7 +15,7 @@ install: install-create-container install-pull-config install-docs
 install-create-container:
 	cd create-a-container && npm install --production
 	cd create-a-container && npm run db:migrate
-	install -m644 -oroot -groot create-a-container/container-creator.service /etc/systemd/system/container-creator.service
+	install -m644 -oroot -groot create-a-container/systemd/container-creator.service /etc/systemd/system/container-creator.service
 	systemctl daemon-reload || true
 	systemctl enable container-creator.service
 	systemctl start container-creator.service || true
