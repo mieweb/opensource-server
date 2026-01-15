@@ -1,6 +1,9 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -28,19 +31,28 @@ const config: Config = {
         locales: ["en"],
     },
 
+    customFields: {
+        proxmoxUrl: process.env.PROXMOX_URL || "https://localhost:8006",
+        containerCreationUrl: process.env.CONTAINER_CREATION_URL || "https://localhost",
+    },
+
     presets: [
         [
             "classic",
             {
                 docs: {
                     sidebarPath: "./sidebars.ts",
-                    editUrl:
-                        "https://github.com/maxklema/mie-opensource-landing/tree/master/",
                 }
                
             } satisfies Preset.Options,
         ],
     ],
+
+    themes: ["@docusaurus/theme-mermaid"],
+    
+    markdown: {
+        mermaid: true,
+    },
 
     themeConfig: {
         image: "img/docusaurus-social-card.jpg",
@@ -52,18 +64,13 @@ const config: Config = {
             },
             items: [
                 {
-                    to: "https://create-a-container.opensource.mieweb.org",
+                    to: process.env.CONTAINER_CREATION_URL || "https://create-a-container.opensource.mieweb.org",
                     label: "Create a Container",
                     position: "left",
                 },
                 {
                     to: "https://github.com/marketplace/actions/proxmox-launchpad",
                     label: "Proxmox Launchpad",
-                    position: "left",
-                },
-                {
-                    to: "/projects",
-                    label: "Projects",
                     position: "left",
                 },
                 {
@@ -90,24 +97,24 @@ const config: Config = {
                             to: "/docs/intro",
                         },
                         {
-                            label: "Proxmox",
-                            to: "/docs/category/introduction-to-proxmox"
-                        },
-                        {
                             label: "Creating Containers",
-                            to: "/docs/creating-containers/basic-containers/web-gui",
+                            to: "/docs/users/creating-containers/web-gui",
                         },
                         {
                             label: "Proxmox Launchpad",
-                            to: "/docs/proxmox-launchpad/what-is-proxmox-launchpad",
+                            to: "/docs/users/proxmox-launchpad/what-is-proxmox-launchpad",
                         },
                         {
                             label: "Monitoring Containers",
-                            to: "/docs/monitoring-container",
+                            to: "/docs/users/monitoring-container",
                         },
                         {
                             label: "VSCode Integration",
-                            to: "/docs/vscode-setup",
+                            to: "/docs/users/vscode-setup",
+                        },
+                        {
+                            label: "Cluster Architecture",
+                            to: "/docs/developers/system-architecture",
                         },
                     ],
                 },
@@ -115,16 +122,12 @@ const config: Config = {
                     title: "Resources",
                     items: [
                         {
-                            label: "Site Source",
-                            href: "https://github.com/maxklema/mie-opensource-landing",
-                        },
-                        {
                             label: "Opensource Cluster Source",
                             href: "https://github.com/mieweb/opensource-server",
                         },
                         {
                             label: "Proxmox Launchpad Source",
-                            href: "https://github.com/maxklema/proxmox-launchpad",
+                            href: "https://github.com/mieweb/launchpad",
                         },
                         {
                             label: "Mieweb Github Organization",
