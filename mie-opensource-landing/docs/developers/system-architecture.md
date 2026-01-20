@@ -22,6 +22,10 @@ graph TB
         NGINX[NGINX<br/>Reverse Proxy]
     end
     
+    subgraph "External Services"
+        PushNotif[Push Notification Service<br/>2FA Authentication]
+    end
+    
     subgraph PVE[Proxmox Cluster]
         LXC[LXC Container]
     end
@@ -31,7 +35,9 @@ graph TB
     API --> PVE
     API --> DNS
     API --> NGINX
+    API --> PushNotif
     LDAP --> DB
+    LDAP --> PushNotif
     LXC -.-> LDAP
     DNS --> LXC
     NGINX --> LXC
@@ -39,10 +45,12 @@ graph TB
     classDef management fill:#e1f5ff,stroke:#01579b
     classDef network fill:#f3e5f5,stroke:#4a148c
     classDef compute fill:#e8f5e9,stroke:#1b5e20
+    classDef external fill:#fff3e0,stroke:#e65100
     
     class WebUI,API,DB,LDAP management
     class DNS,NGINX network
     class LXC compute
+    class PushNotif external
 ```
 
 ## Core Components
@@ -123,6 +131,37 @@ The **LDAP Gateway** is a Node.js-based LDAP server that provides centralized au
 - All users in the `ldapusers` group can SSH into containers
 - User data synchronized from the backend database
 
+### Push Notification Service
+
+The **Push Notification Service** provides two-factor authentication (2FA) via push notifications to users' mobile devices.
+
+**Repository:** [github.com/mieweb/mieweb_auth_app](https://github.com/mieweb/mieweb_auth_app)
+
+**Functionality:**
+- Sends push notifications to users' registered devices during login
+- Allows users to approve or reject login attempts
+- Handles device registration and management
+- Provides timeout mechanism for unanswered notifications
+
+**Authentication Flow:**
+- API server sends notification request with username
+- Service delivers push notification to user's device
+- User approves/rejects the login attempt on their device
+- Service returns the user's decision to the API server
+- API server grants or denies access based on the response
+
+**Integration:**
+- Configurable via the [Settings page](/docs/admins/settings) (admin only)
+- LDAP gateway uses the notification service when `AUTH_BACKENDS` includes `notification`
+- API server validates credentials before sending push notifications
+- Notification URL configured in database settings and propagated to `ldap.conf`
+
+**Configuration:**
+- Push notification URL stored in `Settings` table
+- Feature enabled/disabled via admin interface
+- LDAP containers automatically updated with notification URL
+- No additional container configuration required
+
 ### Backend Database
 
 The **backend database** stores all cluster state and configuration.
@@ -180,13 +219,29 @@ sequenceDiagram
     participant Container
     participant LDAP
     participant DB
+    participant PushNotif as Push Notification<br/>Service
     
     User->>Container: SSH login attempt
     Container->>LDAP: LDAP bind request
     LDAP->>DB: Verify credentials
-    DB-->>LDAP: User authenticated
-    LDAP-->>Container: Authentication success
-    Container-->>User: Login granted
+    DB-->>LDAP: Password validated
+    
+    alt 2FA Enabled
+        LDAP->>PushNotif: Send notification (username)
+        PushNotif->>User: Push notification to device
+        User->>PushNotif: Approve/Reject
+        PushNotif-->>LDAP: User decision
+        alt Approved
+            LDAP-->>Container: Authentication success
+            Container-->>User: Login granted
+        else Rejected or Timeout
+            LDAP-->>Container: Authentication failed
+            Container-->>User: Access denied
+        end
+    else 2FA Disabled
+        LDAP-->>Container: Authentication success
+        Container-->>User: Login granted
+    end
 ```
 
 ### HTTP Service Exposure
