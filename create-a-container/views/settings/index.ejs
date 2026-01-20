@@ -1,0 +1,67 @@
+<%- include('../layouts/header', { 
+  title: 'System Settings - MIE',
+  breadcrumbs: [
+    { label: 'Settings', url: '/settings' }
+  ],
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-4">System Settings</h4>
+
+    <form method="POST" action="/settings" aria-label="System settings form">
+      <div class="mb-4">
+        <h5 class="mb-3">Push Notification 2FA</h5>
+        
+        <div class="mb-3">
+          <label for="push_notification_url" class="form-label">
+            Push Notification URL
+          </label>
+          <input 
+            type="url" 
+            class="form-control" 
+            id="push_notification_url" 
+            name="push_notification_url" 
+            value="<%= pushNotificationUrl %>"
+            placeholder="https://notification-service.example.com"
+            aria-describedby="push_notification_url_help"
+          >
+          <div id="push_notification_url_help" class="form-text">
+            URL of the push notification service endpoint
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check">
+            <input 
+              class="form-check-input" 
+              type="checkbox" 
+              id="push_notification_enabled" 
+              name="push_notification_enabled"
+              <%= pushNotificationEnabled ? 'checked' : '' %>
+              aria-describedby="push_notification_enabled_help"
+            >
+            <label class="form-check-label" for="push_notification_enabled">
+              Enable Push Notification 2FA
+            </label>
+          </div>
+          <div id="push_notification_enabled_help" class="form-text">
+            When enabled, users must approve login attempts via push notification. URL must be configured.
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary" aria-label="Save settings">
+          Save Settings
+        </button>
+        <a href="/" class="btn btn-secondary" aria-label="Cancel and return to home">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

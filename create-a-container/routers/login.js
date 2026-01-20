@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { User } = require('../models');
+const { User, Setting } = require('../models');
 const { isSafeRelativeUrl } = require('../utils');
 
 // GET / - Display login form
@@ -33,6 +33,56 @@ router.post('/', async (req, res) => {
   if (user.status !== 'active') {
     req.flash('error', 'Account is not active. Please contact the administrator.');
     return res.redirect('/login');
+  }
+
+  // Check if push notification 2FA is enabled
+  const settings = await Setting.getMultiple(['push_notification_url', 'push_notification_enabled']);
+  const pushNotificationUrl = settings.push_notification_url || '';
+  const pushNotificationEnabled = settings.push_notification_enabled === 'true';
+
+  if (pushNotificationEnabled && pushNotificationUrl.trim() !== '') {
+    const notificationPayload = {
+      username: user.uid,
+      title: 'Authentication Request',
+      body: 'Please review and respond to your pending authentication request.',
+      actions: [
+        { icon: 'approve', title: 'Approve', callback: 'approve' },
+        { icon: 'reject', title: 'Reject', callback: 'reject' }
+      ]
+    };
+
+    try {
+      const response = await fetch(`${pushNotificationUrl}/send-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(notificationPayload)
+      });
+
+      const result = await response.json();
+
+      // Check for no device found error
+      if (result.success === false && result.error?.includes('No device found with this Username')) {
+        const registrationUrl = pushNotificationUrl;
+        req.flash('error', `No device found with this username. Please register your device at: <a href="${registrationUrl}" target="_blank" rel="noopener noreferrer" style="color: #721c24; text-decoration: underline;">${registrationUrl}</a>`);
+        return res.redirect('/login');
+      }
+
+      if (!response.ok) {
+        req.flash('error', 'Failed to send push notification. Please contact support.');
+        return res.redirect('/login');
+      }
+
+      if (result.action?.toUpperCase() !== 'APPROVE') {
+        req.flash('error', 'Authentication request was denied');
+        return res.redirect('/login');
+      }
+    } catch (error) {
+      console.error('Push notification error:', error);
+      req.flash('error', 'Failed to send push notification. Please contact support.');
+      return res.redirect('/login');
+    }
   }
 
   // Set session variables

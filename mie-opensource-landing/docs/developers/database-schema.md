@@ -135,6 +135,49 @@ erDiagram
         int id PK
         string secret UK
     }
+
+    Settings {
+        string key PK,UK
+        string value
+    }
+```
+        string associatedResource
+        enum status "pending,running,success,failure,cancelled"
+    }
+
+    JobStatuses {
+        int id PK
+        int jobId FK
+        text message
+    }
+
+    Users {
+        int uidNumber PK
+        string username UK
+        string cn "Common Name"
+        string sn "Surname"
+        string givenName
+        string mail UK
+        text sshPublicKey
+        string userPassword
+        string status "pending,active,suspended"
+    }
+
+    Groups {
+        int gidNumber PK
+        string cn UK "Group Name"
+        boolean isAdministrator
+    }
+
+    UserGroups {
+        int uidNumber PK,FK
+        int gidNumber PK,FK
+    }
+
+    SessionSecrets {
+        int id PK
+        string secret UK
+    }
 ```
 
 ## Core Models
@@ -360,6 +403,28 @@ The **SessionSecret** model stores express-session secrets.
 
 **Constraints:**
 - `secret` is unique
+
+## System Settings
+
+### Setting
+
+The **Setting** model stores system-wide configuration key-value pairs.
+
+**Key Fields:**
+- `key`: Setting identifier (primary key)
+- `value`: Setting value (string)
+
+**Constraints:**
+- `key` is unique and serves as primary key
+
+**Current Settings:**
+- `push_notification_url`: URL for push notification service (empty by default)
+- `push_notification_enabled`: Whether push notification 2FA is enabled ('true' or 'false')
+
+**Static Methods:**
+- `get(key)`: Retrieve a setting value by key
+- `set(key, value)`: Create or update a setting
+- `getMultiple(keys)`: Retrieve multiple settings as an object
 
 ## Database Abstraction
 

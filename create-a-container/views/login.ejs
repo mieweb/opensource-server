@@ -22,7 +22,7 @@
         <% if (errorMessages && errorMessages.length > 0) { %>
             <% errorMessages.forEach(function(message) { %>
                 <div style="color: red; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid red; background-color: #f8d7da; border-radius: 4px;">
-                    <%= message %>
+                    <%- message %>
                 </div>
             <% }) %>
         <% } %>
