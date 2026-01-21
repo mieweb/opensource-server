@@ -141,44 +141,6 @@ erDiagram
         string value
     }
 ```
-        string associatedResource
-        enum status "pending,running,success,failure,cancelled"
-    }
-
-    JobStatuses {
-        int id PK
-        int jobId FK
-        text message
-    }
-
-    Users {
-        int uidNumber PK
-        string username UK
-        string cn "Common Name"
-        string sn "Surname"
-        string givenName
-        string mail UK
-        text sshPublicKey
-        string userPassword
-        string status "pending,active,suspended"
-    }
-
-    Groups {
-        int gidNumber PK
-        string cn UK "Group Name"
-        boolean isAdministrator
-    }
-
-    UserGroups {
-        int uidNumber PK,FK
-        int gidNumber PK,FK
-    }
-
-    SessionSecrets {
-        int id PK
-        string secret UK
-    }
-```
 
 ## Core Models
 
