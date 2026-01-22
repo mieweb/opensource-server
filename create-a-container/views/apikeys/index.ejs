@@ -18,8 +18,7 @@
     <div class="d-md-none">
       <% if (apiKeys.length === 0) { %>
         <div class="text-center text-muted py-4">
-          <i class="bi bi-key" style="font-size: 2rem;"></i>
-          <p class="mb-0 mt-2">No API keys found. Create one to get started.</p>
+          <p class="mb-0">No API keys found. Create one to get started.</p>
         </div>
       <% } else { %>
         <% apiKeys.forEach(key => { %>
@@ -79,31 +78,30 @@
           <% if (apiKeys.length === 0) { %>
             <tr>
               <td colspan="5" class="text-center text-muted py-4">
-                <i class="bi bi-key" style="font-size: 2rem;"></i>
-                <p class="mb-0 mt-2">No API keys found. Create one to get started.</p>
+                <p class="mb-0">No API keys found. Create one to get started.</p>
               </td>
             </tr>
           <% } else { %>
             <% apiKeys.forEach(key => { %>
               <tr>
-                <td>
-                  <code class="text-muted" style="word-break: break-all;"><%= key.keyPrefix %>********</code>
+                <td style="font-family: monospace; white-space: nowrap;">
+                  <%= key.keyPrefix %>********
                 </td>
-                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <td>
                   <% if (key.description) { %>
                     <%= key.description %>
                   <% } else { %>
                     <span class="text-muted fst-italic">No description</span>
                   <% } %>
                 </td>
-                <td>
+                <td style="white-space: nowrap;">
                   <% if (key.lastUsedAt) { %>
-                    <span class="text-muted"><%= new Date(key.lastUsedAt).toLocaleString() %></span>
+                    <%= new Date(key.lastUsedAt).toLocaleString() %>
                   <% } else { %>
-                    <span class="text-muted fst-italic">Never used</span>
+                    <span class="text-muted fst-italic">Never</span>
                   <% } %>
                 </td>
-                <td class="text-muted">
+                <td style="white-space: nowrap;">
                   <%= new Date(key.createdAt).toLocaleString() %>
                 </td>
                 <td style="white-space: nowrap;">
