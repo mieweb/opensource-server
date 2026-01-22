@@ -147,17 +147,6 @@ curl -X POST 'https://create-a-container.opensource.mieweb.org/api/containers' \
    - If you suspect a key has been exposed, delete it immediately
    - Create a new key for legitimate use
 
-## Comparison: API Keys vs Session Cookies
-
-| Feature | API Keys | Session Cookies |
-|---------|----------|-----------------|
-| Authentication method | `Authorization: Bearer` header | Browser cookies |
-| Best for | Automation, scripts, integrations | Interactive web browsing |
-| Expiration | Never (until revoked) | 24 hours of inactivity |
-| Requires password | No | Yes (at login) |
-| Multiple concurrent access | Yes (one key per application) | Limited by session |
-| Easy to revoke | Yes (per key) | Requires re-authentication |
-
 ## Troubleshooting
 
 ### "Invalid or missing API key" error
