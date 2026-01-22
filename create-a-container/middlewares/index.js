@@ -39,6 +39,13 @@ async function requireAuth(req, res, next) {
           req.apiKey = storedKey;
           req.isAdmin = storedKey.user.groups?.some(g => g.isAdmin) || false;
           
+          // Populate req.session for compatibility with routes that check req.session.user
+          if (!req.session) {
+            req.session = {};
+          }
+          req.session.user = storedKey.user.uid;
+          req.session.isAdmin = req.isAdmin;
+          
           storedKey.recordUsage().catch(err => {
             console.error('Failed to update API key last used timestamp:', err);
           });
