@@ -7,8 +7,49 @@ function isApiRequest(req) {
 
 // Authentication middleware (single) ---
 // Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
-function requireAuth(req, res, next) {
+// Also accepts API key authentication via Authorization header.
+async function requireAuth(req, res, next) {
+  // First check session authentication
   if (req.session && req.session.user) return next();
+  
+  // Try API key authentication
+  const authHeader = req.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const apiKey = authHeader.substring(7);
+    
+    if (apiKey) {
+      const { ApiKey, User } = require('../models');
+      const { extractKeyPrefix } = require('../utils/apikey');
+      
+      const keyPrefix = extractKeyPrefix(apiKey);
+      
+      const apiKeys = await ApiKey.findAll({
+        where: { keyPrefix },
+        include: [{
+          model: User,
+          as: 'user',
+          include: [{ association: 'groups' }]
+        }]
+      });
+
+      for (const storedKey of apiKeys) {
+        const isValid = await storedKey.validateKey(apiKey);
+        if (isValid) {
+          req.user = storedKey.user;
+          req.apiKey = storedKey;
+          req.isAdmin = storedKey.user.groups?.some(g => g.isAdmin) || false;
+          
+          storedKey.recordUsage().catch(err => {
+            console.error('Failed to update API key last used timestamp:', err);
+          });
+          
+          return next();
+        }
+      }
+    }
+  }
+  
+  // Neither session nor API key authentication succeeded
   if (isApiRequest(req))
     return res.status(401).json({ error: 'Unauthorized' });
 
@@ -55,64 +96,12 @@ function requireLocalhost(req, res, next) {
   return next();
 }
 
-// API Key authentication middleware
-// Checks for Bearer token in Authorization header and validates it
-async function requireApiKey(req, res, next) {
-  const authHeader = req.get('Authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: API key required' });
-  }
-
-  const apiKey = authHeader.substring(7); // Remove 'Bearer ' prefix
-  
-  if (!apiKey) {
-    return res.status(401).json({ error: 'Unauthorized: API key required' });
-  }
-
-  const { ApiKey, User } = require('../models');
-  const { extractKeyPrefix } = require('../utils/apikey');
-  
-  const keyPrefix = extractKeyPrefix(apiKey);
-  
-  // Find API keys with matching prefix
-  const apiKeys = await ApiKey.findAll({
-    where: { keyPrefix },
-    include: [{
-      model: User,
-      as: 'user',
-      include: [{ association: 'groups' }]
-    }]
-  });
-
-  // Check each matching key
-  for (const storedKey of apiKeys) {
-    const isValid = await storedKey.validateKey(apiKey);
-    if (isValid) {
-      // Attach user to request
-      req.user = storedKey.user;
-      req.apiKey = storedKey;
-      req.isAdmin = storedKey.user.groups?.some(g => g.isAdmin) || false;
-      
-      // Update last used timestamp (async, don't wait)
-      storedKey.recordUsage().catch(err => {
-        console.error('Failed to update API key last used timestamp:', err);
-      });
-      
-      return next();
-    }
-  }
-
-  return res.status(401).json({ error: 'Unauthorized: Invalid API key' });
-}
-
 const { setCurrentSite, loadSites } = require('./currentSite');
 
 module.exports = { 
   requireAuth, 
   requireAdmin, 
   requireLocalhost, 
-  requireApiKey, 
   setCurrentSite, 
   loadSites 
 };

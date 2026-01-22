@@ -79,7 +79,7 @@
             </li>
             <li class="nav-item">
               <a class="nav-link <%= path.startsWith('/apikeys') ? 'active' : '' %>" href="/apikeys" aria-current="<%= path.startsWith('/apikeys') ? 'page' : '' %>">
-                <i class="bi bi-key"></i> API Keys
+                API Keys
               </a>
             </li>
             <% if (req.session && req.session.isAdmin) { %>
