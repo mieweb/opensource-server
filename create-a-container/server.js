@@ -104,6 +104,8 @@ async function main() {
   const sitesRouter = require('./routers/sites'); // Includes nested nodes and containers routers
   const jobsRouter = require('./routers/jobs');
   const settingsRouter = require('./routers/settings');
+  const apikeysRouter = require('./routers/apikeys');
+  
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
   app.use('/register', registerRouter);
@@ -111,6 +113,7 @@ async function main() {
   app.use('/groups', groupsRouter);
   app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/containers routes nested here
   app.use('/settings', settingsRouter);
+  app.use('/apikeys', apikeysRouter);
 
   // --- Routes ---
   const PORT = 3000;

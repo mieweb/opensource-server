@@ -1,0 +1,137 @@
+<%- include('../layouts/header', { 
+  title: 'API Keys - MIE',
+  breadcrumbs: [
+    { label: 'API Keys', url: '/apikeys' }
+  ],
+  req
+}) %>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="card-title mb-0">API Keys</h4>
+      <a class="btn btn-primary" href="/apikeys/new" role="button" aria-label="Create new API key">
+        <i class="bi bi-plus-lg"></i> New API Key
+      </a>
+    </div>
+
+    <div class="alert alert-info" role="alert">
+      <i class="bi bi-info-circle"></i>
+      <strong>About API Keys:</strong> Use API keys to authenticate API requests without using your password. 
+      Keep your keys secure and never share them. You can revoke keys at any time.
+    </div>
+
+    <!-- Mobile Card View -->
+    <div class="d-md-none">
+      <% if (apiKeys.length === 0) { %>
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-key" style="font-size: 2rem;"></i>
+          <p class="mb-0 mt-2">No API keys found. Create one to get started.</p>
+        </div>
+      <% } else { %>
+        <% apiKeys.forEach(key => { %>
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <h6 class="card-subtitle mb-0 text-muted">Key Prefix</h6>
+                <% if (key.lastUsedAt) { %>
+                  <span class="badge bg-success">Active</span>
+                <% } else { %>
+                  <span class="badge bg-secondary">Unused</span>
+                <% } %>
+              </div>
+              <code class="d-block mb-3" style="word-break: break-all; font-size: 0.9rem;"><%= key.keyPrefix %>********</code>
+              
+              <% if (key.description) { %>
+                <p class="card-text mb-2"><strong>Description:</strong> <%= key.description %></p>
+              <% } %>
+              
+              <p class="card-text mb-2">
+                <small class="text-muted">
+                  <strong>Created:</strong> <%= new Date(key.createdAt).toLocaleDateString() %><br>
+                  <strong>Last Used:</strong> <%= key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : 'Never' %>
+                </small>
+              </p>
+              
+              <div class="d-grid gap-2">
+                <a href="/apikeys/<%= key.id %>" class="btn btn-sm btn-outline-info">
+                  <i class="bi bi-eye"></i> View Details
+                </a>
+                <form method="POST" action="/apikeys/<%= key.id %>" onsubmit="return confirm('Are you sure you want to delete this API key? This action cannot be undone.');">
+                  <input type="hidden" name="_method" value="DELETE">
+                  <button type="submit" class="btn btn-sm btn-danger w-100">
+                    <i class="bi bi-trash"></i> Delete
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      <% } %>
+    </div>
+
+    <!-- Desktop Table View -->
+    <div class="table-responsive d-none d-md-block">
+      <table class="table table-hover table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Key Prefix</th>
+            <th>Description</th>
+            <th>Last Used</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (apiKeys.length === 0) { %>
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">
+                <i class="bi bi-key" style="font-size: 2rem;"></i>
+                <p class="mb-0 mt-2">No API keys found. Create one to get started.</p>
+              </td>
+            </tr>
+          <% } else { %>
+            <% apiKeys.forEach(key => { %>
+              <tr>
+                <td>
+                  <code class="text-muted" style="word-break: break-all;"><%= key.keyPrefix %>********</code>
+                </td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <% if (key.description) { %>
+                    <%= key.description %>
+                  <% } else { %>
+                    <span class="text-muted fst-italic">No description</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (key.lastUsedAt) { %>
+                    <span class="text-muted"><%= new Date(key.lastUsedAt).toLocaleString() %></span>
+                  <% } else { %>
+                    <span class="text-muted fst-italic">Never used</span>
+                  <% } %>
+                </td>
+                <td class="text-muted">
+                  <%= new Date(key.createdAt).toLocaleString() %>
+                </td>
+                <td style="white-space: nowrap;">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="API key actions">
+                    <a href="/apikeys/<%= key.id %>" class="btn btn-outline-info" aria-label="View API key details">
+                      <i class="bi bi-eye"></i> View
+                    </a>
+                    <form method="POST" action="/apikeys/<%= key.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this API key? This action cannot be undone.');">
+                      <input type="hidden" name="_method" value="DELETE">
+                      <button type="submit" class="btn btn-danger" aria-label="Delete API key">
+                        <i class="bi bi-trash"></i> Delete
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>
