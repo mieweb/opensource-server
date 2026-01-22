@@ -17,25 +17,13 @@ The API endpoint is: <ContainerCreationUrl />
 ## Prerequisites
 
 - Active user account with appropriate permissions
+- An API key (see [API Keys](./api-keys.mdx) for how to create one)
 - Access to a terminal with `curl` installed
 - Knowledge of your site ID (available from the web interface)
 
-## Authentication Methods
+## Authentication
 
-The API supports two authentication methods:
-
-1. **API Keys** (Recommended for automation) - See [API Keys](./api-keys.mdx) for detailed documentation
-2. **Session Cookies** (For interactive sessions) - Documented below
-
-:::tip Recommendation
-For scripts, automation, and CI/CD pipelines, use API keys instead of session cookies. API keys don't expire and can be easily revoked without changing your password.
-:::
-
-## 1. Authenticate and Establish Session
-
-### Option A: Using an API Key (Recommended)
-
-If you have an API key, include it in the `Authorization` header for all requests:
+The API uses API key authentication. Include your API key in the `Authorization` header for all requests:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_API_KEY" \
@@ -44,67 +32,35 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 
 For details on creating and managing API keys, see the [API Keys documentation](./api-keys.mdx).
 
-### Option B: Using Session Cookies
+## 1. List Available Templates
 
-Alternatively, log in to establish a session. The API uses cookie-based authentication:
-
-```bash
-curl -X POST 'https://create-a-container.opensource.mieweb.org/login' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -c cookies.txt \
-  --data-urlencode 'username=your_username' \
-  --data-urlencode 'password=your_password'
-```
-
-**Parameters:**
-- `username` - Your cluster account username
-- `password` - Your cluster account password
-- `-c cookies.txt` - Saves session cookies to a file for subsequent requests
-
-**Response:**
-- On success: Redirects to home page (302) with session cookie set
-- On failure: Returns login page with error message
-
-:::important Important
-The `cookies.txt` file contains your authentication session. Keep it secure and delete it when done. The session expires after 24 hours of inactivity.
-:::
-
-## 2. List Available Templates
-
-Before creating a container, you need to know what templates are available. Access the container creation form to see available templates:
+Before creating a container, you need to know what templates are available:
 
 ```bash
-curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers/new' \
-  -b cookies.txt \
-  -L
+curl -X GET 'https://create-a-container.opensource.mieweb.org/api/templates' \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**Parameters:**
-- Replace `1` with your actual site ID
-- `-b cookies.txt` - Sends authentication cookies with the request
-- `-L` - Follows redirects
+This returns a JSON array of available templates with their node and VMID information.
 
-This returns an HTML page listing available templates with their node and VMID. Look for template entries in the format `nodeName,templateVmid`.
-
-## 3. Get External Domain IDs
+## 2. Get External Domain IDs
 
 To configure HTTP services, you need the external domain ID:
 
 ```bash
-curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers/new' \
-  -b cookies.txt \
-  -L | grep -o 'externalDomainId" value="[0-9]*"'
+curl -X GET 'https://create-a-container.opensource.mieweb.org/api/external-domains' \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-This extracts available external domain IDs from the form. Note the domain ID you want to use for your HTTP service.
+This returns a JSON array of available external domains with their IDs.
 
-## 4. Create a Container
+## 3. Create a Container
 
 Create a new container by POSTing to the containers endpoint:
 
 ```bash
 curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
-  -b cookies.txt \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'hostname=my-app' \
   --data-urlencode 'template=pve1,100' \
@@ -164,22 +120,17 @@ Services are configured using a zero-indexed array. Each service needs an index 
 - `internalPort` - Service port
 - `dnsName` - SRV record name (e.g., `_ldap._tcp`)
 
-## 5. Complete Example
+## 4. Complete Example
 
 Here's a complete example creating a container with SSH, HTTP, and a custom TCP service:
 
 ```bash
-# Step 1: Authenticate
-curl -X POST 'https://create-a-container.opensource.mieweb.org/login' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -c cookies.txt \
-  --data-urlencode 'username=myuser' \
-  --data-urlencode 'password=mypass'
+# Set your API key
+API_KEY="your_api_key_here"
 
-# Step 2: Create container with multiple services
+# Create container with multiple services
 curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
-  -b cookies.txt \
-  -L \
+  -H "Authorization: Bearer $API_KEY" \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'hostname=my-web-app' \
   --data-urlencode 'template=pve1,100' \
@@ -191,16 +142,13 @@ curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/container
   --data-urlencode 'services[1][externalDomainId]=1' \
   --data-urlencode 'services[2][type]=tcp' \
   --data-urlencode 'services[2][internalPort]=5432'
-
-# Step 3: Clean up
-rm cookies.txt
 ```
 
 **Response:**
 - On success: Redirects to the containers list page (302)
 - On failure: Returns error message with details
 
-## 6. Understanding Container Creation
+## 5. Understanding Container Creation
 
 The API performs these steps automatically:
 
@@ -213,19 +161,18 @@ The API performs these steps automatically:
 
 This process typically takes 2-5 minutes. The container will be accessible once DNS propagates and services are configured.
 
-## 7. Listing Your Containers
+## 6. Listing Your Containers
 
-To view your containers, access the containers list page:
+To view your containers:
 
 ```bash
-curl -X GET 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
-  -b cookies.txt \
-  -L
+curl -X GET 'https://create-a-container.opensource.mieweb.org/api/containers' \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-This returns an HTML page listing all your containers with their details, including hostnames, IP addresses, and port assignments.
+This returns a JSON array of all your containers with their details, including hostnames, IP addresses, and port assignments.
 
-## 8. Accessing Your Container
+## 7. Accessing Your Container
 
 Once created, you can access your container via SSH:
 
@@ -239,7 +186,7 @@ The SSH port is automatically assigned and displayed in the containers list. HTT
 https://<externalHostname>.<externalDomain>
 ```
 
-## 9. Viewing on Proxmox
+## 8. Viewing on Proxmox
 
 To see your container in the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Your container will be listed with your username in the tags field.
 
@@ -251,10 +198,14 @@ You can start, stop, and reboot your container through the Proxmox interface. To
 
 ## Troubleshooting
 
-**Authentication Failed:**
-- Verify your username and password are correct
-- Check that your account status is active
-- Ensure cookies.txt is being saved correctly
+**Invalid or missing API key:**
+- Verify you're including the `Authorization` header with the correct format
+- Ensure your API key hasn't been deleted
+- Check that you copied the entire key
+
+**Unauthorized error:**
+- Verify your account has the necessary permissions
+- Ensure your account status is active
 
 **Template Not Found:**
 - Verify the template exists on the specified node
