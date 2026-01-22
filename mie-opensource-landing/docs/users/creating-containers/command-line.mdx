@@ -19,11 +19,34 @@ The API endpoint is: <ContainerCreationUrl />
 - Active user account with appropriate permissions
 - Access to a terminal with `curl` installed
 - Knowledge of your site ID (available from the web interface)
-- Cookie storage file for maintaining session authentication
+
+## Authentication Methods
+
+The API supports two authentication methods:
+
+1. **API Keys** (Recommended for automation) - See [API Keys](./api-keys.mdx) for detailed documentation
+2. **Session Cookies** (For interactive sessions) - Documented below
+
+:::tip Recommendation
+For scripts, automation, and CI/CD pipelines, use API keys instead of session cookies. API keys don't expire and can be easily revoked without changing your password.
+:::
 
 ## 1. Authenticate and Establish Session
 
-First, log in to establish a session. The API uses cookie-based authentication:
+### Option A: Using an API Key (Recommended)
+
+If you have an API key, include it in the `Authorization` header for all requests:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://create-a-container.opensource.mieweb.org/api/containers
+```
+
+For details on creating and managing API keys, see the [API Keys documentation](./api-keys.mdx).
+
+### Option B: Using Session Cookies
+
+Alternatively, log in to establish a session. The API uses cookie-based authentication:
 
 ```bash
 curl -X POST 'https://create-a-container.opensource.mieweb.org/login' \
