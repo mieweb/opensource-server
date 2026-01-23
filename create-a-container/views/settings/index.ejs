@@ -12,6 +12,46 @@
 
     <form method="POST" action="/settings" aria-label="System settings form">
       <div class="mb-4">
+        <h5 class="mb-3">Email Configuration</h5>
+        
+        <div class="mb-3">
+          <label for="smtp_url" class="form-label">
+            SMTP URL
+          </label>
+          <input 
+            type="text" 
+            class="form-control font-monospace" 
+            id="smtp_url" 
+            name="smtp_url" 
+            value="<%= smtpUrl %>"
+            placeholder="smtp://user:pass@smtp.example.com:587"
+            aria-describedby="smtp_url_help"
+          >
+          <div id="smtp_url_help" class="form-text">
+            Format: smtp[s]://[[username][:password]@]&lt;host&gt;[:port]
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="smtp_noreply_address" class="form-label">
+            No-Reply Email Address
+          </label>
+          <input 
+            type="email" 
+            class="form-control" 
+            id="smtp_noreply_address" 
+            name="smtp_noreply_address" 
+            value="<%= smtpNoreplyAddress %>"
+            placeholder="noreply@example.com"
+            aria-describedby="smtp_noreply_address_help"
+          >
+          <div id="smtp_noreply_address_help" class="form-text">
+            Email address used as "from" address for system emails
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4">
         <h5 class="mb-3">Push Notification 2FA</h5>
         
         <div class="mb-3">

@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MIE Container Creation Login</title>
+    <title>Reset Password - MIE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="/style.css" rel="stylesheet">
 </head>
 <body class="page-center">
     <div class="login-container">
-        <img src="logo.png" alt="Company Logo" class="logo">
-        <h2>Container Creation Login</h2>
+        <img src="/logo.png" alt="Company Logo" class="logo">
+        <h2>Reset Password</h2>
         
         <% if (successMessages && successMessages.length > 0) { %>
             <% successMessages.forEach(function(message) { %>
@@ -22,31 +22,28 @@
         <% if (errorMessages && errorMessages.length > 0) { %>
             <% errorMessages.forEach(function(message) { %>
                 <div style="color: red; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid red; background-color: #f8d7da; border-radius: 4px;">
-                    <%- message %>
+                    <%= message %>
                 </div>
             <% }) %>
         <% } %>
         
-        <form method="POST" action="/login">
-            <input type="hidden" name="redirect" value="<%= redirect %>">
-            
-            <label for="username">Username</label>
-            <input type="text" name="username" id="username" required>
+        <p style="margin-bottom: 1.5rem; color: #666;">
+            Enter your username or email address and we'll send you instructions to reset your password.
+        </p>
+        
+        <form method="POST" action="/reset-password">
+            <label for="usernameOrEmail">Username or Email</label>
+            <input type="text" name="usernameOrEmail" id="usernameOrEmail" required autofocus>
 
-            <label for="password">Password</label>
-            <input type="password" name="password" id="password" required>
-
-            <input type="submit" value="Login">
+            <input type="submit" value="Send Reset Instructions">
         </form>
+        
         <hr>
+        
         <div class="signup-section">
-            <a href="/reset-password">Forgot your password?</a>
+            <a href="/login">Back to Login</a>
         </div>
-        <hr>
-        <div class="signup-section">
-            <strong>Don't have an account?</strong>
-            <a href="/register">Register</a>
-        </div>
+        
         <div class="footer">
             &copy; 2025 Medical Informatics Engineering
         </div>
