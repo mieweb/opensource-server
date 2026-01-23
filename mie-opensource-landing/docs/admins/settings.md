@@ -8,6 +8,45 @@ The Settings page provides system-wide configuration options for the cluster man
 
 ![Settings Page](/img/screenshots/settings-page.png)
 
+## Email Configuration
+
+The system uses SMTP to send emails for password reset requests and other system notifications.
+
+### SMTP Settings
+
+Configure the following email settings:
+
+1. **SMTP URL**: The connection string for your SMTP server in the format:
+   ```
+   smtp[s]://[[username][:password]@]<host>[:port]
+   ```
+   Examples:
+   - `smtp://smtp.example.com:587` (no authentication)
+   - `smtp://user:pass@smtp.example.com:587` (with authentication)
+   - `smtps://user:pass@smtp.example.com:465` (secure SMTP)
+
+2. **No-Reply Email Address**: The "from" address used for system emails like password reset notifications.
+   - Example: `noreply@example.com`
+
+:::tip Testing SMTP Configuration
+After configuring SMTP settings, you can test the configuration by using the "Forgot your password?" link on the login page. The system will attempt to send a password reset email.
+:::
+
+### Password Reset Flow
+
+When SMTP is properly configured, users can reset their passwords through the following workflow:
+
+1. User clicks "Forgot your password?" on the login page
+2. User enters their username or email address
+3. System sends an email with a secure reset link (token valid for 1 hour)
+4. User clicks the link in the email
+5. User enters and confirms their new password
+6. User is redirected to login with their new credentials
+
+:::warning SMTP Required
+Password reset functionality requires valid SMTP configuration. If SMTP is not configured, password reset emails will fail to send, and users will need to contact administrators to reset their passwords manually.
+:::
+
 ## Push Notification 2FA
 
 The cluster supports two-factor authentication (2FA) using push notifications via the [MieWeb Auth App](https://github.com/mieweb/mieweb_auth_app).
