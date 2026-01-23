@@ -39,6 +39,15 @@ module.exports = (sequelize, DataTypes) => {
     async validatePassword(plainPassword) {
       return await argon2.verify(this.userPassword, plainPassword);
     }
+
+    /**
+     * Set a new password for the user
+     * @param {string} plainPassword - The new plaintext password
+     */
+    async setPassword(plainPassword) {
+      this.userPassword = plainPassword;
+      await this.save();
+    }
   }
   User.init({
     uidNumber: {

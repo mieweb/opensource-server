@@ -33,6 +33,7 @@ This section provides comprehensive guides for:
 - **Installation & Setup**: Deploy and configure the cluster management system
 - **Node Management**: Add, configure, and maintain Proxmox nodes
 - **User Administration**: Manage accounts, permissions, and access control
+- **System Settings**: Configure system-wide features like two-factor authentication
 - **Network Configuration**: Set up networking, ports, and service exposure
 - **Monitoring & Maintenance**: Keep your cluster healthy and performant
 - **Security**: Best practices for securing your infrastructure

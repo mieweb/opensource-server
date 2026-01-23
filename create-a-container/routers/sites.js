@@ -106,11 +106,24 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
     return res.status(404).send('Site not found');
   }
 
+  // Get push notification settings
+  const { Setting } = require('../models');
+  const settings = await Setting.getMultiple(['push_notification_url', 'push_notification_enabled']);
+  const pushNotificationUrl = settings.push_notification_url || '';
+  const pushNotificationEnabled = settings.push_notification_enabled === 'true';
+
   // define the environment object
   const env = {
-    AUTH_BACKENDS: 'sql',
     DIRECTORY_BACKEND: 'sql',
   };
+
+  // Configure AUTH_BACKENDS and NOTIFICATION_URL based on push notification settings
+  if (pushNotificationEnabled && pushNotificationUrl.trim() !== '') {
+    env.AUTH_BACKENDS = 'sql,notification';
+    env.NOTIFICATION_URL = `${pushNotificationUrl}/send-notification`;
+  } else {
+    env.AUTH_BACKENDS = 'sql';
+  }
 
   // Get the real IP from the request or the x-forwarded-for header
   // and do a reverse DNS lookup to get the hostname. If the clientIP is any

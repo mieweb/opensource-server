@@ -103,12 +103,19 @@ async function main() {
   const groupsRouter = require('./routers/groups');
   const sitesRouter = require('./routers/sites'); // Includes nested nodes and containers routers
   const jobsRouter = require('./routers/jobs');
+  const settingsRouter = require('./routers/settings');
+  const apikeysRouter = require('./routers/apikeys');
+  const resetPasswordRouter = require('./routers/reset-password');
+  
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
   app.use('/register', registerRouter);
   app.use('/users', usersRouter);
   app.use('/groups', groupsRouter);
   app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/containers routes nested here
+  app.use('/settings', settingsRouter);
+  app.use('/apikeys', apikeysRouter);
+  app.use('/reset-password', resetPasswordRouter);
 
   // --- Routes ---
   const PORT = 3000;

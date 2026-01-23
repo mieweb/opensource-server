@@ -7,8 +7,56 @@ function isApiRequest(req) {
 
 // Authentication middleware (single) ---
 // Detect API requests and browser requests. API requests return 401 JSON, browser requests redirect to /login.
-function requireAuth(req, res, next) {
+// Also accepts API key authentication via Authorization header.
+async function requireAuth(req, res, next) {
+  // First check session authentication
   if (req.session && req.session.user) return next();
+  
+  // Try API key authentication
+  const authHeader = req.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const apiKey = authHeader.substring(7);
+    
+    if (apiKey) {
+      const { ApiKey, User } = require('../models');
+      const { extractKeyPrefix } = require('../utils/apikey');
+      
+      const keyPrefix = extractKeyPrefix(apiKey);
+      
+      const apiKeys = await ApiKey.findAll({
+        where: { keyPrefix },
+        include: [{
+          model: User,
+          as: 'user',
+          include: [{ association: 'groups' }]
+        }]
+      });
+
+      for (const storedKey of apiKeys) {
+        const isValid = await storedKey.validateKey(apiKey);
+        if (isValid) {
+          req.user = storedKey.user;
+          req.apiKey = storedKey;
+          req.isAdmin = storedKey.user.groups?.some(g => g.isAdmin) || false;
+          
+          // Populate req.session for compatibility with routes that check req.session.user
+          if (!req.session) {
+            req.session = {};
+          }
+          req.session.user = storedKey.user.uid;
+          req.session.isAdmin = req.isAdmin;
+          
+          storedKey.recordUsage().catch(err => {
+            console.error('Failed to update API key last used timestamp:', err);
+          });
+          
+          return next();
+        }
+      }
+    }
+  }
+  
+  // Neither session nor API key authentication succeeded
   if (isApiRequest(req))
     return res.status(401).json({ error: 'Unauthorized' });
 
@@ -57,4 +105,10 @@ function requireLocalhost(req, res, next) {
 
 const { setCurrentSite, loadSites } = require('./currentSite');
 
-module.exports = { requireAuth, requireAdmin, requireLocalhost, setCurrentSite, loadSites };
+module.exports = { 
+  requireAuth, 
+  requireAdmin, 
+  requireLocalhost, 
+  setCurrentSite, 
+  loadSites 
+};

@@ -1,0 +1,177 @@
+---
+sidebar_position: 3
+---
+
+# API Keys
+
+API keys provide a secure way to authenticate API requests without using your password. They are ideal for automation, CI/CD pipelines, and third-party integrations.
+
+## Benefits of API Keys
+
+- **Passwordless authentication**: Access the API without exposing your password
+- **Selective access**: Create multiple keys for different purposes
+- **Easy revocation**: Revoke individual keys without changing your password
+- **Usage tracking**: Monitor when each key was last used
+
+## Managing Your API Keys
+
+### Viewing Your API Keys
+
+Navigate to the API Keys page from the main navigation menu to view all your active keys.
+
+![API Keys List](/img/apikeys-list-with-key.png)
+
+When you first visit this page with no keys created, you'll see an empty list:
+
+![Empty API Keys List](/img/apikeys-list-empty.png)
+
+### Creating a New API Key
+
+1. Click the **"+ New API Key"** button at the top of the API Keys page
+
+![Create API Key Form](/img/apikeys-create-form.png)
+
+2. (Optional) Enter a description to help identify the key's purpose, such as:
+   - "Production API access"
+   - "Mobile app"
+   - "CI/CD pipeline"
+   - "Development testing"
+
+3. Click **"Generate API Key"**
+
+4. **Important**: The full API key will be displayed only once. Copy it immediately and store it securely.
+
+![API Key Created Success](/img/apikeys-created-success.png)
+
+:::danger Critical
+This is the only time you will see the complete API key. The server does not store the full key - only a secure hash. If you lose the key, you will need to create a new one.
+:::
+
+5. Use the **Copy** button to copy the key to your clipboard
+
+### Viewing API Key Details
+
+Click the **View** button next to any API key to see its details:
+
+![API Key Details](/img/apikeys-details.png)
+
+The details page shows:
+- **Key Prefix**: First 8 characters followed by asterisks (for identification)
+- **Description**: The description you provided when creating the key
+- **Key ID**: Unique identifier (UUID) for the key
+- **Created**: When the key was created
+- **Last Updated**: When the key was last modified
+- **Last Used**: When the key was last used to authenticate a request (or "Never used")
+
+### Deleting an API Key
+
+To revoke an API key:
+
+1. Navigate to the API Keys list page
+2. Click the **Delete** button next to the key you want to remove
+3. Confirm the deletion
+
+Or from the key details page, click the **Delete Key** button.
+
+:::tip Tip
+If an API key is compromised, delete it immediately and create a new one. This won't affect your other keys or your password.
+:::
+
+## Using Your API Key
+
+### Authentication Header
+
+Include your API key in the `Authorization` header of your API requests using the Bearer scheme:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Example with curl
+
+Replace `YOUR_API_KEY` with your actual API key:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://create-a-container.opensource.mieweb.org/api/containers
+```
+
+### Complete Example: Creating a Container
+
+Here's a complete example of creating a container using an API key:
+
+```bash
+# Set your API key
+API_KEY="your_api_key_here"
+
+# Create a container
+curl -X POST 'https://create-a-container.opensource.mieweb.org/api/containers' \
+  -H "Authorization: Bearer $API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "hostname": "mycontainer",
+    "siteId": 1,
+    "memory": 2048,
+    "swap": 512,
+    "disk": 8,
+    "cores": 2,
+    "ostemplate": "debian-12-standard_12.7-1_amd64.tar.zst",
+    "password": "securepassword"
+  }'
+```
+
+## Security Best Practices
+
+1. **Store keys securely**: 
+   - Never commit API keys to version control
+   - Use environment variables or secure secret management systems
+   - Encrypt keys when storing them
+
+2. **Use descriptive names**: 
+   - Give each key a clear description of its purpose
+   - This makes it easier to identify and revoke keys when needed
+
+3. **Rotate keys regularly**: 
+   - Periodically create new keys and delete old ones
+   - This limits the exposure window if a key is compromised
+
+4. **Use separate keys**: 
+   - Create different keys for different applications or environments
+   - This allows you to revoke access to specific applications without affecting others
+
+5. **Monitor usage**: 
+   - Regularly check the "Last Used" timestamp on the API Keys page
+   - Delete keys that haven't been used in a long time
+
+6. **Revoke immediately if compromised**: 
+   - If you suspect a key has been exposed, delete it immediately
+   - Create a new key for legitimate use
+
+## Troubleshooting
+
+### "Invalid or missing API key" error
+
+- Verify you're including the `Authorization` header with the correct format
+- Ensure the key hasn't been deleted from your account
+- Check that you copied the entire key (they are 43 characters long)
+
+### "Unauthorized" error
+
+- Verify your account has the necessary permissions for the action
+- Check that you're accessing endpoints that support API key authentication
+
+### Key not working after creation
+
+- Ensure you copied the key from the success page (it's only shown once)
+- Verify there are no extra spaces or line breaks in the key
+- Check that the key wasn't accidentally deleted
+
+## API Endpoints Supporting API Keys
+
+API keys work with all API endpoints that require authentication. For a complete list of available API endpoints, see the [API Documentation using curl](./command-line.mdx).
+
+Common endpoints include:
+- `/api/containers` - List and create containers
+- `/api/containers/:id` - Get, update, or delete a specific container
+- `/api/jobs` - List and manage jobs
+- `/api/sites` - View site information

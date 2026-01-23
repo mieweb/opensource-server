@@ -1,0 +1,52 @@
+<%- include('../layouts/header', { 
+  title: 'Create API Key - MIE',
+  breadcrumbs: [
+    { label: 'API Keys', url: '/apikeys' },
+    { label: 'Create', url: '/apikeys/new' }
+  ],
+  req
+}) %>
+
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h4 class="card-title mb-4">Create New API Key</h4>
+
+        <div class="alert alert-warning" role="alert">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <strong>Important:</strong> The API key will be displayed only once after creation. 
+          Make sure to copy it and store it securely. You won't be able to see it again.
+        </div>
+
+        <form method="POST" action="/apikeys">
+          <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <input 
+              type="text" 
+              class="form-control" 
+              id="description" 
+              name="description" 
+              placeholder="e.g., Production API access, Mobile app, CI/CD pipeline"
+              maxlength="255"
+            >
+            <div class="form-text">
+              Optional: Add a description to help identify this key's purpose.
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between">
+            <a href="/apikeys" class="btn btn-secondary">
+              <i class="bi bi-arrow-left"></i> Cancel
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-key"></i> Generate API Key
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

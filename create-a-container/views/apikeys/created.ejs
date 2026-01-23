@@ -1,0 +1,106 @@
+<%- include('../layouts/header', { 
+  title: 'API Key Created - MIE',
+  breadcrumbs: [
+    { label: 'API Keys', url: '/apikeys' },
+    { label: 'Created', url: '#' }
+  ],
+  req
+}) %>
+
+<div class="row justify-content-center">
+  <div class="col-md-10">
+    <div class="card shadow-sm border-success">
+      <div class="card-header bg-success text-white">
+        <h4 class="mb-0">
+          <i class="bi bi-check-circle-fill"></i> API Key Successfully Created
+        </h4>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-danger" role="alert">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <strong>Important:</strong> This is the only time you will see this API key. 
+          Copy it now and store it securely. It cannot be recovered later.
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label fw-bold">Your API Key:</label>
+          <div class="input-group">
+            <input 
+              type="text" 
+              class="form-control font-monospace" 
+              id="apiKey" 
+              value="<%= plainKey %>" 
+              readonly
+              style="font-size: 0.85rem; word-break: break-all;"
+            >
+            <button 
+              class="btn btn-outline-secondary" 
+              type="button" 
+              id="copyButton"
+              onclick="copyToClipboard()"
+              aria-label="Copy API key to clipboard"
+            >
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+          </div>
+          <div class="form-text">
+            <% if (apiKey.description) { %>
+              <strong>Description:</strong> <%= apiKey.description %>
+            <% } %>
+          </div>
+        </div>
+
+        <div class="card bg-light">
+          <div class="card-body">
+            <h5 class="card-title">Key Details</h5>
+            <dl class="row mb-0">
+              <dt class="col-sm-3">Key Prefix:</dt>
+              <dd class="col-sm-9"><code style="word-break: break-all;"><%= apiKey.keyPrefix %>********</code></dd>
+              
+              <dt class="col-sm-3">Created:</dt>
+              <dd class="col-sm-9"><%= new Date(apiKey.createdAt).toLocaleString() %></dd>
+              
+              <dt class="col-sm-3">Key ID:</dt>
+              <dd class="col-sm-9 mb-0"><code style="word-break: break-all; font-size: 0.85rem;"><%= apiKey.id %></code></dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+          <a href="/apikeys/new" class="btn btn-outline-primary">
+            <i class="bi bi-plus-lg"></i> Create Another
+          </a>
+          <a href="/apikeys" class="btn btn-primary">
+            <i class="bi bi-list-ul"></i> View All Keys
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function copyToClipboard() {
+  const input = document.getElementById('apiKey');
+  input.select();
+  input.setSelectionRange(0, 99999); // For mobile devices
+  
+  navigator.clipboard.writeText(input.value).then(() => {
+    const button = document.getElementById('copyButton');
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+    button.classList.remove('btn-outline-secondary');
+    button.classList.add('btn-success');
+    
+    setTimeout(() => {
+      button.innerHTML = originalHTML;
+      button.classList.remove('btn-success');
+      button.classList.add('btn-outline-secondary');
+    }, 2000);
+  }).catch(err => {
+    alert('Failed to copy: ' + err);
+  });
+}
+</script>
+
+<%- include('../layouts/footer') %>

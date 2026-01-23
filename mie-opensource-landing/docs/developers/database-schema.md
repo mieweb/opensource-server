@@ -135,6 +135,11 @@ erDiagram
         int id PK
         string secret UK
     }
+
+    Settings {
+        string key PK,UK
+        string value
+    }
 ```
 
 ## Core Models
@@ -360,6 +365,28 @@ The **SessionSecret** model stores express-session secrets.
 
 **Constraints:**
 - `secret` is unique
+
+## System Settings
+
+### Setting
+
+The **Setting** model stores system-wide configuration key-value pairs.
+
+**Key Fields:**
+- `key`: Setting identifier (primary key)
+- `value`: Setting value (string)
+
+**Constraints:**
+- `key` is unique and serves as primary key
+
+**Current Settings:**
+- `push_notification_url`: URL for push notification service (empty by default)
+- `push_notification_enabled`: Whether push notification 2FA is enabled ('true' or 'false')
+
+**Static Methods:**
+- `get(key)`: Retrieve a setting value by key
+- `set(key, value)`: Create or update a setting
+- `getMultiple(keys)`: Retrieve multiple settings as an object
 
 ## Database Abstraction
 
