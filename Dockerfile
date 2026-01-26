@@ -39,9 +39,13 @@ ARG LEGO_VERSION=v4.28.1
 RUN curl -fsSL "https://github.com/go-acme/lego/releases/download/${LEGO_VERSION}/lego_${LEGO_VERSION}_linux_amd64.tar.gz" \
     | tar -xz -C /usr/local/bin lego
 
+# We install the nodesource repo for newer versions of NPM fixing compatibility
+# with unprivileged containers. This sets 24.x up which is the LTS at this time
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+
 # Install requisites: git for updating the software, make and npm for installing
 # and management.
-RUN apt update && apt -y install git make npm
+RUN apt update && apt -y install git make nodejs
 
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
