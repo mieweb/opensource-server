@@ -115,6 +115,7 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
   // define the environment object
   const env = {
     DIRECTORY_BACKEND: 'sql',
+    REQUIRE_AUTH_FOR_SEARCH: false,
   };
 
   // Configure AUTH_BACKENDS and NOTIFICATION_URL based on push notification settings
