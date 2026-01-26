@@ -32,11 +32,7 @@ router.get('/new', requireAuth, async (req, res) => {
 
   // TODO: use datamodel backed templates instead of querying Proxmox here
   for (const node of nodes) {
-    const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: node.tlsVerify !== false
-      })
-    });
+    const client = await node.api();
 
     const lxcTemplates = await client.getLxcTemplates(node.name);
     
@@ -212,11 +208,7 @@ router.post('/', async (req, res) => {
   const { hostname, template, services } = req.body;
   const [ nodeName, templateVmid ] = template.split(',');
   const node = await Node.findOne({ where: { name: nodeName, siteId } });
-  const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-    httpsAgent: new https.Agent({
-      rejectUnauthorized: node.tlsVerify !== false
-    })
-  });
+  const client = await node.api();
   const vmid = await client.nextId();
   const upid = await client.cloneLxc(node.name, parseInt(templateVmid, 10), vmid, {
     hostname,
@@ -561,16 +553,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   
   // Delete from Proxmox
   try {
-    const api = new ProxmoxApi(
-      node.apiUrl,
-      node.tokenId,
-      node.secret,
-      {
-        httpsAgent: new https.Agent({
-          rejectUnauthorized: node.tlsVerify !== false,
-        })
-      }
-    );
+    const api = await node.api();
 
     await api.deleteContainer(node.name, container.containerId, true, true);
   } catch (error) {

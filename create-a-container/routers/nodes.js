@@ -149,23 +149,20 @@ router.post('/import', async (req, res) => {
 
   const { apiUrl, username, password, tlsVerify } = req.body;
   const httpsAgent = new https.Agent({ rejectUnauthorized: tlsVerify !== 'false' });
-  let tokenId = username.includes('!') ? username : null;
-  let secret = tokenId ? password : null;
+  const tokenId = username;
+  const secret = password;
 
-  // create an api token if a username/password was provided
+  // Create temporary node instance to use api() method for authentication
   try {
-    if (!tokenId) {
-      const client = new ProxmoxApi(apiUrl, null, null, { httpsAgent });
-      await client.authenticate(username, password);
-      const ticketData = await client.createApiToken(username, `import-${Date.now()}`);
-      tokenId = ticketData['full-tokenid'];
-      secret = ticketData['value'];
+    const tempNode = Node.build({
+      name: 'temp',
+      apiUrl,
+      tokenId,
+      secret,
+      tlsVerify: tlsVerify !== 'false'
+    });
 
-      // set privileges for the created token
-      await client.updateAcl('/', 'Administrator', null, true, tokenId, null);
-    }
-
-    const client = new ProxmoxApi(apiUrl, tokenId, secret, { httpsAgent });
+    const client = await tempNode.api();
     const nodes = await client.nodes();
     
     // Fetch network information for each node to get IP address

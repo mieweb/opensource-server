@@ -2,6 +2,9 @@
 const {
   Model
 } = require('sequelize');
+const https = require('https');
+const ProxmoxApi = require('../utils/proxmox-api');
+
 module.exports = (sequelize, DataTypes) => {
   class Node extends Model {
     /**
@@ -18,6 +21,39 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'siteId',
         as: 'site'
       });
+    }
+
+    /**
+     * Create an authenticated ProxmoxApi client for this node.
+     * Detects whether stored credentials are username/password or API token
+     * based on presence of '!' in tokenId (Proxmox convention).
+     * @returns {Promise<ProxmoxApi>} Authenticated API client
+     * @throws {Error} If credentials are missing or authentication fails
+     */
+    async api() {
+      if (!this.tokenId || !this.secret) {
+        throw new Error(`Node ${this.name}: Missing credentials (tokenId and secret required)`);
+      }
+
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: this.tlsVerify !== false
+      });
+
+      const isApiToken = this.tokenId.includes('!');
+
+      if (isApiToken) {
+        // API token authentication - pass directly to constructor
+        return new ProxmoxApi(this.apiUrl, this.tokenId, this.secret, { httpsAgent });
+      }
+
+      // Username/password authentication - authenticate and return client
+      const client = new ProxmoxApi(this.apiUrl, null, null, { httpsAgent });
+      try {
+        await client.authenticate(this.tokenId, this.secret);
+        return client;
+      } catch (error) {
+        throw new Error(`Node ${this.name}: Authentication failed - ${error.message}`);
+      }
     }
   }
   Node.init({

@@ -59,21 +59,21 @@
       </div>
 
       <div class="mb-3">
-        <label for="tokenId" class="form-label">Token ID</label>
+        <label for="tokenId" class="form-label">Username</label>
         <input 
           type="text" 
           class="form-control" 
           id="tokenId" 
           name="tokenId" 
           value="<%= node && node.tokenId ? node.tokenId : '' %>"
-          placeholder="e.g., user@pam!token-name"
+          placeholder="e.g., root@pam"
           autocomplete="off"
         >
-        <div class="form-text">API token identifier (optional)</div>
+        <div class="form-text">Proxmox username (e.g., root@pam)</div>
       </div>
 
       <div class="mb-3">
-        <label for="secret" class="form-label">Secret</label>
+        <label for="secret" class="form-label">Password</label>
         <input 
           type="password" 
           class="form-control" 
@@ -84,7 +84,7 @@
           autocomplete="off"
         >
         <div class="form-text">
-          <%= isEdit ? 'Leave blank to keep existing secret. Enter new secret to update.' : 'API token secret (optional)' %>
+          <%= isEdit ? 'Leave blank to keep existing password. Enter new password to update.' : 'Proxmox password' %>
         </div>
       </div>
 
