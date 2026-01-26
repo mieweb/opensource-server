@@ -551,19 +551,18 @@ router.delete('/:id', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
-  // Delete from Proxmox
   try {
+    // Delete from Proxmox
     const api = await node.api();
-
     await api.deleteContainer(node.name, container.containerId, true, true);
+
+    // Delete from database (cascade deletes associated services)
+    await container.destroy();
   } catch (error) {
     console.error(error);
     req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
-  
-  // Delete from database (cascade deletes associated services)
-  await container.destroy();
   
   req.flash('success', `Container ${container.hostname} deleted successfully`);
   return res.redirect(`/sites/${siteId}/containers`);
