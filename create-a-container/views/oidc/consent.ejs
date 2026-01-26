@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorization Required</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../layouts/header') %>
+
+  <div class="container">
+    <div class="consent-box">
+      <h1>Authorization Required</h1>
+      
+      <p class="consent-message">
+        <strong><%= client.client_name || 'An application' %></strong> is requesting access to your account.
+      </p>
+
+      <% if (details.prompt.details.missingOIDCScope || details.prompt.details.missingResourceScopes) { %>
+        <div class="scopes-section">
+          <h2>This application will be able to:</h2>
+          <ul class="scopes-list">
+            <% if (details.prompt.details.missingOIDCScope) { %>
+              <% details.prompt.details.missingOIDCScope.forEach(scope => { %>
+                <li>
+                  <% if (scope === 'openid') { %>
+                    ✓ Verify your identity
+                  <% } else if (scope === 'profile') { %>
+                    ✓ Access your profile information (name, username)
+                  <% } else if (scope === 'email') { %>
+                    ✓ Access your email address
+                  <% } else if (scope === 'groups') { %>
+                    ✓ Access your group memberships
+                  <% } else { %>
+                    ✓ <%= scope %>
+                  <% } %>
+                </li>
+              <% }); %>
+            <% } %>
+          </ul>
+        </div>
+      <% } %>
+
+      <div class="user-info">
+        <p>Authorizing as: <strong><%= user.cn %></strong> (<%= user.mail %>)</p>
+      </div>
+
+      <div class="consent-actions">
+        <form action="/oidc/interaction/<%= uid %>/confirm" method="POST" style="display: inline;">
+          <button type="submit" class="btn btn-primary btn-large">Authorize</button>
+        </form>
+        <form action="/oidc/interaction/<%= uid %>/abort" method="POST" style="display: inline;">
+          <button type="submit" class="btn btn-secondary btn-large">Deny</button>
+        </form>
+      </div>
+
+      <div class="consent-warning">
+        <small>
+          By authorizing, you allow this application to access your information according to the permissions listed above.
+          You can revoke access at any time from your account settings.
+        </small>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../layouts/footer') %>
+
+  <style>
+    .consent-box {
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 30px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .consent-box h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .consent-message {
+      text-align: center;
+      font-size: 16px;
+      margin-bottom: 30px;
+    }
+
+    .scopes-section {
+      margin-bottom: 30px;
+    }
+
+    .scopes-section h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+
+    .scopes-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .scopes-list li {
+      padding: 10px;
+      background: #f5f5f5;
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+
+    .user-info {
+      text-align: center;
+      padding: 15px;
+      background: #e3f2fd;
+      border-radius: 4px;
+      margin-bottom: 30px;
+    }
+
+    .consent-actions {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .btn-large {
+      padding: 12px 30px;
+      font-size: 16px;
+    }
+
+    .consent-warning {
+      text-align: center;
+      color: #666;
+    }
+  </style>
+</body>
+</html>

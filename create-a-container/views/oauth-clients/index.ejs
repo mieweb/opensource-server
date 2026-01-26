@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OAuth Applications</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../layouts/header') %>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>OAuth Applications</h1>
+      <a href="/oauth-clients/new" class="btn btn-primary">Create New Application</a>
+    </div>
+
+    <% if (messages.success && messages.success.length > 0) { %>
+      <div class="alert alert-success">
+        <%= messages.success[0] %>
+      </div>
+    <% } %>
+
+    <% if (messages.error && messages.error.length > 0) { %>
+      <div class="alert alert-error">
+        <%= messages.error[0] %>
+      </div>
+    <% } %>
+
+    <% if (clients.length === 0) { %>
+      <div class="empty-state">
+        <p>You haven't created any OAuth applications yet.</p>
+        <a href="/oauth-clients/new" class="btn btn-primary">Create Your First Application</a>
+      </div>
+    <% } else { %>
+      <div class="clients-grid">
+        <% clients.forEach(client => { %>
+          <div class="client-card">
+            <h3><%= client.clientName %></h3>
+            <div class="client-meta">
+              <span class="client-id">Client ID: <code><%= client.clientId %></code></span>
+              <span class="client-created">Created: <%= new Date(client.createdAt).toLocaleDateString() %></span>
+            </div>
+            <div class="client-actions">
+              <a href="/oauth-clients/<%= client.clientId %>" class="btn btn-secondary">View Details</a>
+              <a href="/oauth-clients/<%= client.clientId %>/edit" class="btn btn-secondary">Edit</a>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+  </div>
+
+  <%- include('../layouts/footer') %>
+</body>
+</html>

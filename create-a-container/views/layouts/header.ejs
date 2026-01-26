@@ -68,6 +68,11 @@
                 </a>
               </li>
             <% } %>
+            <li class="nav-item">
+              <a class="nav-link <%= path.includes('/oauth-clients') ? 'active' : '' %>" href="/oauth-clients" aria-current="<%= path.includes('/oauth-clients') ? 'page' : '' %>">
+                OAuth Apps
+              </a>
+            </li>
           </ul>
         </div>
       </nav>

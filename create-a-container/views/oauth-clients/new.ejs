@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create OAuth Application</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../layouts/header') %>
+
+  <div class="container">
+    <h1>Create OAuth Application</h1>
+
+    <% if (messages.error && messages.error.length > 0) { %>
+      <div class="alert alert-error">
+        <%= messages.error[0] %>
+      </div>
+    <% } %>
+
+    <form action="/oauth-clients" method="POST" class="form">
+      <div class="form-group">
+        <label for="clientName">Application Name <span class="required">*</span></label>
+        <input type="text" id="clientName" name="clientName" required 
+               placeholder="My Application">
+      </div>
+
+      <div class="form-group">
+        <label for="redirectUris">Redirect URIs <span class="required">*</span></label>
+        <textarea id="redirectUris" name="redirectUris" rows="5" required 
+                  placeholder="https://example.com/callback&#10;https://example.com/auth/callback"></textarea>
+        <small>Enter one URI per line or separate with commas</small>
+      </div>
+
+      <div class="form-group">
+        <label>Grant Types</label>
+        <div class="checkbox-group">
+          <label>
+            <input type="checkbox" name="grantTypes" value="authorization_code" checked>
+            Authorization Code
+          </label>
+          <label>
+            <input type="checkbox" name="grantTypes" value="refresh_token" checked>
+            Refresh Token
+          </label>
+          <label>
+            <input type="checkbox" name="grantTypes" value="client_credentials">
+            Client Credentials
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Response Types</label>
+        <div class="checkbox-group">
+          <label>
+            <input type="checkbox" name="responseTypes" value="code" checked>
+            Code
+          </label>
+          <label>
+            <input type="checkbox" name="responseTypes" value="token">
+            Token (Implicit)
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Scopes</label>
+        <div class="checkbox-group">
+          <label>
+            <input type="checkbox" name="scopes" value="openid" checked disabled>
+            OpenID (required)
+          </label>
+          <label>
+            <input type="checkbox" name="scopes" value="profile" checked>
+            Profile
+          </label>
+          <label>
+            <input type="checkbox" name="scopes" value="email" checked>
+            Email
+          </label>
+          <label>
+            <input type="checkbox" name="scopes" value="groups" checked>
+            Groups
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create Application</button>
+        <a href="/oauth-clients" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <%- include('../layouts/footer') %>
+</body>
+</html>

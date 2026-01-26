@@ -39,6 +39,13 @@ router.post('/', async (req, res) => {
   req.session.user = user.uid;
   req.session.isAdmin = user.groups?.some(group => group.isAdmin) || false;
 
+  // Handle OIDC interaction redirect if present
+  if (req.session.returnTo) {
+    const returnTo = req.session.returnTo;
+    delete req.session.returnTo;
+    return res.redirect(returnTo);
+  }
+
   // Return redirect to original page or default to home
   let redirectUrl = req.body.redirect || '/';
   if (!isSafeRelativeUrl(redirectUrl)) {

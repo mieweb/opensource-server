@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= client.clientName %> - OAuth Application</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../layouts/header') %>
+
+  <div class="container">
+    <div class="page-header">
+      <h1><%= client.clientName %></h1>
+      <div class="actions">
+        <a href="/oauth-clients/<%= client.clientId %>/edit" class="btn btn-secondary">Edit</a>
+        <form action="/oauth-clients/<%= client.clientId %>?_method=DELETE" method="POST" style="display: inline;"
+              onsubmit="return confirm('Are you sure you want to delete this application? This action cannot be undone.');">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+
+    <% if (messages.success && messages.success.length > 0) { %>
+      <div class="alert alert-success">
+        <%= messages.success[0] %>
+      </div>
+    <% } %>
+
+    <% if (messages.error && messages.error.length > 0) { %>
+      <div class="alert alert-error">
+        <%= messages.error[0] %>
+      </div>
+    <% } %>
+
+    <div class="detail-section">
+      <h2>Client Credentials</h2>
+      <div class="credential-box">
+        <div class="credential">
+          <label>Client ID</label>
+          <div class="credential-value">
+            <code id="clientId"><%= client.clientId %></code>
+            <button onclick="copyToClipboard('clientId')" class="btn-copy">Copy</button>
+          </div>
+        </div>
+        <div class="credential">
+          <label>Client Secret</label>
+          <div class="credential-value">
+            <code id="clientSecret"><%= client.clientSecret %></code>
+            <button onclick="copyToClipboard('clientSecret')" class="btn-copy">Copy</button>
+          </div>
+          <form action="/oauth-clients/<%= client.clientId %>/regenerate-secret" method="POST" style="margin-top: 10px;"
+                onsubmit="return confirm('Are you sure? This will invalidate the current secret.');">
+            <button type="submit" class="btn btn-warning btn-sm">Regenerate Secret</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h2>Configuration</h2>
+      <table class="detail-table">
+        <tr>
+          <th>Redirect URIs</th>
+          <td>
+            <ul>
+              <% client.redirectUris.forEach(uri => { %>
+                <li><code><%= uri %></code></li>
+              <% }); %>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>Grant Types</th>
+          <td><%= client.grantTypes.join(', ') %></td>
+        </tr>
+        <tr>
+          <th>Response Types</th>
+          <td><%= client.responseTypes.join(', ') %></td>
+        </tr>
+        <tr>
+          <th>Scopes</th>
+          <td><%= client.scopes.join(', ') %></td>
+        </tr>
+        <tr>
+          <th>Owner</th>
+          <td><%= client.owner.cn %> (<%= client.owner.mail %>)</td>
+        </tr>
+        <tr>
+          <th>Created</th>
+          <td><%= new Date(client.createdAt).toLocaleString() %></td>
+        </tr>
+        <tr>
+          <th>Last Updated</th>
+          <td><%= new Date(client.updatedAt).toLocaleString() %></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="detail-section">
+      <h2>OIDC Endpoints</h2>
+      <table class="detail-table">
+        <tr>
+          <th>Authorization Endpoint</th>
+          <td><code><%= process.env.ISSUER_URL || 'http://localhost:3000' %>/oidc/auth</code></td>
+        </tr>
+        <tr>
+          <th>Token Endpoint</th>
+          <td><code><%= process.env.ISSUER_URL || 'http://localhost:3000' %>/oidc/token</code></td>
+        </tr>
+        <tr>
+          <th>UserInfo Endpoint</th>
+          <td><code><%= process.env.ISSUER_URL || 'http://localhost:3000' %>/oidc/me</code></td>
+        </tr>
+        <tr>
+          <th>Discovery Endpoint</th>
+          <td><code><%= process.env.ISSUER_URL || 'http://localhost:3000' %>/oidc/.well-known/openid-configuration</code></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="actions">
+      <a href="/oauth-clients" class="btn btn-secondary">Back to Applications</a>
+    </div>
+  </div>
+
+  <script>
+    function copyToClipboard(elementId) {
+      const element = document.getElementById(elementId);
+      const text = element.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard!');
+      });
+    }
+  </script>
+
+  <%- include('../layouts/footer') %>
+</body>
+</html>
