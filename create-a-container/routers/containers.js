@@ -225,7 +225,7 @@ router.post('/', async (req, res) => {
   // Configure the cloned container
   await client.updateLxcConfig(node.name, vmid, {
     cores: 4,
-    features: 'nesting=1',
+    features: 'nesting=1,keyctl=1,fuse=1',
     memory: 4096,
     net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
     searchdomain: site.internalDomain,
@@ -260,7 +260,7 @@ router.post('/', async (req, res) => {
       }
     }
     console.error('DNS lookup failed after maximum retries');
-    return null
+    return null;
   })();
   
   const container = await Container.create({
