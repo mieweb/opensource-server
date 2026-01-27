@@ -49,12 +49,8 @@ RUN apt update && apt -y install git make nodejs
 
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
-ARG OPENSOURCE_SERVER_BRANCH=main
-RUN git clone \
-        --branch=${OPENSOURCE_SERVER_BRANCH} \
-        https://github.com/mieweb/opensource-server.git \
-        /opt/opensource-server \
-    && cd /opt/opensource-server \
+COPY . /opt/opensource-server
+RUN cd /opt/opensource-server \
     && make install
 
 # Install the ldap-gateway package
