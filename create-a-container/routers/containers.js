@@ -423,7 +423,7 @@ router.post('/', async (req, res) => {
     await t.commit();
 
     req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
-    return res.redirect(`/sites/${siteId}/containers`);
+    return res.redirect(`/jobs/${job.id}`);
   } catch (err) {
     // Rollback the transaction
     await t.rollback();
@@ -617,6 +617,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     if (restartJob) {
       req.flash('success', 'Container configuration updated. Restarting container...');
+      return res.redirect(`/jobs/${restartJob.id}`);
     } else {
       req.flash('success', 'Container services updated successfully');
     }
