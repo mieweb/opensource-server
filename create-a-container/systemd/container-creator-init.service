@@ -1,0 +1,25 @@
+[Unit]
+Description=Initialize PostgreSQL for Container Creator
+After=postgresql.service
+ConditionPathExists=!/opt/opensource-server/create-a-container/.env
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/opensource-server/create-a-container
+ExecStart=/bin/bash -c '\
+  for i in {1..30}; do pg_isready -h localhost && break || sleep 1; done; \
+  POSTGRES_PASSWORD=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 24); \
+  POSTGRES_USER="cluster_manager"; \
+  POSTGRES_DATABASE="cluster_manager"; \
+  POSTGRES_HOST="localhost"; \
+  sudo -u postgres psql -c "CREATE USER $${POSTGRES_USER} WITH PASSWORD '"'"'$${POSTGRES_PASSWORD}'"'"';"; \
+  sudo -u postgres psql -c "CREATE DATABASE $${POSTGRES_DATABASE} OWNER $${POSTGRES_USER};"; \
+  echo "DATABASE_DIALECT=postgres" > .env; \
+  echo "POSTGRES_HOST=$${POSTGRES_HOST}" >> .env; \
+  echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> .env; \
+  echo "POSTGRES_USER=$${POSTGRES_USER}" >> .env; \
+  echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> .env; \
+  npm run db:migrate;'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,7 @@
 [Unit]
 Description=Container Creator Node.js App
-After=network.target
+After=container-creator-init.service
+Wants=container-creator-init.service
 
 [Service]
 Type=simple
