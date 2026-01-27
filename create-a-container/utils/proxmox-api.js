@@ -319,6 +319,20 @@ class ProxmoxApi {
     );
     return response.data.data;
   }
+
+  /**
+   * Get LXC container network interfaces
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @returns {Promise<Array>} - Array of network interfaces
+   */
+  async lxcInterfaces(node, vmid) {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/interfaces`,
+      this.options
+    );
+    return response.data.data;
+  }
 }
 
 module.exports = ProxmoxApi;

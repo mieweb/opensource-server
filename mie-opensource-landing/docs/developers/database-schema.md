@@ -14,6 +14,7 @@ erDiagram
     Sites ||--o{ ExternalDomains : has
     Nodes ||--o{ Containers : hosts
     Containers ||--o{ Services : exposes
+    Containers }o--o| Jobs : "created by"
     Services ||--|| HTTPServices : "type: http"
     Services ||--|| TransportServices : "type: transport"
     Services ||--|| DnsServices : "type: dns"
@@ -47,13 +48,15 @@ erDiagram
     Containers {
         int id PK
         string hostname UK
-        string name
-        string description
+        string username
+        string status "pending,creating,running,failed"
+        string template
+        int creationJobId FK
         int nodeId FK
         int containerId
         string macAddress UK
         string ipv4Address UK
-        string status
+        string aiContainer
     }
 
     Services {
@@ -184,16 +187,20 @@ The **Node** model represents a Proxmox VE server within a site.
 The **Container** model represents an LXC container running on a Proxmox node.
 
 **Key Fields:**
-- `hostname`: Container hostname
-- `name`: Display name
+- `hostname`: Container hostname (unique)
+- `username`: Owner of the container (who created it)
+- `status`: Container creation state ('pending', 'creating', 'running', 'failed')
+- `template`: Name of the Proxmox template used to create this container
+- `creationJobId`: Foreign key to the Job that created this container (nullable)
 - `containerId`: Proxmox container ID (CTID)
-- `macAddress`: Unique MAC address
-- `ipv4Address`: Assigned IP address
-- `status`: Container state (e.g., 'running', 'stopped')
+- `macAddress`: Unique MAC address (nullable for pending containers)
+- `ipv4Address`: Assigned IP address (nullable for pending containers)
+- `aiContainer`: AI container flag (default: 'N')
 
 **Relationships:**
 - Belongs to Node
 - Has many Services
+- Belongs to Job (optional, via creationJobId)
 
 **Constraints:**
 - Unique composite index on `(nodeId, containerId)`

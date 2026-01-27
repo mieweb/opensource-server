@@ -177,7 +177,7 @@ async function run() {
       console.log(`Container: hostname=${hostname}`);
       console.log(`  ipv4Address=${obj.ip}`);
       console.log(`  username=${obj.user}`);
-      console.log(`  osRelease=${obj.os_release}`);
+      console.log(`  template=${obj.template || 'N/A'}`);
       console.log(`  containerId=${obj.ctid}`);
       console.log(`  macAddress=${obj.mac}`);
       if (obj.ports) {
@@ -196,13 +196,12 @@ async function run() {
 
   for (const [hostname, obj] of Object.entries(data)) {
     // If fields missing and Proxmox creds provided, try to fill them
-    if ((obj.user === undefined || obj.os_release === undefined || obj.ctid === undefined || obj.mac === undefined || obj.ip === undefined) && (PROXMOX_URL && PROXMOX_USER && PROXMOX_PASSWORD)) {
+    if ((obj.user === undefined || obj.ctid === undefined || obj.mac === undefined || obj.ip === undefined) && (PROXMOX_URL && PROXMOX_USER && PROXMOX_PASSWORD)) {
       const pmx = await lookupProxmoxByHostname(hostname);
       if (pmx.ctid && obj.ctid === undefined) obj.ctid = pmx.ctid;
       if (pmx.mac && obj.mac === undefined) obj.mac = pmx.mac;
       if (pmx.ip && obj.ip === undefined) obj.ip = pmx.ip;
       if (pmx.user && obj.user === undefined) obj.user = pmx.user;
-      if (pmx.os_release && obj.os_release === undefined) obj.os_release = pmx.os_release;
     }
 
     // Upsert Container by hostname
@@ -215,7 +214,8 @@ async function run() {
         hostname,
         ipv4Address: obj.ip,
         username: obj.user || '',
-        osRelease: obj.os_release,
+        status: 'running',
+        template: obj.template || null,
         containerId: obj.ctid,
         macAddress: obj.mac
       });
@@ -224,7 +224,8 @@ async function run() {
       await container.update({
         ipv4Address: obj.ip,
         username: obj.user || '',
-        osRelease: obj.os_release,
+        status: container.status || 'running',
+        template: obj.template || container.template,
         containerId: obj.ctid,
         macAddress: obj.mac
       });

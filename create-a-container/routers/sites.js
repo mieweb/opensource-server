@@ -19,6 +19,8 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
+        where: { status: 'running' },
+        required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
         include: [{
           model: Service,
@@ -44,7 +46,7 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
 router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
-  // fetch services for the specific site
+  // fetch services for the specific site (only from running containers)
   const site = await Site.findByPk(siteId, {
     include: [{
       model: Node,
@@ -52,6 +54,8 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
+        where: { status: 'running' },
+        required: false,
         include: [{
           model: Service,
           as: 'services',

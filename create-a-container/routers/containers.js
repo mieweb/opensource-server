@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
+const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Job, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
@@ -109,7 +109,9 @@ router.get('/', requireAuth, async (req, res) => {
       id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
-      osRelease: c.osRelease,
+      status: c.status,
+      template: c.template,
+      creationJobId: c.creationJobId,
       sshPort,
       httpPort,
       nodeName: c.node ? c.node.name : '-'
@@ -192,7 +194,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
   });
 });
 
-// POST /sites/:siteId/containers - Create a new container
+// POST /sites/:siteId/containers - Create a new container (async via job)
 router.post('/', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
@@ -203,170 +205,153 @@ router.post('/', async (req, res) => {
     return res.redirect('/sites');
   }
 
-  // TODO: build the container async in a Job
+  const t = await sequelize.transaction();
+  
   try {
-  const { hostname, template, services } = req.body;
-  const [ nodeName, templateVmid ] = template.split(',');
-  const node = await Node.findOne({ where: { name: nodeName, siteId } });
-  const client = await node.api();
-  const vmid = await client.nextId();
-  const upid = await client.cloneLxc(node.name, parseInt(templateVmid, 10), vmid, {
-    hostname,
-    description: `Cloned from template ${templateVmid}`,
-    full: 1
-  });
-  
-  // wait for the task to complete
-  while (true) {
-    const status = await client.taskStatus(node.name, upid);
-    if (status.status === 'stopped') break;
-  }
-
-  // Configure the cloned container
-  await client.updateLxcConfig(node.name, vmid, {
-    cores: 4,
-    features: 'nesting=1,keyctl=1,fuse=1',
-    memory: 4096,
-    net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
-    searchdomain: site.internalDomain,
-    swap: 0,
-    onboot: 1,
-    tags: req.session.user,
-  });
-
-  // Start the container
-  const startUpid = await client.startLxc(node.name, vmid);
-  
-  // wait for the start task to complete
-  while (true) {
-    const status = await client.taskStatus(node.name, startUpid);
-    if (status.status === 'stopped') break;
-  }
-
-  // record container information
-  const config = await client.lxcConfig(node.name, vmid);
-  const macAddress = config['net0'].match(/hwaddr=([0-9A-Fa-f:]+)/)[1];
-  const ipv4Address = await (async () => {
-    const maxRetries = 10;
-    const retryDelay = 3000;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const domainName = `${hostname}.${site.internalDomain}`;
-        const lookup = await dns.lookup(domainName);
-        return lookup.address;
-      } catch (err) {
-        console.error('DNS lookup failed:', err);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-      }
+    const { hostname, template, services } = req.body;
+    const [ nodeName, templateVmid ] = template.split(',');
+    const node = await Node.findOne({ where: { name: nodeName, siteId } });
+    
+    if (!node) {
+      throw new Error(`Node "${nodeName}" not found`);
     }
-    console.error('DNS lookup failed after maximum retries');
-    return null;
-  })();
-  
-  const container = await Container.create({
-    hostname,
-    username: req.session.user,
-    nodeId: node.id,
-    containerId: vmid,
-    macAddress,
-    ipv4Address
-  });
+    
+    // Get the template name from Proxmox
+    const client = await node.api();
+    const templates = await client.getLxcTemplates(node.name);
+    const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
+    
+    if (!templateContainer) {
+      throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
+    }
+    
+    const templateName = templateContainer.name;
+    
+    // Allocate VMID immediately
+    const vmid = await client.nextId();
+    
+    // Create the container record in pending status
+    const container = await Container.create({
+      hostname,
+      username: req.session.user,
+      status: 'pending',
+      template: templateName,
+      nodeId: node.id,
+      containerId: vmid,
+      macAddress: null,
+      ipv4Address: null
+    }, { transaction: t });
 
-  // Create services if provided
-  if (services && typeof services === 'object') {
-    for (const key in services) {
-      const service = services[key];
-      const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
-      
-      // Validate required fields
-      if (!type || !internalPort) continue;
-      
-      // Determine the service type (http, transport, or dns)
-      let serviceType;
-      let protocol = null;
-      
-      if (type === 'http') {
-        serviceType = 'http';
-      } else if (type === 'srv') {
-        serviceType = 'dns';
-      } else {
-        // tcp or udp
-        serviceType = 'transport';
-        protocol = type;
-      }
-      
-      const serviceData = {
-        containerId: container.id,
-        type: serviceType,
-        internalPort: parseInt(internalPort, 10)
-      };
-
-      // Create the base service
-      const createdService = await Service.create(serviceData);
-
-      if (serviceType === 'http') {
-        // Validate that both hostname and domain are set
-        if (!externalHostname || !externalDomainId || externalDomainId === '') {
-          req.flash('error', 'HTTP services must have both an external hostname and external domain');
-          return res.redirect(`/sites/${siteId}/containers/new`);
+    // Create services if provided (validate within transaction)
+    if (services && typeof services === 'object') {
+      for (const key in services) {
+        const service = services[key];
+        const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
+        
+        // Validate required fields
+        if (!type || !internalPort) continue;
+        
+        // Determine the service type (http, transport, or dns)
+        let serviceType;
+        let protocol = null;
+        
+        if (type === 'http') {
+          serviceType = 'http';
+        } else if (type === 'srv') {
+          serviceType = 'dns';
+        } else {
+          // tcp or udp
+          serviceType = 'transport';
+          protocol = type;
         }
         
-        // Create HTTPService entry
-        await HTTPService.create({
-          serviceId: createdService.id,
-          externalHostname,
-          externalDomainId: parseInt(externalDomainId, 10)
-        });
-      } else if (serviceType === 'dns') {
-        // Validate DNS name is set
-        if (!dnsName) {
-          req.flash('error', 'DNS services must have a DNS name');
-          return res.redirect(`/sites/${siteId}/containers/new`);
+        const serviceData = {
+          containerId: container.id,
+          type: serviceType,
+          internalPort: parseInt(internalPort, 10)
+        };
+
+        // Create the base service
+        const createdService = await Service.create(serviceData, { transaction: t });
+
+        if (serviceType === 'http') {
+          // Validate that both hostname and domain are set
+          if (!externalHostname || !externalDomainId || externalDomainId === '') {
+            throw new Error('HTTP services must have both an external hostname and external domain');
+          }
+          
+          // Create HTTPService entry
+          await HTTPService.create({
+            serviceId: createdService.id,
+            externalHostname,
+            externalDomainId: parseInt(externalDomainId, 10)
+          }, { transaction: t });
+        } else if (serviceType === 'dns') {
+          // Validate DNS name is set
+          if (!dnsName) {
+            throw new Error('DNS services must have a DNS name');
+          }
+          
+          // Create DnsService entry
+          await DnsService.create({
+            serviceId: createdService.id,
+            recordType: 'SRV',
+            dnsName
+          }, { transaction: t });
+        } else {
+          // For TCP/UDP services, auto-assign external port
+          const minPort = 2000;
+          const maxPort = 65565;
+          const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort, t);
+          
+          // Create TransportService entry
+          await TransportService.create({
+            serviceId: createdService.id,
+            protocol: protocol,
+            externalPort
+          }, { transaction: t });
         }
-        
-        // Create DnsService entry
-        await DnsService.create({
-          serviceId: createdService.id,
-          recordType: 'SRV',
-          dnsName
-        });
-      } else {
-        // For TCP/UDP services, auto-assign external port
-        const minPort = 2000;
-        const maxPort = 65565;
-        const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort);
-        
-        // Create TransportService entry
-        await TransportService.create({
-          serviceId: createdService.id,
-          protocol: protocol,
-          externalPort
-        });
       }
     }
-  }
 
-  return res.redirect(`/sites/${siteId}/containers`);
-} catch (err) {
-  console.error('Error creating container:', err);
-  
-  // Handle axios errors with detailed messages
-  let errorMessage = 'Failed to create container: ';
-  if (err.response?.data) {
-    if (err.response.data.errors) {
-      errorMessage += JSON.stringify(err.response.data.errors);
-    } else if (err.response.data.message) {
-      errorMessage += err.response.data.message;
+    // Create the job to perform the actual container creation
+    const job = await Job.create({
+      command: `node bin/create-container.js --container-id=${container.id}`,
+      createdBy: req.session.user,
+      status: 'pending'
+    }, { transaction: t });
+
+    // Link the container to the job
+    await container.update({ creationJobId: job.id }, { transaction: t });
+
+    // Commit the transaction
+    await t.commit();
+
+    req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
+    return res.redirect(`/sites/${siteId}/containers`);
+  } catch (err) {
+    // Rollback the transaction
+    await t.rollback();
+    
+    console.error('Error creating container:', err);
+    
+    // Handle axios errors with detailed messages
+    let errorMessage = 'Failed to create container: ';
+    if (err.response?.data) {
+      if (err.response.data.errors) {
+        errorMessage += JSON.stringify(err.response.data.errors);
+      } else if (err.response.data.message) {
+        errorMessage += err.response.data.message;
+      } else {
+        errorMessage += err.message;
+      }
     } else {
       errorMessage += err.message;
     }
-  } else {
-    errorMessage += err.message;
+    
+    req.flash('error', errorMessage);
+    return res.redirect(`/sites/${siteId}/containers/new`);
   }
-  
-  req.flash('error', errorMessage);
-  return res.redirect(`/sites/${siteId}/containers/new`);
-}
 });
 
 // PUT /sites/:siteId/containers/:id - Update container services

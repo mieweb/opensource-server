@@ -14,6 +14,8 @@ module.exports = (sequelize, DataTypes) => {
       Container.hasMany(models.Service, { foreignKey: 'containerId', as: 'services' });
       // a container belongs to a node
       Container.belongsTo(models.Node, { foreignKey: 'nodeId', as: 'node' });
+      // a container may have a creation job
+      Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
     }
   }
   Container.init({
@@ -26,9 +28,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false
     },
-    osRelease: {
+    status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'pending'
+    },
+    template: {
       type: DataTypes.STRING(255),
       allowNull: true
+    },
+    creationJobId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'Jobs',
+        key: 'id'
+      }
     },
     nodeId: {
       type: DataTypes.INTEGER,
@@ -44,12 +59,12 @@ module.exports = (sequelize, DataTypes) => {
     },
     macAddress: {
       type: DataTypes.STRING(17),
-      allowNull: false,
+      allowNull: true,
       unique: true
     },
     ipv4Address: {
       type: DataTypes.STRING(45),
-      allowNull: false,
+      allowNull: true,
       unique: true
     },
     aiContainer: {
