@@ -150,9 +150,9 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
   // config/config.js and construct the SQL URL
   const config = require('../config/config')[process.env.NODE_ENV || 'development'];   
   const sqlUrlBuilder = new URL(`${config.dialect}://`);
+  sqlUrlBuilder.hostname = config.host || '';
   sqlUrlBuilder.username = config.username || '';
   sqlUrlBuilder.password = config.password || '';
-  sqlUrlBuilder.hostname = config.host || '';
   sqlUrlBuilder.port = config.port || '';
   sqlUrlBuilder.pathname = config.database || path.resolve(config.storage);
   env.SQL_URI = sqlUrlBuilder.toString();
