@@ -34,7 +34,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       <div style="flex: 1;">
         <label for="template">Container Template</label>
         <% if (isEdit) { %>
-          <input type="text" id="template" value="<%= container.node.name %>" readonly style="background-color: #e9ecef;">
+          <input type="text" id="template" value="<%= container.template %>" readonly style="background-color: #e9ecef;">
         <% } else { %>
           <select id="templateSelect" name="template" required>
             <option value="">Select a template...</option>

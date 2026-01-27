@@ -25,6 +25,7 @@
  */
 
 const path = require('path');
+const https = require('https');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
@@ -32,6 +33,90 @@ const { Container, Node, Site } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
+
+/**
+ * Fetch JSON from a URL with optional headers
+ * @param {string} url - The URL to fetch
+ * @param {object} headers - Optional headers
+ * @returns {Promise<object>} Parsed JSON response
+ */
+function fetchJson(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+        } else {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            reject(new Error(`Failed to parse JSON: ${e.message}`));
+          }
+        }
+      });
+    });
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Get the digest (sha256 hash) of a Docker/OCI image from the registry
+ * Handles both single-arch and multi-arch (manifest list) images
+ * @param {string} registry - Registry hostname (e.g., 'docker.io')
+ * @param {string} repo - Repository (e.g., 'library/nginx')
+ * @param {string} tag - Tag (e.g., 'latest')
+ * @returns {Promise<string>} Short digest (first 12 chars of sha256)
+ */
+async function getImageDigest(registry, repo, tag) {
+  let headers = {};
+  
+  // Docker Hub requires auth token
+  if (registry === 'docker.io' || registry === 'registry-1.docker.io') {
+    const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`;
+    const tokenData = await fetchJson(tokenUrl);
+    headers['Authorization'] = `Bearer ${tokenData.token}`;
+  }
+  
+  const registryHost = registry === 'docker.io' ? 'registry-1.docker.io' : registry;
+  
+  // Fetch manifest - accept both single manifest and manifest list
+  headers['Accept'] = [
+    'application/vnd.docker.distribution.manifest.v2+json',
+    'application/vnd.oci.image.manifest.v1+json',
+    'application/vnd.docker.distribution.manifest.list.v2+json',
+    'application/vnd.oci.image.index.v1+json'
+  ].join(', ');
+  
+  const manifestUrl = `https://${registryHost}/v2/${repo}/manifests/${tag}`;
+  let manifest = await fetchJson(manifestUrl, headers);
+  
+  // Handle manifest list (multi-arch) - select amd64/linux
+  if (manifest.manifests && Array.isArray(manifest.manifests)) {
+    const amd64Manifest = manifest.manifests.find(m => 
+      m.platform?.architecture === 'amd64' && m.platform?.os === 'linux'
+    );
+    if (!amd64Manifest) {
+      throw new Error('No amd64/linux manifest found in manifest list');
+    }
+    
+    // Fetch the actual manifest for amd64
+    headers['Accept'] = 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json';
+    const archManifestUrl = `https://${registryHost}/v2/${repo}/manifests/${amd64Manifest.digest}`;
+    manifest = await fetchJson(archManifestUrl, headers);
+  }
+  
+  // Get config digest from manifest
+  const configDigest = manifest.config?.digest;
+  if (!configDigest) {
+    throw new Error('No config digest in manifest');
+  }
+  
+  // Return short hash (sha256:abc123... -> abc123...)
+  const hash = configDigest.replace('sha256:', '');
+  return hash.substring(0, 12);
+}
 
 /**
  * Check if a template is a Docker image reference (contains '/')
@@ -63,14 +148,15 @@ function parseDockerRef(ref) {
 
 /**
  * Generate a filename for a pulled Docker image
- * Replaces special chars with underscores
+ * Replaces special chars with underscores, includes digest for cache busting
  * Note: Proxmox automatically appends .tar, so we don't include it here
  * @param {object} parsed - Parsed Docker ref components
- * @returns {string} Sanitized filename (e.g., "docker.io_library_nginx_latest")
+ * @param {string} digest - Short digest hash
+ * @returns {string} Sanitized filename (e.g., "docker.io_library_nginx_latest_abc123def456")
  */
-function generateImageFilename(parsed) {
+function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
-  const sanitized = `${registry}_${namespace}_${image}_${tag}`.replace(/[/:]/g, '_');
+  const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
 }
 
@@ -199,24 +285,39 @@ async function main() {
       const parsed = parseDockerRef(container.template);
       console.log(`Docker image: ${parsed.registry}/${parsed.namespace}/${parsed.image}:${parsed.tag}`);
       
-      const filename = generateImageFilename(parsed);
-      console.log(`Target filename: ${filename}`);
-      
       const storage = node.imageStorage || 'local';
       console.log(`Using storage: ${storage}`);
       
-      // Pull the image from OCI registry using full image reference
-      const imageRef = container.template;
-      console.log(`Pulling image ${imageRef}...`);
-      const pullUpid = await client.pullOciImage(node.name, storage, {
-        reference: imageRef,
-        filename
-      });
-      console.log(`Pull task started: ${pullUpid}`);
+      // Get image digest from registry to create unique filename
+      const repo = parsed.namespace ? `${parsed.namespace}/${parsed.image}` : parsed.image;
+      console.log(`Fetching digest for ${parsed.registry}/${repo}:${parsed.tag}...`);
+      const digest = await getImageDigest(parsed.registry, repo, parsed.tag);
+      console.log(`Image digest: ${digest}`);
       
-      // Wait for pull to complete
-      await client.waitForTask(node.name, pullUpid);
-      console.log('Image pulled successfully');
+      const filename = generateImageFilename(parsed, digest);
+      console.log(`Target filename: ${filename}`);
+      
+      // Check if image already exists in storage
+      const existingContents = await client.storageContents(node.name, storage, 'vztmpl');
+      const expectedVolid = `${storage}:vztmpl/${filename}.tar`;
+      const imageExists = existingContents.some(item => item.volid === expectedVolid);
+      
+      if (imageExists) {
+        console.log(`Image already exists in storage: ${expectedVolid}`);
+      } else {
+        // Pull the image from OCI registry
+        const imageRef = container.template;
+        console.log(`Pulling image ${imageRef}...`);
+        const pullUpid = await client.pullOciImage(node.name, storage, {
+          reference: imageRef,
+          filename
+        });
+        console.log(`Pull task started: ${pullUpid}`);
+        
+        // Wait for pull to complete
+        await client.waitForTask(node.name, pullUpid);
+        console.log('Image pulled successfully');
+      }
       
       // Create container from the pulled image (Proxmox adds .tar to the filename)
       console.log(`Creating container from ${filename}.tar...`);
@@ -284,11 +385,47 @@ async function main() {
       console.log('Container configured');
     }
     
-    // Apply environment variables and entrypoint if set
-    const envConfig = container.buildLxcEnvConfig();
+    // Apply environment variables and entrypoint
+    // First read defaults from the image, then merge with user-specified values
+    const defaultConfig = await client.lxcConfig(node.name, vmid);
+    const defaultEntrypoint = defaultConfig['entrypoint'] || null;
+    const defaultEnvStr = defaultConfig['env'] || null;
+    
+    // Parse default env vars
+    let mergedEnvVars = {};
+    if (defaultEnvStr) {
+      const pairs = defaultEnvStr.split('\0');
+      for (const pair of pairs) {
+        const eqIndex = pair.indexOf('=');
+        if (eqIndex > 0) {
+          mergedEnvVars[pair.substring(0, eqIndex)] = pair.substring(eqIndex + 1);
+        }
+      }
+    }
+    
+    // Merge user-specified env vars (user values override defaults)
+    const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
+    mergedEnvVars = { ...mergedEnvVars, ...userEnvVars };
+    
+    // Use user entrypoint if specified, otherwise keep default
+    const finalEntrypoint = container.entrypoint || defaultEntrypoint;
+    
+    // Build config to apply
+    const envConfig = {};
+    if (finalEntrypoint) {
+      envConfig.entrypoint = finalEntrypoint;
+    }
+    if (Object.keys(mergedEnvVars).length > 0) {
+      envConfig.env = Object.entries(mergedEnvVars)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\0');
+    }
+    
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
-      console.log('Config:', JSON.stringify(envConfig, null, 2));
+      if (defaultEntrypoint) console.log(`Default entrypoint: ${defaultEntrypoint}`);
+      if (defaultEnvStr) console.log(`Default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length} from image`);
+      if (Object.keys(userEnvVars).length > 0) console.log(`User env vars: ${Object.keys(userEnvVars).length} overrides`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }
@@ -319,6 +456,31 @@ async function main() {
     const macAddress = macMatch[1];
     console.log(`MAC address: ${macAddress}`);
     
+    // Read back entrypoint and environment variables from config
+    const actualEntrypoint = config['entrypoint'] || null;
+    const actualEnv = config['env'] || null;
+    
+    // Parse NUL-separated env string back to JSON object
+    let environmentVars = {};
+    if (actualEnv) {
+      const pairs = actualEnv.split('\0');
+      for (const pair of pairs) {
+        const eqIndex = pair.indexOf('=');
+        if (eqIndex > 0) {
+          const key = pair.substring(0, eqIndex);
+          const value = pair.substring(eqIndex + 1);
+          environmentVars[key] = value;
+        }
+      }
+    }
+    
+    if (actualEntrypoint) {
+      console.log(`Entrypoint: ${actualEntrypoint}`);
+    }
+    if (Object.keys(environmentVars).length > 0) {
+      console.log(`Environment variables: ${Object.keys(environmentVars).length} vars`);
+    }
+    
     // Get IP address from Proxmox interfaces API
     const ipv4Address = await getIpFromInterfaces(client, node.name, vmid);
     
@@ -333,6 +495,8 @@ async function main() {
     await container.update({
       macAddress,
       ipv4Address,
+      entrypoint: actualEntrypoint,
+      environmentVars: JSON.stringify(environmentVars),
       status: 'running'
     });
     
