@@ -227,17 +227,14 @@ router.post('/', async (req, res) => {
     
     const templateName = templateContainer.name;
     
-    // Allocate VMID immediately
-    const vmid = await client.nextId();
-    
-    // Create the container record in pending status
+    // Create the container record in pending status (VMID allocated by job)
     const container = await Container.create({
       hostname,
       username: req.session.user,
       status: 'pending',
       template: templateName,
       nodeId: node.id,
-      containerId: vmid,
+      containerId: null,
       macAddress: null,
       ipv4Address: null
     }, { transaction: t });
@@ -537,15 +534,43 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
   
   try {
-    // Delete from Proxmox
-    const api = await node.api();
-    await api.deleteContainer(node.name, container.containerId, true, true);
+    // Only attempt Proxmox deletion if containerId exists
+    if (container.containerId) {
+      const api = await node.api();
+      
+      // Sanity check: verify the container in Proxmox matches our database record
+      try {
+        const proxmoxConfig = await api.lxcConfig(node.name, container.containerId);
+        const proxmoxHostname = proxmoxConfig.hostname;
+        
+        if (proxmoxHostname && proxmoxHostname !== container.hostname) {
+          console.error(`Hostname mismatch: DB has "${container.hostname}", Proxmox has "${proxmoxHostname}" for VMID ${container.containerId}`);
+          req.flash('error', `Safety check failed: Proxmox container hostname "${proxmoxHostname}" does not match database hostname "${container.hostname}". Manual intervention required.`);
+          return res.redirect(`/sites/${siteId}/containers`);
+        }
+        
+        // Delete from Proxmox
+        await api.deleteContainer(node.name, container.containerId, true, true);
+        console.log(`Deleted container ${container.containerId} from Proxmox node ${node.name}`);
+      } catch (proxmoxError) {
+        // If container doesn't exist in Proxmox (404 or similar), continue with DB deletion
+        if (proxmoxError.response?.status === 500 && proxmoxError.response?.data?.errors?.vmid) {
+          console.log(`Container ${container.containerId} not found in Proxmox, proceeding with DB deletion`);
+        } else if (proxmoxError.response?.status === 404) {
+          console.log(`Container ${container.containerId} not found in Proxmox, proceeding with DB deletion`);
+        } else {
+          throw proxmoxError;
+        }
+      }
+    } else {
+      console.log(`Container ${container.hostname} has no containerId, skipping Proxmox deletion`);
+    }
 
     // Delete from database (cascade deletes associated services)
     await container.destroy();
   } catch (error) {
     console.error(error);
-    req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
+    req.flash('error', `Failed to delete container: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
   

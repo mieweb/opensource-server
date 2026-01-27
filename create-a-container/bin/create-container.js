@@ -174,7 +174,6 @@ async function main() {
   console.log(`Node: ${node.name}`);
   console.log(`Site: ${site.name} (${site.internalDomain})`);
   console.log(`Template: ${container.template}`);
-  console.log(`Target VMID: ${container.containerId}`);
   
   try {
     // Update status to 'creating'
@@ -197,9 +196,14 @@ async function main() {
     const templateVmid = templateContainer.vmid;
     console.log(`Found template VMID: ${templateVmid}`);
     
+    // Allocate VMID right before cloning to minimize race condition window
+    console.log('Allocating VMID from Proxmox...');
+    const vmid = await client.nextId();
+    console.log(`Allocated VMID: ${vmid}`);
+    
     // Clone the template
-    console.log(`Cloning template ${templateVmid} to VMID ${container.containerId}...`);
-    const cloneUpid = await client.cloneLxc(node.name, templateVmid, container.containerId, {
+    console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
+    const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
       hostname: container.hostname,
       description: `Cloned from template ${container.template}`,
       full: 1
@@ -210,9 +214,13 @@ async function main() {
     await waitForTask(client, node.name, cloneUpid);
     console.log('Clone completed successfully');
     
+    // Store the VMID now that clone succeeded
+    await container.update({ containerId: vmid });
+    console.log(`Container VMID ${vmid} stored in database`);
+    
     // Configure the container
     console.log('Configuring container...');
-    await client.updateLxcConfig(node.name, container.containerId, {
+    await client.updateLxcConfig(node.name, vmid, {
       cores: 4,
       features: 'nesting=1,keyctl=1,fuse=1',
       memory: 4096,
@@ -226,7 +234,7 @@ async function main() {
     
     // Start the container
     console.log('Starting container...');
-    const startUpid = await client.startLxc(node.name, container.containerId);
+    const startUpid = await client.startLxc(node.name, vmid);
     console.log(`Start task started: ${startUpid}`);
     
     // Wait for start to complete
@@ -235,7 +243,7 @@ async function main() {
     
     // Get MAC address from config
     console.log('Querying container configuration...');
-    const config = await client.lxcConfig(node.name, container.containerId);
+    const config = await client.lxcConfig(node.name, vmid);
     const net0 = config['net0'];
     const macMatch = net0.match(/hwaddr=([0-9A-Fa-f:]+)/);
     
@@ -247,7 +255,7 @@ async function main() {
     console.log(`MAC address: ${macAddress}`);
     
     // Get IP address from Proxmox interfaces API
-    const ipv4Address = await getIpFromInterfaces(client, node.name, container.containerId);
+    const ipv4Address = await getIpFromInterfaces(client, node.name, vmid);
     
     if (!ipv4Address) {
       throw new Error('Could not get IP address from Proxmox interfaces API');
@@ -265,7 +273,7 @@ async function main() {
     
     console.log('Container creation completed successfully!');
     console.log(`  Hostname: ${container.hostname}`);
-    console.log(`  VMID: ${container.containerId}`);
+    console.log(`  VMID: ${vmid}`);
     console.log(`  MAC: ${macAddress}`);
     console.log(`  IP: ${ipv4Address}`);
     console.log(`  Status: running`);
