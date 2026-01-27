@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage } = req.body;
     
     await Node.create({
       name,
@@ -126,6 +126,7 @@ router.post('/', async (req, res) => {
       tokenId: tokenId || null,
       secret: secret || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+      imageStorage: imageStorage || 'local',
       siteId
     });
 
@@ -165,37 +166,43 @@ router.post('/import', async (req, res) => {
     const client = await tempNode.api();
     const nodes = await client.nodes();
     
-    // Fetch network information for each node to get IP address
+    // Fetch network information and storage for each node
     const nodesWithIp = await Promise.all(nodes.map(async (n) => {
+      let ipv4Address = null;
+      let imageStorage = 'local';
+
       try {
         const networkInterfaces = await client.nodeNetwork(n.node);
         // Find the primary network interface (usually vmbr0 or the one with type 'bridge' and active)
         const primaryInterface = networkInterfaces.find(iface => 
           iface.iface === 'vmbr0' || (iface.type === 'bridge' && iface.active)
         );
-        const ipv4Address = primaryInterface?.address || null;
-        
-        return {
-          name: n.node,
-          ipv4Address,
-          apiUrl,
-          tokenId,
-          secret,
-          tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
-          siteId
-        };
+        ipv4Address = primaryInterface?.address || null;
       } catch (err) {
         console.error(`Failed to fetch network info for node ${n.node}:`, err.message);
-        return {
-          name: n.node,
-          ipv4Address: null,
-          apiUrl,
-          tokenId,
-          secret,
-          tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
-          siteId
-        };
       }
+
+      // Find largest storage supporting CT templates (vztmpl)
+      try {
+        const storages = await client.datastores(n.node, 'vztmpl', true);
+        if (storages.length > 0) {
+          const largest = storages.reduce((max, s) => (s.total > max.total ? s : max), storages[0]);
+          imageStorage = largest.storage;
+        }
+      } catch (err) {
+        console.error(`Failed to fetch storages for node ${n.node}:`, err.message);
+      }
+
+      return {
+        name: n.node,
+        ipv4Address,
+        apiUrl,
+        tokenId,
+        secret,
+        tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+        imageStorage,
+        siteId
+      };
     }));
     
     const importedNodes = await Node.bulkCreate(nodesWithIp);
@@ -242,14 +249,15 @@ router.put('/:id', async (req, res) => {
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage } = req.body;
     
     const updateData = {
       name,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
-      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true'
+      tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
+      imageStorage: imageStorage || 'local'
     };
 
     // Only update secret if a new value was provided
@@ -265,6 +273,34 @@ router.put('/:id', async (req, res) => {
     console.error('Error updating node:', err);
     req.flash('error', `Failed to update node: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/${nodeId}/edit`);
+  }
+});
+
+// GET /sites/:siteId/nodes/:id/storages - Get storages supporting CT templates
+router.get('/:id/storages', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  const nodeId = parseInt(req.params.id, 10);
+
+  try {
+    const node = await Node.findOne({
+      where: { id: nodeId, siteId }
+    });
+
+    if (!node || !node.apiUrl || !node.tokenId || !node.secret) {
+      return res.json([]);
+    }
+
+    const client = await node.api();
+    const storages = await client.datastores(node.name, 'vztmpl', true);
+    
+    return res.json(storages.map(s => ({
+      name: s.storage,
+      total: s.total,
+      available: s.avail
+    })));
+  } catch (err) {
+    console.error('Error fetching storages:', err.message);
+    return res.json([]);
   }
 });
 

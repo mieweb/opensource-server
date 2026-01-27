@@ -98,6 +98,22 @@
         <div class="form-text">Whether to verify TLS certificates when connecting to this node</div>
       </div>
 
+      <div class="mb-3">
+        <label for="imageStorage" class="form-label">Template Storage</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="imageStorage" 
+          name="imageStorage" 
+          value="<%= node && node.imageStorage ? node.imageStorage : 'local' %>"
+          placeholder="e.g., local"
+          list="imageStorageList"
+          autocomplete="off"
+        >
+        <datalist id="imageStorageList"></datalist>
+        <div class="form-text">Storage for CT Template images used when building containers</div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
         <button type="submit" class="btn btn-primary">
@@ -112,3 +128,21 @@
 </div>
 
 <%- include('../layouts/footer') %>
+
+<% if (isEdit) { %>
+<script>
+(function() {
+  fetch('/sites/<%= site.id %>/nodes/<%= node.id %>/storages')
+    .then(res => res.json())
+    .then(storages => {
+      const datalist = document.getElementById('imageStorageList');
+      storages.forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.name;
+        datalist.appendChild(option);
+      });
+    })
+    .catch(() => {});
+})();
+</script>
+<% } %>
