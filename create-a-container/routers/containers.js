@@ -7,6 +7,60 @@ const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 
+/**
+ * Normalize a Docker image reference to full format: host/org/image:tag
+ * Examples:
+ *   nginx              → docker.io/library/nginx:latest
+ *   nginx:alpine       → docker.io/library/nginx:alpine
+ *   myorg/myapp        → docker.io/myorg/myapp:latest
+ *   myorg/myapp:v1     → docker.io/myorg/myapp:v1
+ *   ghcr.io/org/app:v1 → ghcr.io/org/app:v1
+ */
+function normalizeDockerRef(ref) {
+  // Split off tag first
+  let tag = 'latest';
+  let imagePart = ref;
+  
+  const lastColon = ref.lastIndexOf(':');
+  if (lastColon !== -1) {
+    const potentialTag = ref.substring(lastColon + 1);
+    // Make sure this isn't a port number in a registry URL (e.g., registry:5000/image)
+    if (!potentialTag.includes('/')) {
+      tag = potentialTag;
+      imagePart = ref.substring(0, lastColon);
+    }
+  }
+  
+  const parts = imagePart.split('/');
+  
+  let host = 'docker.io';
+  let org = 'library';
+  let image;
+  
+  if (parts.length === 1) {
+    // Just image name: nginx
+    image = parts[0];
+  } else if (parts.length === 2) {
+    // Could be org/image or host/image
+    // If first part contains a dot or colon, it's a registry host
+    if (parts[0].includes('.') || parts[0].includes(':')) {
+      host = parts[0];
+      image = parts[1];
+    } else {
+      // org/image
+      org = parts[0];
+      image = parts[1];
+    }
+  } else {
+    // host/org/image or host/path/to/image
+    host = parts[0];
+    image = parts[parts.length - 1];
+    org = parts.slice(1, -1).join('/');
+  }
+  
+  return `${host}/${org}/${image}:${tag}`;
+}
+
 // GET /sites/:siteId/containers/new - Display form for creating a new container
 router.get('/new', requireAuth, async (req, res) => {
   // verify site exists
@@ -208,24 +262,52 @@ router.post('/', async (req, res) => {
   const t = await sequelize.transaction();
   
   try {
-    const { hostname, template, services } = req.body;
-    const [ nodeName, templateVmid ] = template.split(',');
-    const node = await Node.findOne({ where: { name: nodeName, siteId } });
+    const { hostname, template, customTemplate, services } = req.body;
     
-    if (!node) {
-      throw new Error(`Node "${nodeName}" not found`);
+    let nodeName, templateName, node;
+    
+    if (template === 'custom' || !template) {
+      // Custom Docker image - parse and normalize the reference
+      if (!customTemplate || customTemplate.trim() === '') {
+        throw new Error('Custom template image is required');
+      }
+      
+      templateName = normalizeDockerRef(customTemplate.trim());
+      
+      // For custom templates, pick the first available node in the site
+      node = await Node.findOne({ 
+        where: { 
+          siteId,
+          apiUrl: { [Sequelize.Op.ne]: null },
+          tokenId: { [Sequelize.Op.ne]: null },
+          secret: { [Sequelize.Op.ne]: null }
+        } 
+      });
+      
+      if (!node) {
+        throw new Error('No nodes with API access available in this site');
+      }
+    } else {
+      // Standard Proxmox template
+      const [ nodeNamePart, templateVmid ] = template.split(',');
+      nodeName = nodeNamePart;
+      node = await Node.findOne({ where: { name: nodeName, siteId } });
+      
+      if (!node) {
+        throw new Error(`Node "${nodeName}" not found`);
+      }
+      
+      // Get the template name from Proxmox
+      const client = await node.api();
+      const templates = await client.getLxcTemplates(node.name);
+      const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
+      
+      if (!templateContainer) {
+        throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
+      }
+      
+      templateName = templateContainer.name;
     }
-    
-    // Get the template name from Proxmox
-    const client = await node.api();
-    const templates = await client.getLxcTemplates(node.name);
-    const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
-    
-    if (!templateContainer) {
-      throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
-    }
-    
-    const templateName = templateContainer.name;
     
     // Create the container record in pending status (VMID allocated by job)
     const container = await Container.create({

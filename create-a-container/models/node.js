@@ -81,6 +81,11 @@ module.exports = (sequelize, DataTypes) => {
     tlsVerify: {
       type: DataTypes.BOOLEAN,
       allowNull: true
+    },
+    imageStorage: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      defaultValue: 'local'
     }
   }, {
     sequelize,

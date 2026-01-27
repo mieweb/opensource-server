@@ -42,6 +42,7 @@ erDiagram
         string apiTokenIdOrUsername
         string apiTokenSecretOrPassword
         boolean disableTlsVerification
+        string imageStorage "default: local"
         int siteId FK
     }
 
@@ -174,6 +175,7 @@ The **Node** model represents a Proxmox VE server within a site.
 - `apiTokenIdOrUsername`: Authentication credential (username or token ID)
 - `apiTokenSecretOrPassword`: Authentication secret
 - `disableTlsVerification`: Skip TLS certificate validation
+- `imageStorage`: Proxmox storage name for pulled Docker/OCI images (default: 'local')
 
 **Relationships:**
 - Belongs to Site
@@ -190,7 +192,7 @@ The **Container** model represents an LXC container running on a Proxmox node.
 - `hostname`: Container hostname (unique)
 - `username`: Owner of the container (who created it)
 - `status`: Container creation state ('pending', 'creating', 'running', 'failed')
-- `template`: Name of the Proxmox template used to create this container
+- `template`: Name of the Proxmox template or Docker image reference (e.g., `docker.io/library/nginx:latest`)
 - `creationJobId`: Foreign key to the Job that created this container (nullable)
 - `containerId`: Proxmox container ID (CTID)
 - `macAddress`: Unique MAC address (nullable for pending containers)

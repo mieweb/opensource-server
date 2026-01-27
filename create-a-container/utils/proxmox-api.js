@@ -333,6 +333,26 @@ class ProxmoxApi {
     );
     return response.data.data;
   }
+
+  /**
+   * Pull an OCI/Docker image from a registry to Proxmox storage
+   * @param {string} node - The node name
+   * @param {string} storage - The storage name (e.g., 'local')
+   * @param {Object} options - Pull options
+   * @param {string} options.reference - Full image reference (e.g., 'docker.io/library/nginx:latest')
+   * @param {string} [options.filename] - Target filename (e.g., 'nginx_latest.tar')
+   * @param {string} [options.username] - Registry username for private images
+   * @param {string} [options.password] - Registry password for private images
+   * @returns {Promise<string>} - UPID of the pull task
+   */
+  async pullOciImage(node, storage, options) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/storage/${storage}/oci-registry-pull`,
+      options,
+      this.options
+    );
+    return response.data.data;
+  }
 }
 
 module.exports = ProxmoxApi;

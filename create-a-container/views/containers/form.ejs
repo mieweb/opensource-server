@@ -36,7 +36,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         <% if (isEdit) { %>
           <input type="text" id="template" value="<%= container.node.name %>" readonly style="background-color: #e9ecef;">
         <% } else { %>
-          <select id="template" name="template" required>
+          <select id="templateSelect" name="template" required>
             <option value="">Select a template...</option>
             <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
               <% templates.forEach(template => { %>
@@ -44,10 +44,17 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
                   <%= template.name %> (<%= template.node %>)
                 </option>
               <% }) %>
-            <% } else { %>
-              <option value="" disabled>No templates available</option>
             <% } %>
+            <option value="custom">Custom Docker Image...</option>
           </select>
+          <div id="customTemplateContainer" style="display: none; margin-top: 8px;">
+            <input type="text" id="customTemplate" name="customTemplate" 
+                   placeholder="e.g., nginx, nginx:alpine, myorg/myapp:v1.0, ghcr.io/org/image:tag"
+                   style="width: 100%;">
+            <small style="color: #666; display: block; margin-top: 4px;">
+              Format: [registry/][org/]image[:tag] — defaults: registry=docker.io, org=library, tag=latest
+            </small>
+          </div>
         <% } %>
       </div>
     </div>
@@ -113,6 +120,26 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   }))) : '[]' %>;
   const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
   let serviceCounter = 0;
+
+  // Custom template toggle logic
+  const templateSelect = document.getElementById('templateSelect');
+  const customTemplateContainer = document.getElementById('customTemplateContainer');
+  const customTemplateInput = document.getElementById('customTemplate');
+  
+  if (templateSelect) {
+    templateSelect.addEventListener('change', function() {
+      if (this.value === 'custom') {
+        customTemplateContainer.style.display = 'block';
+        customTemplateInput.required = true;
+        this.removeAttribute('name'); // Don't submit the select value
+      } else {
+        customTemplateContainer.style.display = 'none';
+        customTemplateInput.required = false;
+        customTemplateInput.value = '';
+        this.setAttribute('name', 'template'); // Submit select value
+      }
+    });
+  }
 
   function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '') {
     const row = document.createElement('tr');

@@ -10,12 +10,15 @@
  * 
  * The script will:
  * 1. Load the container record from the database
- * 2. Clone the template in Proxmox
+ * 2. Either clone a Proxmox template OR pull a Docker image and create from it
  * 3. Configure the container (cores, memory, network)
  * 4. Start the container
  * 5. Query MAC address from Proxmox config
  * 6. Query IP address from Proxmox interfaces API
  * 7. Update the container record with MAC, IP, and status='running'
+ * 
+ * Docker images are detected by the presence of '/' in the template field.
+ * Format: host/org/image:tag (e.g., docker.io/library/nginx:latest)
  * 
  * All output is logged to STDOUT for capture by the job-runner.
  * Exit code 0 = success, non-zero = failure.
@@ -26,6 +29,62 @@ const path = require('path');
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
 const { Container, Node, Site } = db;
+
+/**
+ * Parse command line arguments
+ * @returns {object} Parsed arguments
+ */
+function parseArgs() {
+  const args = {};
+  for (const arg of process.argv.slice(2)) {
+    const match = arg.match(/^--([^=]+)=(.+)$/);
+    if (match) {
+      args[match[1]] = match[2];
+    }
+  }
+  return args;
+}
+
+/**
+ * Check if a template is a Docker image reference (contains '/')
+ * @param {string} template - The template string
+ * @returns {boolean} True if Docker image, false if Proxmox template
+ */
+function isDockerImage(template) {
+  return template.includes('/');
+}
+
+/**
+ * Parse a normalized Docker image reference into components
+ * Format: host/org/image:tag
+ * @param {string} ref - The normalized Docker reference
+ * @returns {object} Parsed components: { registry, namespace, image, tag }
+ */
+function parseDockerRef(ref) {
+  // Split off tag
+  const [imagePart, tag] = ref.split(':');
+  const parts = imagePart.split('/');
+  
+  // Format is always host/org/image after normalization
+  const registry = parts[0];
+  const image = parts[parts.length - 1];
+  const namespace = parts.slice(1, -1).join('/');
+  
+  return { registry, namespace, image, tag };
+}
+
+/**
+ * Generate a filename for a pulled Docker image
+ * Replaces special chars with underscores
+ * Note: Proxmox automatically appends .tar, so we don't include it here
+ * @param {object} parsed - Parsed Docker ref components
+ * @returns {string} Sanitized filename (e.g., "docker.io_library_nginx_latest")
+ */
+function generateImageFilename(parsed) {
+  const { registry, namespace, image, tag } = parsed;
+  const sanitized = `${registry}_${namespace}_${image}_${tag}`.replace(/[/:]/g, '_');
+  return sanitized;
+}
 
 /**
  * Parse command line arguments
@@ -175,6 +234,9 @@ async function main() {
   console.log(`Site: ${site.name} (${site.internalDomain})`);
   console.log(`Template: ${container.template}`);
   
+  const isDocker = isDockerImage(container.template);
+  console.log(`Template type: ${isDocker ? 'Docker image' : 'Proxmox template'}`);
+  
   try {
     // Update status to 'creating'
     await container.update({ status: 'creating' });
@@ -184,53 +246,104 @@ async function main() {
     const client = await node.api();
     console.log('Proxmox API client initialized');
     
-    // Find the template VMID by matching the template name
-    console.log(`Looking for template: ${container.template}`);
-    const templates = await client.getLxcTemplates(node.name);
-    const templateContainer = templates.find(t => t.name === container.template);
-    
-    if (!templateContainer) {
-      throw new Error(`Template "${container.template}" not found on node ${node.name}`);
-    }
-    
-    const templateVmid = templateContainer.vmid;
-    console.log(`Found template VMID: ${templateVmid}`);
-    
-    // Allocate VMID right before cloning to minimize race condition window
+    // Allocate VMID right before creating to minimize race condition window
     console.log('Allocating VMID from Proxmox...');
     const vmid = await client.nextId();
     console.log(`Allocated VMID: ${vmid}`);
     
-    // Clone the template
-    console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
-    const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
-      hostname: container.hostname,
-      description: `Cloned from template ${container.template}`,
-      full: 1
-    });
-    console.log(`Clone task started: ${cloneUpid}`);
+    if (isDocker) {
+      // Docker image: pull from OCI registry, then create container
+      const parsed = parseDockerRef(container.template);
+      console.log(`Docker image: ${parsed.registry}/${parsed.namespace}/${parsed.image}:${parsed.tag}`);
+      
+      const filename = generateImageFilename(parsed);
+      console.log(`Target filename: ${filename}`);
+      
+      const storage = node.imageStorage || 'local';
+      console.log(`Using storage: ${storage}`);
+      
+      // Pull the image from OCI registry using full image reference
+      const imageRef = container.template;
+      console.log(`Pulling image ${imageRef}...`);
+      const pullUpid = await client.pullOciImage(node.name, storage, {
+        reference: imageRef,
+        filename
+      });
+      console.log(`Pull task started: ${pullUpid}`);
+      
+      // Wait for pull to complete
+      await waitForTask(client, node.name, pullUpid);
+      console.log('Image pulled successfully');
+      
+      // Create container from the pulled image (Proxmox adds .tar to the filename)
+      console.log(`Creating container from ${filename}.tar...`);
+      const ostemplate = `${storage}:vztmpl/${filename}.tar`;
+      const createUpid = await client.createLxc(node.name, {
+        vmid,
+        hostname: container.hostname,
+        ostemplate,
+        description: `Created from Docker image ${container.template}`,
+        cores: 4,
+        features: 'nesting=1,keyctl=1,fuse=1',
+        memory: 4096,
+        net0: 'name=eth0,ip=dhcp,bridge=vmbr0,host-managed=1',
+        searchdomain: site.internalDomain,
+        swap: 0,
+        onboot: 1,
+        tags: container.username,
+        unprivileged: 1,
+        storage: 'local-lvm'
+      });
+      console.log(`Create task started: ${createUpid}`);
+      
+      // Wait for create to complete
+      await waitForTask(client, node.name, createUpid);
+      console.log('Container created successfully');
+      
+    } else {
+      // Proxmox template: clone existing container
+      console.log(`Looking for template: ${container.template}`);
+      const templates = await client.getLxcTemplates(node.name);
+      const templateContainer = templates.find(t => t.name === container.template);
+      
+      if (!templateContainer) {
+        throw new Error(`Template "${container.template}" not found on node ${node.name}`);
+      }
+      
+      const templateVmid = templateContainer.vmid;
+      console.log(`Found template VMID: ${templateVmid}`);
+      
+      // Clone the template
+      console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
+      const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
+        hostname: container.hostname,
+        description: `Cloned from template ${container.template}`,
+        full: 1
+      });
+      console.log(`Clone task started: ${cloneUpid}`);
+      
+      // Wait for clone to complete
+      await waitForTask(client, node.name, cloneUpid);
+      console.log('Clone completed successfully');
+      
+      // Configure the container (Docker containers are configured at creation time)
+      console.log('Configuring container...');
+      await client.updateLxcConfig(node.name, vmid, {
+        cores: 4,
+        features: 'nesting=1,keyctl=1,fuse=1',
+        memory: 4096,
+        net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
+        searchdomain: site.internalDomain,
+        swap: 0,
+        onboot: 1,
+        tags: container.username
+      });
+      console.log('Container configured');
+    }
     
-    // Wait for clone to complete
-    await waitForTask(client, node.name, cloneUpid);
-    console.log('Clone completed successfully');
-    
-    // Store the VMID now that clone succeeded
+    // Store the VMID now that creation succeeded
     await container.update({ containerId: vmid });
     console.log(`Container VMID ${vmid} stored in database`);
-    
-    // Configure the container
-    console.log('Configuring container...');
-    await client.updateLxcConfig(node.name, vmid, {
-      cores: 4,
-      features: 'nesting=1,keyctl=1,fuse=1',
-      memory: 4096,
-      net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
-      searchdomain: site.internalDomain,
-      swap: 0,
-      onboot: 1,
-      tags: container.username
-    });
-    console.log('Container configured');
     
     // Start the container
     console.log('Starting container...');

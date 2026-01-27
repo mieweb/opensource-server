@@ -58,6 +58,7 @@ erDiagram
 
 - **User Authentication** - Proxmox VE authentication integration
 - **Container Management** - Create, list, and track LXC containers
+- **Docker/OCI Support** - Pull and deploy containers from Docker Hub, GHCR, or any OCI registry
 - **Service Registry** - Track HTTP/TCP/UDP services running on containers
 - **Dynamic Nginx Config** - Generate nginx reverse proxy configurations on-demand
 - **Real-time Progress** - SSE (Server-Sent Events) for container creation progress
@@ -209,12 +210,13 @@ Display container creation form
 
 #### `POST /containers`
 Create a container asynchronously via a background job
-- **Body**: `{ hostname, template, services }` where:
+- **Body**: `{ hostname, template, customTemplate, services }` where:
   - `hostname`: Container hostname
-  - `template`: Template selection in format "nodeName,vmid"
+  - `template`: Template selection in format "nodeName,vmid" OR "custom" for Docker images
+  - `customTemplate`: Docker image reference when template="custom" (e.g., `nginx`, `nginx:alpine`, `myorg/myapp:v1`, `ghcr.io/org/image:tag`)
   - `services`: Object of service definitions
 - **Returns**: Redirect to containers list with flash message
-- **Process**: Creates pending container, services, and job in a single transaction. The job-runner executes the actual Proxmox operations.
+- **Process**: Creates pending container, services, and job in a single transaction. Docker image references are normalized to full format (`host/org/image:tag`). The job-runner executes the actual Proxmox operations.
 
 #### `DELETE /containers/:id` (Auth Required)
 Delete a container from both Proxmox and the database
