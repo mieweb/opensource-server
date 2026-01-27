@@ -262,7 +262,21 @@ router.post('/', async (req, res) => {
   const t = await sequelize.transaction();
   
   try {
-    const { hostname, template, customTemplate, services } = req.body;
+    const { hostname, template, customTemplate, services, environmentVars, entrypoint } = req.body;
+    
+    // Convert environment variables array to JSON object
+    let envVarsJson = null;
+    if (environmentVars && Array.isArray(environmentVars)) {
+      const envObj = {};
+      for (const env of environmentVars) {
+        if (env.key && env.key.trim()) {
+          envObj[env.key.trim()] = env.value || '';
+        }
+      }
+      if (Object.keys(envObj).length > 0) {
+        envVarsJson = JSON.stringify(envObj);
+      }
+    }
     
     let nodeName, templateName, node;
     
@@ -318,7 +332,9 @@ router.post('/', async (req, res) => {
       nodeId: node.id,
       containerId: null,
       macAddress: null,
-      ipv4Address: null
+      ipv4Address: null,
+      environmentVars: envVarsJson,
+      entrypoint: entrypoint && entrypoint.trim() ? entrypoint.trim() : null
     }, { transaction: t });
 
     // Create services if provided (validate within transaction)
@@ -465,10 +481,50 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.redirect(`/sites/${siteId}/containers`);
     }
 
-    const { services } = req.body;
+    const { services, environmentVars, entrypoint } = req.body;
+
+    // Convert environment variables array to JSON object
+    let envVarsJson = null;
+    if (environmentVars && Array.isArray(environmentVars)) {
+      const envObj = {};
+      for (const env of environmentVars) {
+        if (env.key && env.key.trim()) {
+          envObj[env.key.trim()] = env.value || '';
+        }
+      }
+      if (Object.keys(envObj).length > 0) {
+        envVarsJson = JSON.stringify(envObj);
+      }
+    }
+    
+    const newEntrypoint = entrypoint && entrypoint.trim() ? entrypoint.trim() : null;
+    
+    // Check if env vars or entrypoint changed
+    const envChanged = container.environmentVars !== envVarsJson;
+    const entrypointChanged = container.entrypoint !== newEntrypoint;
+    const needsRestart = envChanged || entrypointChanged;
 
     // Wrap all database operations in a transaction
+    let restartJob = null;
     await sequelize.transaction(async (t) => {
+      // Update environment variables and entrypoint
+      if (envChanged || entrypointChanged) {
+        await container.update({
+          environmentVars: envVarsJson,
+          entrypoint: newEntrypoint,
+          status: needsRestart && container.containerId ? 'restarting' : container.status
+        }, { transaction: t });
+      }
+      
+      // Create restart job if needed and container has a VMID
+      if (needsRestart && container.containerId) {
+        restartJob = await Job.create({
+          command: `node bin/reconfigure-container.js --container-id=${container.id}`,
+          createdBy: req.session.user,
+          status: 'pending'
+        }, { transaction: t });
+      }
+      
       // Process services in two phases: delete first, then create new
       if (services && typeof services === 'object') {
         // Phase 1: Delete marked services
@@ -559,7 +615,11 @@ router.put('/:id', requireAuth, async (req, res) => {
       }
     });
 
-    req.flash('success', 'Container services updated successfully');
+    if (restartJob) {
+      req.flash('success', 'Container configuration updated. Restarting container...');
+    } else {
+      req.flash('success', 'Container services updated successfully');
+    }
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
     console.error('Error updating container:', err);

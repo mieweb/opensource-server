@@ -17,6 +17,41 @@ module.exports = (sequelize, DataTypes) => {
       // a container may have a creation job
       Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
     }
+
+    /**
+     * Build LXC config object for environment variables and entrypoint
+     * Returns config suitable for Proxmox API updateLxcConfig
+     * @returns {object} Config object with 'env' and 'entrypoint' properties
+     */
+    buildLxcEnvConfig() {
+      const config = {};
+      
+      // Parse environment variables from JSON and format as NUL-separated list
+      // Format: KEY1=value1\0KEY2=value2\0KEY3=value3
+      if (this.environmentVars) {
+        try {
+          const envObj = JSON.parse(this.environmentVars);
+          const envPairs = [];
+          for (const [key, value] of Object.entries(envObj)) {
+            if (key && value !== undefined) {
+              envPairs.push(`${key}=${value}`);
+            }
+          }
+          if (envPairs.length > 0) {
+            config['env'] = envPairs.join('\0');
+          }
+        } catch (err) {
+          console.error('Failed to parse environment variables JSON:', err.message);
+        }
+      }
+      
+      // Set entrypoint command
+      if (this.entrypoint && this.entrypoint.trim()) {
+        config['entrypoint'] = this.entrypoint.trim();
+      }
+      
+      return config;
+    }
   }
   Container.init({
     hostname: {
@@ -71,6 +106,16 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'N'
+    },
+    environmentVars: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null
+    },
+    entrypoint: {
+      type: DataTypes.STRING(2000),
+      allowNull: true,
+      defaultValue: null
     }
   }, {
     sequelize,

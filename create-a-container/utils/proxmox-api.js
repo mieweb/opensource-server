@@ -235,6 +235,35 @@ class ProxmoxApi {
   }
 
   /**
+   * Wait for a Proxmox task to complete
+   * @param {string} node - The node name
+   * @param {string} upid - The task UPID
+   * @param {number} pollInterval - Polling interval in ms (default 2000)
+   * @param {number} timeout - Timeout in ms (default 300000 = 5 minutes)
+   * @returns {Promise<object>} The final task status
+   */
+  async waitForTask(node, upid, pollInterval = 2000, timeout = 300000) {
+    const startTime = Date.now();
+    while (true) {
+      const status = await this.taskStatus(node, upid);
+      console.log(`Task ${upid}: status=${status.status}, exitstatus=${status.exitstatus || 'N/A'}`);
+      
+      if (status.status === 'stopped') {
+        if (status.exitstatus && status.exitstatus !== 'OK') {
+          throw new Error(`Task failed with status: ${status.exitstatus}`);
+        }
+        return status;
+      }
+      
+      if (Date.now() - startTime > timeout) {
+        throw new Error(`Task ${upid} timed out after ${timeout}ms`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+  }
+
+  /**
    * Delete a container
    * @param {string} nodeName 
    * @param {number} containerId 
@@ -314,6 +343,21 @@ class ProxmoxApi {
   async startLxc(node, vmid) {
     const response = await axios.post(
       `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/status/start`,
+      {},
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
+   * Stop an LXC container
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @returns {Promise<string>} - The task UPID
+   */
+  async stopLxc(node, vmid) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/status/stop`,
       {},
       this.options
     );

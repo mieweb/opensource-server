@@ -49,7 +49,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
           </select>
           <div id="customTemplateContainer" style="display: none; margin-top: 8px;">
             <input type="text" id="customTemplate" name="customTemplate" 
-                   placeholder="e.g., nginx, nginx:alpine, myorg/myapp:v1.0, ghcr.io/org/image:tag"
+                   placeholder="ghcr.io/org/image:tag"
                    style="width: 100%;">
             <small style="color: #666; display: block; margin-top: 4px;">
               Format: [registry/][org/]image[:tag] — defaults: registry=docker.io, org=library, tag=latest
@@ -59,42 +59,86 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       </div>
     </div>
 
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-      <label style="margin-bottom: 0;">Services</label>
-      <button type="button" id="addServiceBtn" class="btn btn-sm btn-primary">Add Service</button>
-    </div>
-    <div>
-      <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">
-              External
-              <a href="#" 
-                 tabindex="0" 
-                 role="button"
-                 data-bs-toggle="popover" 
-                 data-bs-trigger="click"
-                 data-bs-placement="top"
-                 data-bs-html="true"
-                 data-bs-title="External Field Guide"
-                 data-bs-content="<strong>HTTP:</strong> Enter a hostname and select an external domain.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
-                 onclick="event.preventDefault();"
-                 style="text-decoration: none; margin-left: 5px; color: #0d6efd; cursor: pointer;">
-                <i class="bi bi-question-circle"></i>
-              </a>
-            </th>
-            <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
-          </tr>
-        </thead>
-        <tbody id="servicesTableBody">
-          <!-- Services will be added here dynamically -->
-        </tbody>
-      </table>
-    </div>
+    <details style="margin-bottom: 15px;">
+      <summary style="cursor: pointer; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; text-align: left;">
+        Services
+      </summary>
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+        <button type="button" id="addServiceBtn" class="btn btn-sm btn-primary">Add Service</button>
+      </div>
+      <div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Type</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Internal Port</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">
+                External
+                <a href="#" 
+                   tabindex="0" 
+                   role="button"
+                   data-bs-toggle="popover" 
+                   data-bs-trigger="click"
+                   data-bs-placement="top"
+                   data-bs-html="true"
+                   data-bs-title="External Field Guide"
+                   data-bs-content="<strong>HTTP:</strong> Enter a hostname and select an external domain.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
+                   onclick="event.preventDefault();"
+                   style="text-decoration: none; margin-left: 5px; color: #0d6efd; cursor: pointer;">
+                  <i class="bi bi-question-circle"></i>
+                </a>
+              </th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="servicesTableBody">
+            <!-- Services will be added here dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </details>
 
-    <input type="submit" value="<%= isEdit ? 'Update Services' : 'Create Container' %>">
+    <details style="margin-bottom: 15px;">
+      <summary style="cursor: pointer; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; text-align: left;">
+        Environment Variables
+      </summary>
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+        <button type="button" id="addEnvBtn" class="btn btn-sm btn-primary">Add Variable</button>
+      </div>
+      <div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Key</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Value</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 60px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="envVarsTableBody">
+            <!-- Environment variables will be added here dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details style="margin-bottom: 15px;">
+      <summary style="cursor: pointer; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; text-align: left;">
+        Entrypoint Command
+      </summary>
+      <div class="mb-3">
+        <input 
+          type="text" 
+          class="form-control" 
+          id="entrypoint" 
+          name="entrypoint" 
+          value="<%= isEdit && container.entrypoint ? container.entrypoint : '' %>"
+          placeholder="/sbin/init"
+        >
+        <div class="form-text">The command to run when the container starts (overrides the default entrypoint)</div>
+      </div>
+    </details>
+
+    <input type="submit" value="<%= isEdit ? 'Update Container' : 'Create Container' %>">
   </form>
   <div id="formError" style="color:red; margin-top:10px;"></div>
 </div>
@@ -119,7 +163,9 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     } : null
   }))) : '[]' %>;
   const externalDomains = <%- JSON.stringify((externalDomains || []).map(d => ({ id: d.id, name: d.name }))) %>;
+  const existingEnvVars = <%- isEdit && container && container.environmentVars ? container.environmentVars : '{}' %>;
   let serviceCounter = 0;
+  let envVarCounter = 0;
 
   // Custom template toggle logic
   const templateSelect = document.getElementById('templateSelect');
@@ -388,9 +434,6 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       
       addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort, dnsName);
     });
-  } else {
-    // Add default HTTP service on port 80 with hostname from form for new containers
-    addServiceRow('http', '80', hostnameField.value || '', '');
   }
   
   // Update externalHostname when hostname field changes (only for new containers)
@@ -403,6 +446,72 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         }
       });
     });
+  }
+
+  // Environment Variables functionality
+  function addEnvVarRow(key = '', value = '') {
+    const row = document.createElement('tr');
+    row.id = `env-row-${envVarCounter}`;
+    
+    // Key cell
+    const keyCell = document.createElement('td');
+    keyCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.name = `environmentVars[${envVarCounter}][key]`;
+    keyInput.value = key;
+    keyInput.placeholder = 'KEY_NAME';
+    keyInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
+    keyInput.style.cssText = 'width: 100%; padding: 4px;';
+    
+    keyCell.appendChild(keyInput);
+    
+    // Value cell
+    const valueCell = document.createElement('td');
+    valueCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.name = `environmentVars[${envVarCounter}][value]`;
+    valueInput.value = value;
+    valueInput.placeholder = 'value';
+    valueInput.style.cssText = 'width: 100%; padding: 4px;';
+    
+    valueCell.appendChild(valueInput);
+    
+    // Action cell
+    const actionCell = document.createElement('td');
+    actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Delete';
+    removeBtn.style.cssText = 'padding: 4px 8px; cursor: pointer; background-color: #dc3545; color: white; border: none; border-radius: 4px;';
+    const currentIndex = envVarCounter;
+    removeBtn.onclick = () => {
+      document.getElementById(`env-row-${currentIndex}`).remove();
+    };
+    
+    actionCell.appendChild(removeBtn);
+    
+    row.appendChild(keyCell);
+    row.appendChild(valueCell);
+    row.appendChild(actionCell);
+    
+    document.getElementById('envVarsTableBody').appendChild(row);
+    envVarCounter++;
+  }
+
+  document.getElementById('addEnvBtn').addEventListener('click', () => {
+    addEnvVarRow();
+  });
+
+  // Initialize existing environment variables
+  if (existingEnvVars && typeof existingEnvVars === 'object') {
+    for (const [key, value] of Object.entries(existingEnvVars)) {
+      addEnvVarRow(key, value);
+    }
   }
 </script>
 

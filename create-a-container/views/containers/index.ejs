@@ -49,6 +49,11 @@
                     </span>
                   <% } else if (r.status === 'failed') { %>
                     <span class="badge bg-danger" aria-label="Container creation failed">Failed</span>
+                  <% } else if (r.status === 'restarting') { %>
+                    <span class="badge bg-info text-dark" aria-label="Container is restarting">
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      Restarting
+                    </span>
                   <% } else { %>
                     <span class="badge bg-secondary" aria-label="Container status unknown"><%= r.status || 'Unknown' %></span>
                   <% } %>

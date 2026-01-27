@@ -30,20 +30,8 @@ const path = require('path');
 const db = require(path.join(__dirname, '..', 'models'));
 const { Container, Node, Site } = db;
 
-/**
- * Parse command line arguments
- * @returns {object} Parsed arguments
- */
-function parseArgs() {
-  const args = {};
-  for (const arg of process.argv.slice(2)) {
-    const match = arg.match(/^--([^=]+)=(.+)$/);
-    if (match) {
-      args[match[1]] = match[2];
-    }
-  }
-  return args;
-}
+// Load utilities
+const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 
 /**
  * Check if a template is a Docker image reference (contains '/')
@@ -84,51 +72,6 @@ function generateImageFilename(parsed) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}`.replace(/[/:]/g, '_');
   return sanitized;
-}
-
-/**
- * Parse command line arguments
- * @returns {object} Parsed arguments
- */
-function parseArgs() {
-  const args = {};
-  for (const arg of process.argv.slice(2)) {
-    const match = arg.match(/^--([^=]+)=(.+)$/);
-    if (match) {
-      args[match[1]] = match[2];
-    }
-  }
-  return args;
-}
-
-/**
- * Wait for a Proxmox task to complete
- * @param {ProxmoxApi} client - The Proxmox API client
- * @param {string} nodeName - The node name
- * @param {string} upid - The task UPID
- * @param {number} pollInterval - Polling interval in ms (default 2000)
- * @param {number} timeout - Timeout in ms (default 300000 = 5 minutes)
- * @returns {Promise<object>} The final task status
- */
-async function waitForTask(client, nodeName, upid, pollInterval = 2000, timeout = 300000) {
-  const startTime = Date.now();
-  while (true) {
-    const status = await client.taskStatus(nodeName, upid);
-    console.log(`Task ${upid}: status=${status.status}, exitstatus=${status.exitstatus || 'N/A'}`);
-    
-    if (status.status === 'stopped') {
-      if (status.exitstatus && status.exitstatus !== 'OK') {
-        throw new Error(`Task failed with status: ${status.exitstatus}`);
-      }
-      return status;
-    }
-    
-    if (Date.now() - startTime > timeout) {
-      throw new Error(`Task ${upid} timed out after ${timeout}ms`);
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
 }
 
 /**
@@ -272,7 +215,7 @@ async function main() {
       console.log(`Pull task started: ${pullUpid}`);
       
       // Wait for pull to complete
-      await waitForTask(client, node.name, pullUpid);
+      await client.waitForTask(node.name, pullUpid);
       console.log('Image pulled successfully');
       
       // Create container from the pulled image (Proxmox adds .tar to the filename)
@@ -297,7 +240,7 @@ async function main() {
       console.log(`Create task started: ${createUpid}`);
       
       // Wait for create to complete
-      await waitForTask(client, node.name, createUpid);
+      await client.waitForTask(node.name, createUpid);
       console.log('Container created successfully');
       
     } else {
@@ -323,7 +266,7 @@ async function main() {
       console.log(`Clone task started: ${cloneUpid}`);
       
       // Wait for clone to complete
-      await waitForTask(client, node.name, cloneUpid);
+      await client.waitForTask(node.name, cloneUpid);
       console.log('Clone completed successfully');
       
       // Configure the container (Docker containers are configured at creation time)
@@ -341,6 +284,15 @@ async function main() {
       console.log('Container configured');
     }
     
+    // Apply environment variables and entrypoint if set
+    const envConfig = container.buildLxcEnvConfig();
+    if (Object.keys(envConfig).length > 0) {
+      console.log('Applying environment variables and entrypoint...');
+      console.log('Config:', JSON.stringify(envConfig, null, 2));
+      await client.updateLxcConfig(node.name, vmid, envConfig);
+      console.log('Environment/entrypoint configuration applied');
+    }
+    
     // Store the VMID now that creation succeeded
     await container.update({ containerId: vmid });
     console.log(`Container VMID ${vmid} stored in database`);
@@ -351,7 +303,7 @@ async function main() {
     console.log(`Start task started: ${startUpid}`);
     
     // Wait for start to complete
-    await waitForTask(client, node.name, startUpid);
+    await client.waitForTask(node.name, startUpid);
     console.log('Container started successfully');
     
     // Get MAC address from config
