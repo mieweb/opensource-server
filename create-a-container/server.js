@@ -114,6 +114,8 @@ async function main() {
   });
 
   // --- Mount Routers ---
+  // Mount top-level API endpoints (used by automation / API clients)
+  const apiContainersRouter = require('./routers/api_containers');
   const loginRouter = require('./routers/login');
   const registerRouter = require('./routers/register');
   const usersRouter = require('./routers/users');
