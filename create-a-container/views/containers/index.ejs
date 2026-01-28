@@ -71,6 +71,11 @@
                 <td>
                   <% if (r.status === 'running' || r.status === 'failed') { %>
                     <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>
+                    <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;">
+                      <input type="hidden" name="_method" value="PUT">
+                      <input type="hidden" name="restart" value="true">
+                      <button type="submit" class="btn btn-warning btn-sm" aria-label="Restart container <%= r.hostname %>">Restart</button>
+                    </form>
                   <% } %>
                   <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">

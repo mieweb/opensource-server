@@ -482,38 +482,46 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     const { services, environmentVars, entrypoint } = req.body;
+    
+    // Check if this is a restart-only request (no config changes)
+    const forceRestart = req.body.restart === 'true';
+    const isRestartOnly = forceRestart && !services && !environmentVars && entrypoint === undefined;
 
     // Convert environment variables array to JSON object
-    let envVarsJson = null;
-    if (environmentVars && Array.isArray(environmentVars)) {
+    let envVarsJson = container.environmentVars; // Default to existing
+    if (!isRestartOnly && environmentVars && Array.isArray(environmentVars)) {
       const envObj = {};
       for (const env of environmentVars) {
         if (env.key && env.key.trim()) {
           envObj[env.key.trim()] = env.value || '';
         }
       }
-      if (Object.keys(envObj).length > 0) {
-        envVarsJson = JSON.stringify(envObj);
-      }
+      envVarsJson = Object.keys(envObj).length > 0 ? JSON.stringify(envObj) : null;
+    } else if (!isRestartOnly && !environmentVars) {
+      envVarsJson = null;
     }
     
-    const newEntrypoint = entrypoint && entrypoint.trim() ? entrypoint.trim() : null;
+    const newEntrypoint = isRestartOnly ? container.entrypoint : 
+      (entrypoint && entrypoint.trim() ? entrypoint.trim() : null);
     
     // Check if env vars or entrypoint changed
-    const envChanged = container.environmentVars !== envVarsJson;
-    const entrypointChanged = container.entrypoint !== newEntrypoint;
-    const needsRestart = envChanged || entrypointChanged;
+    const envChanged = !isRestartOnly && container.environmentVars !== envVarsJson;
+    const entrypointChanged = !isRestartOnly && container.entrypoint !== newEntrypoint;
+    const needsRestart = forceRestart || envChanged || entrypointChanged;
 
     // Wrap all database operations in a transaction
     let restartJob = null;
     await sequelize.transaction(async (t) => {
-      // Update environment variables and entrypoint
+      // Update environment variables and entrypoint if changed
       if (envChanged || entrypointChanged) {
         await container.update({
           environmentVars: envVarsJson,
           entrypoint: newEntrypoint,
           status: needsRestart && container.containerId ? 'restarting' : container.status
         }, { transaction: t });
+      } else if (forceRestart && container.containerId) {
+        // Just update status for force restart
+        await container.update({ status: 'restarting' }, { transaction: t });
       }
       
       // Create restart job if needed and container has a VMID
