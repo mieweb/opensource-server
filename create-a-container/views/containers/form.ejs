@@ -376,6 +376,17 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     if (!row || !deletedInput || !removeBtn) return;
     
+    // Check if this is an existing service (has an ID hidden field)
+    const serviceIdInput = row.querySelector('input[name*="[id]"]');
+    const isExistingService = serviceIdInput && serviceIdInput.value;
+    
+    // For new services (no ID), remove immediately from DOM
+    if (!isExistingService) {
+      row.remove();
+      return;
+    }
+    
+    // For existing services, toggle between deleted and undo states
     const isDeleted = deletedInput.value === 'true';
     
     if (isDeleted) {
