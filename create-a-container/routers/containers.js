@@ -115,8 +115,44 @@ router.get('/new', requireAuth, async (req, res) => {
   });
 });
 
+// Helper to detect API bearer requests
+function isApiRequest(req) {
+  const auth = req.get('authorization') || '';
+  const parts = auth.split(' ');
+  return parts.length === 2 && parts[0] === 'Bearer' && parts[1] === process.env.API_KEY;
+}
+
 // GET /sites/:siteId/containers - List all containers for the logged-in user in this site
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', async (req, res) => {
+  // If called by API clients using Bearer token, return JSON instead of HTML
+  if (isApiRequest(req)) {
+    try {
+      const siteId = parseInt(req.params.siteId, 10);
+      const site = await Site.findByPk(siteId);
+      if (!site) return res.status(404).json([]);
+
+      // Limit search to nodes within this site
+      const nodes = await Node.findAll({ where: { siteId }, attributes: ['id'] });
+      const nodeIds = nodes.map(n => n.id);
+
+      const { hostname } = req.query;
+      const where = {};
+      if (hostname) where.hostname = hostname;
+      where.nodeId = nodeIds;
+
+      const containers = await Container.findAll({ where, include: [{ association: 'node', attributes: ['id', 'name'] }] });
+      const out = containers.map(c => ({ id: c.id, hostname: c.hostname, ipv4Address: c.ipv4Address, macAddress: c.macAddress, node: c.node ? { id: c.node.id, name: c.node.name } : null, createdAt: c.createdAt }));
+      return res.json(out);
+    } catch (err) {
+      console.error('API GET /sites/:siteId/containers error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+
+  // Browser path: require authentication and render HTML
+  await new Promise(resolve => requireAuth(req, res, resolve));
+  if (res.headersSent) return; // requireAuth already handled redirect
+
   const siteId = parseInt(req.params.siteId, 10);
   
   const site = await Site.findByPk(siteId);
@@ -450,9 +486,25 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /sites/:siteId/containers/:id - Update container services
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
+  // API clients may update container metadata via Bearer token
+  if (isApiRequest(req)) {
+    try {
+      const container = await Container.findByPk(containerId);
+      if (!container) return res.status(404).json({ error: 'Not found' });
+      await container.update({
+        ipv4Address: req.body.ipv4Address ?? container.ipv4Address,
+        macAddress: req.body.macAddress ?? container.macAddress,
+        osRelease: req.body.osRelease ?? container.osRelease
+      });
+      return res.status(200).json({ message: 'Updated' });
+    } catch (err) {
+      console.error('API PUT /sites/:siteId/containers/:id error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
   
   const site = await Site.findByPk(siteId);
   if (!site) {
@@ -638,9 +690,21 @@ router.put('/:id', requireAuth, async (req, res) => {
 });
 
 // DELETE /sites/:siteId/containers/:id - Delete a container
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
+  // If API request, perform lightweight delete and return JSON/204
+  if (isApiRequest(req)) {
+    try {
+      const container = await Container.findByPk(containerId);
+      if (!container) return res.status(404).json({ error: 'Not found' });
+      await container.destroy();
+      return res.status(204).send();
+    } catch (err) {
+      console.error('API DELETE /sites/:siteId/containers/:id error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  }
   
   // Validate site exists
   const site = await Site.findByPk(siteId);
