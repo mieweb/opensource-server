@@ -118,9 +118,21 @@ async function main() {
     await client.waitForTask(node.name, startUpid, 2000, 60000);
     console.log('Container started');
     
-    // Update status to running
-    await container.update({ status: 'running' });
+    // Get MAC address from config (in case it wasn't captured during failed create)
+    const macAddress = await client.getLxcMacAddress(node.name, container.containerId) || container.macAddress;
+    
+    // Get IP address from Proxmox interfaces API
+    const ipv4Address = await client.getLxcIpAddress(node.name, container.containerId) || container.ipv4Address;
+    
+    // Update container record with MAC/IP and running status
+    const updateData = { status: 'running' };
+    if (macAddress) updateData.macAddress = macAddress;
+    if (ipv4Address) updateData.ipv4Address = ipv4Address;
+    
+    await container.update(updateData);
     console.log('Status updated to: running');
+    if (macAddress) console.log(`  MAC: ${macAddress}`);
+    if (ipv4Address) console.log(`  IP: ${ipv4Address}`);
     
     console.log('Container reconfiguration completed successfully!');
     process.exit(0);

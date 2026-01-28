@@ -411,6 +411,93 @@ class ProxmoxApi {
     );
     return response.data.data;
   }
+
+  /**
+   * Get MAC address from container configuration
+   * @param {string} node - Node name
+   * @param {number} vmid - Container VMID
+   * @returns {Promise<string|null>} - MAC address or null if not found
+   */
+  async getLxcMacAddress(node, vmid) {
+    console.log('Querying container configuration for MAC address...');
+    const config = await this.lxcConfig(node, vmid);
+    const net0 = config['net0'];
+    
+    if (!net0) {
+      console.log('No net0 configuration found');
+      return null;
+    }
+    
+    const macMatch = net0.match(/hwaddr=([0-9A-Fa-f:]+)/);
+    if (macMatch) {
+      console.log(`MAC address: ${macMatch[1]}`);
+      return macMatch[1];
+    }
+    
+    console.log('Could not extract MAC address from net0 configuration');
+    return null;
+  }
+
+  /**
+   * Get IPv4 address from container interfaces with retry logic
+   * @param {string} node - Node name
+   * @param {number} vmid - Container VMID
+   * @param {number} maxRetries - Maximum retry attempts (default: 10)
+   * @param {number} retryDelay - Delay between retries in ms (default: 3000)
+   * @returns {Promise<string|null>} - IPv4 address or null if not found
+   */
+  async getLxcIpAddress(node, vmid, maxRetries = 10, retryDelay = 3000) {
+    console.log('Querying IP address from Proxmox interfaces API...');
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const interfaces = await this.lxcInterfaces(node, vmid);
+        
+        // Find eth0 interface and get its IPv4 address
+        const eth0 = interfaces.find(iface => iface.name === 'eth0');
+        if (eth0 && eth0['ip-addresses']) {
+          const ipv4 = eth0['ip-addresses'].find(addr => addr['ip-address-type'] === 'inet');
+          if (ipv4 && ipv4['ip-address']) {
+            console.log(`IP address found (attempt ${attempt}): ${ipv4['ip-address']}`);
+            return ipv4['ip-address'];
+          }
+        }
+        
+        // Also check the 'inet' field as fallback
+        if (eth0 && eth0.inet) {
+          const ip = eth0.inet.split('/')[0];
+          console.log(`IP address found from inet field (attempt ${attempt}): ${ip}`);
+          return ip;
+        }
+        
+        console.log(`IP address not yet available (attempt ${attempt}/${maxRetries})`);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      } catch (err) {
+        console.log(`Interfaces query attempt ${attempt}/${maxRetries} failed: ${err.message}`);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+    
+    console.error(`Failed to get IP address after ${maxRetries} attempts`);
+    return null;
+  }
+
+  /**
+   * Get both MAC and IP address for a container
+   * @param {string} node - Node name
+   * @param {number} vmid - Container VMID
+   * @returns {Promise<{macAddress: string|null, ipv4Address: string|null}>}
+   */
+  async getLxcNetworkInfo(node, vmid) {
+    const macAddress = await this.getLxcMacAddress(node, vmid);
+    const ipv4Address = await this.getLxcIpAddress(node, vmid);
+    
+    return { macAddress, ipv4Address };
+  }
 }
 
 module.exports = ProxmoxApi;
