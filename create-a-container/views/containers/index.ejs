@@ -69,7 +69,7 @@
                 <td><%= r.sshPort || '-' %></td>
                 <td><%= r.httpPort || '-' %></td>
                 <td>
-                  <% if (r.status === 'running') { %>
+                  <% if (r.status === 'running' || r.status === 'failed') { %>
                     <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>
                   <% } %>
                   <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">

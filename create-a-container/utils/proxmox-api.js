@@ -365,6 +365,20 @@ class ProxmoxApi {
   }
 
   /**
+   * Get LXC container current status
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @returns {Promise<Object>} - Container status object with status field ('running', 'stopped', etc.)
+   */
+  async getLxcStatus(node, vmid) {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/status/current`,
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
    * Get LXC container network interfaces
    * @param {string} node - The node name
    * @param {number} vmid - The container VMID

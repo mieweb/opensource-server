@@ -92,14 +92,22 @@ async function main() {
       console.log('No configuration changes to apply');
     }
     
-    // Stop the container
-    console.log('Stopping container...');
-    const stopUpid = await client.stopLxc(node.name, container.containerId);
-    console.log(`Stop task started: ${stopUpid}`);
+    // Check container status before stop/start cycle
+    const lxcStatus = await client.getLxcStatus(node.name, container.containerId);
+    console.log(`Container current status: ${lxcStatus.status}`);
     
-    // Wait for stop to complete (shorter timeout for stop/start)
-    await client.waitForTask(node.name, stopUpid, 2000, 60000);
-    console.log('Container stopped');
+    // Only stop if the container is running
+    if (lxcStatus.status === 'running') {
+      console.log('Stopping container...');
+      const stopUpid = await client.stopLxc(node.name, container.containerId);
+      console.log(`Stop task started: ${stopUpid}`);
+      
+      // Wait for stop to complete (shorter timeout for stop/start)
+      await client.waitForTask(node.name, stopUpid, 2000, 60000);
+      console.log('Container stopped');
+    } else {
+      console.log('Container not running, skipping stop');
+    }
     
     // Start the container
     console.log('Starting container...');

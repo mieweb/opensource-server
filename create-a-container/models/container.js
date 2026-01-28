@@ -25,6 +25,7 @@ module.exports = (sequelize, DataTypes) => {
      */
     buildLxcEnvConfig() {
       const config = {};
+      const deleteList = [];
       
       // Parse environment variables from JSON and format as NUL-separated list
       // Format: KEY1=value1\0KEY2=value2\0KEY3=value3
@@ -39,15 +40,26 @@ module.exports = (sequelize, DataTypes) => {
           }
           if (envPairs.length > 0) {
             config['env'] = envPairs.join('\0');
+          } else {
+            deleteList.push('env');
           }
         } catch (err) {
           console.error('Failed to parse environment variables JSON:', err.message);
         }
+      } else {
+        deleteList.push('env');
       }
       
       // Set entrypoint command
       if (this.entrypoint && this.entrypoint.trim()) {
         config['entrypoint'] = this.entrypoint.trim();
+      } else {
+        deleteList.push('entrypoint');
+      }
+      
+      // Add delete parameter if there are options to remove
+      if (deleteList.length > 0) {
+        config['delete'] = deleteList.join(',');
       }
       
       return config;
