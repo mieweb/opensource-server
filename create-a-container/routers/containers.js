@@ -117,9 +117,8 @@ router.get('/new', requireAuth, async (req, res) => {
 
 // Helper to detect API bearer requests
 function isApiRequest(req) {
-  const auth = req.get('authorization') || '';
-  const parts = auth.split(' ');
-  return parts.length === 2 && parts[0] === 'Bearer' && parts[1] === process.env.API_KEY;
+  const accept = (req.get('accept') || '').toLowerCase();
+  return accept.includes('application/json') || accept.includes('application/vnd.api+json');
 }
 
 // GET /sites/:siteId/containers - List all containers for the logged-in user in this site
