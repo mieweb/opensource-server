@@ -45,6 +45,11 @@ module.exports = (sequelize, DataTypes) => {
     tlsVerify: {
       type: DataTypes.BOOLEAN,
       allowNull: true
+    },
+    defaultStorage: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: 'Default storage target for container templates and images'
     }
   }, {
     sequelize,
