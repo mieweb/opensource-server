@@ -368,3 +368,39 @@ main {
 .navbar {
   border-bottom: 2px solid #1a252f;
 }
+
+/* Alert/Message boxes */
+.alert {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.alert-success {
+  color: #155724;
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+}
+
+.alert-error {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+
+.alert-info {
+  color: #004085;
+  background-color: #cce5ff;
+  border-color: #b8daff;
+}
+
+.alert-info strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.alert-info p {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.9em;
+}

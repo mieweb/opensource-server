@@ -13,7 +13,7 @@
         
         <% if (successMessages && successMessages.length > 0) { %>
             <% successMessages.forEach(function(message) { %>
-                <div style="color: green; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid green; background-color: #d4edda; border-radius: 4px;">
+                <div class="alert alert-success">
                     <%= message %>
                 </div>
             <% }) %>
@@ -21,7 +21,7 @@
         
         <% if (errorMessages && errorMessages.length > 0) { %>
             <% errorMessages.forEach(function(message) { %>
-                <div style="color: red; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid red; background-color: #f8d7da; border-radius: 4px;">
+                <div class="alert alert-error">
                     <%- message %>
                 </div>
             <% }) %>
@@ -40,9 +40,9 @@
         </form>
         
         <!-- Loading banner for 2FA waiting -->
-        <div id="loadingBanner" style="display: none; margin-top: 1rem; padding: 0.75rem; border: 1px solid #0056b3; background-color: #cce5ff; border-radius: 4px; color: #004085;">
+        <div id="loadingBanner" class="alert alert-info" style="display: none;">
             <strong>⏳ Waiting for authentication...</strong>
-            <p style="margin: 0.5rem 0 0 0; font-size: 0.9em;">Please check your device and respond to the push notification.</p>
+            <p>Please check your device and respond to the push notification.</p>
         </div>
         
         <hr>
