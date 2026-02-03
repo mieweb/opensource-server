@@ -74,8 +74,15 @@ router.post('/', async (req, res) => {
         return res.redirect('/login');
       }
 
-      if (result.action?.toUpperCase() !== 'APPROVE') {
-        req.flash('error', 'Authentication request was denied');
+      if (result.action !== 'approve') {
+        // Distinguish between different failure scenarios
+        if (result.action === 'reject') {
+          req.flash('error', 'Second factor push notification was denied.');
+        } else if (result.action === 'timeout') {
+          req.flash('error', 'Second factor push notification timed out. Please try again.');
+        } else {
+          req.flash('error', `Second factor push notification failed: ${result.action}. Please contact support.`);
+        }
         return res.redirect('/login');
       }
     } catch (error) {

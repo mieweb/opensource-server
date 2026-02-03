@@ -30,7 +30,20 @@ router.post('/', async (req, res) => {
     return res.redirect('/login');
   } catch (err) {
     console.error('Registration error:', err);
-    req.flash('error', 'Registration failed: ' + err.message);
+    
+    // Handle Sequelize unique constraint errors with user-friendly messages
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      const field = err.errors[0]?.path;
+      if (field === 'uid') {
+        req.flash('error', 'This username is already registered. Please choose a different username or login with your existing account.');
+      } else if (field === 'mail') {
+        req.flash('error', 'This email address is already registered. Please use a different email or login with your existing account.');
+      } else {
+        req.flash('error', 'A user with these details is already registered. Please login with your existing account.');
+      }
+    } else {
+      req.flash('error', 'Registration failed: ' + err.message);
+    }
     return res.redirect('/register');
   }
 });
