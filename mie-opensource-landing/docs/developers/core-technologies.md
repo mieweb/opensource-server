@@ -127,6 +127,20 @@ The MIE Opensource Proxmox Cluster is built on several key open-source technolog
 - **Official Documentation**: [docs.npmjs.com](https://docs.npmjs.com/)
 - **CLI Commands**: [npm CLI](https://docs.npmjs.com/cli/v10/commands)
 
+### Docker & Docker Compose
+
+**Docker** provides containerization for development and deployment, while **Docker Compose** orchestrates multi-container applications.
+
+- **Docker Documentation**: [docs.docker.com](https://docs.docker.com/)
+- **Docker Compose Documentation**: [docs.docker.com/compose](https://docs.docker.com/compose/)
+- **Dockerfile Reference**: [Dockerfile Reference](https://docs.docker.com/reference/dockerfile/)
+
+**Used For:**
+- Building container images for deployment
+- Local development environment (PostgreSQL via compose.yml)
+- CI/CD pipeline image building
+- Testing in isolated environments
+
 ## Related Resources
 
 - [System Architecture](system-architecture): Understand how these technologies work together

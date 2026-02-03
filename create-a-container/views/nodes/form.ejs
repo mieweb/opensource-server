@@ -59,21 +59,21 @@
       </div>
 
       <div class="mb-3">
-        <label for="tokenId" class="form-label">Token ID</label>
+        <label for="tokenId" class="form-label">Username</label>
         <input 
           type="text" 
           class="form-control" 
           id="tokenId" 
           name="tokenId" 
           value="<%= node && node.tokenId ? node.tokenId : '' %>"
-          placeholder="e.g., user@pam!token-name"
+          placeholder="e.g., root@pam"
           autocomplete="off"
         >
-        <div class="form-text">API token identifier (optional)</div>
+        <div class="form-text">Proxmox username (e.g., root@pam)</div>
       </div>
 
       <div class="mb-3">
-        <label for="secret" class="form-label">Secret</label>
+        <label for="secret" class="form-label">Password</label>
         <input 
           type="password" 
           class="form-control" 
@@ -84,7 +84,7 @@
           autocomplete="off"
         >
         <div class="form-text">
-          <%= isEdit ? 'Leave blank to keep existing secret. Enter new secret to update.' : 'API token secret (optional)' %>
+          <%= isEdit ? 'Leave blank to keep existing password. Enter new password to update.' : 'Proxmox password' %>
         </div>
       </div>
 
@@ -96,6 +96,22 @@
           <option value="false" <%= (node && node.tlsVerify === false) ? 'selected' : '' %>>Disable (Skip Verification)</option>
         </select>
         <div class="form-text">Whether to verify TLS certificates when connecting to this node</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="imageStorage" class="form-label">Template Storage</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="imageStorage" 
+          name="imageStorage" 
+          value="<%= node && node.imageStorage ? node.imageStorage : 'local' %>"
+          placeholder="e.g., local"
+          list="imageStorageList"
+          autocomplete="off"
+        >
+        <datalist id="imageStorageList"></datalist>
+        <div class="form-text">Storage for CT Template images used when building containers</div>
       </div>
 
       <div class="d-flex justify-content-between">
@@ -112,3 +128,21 @@
 </div>
 
 <%- include('../layouts/footer') %>
+
+<% if (isEdit) { %>
+<script>
+(function() {
+  fetch('/sites/<%= site.id %>/nodes/<%= node.id %>/storages')
+    .then(res => res.json())
+    .then(storages => {
+      const datalist = document.getElementById('imageStorageList');
+      storages.forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.name;
+        datalist.appendChild(option);
+      });
+    })
+    .catch(() => {});
+})();
+</script>
+<% } %>

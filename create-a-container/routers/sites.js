@@ -19,6 +19,8 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
+        where: { status: 'running' },
+        required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
         include: [{
           model: Service,
@@ -44,7 +46,7 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
 router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
-  // fetch services for the specific site
+  // fetch services for the specific site (only from running containers)
   const site = await Site.findByPk(siteId, {
     include: [{
       model: Node,
@@ -52,6 +54,8 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
       include: [{
         model: Container,
         as: 'containers',
+        where: { status: 'running' },
+        required: false,
         include: [{
           model: Service,
           as: 'services',
@@ -115,6 +119,7 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
   // define the environment object
   const env = {
     DIRECTORY_BACKEND: 'sql',
+    REQUIRE_AUTH_FOR_SEARCH: false,
   };
 
   // Configure AUTH_BACKENDS and NOTIFICATION_URL based on push notification settings
@@ -149,9 +154,9 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
   // config/config.js and construct the SQL URL
   const config = require('../config/config')[process.env.NODE_ENV || 'development'];   
   const sqlUrlBuilder = new URL(`${config.dialect}://`);
+  sqlUrlBuilder.hostname = config.host || '';
   sqlUrlBuilder.username = config.username || '';
   sqlUrlBuilder.password = config.password || '';
-  sqlUrlBuilder.hostname = config.host || '';
   sqlUrlBuilder.port = config.port || '';
   sqlUrlBuilder.pathname = config.database || path.resolve(config.storage);
   env.SQL_URI = sqlUrlBuilder.toString();

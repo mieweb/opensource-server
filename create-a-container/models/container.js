@@ -14,6 +14,55 @@ module.exports = (sequelize, DataTypes) => {
       Container.hasMany(models.Service, { foreignKey: 'containerId', as: 'services' });
       // a container belongs to a node
       Container.belongsTo(models.Node, { foreignKey: 'nodeId', as: 'node' });
+      // a container may have a creation job
+      Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
+    }
+
+    /**
+     * Build LXC config object for environment variables and entrypoint
+     * Returns config suitable for Proxmox API updateLxcConfig
+     * @returns {object} Config object with 'env' and 'entrypoint' properties
+     */
+    buildLxcEnvConfig() {
+      const config = {};
+      const deleteList = [];
+      
+      // Parse environment variables from JSON and format as NUL-separated list
+      // Format: KEY1=value1\0KEY2=value2\0KEY3=value3
+      if (this.environmentVars) {
+        try {
+          const envObj = JSON.parse(this.environmentVars);
+          const envPairs = [];
+          for (const [key, value] of Object.entries(envObj)) {
+            if (key && value !== undefined) {
+              envPairs.push(`${key}=${value}`);
+            }
+          }
+          if (envPairs.length > 0) {
+            config['env'] = envPairs.join('\0');
+          } else {
+            deleteList.push('env');
+          }
+        } catch (err) {
+          console.error('Failed to parse environment variables JSON:', err.message);
+        }
+      } else {
+        deleteList.push('env');
+      }
+      
+      // Set entrypoint command
+      if (this.entrypoint && this.entrypoint.trim()) {
+        config['entrypoint'] = this.entrypoint.trim();
+      } else {
+        deleteList.push('entrypoint');
+      }
+      
+      // Add delete parameter if there are options to remove
+      if (deleteList.length > 0) {
+        config['delete'] = deleteList.join(',');
+      }
+      
+      return config;
     }
   }
   Container.init({
@@ -26,9 +75,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false
     },
-    osRelease: {
+    status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'pending'
+    },
+    template: {
       type: DataTypes.STRING(255),
       allowNull: true
+    },
+    creationJobId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'Jobs',
+        key: 'id'
+      }
     },
     nodeId: {
       type: DataTypes.INTEGER,
@@ -40,22 +102,32 @@ module.exports = (sequelize, DataTypes) => {
     },
     containerId: {
       type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: false
+      allowNull: true
     },
     macAddress: {
       type: DataTypes.STRING(17),
-      allowNull: false,
+      allowNull: true,
       unique: true
     },
     ipv4Address: {
       type: DataTypes.STRING(45),
-      allowNull: false,
+      allowNull: true,
       unique: true
     },
     aiContainer: {
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'N'
+    },
+    environmentVars: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null
+    },
+    entrypoint: {
+      type: DataTypes.STRING(2000),
+      allowNull: true,
+      defaultValue: null
     }
   }, {
     sequelize,

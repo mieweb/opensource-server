@@ -2,10 +2,64 @@ const express = require('express');
 const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
 const https = require('https');
 const dns = require('dns').promises;
-const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Sequelize, sequelize } = require('../models');
+const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Job, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
+
+/**
+ * Normalize a Docker image reference to full format: host/org/image:tag
+ * Examples:
+ *   nginx              → docker.io/library/nginx:latest
+ *   nginx:alpine       → docker.io/library/nginx:alpine
+ *   myorg/myapp        → docker.io/myorg/myapp:latest
+ *   myorg/myapp:v1     → docker.io/myorg/myapp:v1
+ *   ghcr.io/org/app:v1 → ghcr.io/org/app:v1
+ */
+function normalizeDockerRef(ref) {
+  // Split off tag first
+  let tag = 'latest';
+  let imagePart = ref;
+  
+  const lastColon = ref.lastIndexOf(':');
+  if (lastColon !== -1) {
+    const potentialTag = ref.substring(lastColon + 1);
+    // Make sure this isn't a port number in a registry URL (e.g., registry:5000/image)
+    if (!potentialTag.includes('/')) {
+      tag = potentialTag;
+      imagePart = ref.substring(0, lastColon);
+    }
+  }
+  
+  const parts = imagePart.split('/');
+  
+  let host = 'docker.io';
+  let org = 'library';
+  let image;
+  
+  if (parts.length === 1) {
+    // Just image name: nginx
+    image = parts[0];
+  } else if (parts.length === 2) {
+    // Could be org/image or host/image
+    // If first part contains a dot or colon, it's a registry host
+    if (parts[0].includes('.') || parts[0].includes(':')) {
+      host = parts[0];
+      image = parts[1];
+    } else {
+      // org/image
+      org = parts[0];
+      image = parts[1];
+    }
+  } else {
+    // host/org/image or host/path/to/image
+    host = parts[0];
+    image = parts[parts.length - 1];
+    org = parts.slice(1, -1).join('/');
+  }
+  
+  return `${host}/${org}/${image}:${tag}`;
+}
 
 // GET /sites/:siteId/containers/new - Display form for creating a new container
 router.get('/new', requireAuth, async (req, res) => {
@@ -32,11 +86,7 @@ router.get('/new', requireAuth, async (req, res) => {
 
   // TODO: use datamodel backed templates instead of querying Proxmox here
   for (const node of nodes) {
-    const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: node.tlsVerify !== false
-      })
-    });
+    const client = await node.api();
 
     const lxcTemplates = await client.getLxcTemplates(node.name);
     
@@ -113,7 +163,9 @@ router.get('/', requireAuth, async (req, res) => {
       id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
-      osRelease: c.osRelease,
+      status: c.status,
+      template: c.template,
+      creationJobId: c.creationJobId,
       sshPort,
       httpPort,
       nodeName: c.node ? c.node.name : '-'
@@ -196,7 +248,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
   });
 });
 
-// POST /sites/:siteId/containers - Create a new container
+// POST /sites/:siteId/containers - Create a new container (async via job)
 router.post('/', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
@@ -207,174 +259,194 @@ router.post('/', async (req, res) => {
     return res.redirect('/sites');
   }
 
-  // TODO: build the container async in a Job
+  const t = await sequelize.transaction();
+  
   try {
-  const { hostname, template, services } = req.body;
-  const [ nodeName, templateVmid ] = template.split(',');
-  const node = await Node.findOne({ where: { name: nodeName, siteId } });
-  const client = new ProxmoxApi(node.apiUrl, node.tokenId, node.secret, {
-    httpsAgent: new https.Agent({
-      rejectUnauthorized: node.tlsVerify !== false
-    })
-  });
-  const vmid = await client.nextId();
-  const upid = await client.cloneLxc(node.name, parseInt(templateVmid, 10), vmid, {
-    hostname,
-    description: `Cloned from template ${templateVmid}`,
-    full: 1
-  });
-  
-  // wait for the task to complete
-  while (true) {
-    const status = await client.taskStatus(node.name, upid);
-    if (status.status === 'stopped') break;
-  }
-
-  // Configure the cloned container
-  await client.updateLxcConfig(node.name, vmid, {
-    cores: 4,
-    features: 'nesting=1',
-    memory: 4096,
-    net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
-    searchdomain: site.internalDomain,
-    swap: 0,
-    onboot: 1,
-    tags: req.session.user,
-  });
-
-  // Start the container
-  const startUpid = await client.startLxc(node.name, vmid);
-  
-  // wait for the start task to complete
-  while (true) {
-    const status = await client.taskStatus(node.name, startUpid);
-    if (status.status === 'stopped') break;
-  }
-
-  // record container information
-  const config = await client.lxcConfig(node.name, vmid);
-  const macAddress = config['net0'].match(/hwaddr=([0-9A-Fa-f:]+)/)[1];
-  const ipv4Address = await (async () => {
-    const maxRetries = 10;
-    const retryDelay = 3000;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const domainName = `${hostname}.${site.internalDomain}`;
-        const lookup = await dns.lookup(domainName);
-        return lookup.address;
-      } catch (err) {
-        console.error('DNS lookup failed:', err);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+    const { hostname, template, customTemplate, services, environmentVars, entrypoint } = req.body;
+    
+    // Convert environment variables array to JSON object
+    let envVarsJson = null;
+    if (environmentVars && Array.isArray(environmentVars)) {
+      const envObj = {};
+      for (const env of environmentVars) {
+        if (env.key && env.key.trim()) {
+          envObj[env.key.trim()] = env.value || '';
+        }
+      }
+      if (Object.keys(envObj).length > 0) {
+        envVarsJson = JSON.stringify(envObj);
       }
     }
-    console.error('DNS lookup failed after maximum retries');
-    return null
-  })();
-  
-  const container = await Container.create({
-    hostname,
-    username: req.session.user,
-    nodeId: node.id,
-    containerId: vmid,
-    macAddress,
-    ipv4Address
-  });
-
-  // Create services if provided
-  if (services && typeof services === 'object') {
-    for (const key in services) {
-      const service = services[key];
-      const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
-      
-      // Validate required fields
-      if (!type || !internalPort) continue;
-      
-      // Determine the service type (http, transport, or dns)
-      let serviceType;
-      let protocol = null;
-      
-      if (type === 'http') {
-        serviceType = 'http';
-      } else if (type === 'srv') {
-        serviceType = 'dns';
-      } else {
-        // tcp or udp
-        serviceType = 'transport';
-        protocol = type;
+    
+    let nodeName, templateName, node;
+    
+    if (template === 'custom' || !template) {
+      // Custom Docker image - parse and normalize the reference
+      if (!customTemplate || customTemplate.trim() === '') {
+        throw new Error('Custom template image is required');
       }
       
-      const serviceData = {
-        containerId: container.id,
-        type: serviceType,
-        internalPort: parseInt(internalPort, 10)
-      };
+      templateName = normalizeDockerRef(customTemplate.trim());
+      
+      // For custom templates, pick the first available node in the site
+      node = await Node.findOne({ 
+        where: { 
+          siteId,
+          apiUrl: { [Sequelize.Op.ne]: null },
+          tokenId: { [Sequelize.Op.ne]: null },
+          secret: { [Sequelize.Op.ne]: null }
+        } 
+      });
+      
+      if (!node) {
+        throw new Error('No nodes with API access available in this site');
+      }
+    } else {
+      // Standard Proxmox template
+      const [ nodeNamePart, templateVmid ] = template.split(',');
+      nodeName = nodeNamePart;
+      node = await Node.findOne({ where: { name: nodeName, siteId } });
+      
+      if (!node) {
+        throw new Error(`Node "${nodeName}" not found`);
+      }
+      
+      // Get the template name from Proxmox
+      const client = await node.api();
+      const templates = await client.getLxcTemplates(node.name);
+      const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
+      
+      if (!templateContainer) {
+        throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
+      }
+      
+      templateName = templateContainer.name;
+    }
+    
+    // Create the container record in pending status (VMID allocated by job)
+    const container = await Container.create({
+      hostname,
+      username: req.session.user,
+      status: 'pending',
+      template: templateName,
+      nodeId: node.id,
+      containerId: null,
+      macAddress: null,
+      ipv4Address: null,
+      environmentVars: envVarsJson,
+      entrypoint: entrypoint && entrypoint.trim() ? entrypoint.trim() : null
+    }, { transaction: t });
 
-      // Create the base service
-      const createdService = await Service.create(serviceData);
-
-      if (serviceType === 'http') {
-        // Validate that both hostname and domain are set
-        if (!externalHostname || !externalDomainId || externalDomainId === '') {
-          req.flash('error', 'HTTP services must have both an external hostname and external domain');
-          return res.redirect(`/sites/${siteId}/containers/new`);
+    // Create services if provided (validate within transaction)
+    if (services && typeof services === 'object') {
+      for (const key in services) {
+        const service = services[key];
+        const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
+        
+        // Validate required fields
+        if (!type || !internalPort) continue;
+        
+        // Determine the service type (http, transport, or dns)
+        let serviceType;
+        let protocol = null;
+        
+        if (type === 'http') {
+          serviceType = 'http';
+        } else if (type === 'srv') {
+          serviceType = 'dns';
+        } else {
+          // tcp or udp
+          serviceType = 'transport';
+          protocol = type;
         }
         
-        // Create HTTPService entry
-        await HTTPService.create({
-          serviceId: createdService.id,
-          externalHostname,
-          externalDomainId: parseInt(externalDomainId, 10)
-        });
-      } else if (serviceType === 'dns') {
-        // Validate DNS name is set
-        if (!dnsName) {
-          req.flash('error', 'DNS services must have a DNS name');
-          return res.redirect(`/sites/${siteId}/containers/new`);
+        const serviceData = {
+          containerId: container.id,
+          type: serviceType,
+          internalPort: parseInt(internalPort, 10)
+        };
+
+        // Create the base service
+        const createdService = await Service.create(serviceData, { transaction: t });
+
+        if (serviceType === 'http') {
+          // Validate that both hostname and domain are set
+          if (!externalHostname || !externalDomainId || externalDomainId === '') {
+            throw new Error('HTTP services must have both an external hostname and external domain');
+          }
+          
+          // Create HTTPService entry
+          await HTTPService.create({
+            serviceId: createdService.id,
+            externalHostname,
+            externalDomainId: parseInt(externalDomainId, 10)
+          }, { transaction: t });
+        } else if (serviceType === 'dns') {
+          // Validate DNS name is set
+          if (!dnsName) {
+            throw new Error('DNS services must have a DNS name');
+          }
+          
+          // Create DnsService entry
+          await DnsService.create({
+            serviceId: createdService.id,
+            recordType: 'SRV',
+            dnsName
+          }, { transaction: t });
+        } else {
+          // For TCP/UDP services, auto-assign external port
+          const minPort = 2000;
+          const maxPort = 65565;
+          const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort, t);
+          
+          // Create TransportService entry
+          await TransportService.create({
+            serviceId: createdService.id,
+            protocol: protocol,
+            externalPort
+          }, { transaction: t });
         }
-        
-        // Create DnsService entry
-        await DnsService.create({
-          serviceId: createdService.id,
-          recordType: 'SRV',
-          dnsName
-        });
-      } else {
-        // For TCP/UDP services, auto-assign external port
-        const minPort = 2000;
-        const maxPort = 65565;
-        const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort);
-        
-        // Create TransportService entry
-        await TransportService.create({
-          serviceId: createdService.id,
-          protocol: protocol,
-          externalPort
-        });
       }
     }
-  }
 
-  return res.redirect(`/sites/${siteId}/containers`);
-} catch (err) {
-  console.error('Error creating container:', err);
-  
-  // Handle axios errors with detailed messages
-  let errorMessage = 'Failed to create container: ';
-  if (err.response?.data) {
-    if (err.response.data.errors) {
-      errorMessage += JSON.stringify(err.response.data.errors);
-    } else if (err.response.data.message) {
-      errorMessage += err.response.data.message;
+    // Create the job to perform the actual container creation
+    const job = await Job.create({
+      command: `node bin/create-container.js --container-id=${container.id}`,
+      createdBy: req.session.user,
+      status: 'pending'
+    }, { transaction: t });
+
+    // Link the container to the job
+    await container.update({ creationJobId: job.id }, { transaction: t });
+
+    // Commit the transaction
+    await t.commit();
+
+    req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
+    return res.redirect(`/jobs/${job.id}`);
+  } catch (err) {
+    // Rollback the transaction
+    await t.rollback();
+    
+    console.error('Error creating container:', err);
+    
+    // Handle axios errors with detailed messages
+    let errorMessage = 'Failed to create container: ';
+    if (err.response?.data) {
+      if (err.response.data.errors) {
+        errorMessage += JSON.stringify(err.response.data.errors);
+      } else if (err.response.data.message) {
+        errorMessage += err.response.data.message;
+      } else {
+        errorMessage += err.message;
+      }
     } else {
       errorMessage += err.message;
     }
-  } else {
-    errorMessage += err.message;
+    
+    req.flash('error', errorMessage);
+    return res.redirect(`/sites/${siteId}/containers/new`);
   }
-  
-  req.flash('error', errorMessage);
-  return res.redirect(`/sites/${siteId}/containers/new`);
-}
 });
 
 // PUT /sites/:siteId/containers/:id - Update container services
@@ -409,10 +481,58 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.redirect(`/sites/${siteId}/containers`);
     }
 
-    const { services } = req.body;
+    const { services, environmentVars, entrypoint } = req.body;
+    
+    // Check if this is a restart-only request (no config changes)
+    const forceRestart = req.body.restart === 'true';
+    const isRestartOnly = forceRestart && !services && !environmentVars && entrypoint === undefined;
+
+    // Convert environment variables array to JSON object
+    let envVarsJson = container.environmentVars; // Default to existing
+    if (!isRestartOnly && environmentVars && Array.isArray(environmentVars)) {
+      const envObj = {};
+      for (const env of environmentVars) {
+        if (env.key && env.key.trim()) {
+          envObj[env.key.trim()] = env.value || '';
+        }
+      }
+      envVarsJson = Object.keys(envObj).length > 0 ? JSON.stringify(envObj) : null;
+    } else if (!isRestartOnly && !environmentVars) {
+      envVarsJson = null;
+    }
+    
+    const newEntrypoint = isRestartOnly ? container.entrypoint : 
+      (entrypoint && entrypoint.trim() ? entrypoint.trim() : null);
+    
+    // Check if env vars or entrypoint changed
+    const envChanged = !isRestartOnly && container.environmentVars !== envVarsJson;
+    const entrypointChanged = !isRestartOnly && container.entrypoint !== newEntrypoint;
+    const needsRestart = forceRestart || envChanged || entrypointChanged;
 
     // Wrap all database operations in a transaction
+    let restartJob = null;
     await sequelize.transaction(async (t) => {
+      // Update environment variables and entrypoint if changed
+      if (envChanged || entrypointChanged) {
+        await container.update({
+          environmentVars: envVarsJson,
+          entrypoint: newEntrypoint,
+          status: needsRestart && container.containerId ? 'restarting' : container.status
+        }, { transaction: t });
+      } else if (forceRestart && container.containerId) {
+        // Just update status for force restart
+        await container.update({ status: 'restarting' }, { transaction: t });
+      }
+      
+      // Create restart job if needed and container has a VMID
+      if (needsRestart && container.containerId) {
+        restartJob = await Job.create({
+          command: `node bin/reconfigure-container.js --container-id=${container.id}`,
+          createdBy: req.session.user,
+          status: 'pending'
+        }, { transaction: t });
+      }
+      
       // Process services in two phases: delete first, then create new
       if (services && typeof services === 'object') {
         // Phase 1: Delete marked services
@@ -503,7 +623,12 @@ router.put('/:id', requireAuth, async (req, res) => {
       }
     });
 
-    req.flash('success', 'Container services updated successfully');
+    if (restartJob) {
+      req.flash('success', 'Container configuration updated. Restarting container...');
+      return res.redirect(`/jobs/${restartJob.id}`);
+    } else {
+      req.flash('success', 'Container services updated successfully');
+    }
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
     console.error('Error updating container:', err);
@@ -559,28 +684,46 @@ router.delete('/:id', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
-  // Delete from Proxmox
   try {
-    const api = new ProxmoxApi(
-      node.apiUrl,
-      node.tokenId,
-      node.secret,
-      {
-        httpsAgent: new https.Agent({
-          rejectUnauthorized: node.tlsVerify !== false,
-        })
+    // Only attempt Proxmox deletion if containerId exists
+    if (container.containerId) {
+      const api = await node.api();
+      
+      // Sanity check: verify the container in Proxmox matches our database record
+      try {
+        const proxmoxConfig = await api.lxcConfig(node.name, container.containerId);
+        const proxmoxHostname = proxmoxConfig.hostname;
+        
+        if (proxmoxHostname && proxmoxHostname !== container.hostname) {
+          console.error(`Hostname mismatch: DB has "${container.hostname}", Proxmox has "${proxmoxHostname}" for VMID ${container.containerId}`);
+          req.flash('error', `Safety check failed: Proxmox container hostname "${proxmoxHostname}" does not match database hostname "${container.hostname}". Manual intervention required.`);
+          return res.redirect(`/sites/${siteId}/containers`);
+        }
+        
+        // Delete from Proxmox
+        await api.deleteContainer(node.name, container.containerId, true, true);
+        console.log(`Deleted container ${container.containerId} from Proxmox node ${node.name}`);
+      } catch (proxmoxError) {
+        // If container doesn't exist in Proxmox (404 or similar), continue with DB deletion
+        if (proxmoxError.response?.status === 500 && proxmoxError.response?.data?.errors?.vmid) {
+          console.log(`Container ${container.containerId} not found in Proxmox, proceeding with DB deletion`);
+        } else if (proxmoxError.response?.status === 404) {
+          console.log(`Container ${container.containerId} not found in Proxmox, proceeding with DB deletion`);
+        } else {
+          throw proxmoxError;
+        }
       }
-    );
+    } else {
+      console.log(`Container ${container.hostname} has no containerId, skipping Proxmox deletion`);
+    }
 
-    await api.deleteContainer(node.name, container.containerId, true, true);
+    // Delete from database (cascade deletes associated services)
+    await container.destroy();
   } catch (error) {
     console.error(error);
-    req.flash('error', `Failed to delete container from Proxmox: ${error.message}`);
+    req.flash('error', `Failed to delete container: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
-  
-  // Delete from database (cascade deletes associated services)
-  await container.destroy();
   
   req.flash('success', `Container ${container.hostname} deleted successfully`);
   return res.redirect(`/sites/${siteId}/containers`);

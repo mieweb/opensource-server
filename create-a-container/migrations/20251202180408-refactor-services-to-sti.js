@@ -126,15 +126,48 @@ module.exports = {
     await queryInterface.removeColumn('Services', 'externalDomainId');
 
     // rename tcp and udp service types to transport
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'transport', 'tcp', 'udp'),
-      allowNull: false
-    });
-    await queryInterface.bulkUpdate('Services', { type: 'transport' }, { [Sequelize.Op.or]: [ { type: 'tcp' }, { type: 'udp' } ] });
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'transport'),
-      allowNull: false
-    });
+    // For PostgreSQL, we need to handle ENUM modification differently
+    const dialect = queryInterface.sequelize.getDialect();
+    
+    if (dialect === 'postgres') {
+      // Rename the existing enum to a backup name
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create new enum with transport added
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'transport', 'tcp', 'udp')");
+      
+      // Update the column to use the new enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Update tcp and udp to transport
+      await queryInterface.bulkUpdate('Services', { type: 'transport' }, { [Sequelize.Op.or]: [ { type: 'tcp' }, { type: 'udp' } ] });
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+      
+      // Rename enum again to update it to final values
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create final enum with only http and transport
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'transport')");
+      
+      // Update the column to use the final enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+    } else {
+      // SQLite and other databases
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'transport', 'tcp', 'udp'),
+        allowNull: false
+      });
+      await queryInterface.bulkUpdate('Services', { type: 'transport' }, { [Sequelize.Op.or]: [ { type: 'tcp' }, { type: 'udp' } ] });
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'transport'),
+        allowNull: false
+      });
+    }
 
     // insert migrated data into new tables AFTER schema changes because of how sqlite3 handles cascades
     if (httpServices.length > 0)
@@ -144,21 +177,7 @@ module.exports = {
   },
 
   async down (queryInterface, Sequelize) {
-    // Recreate old indexes on Services table
-    await queryInterface.addIndex('Services', ['externalHostname', 'externalDomainId'], {
-      unique: true,
-      name: 'services_http_unique_hostname_domain',
-      where: {
-        type: 'http'
-      }
-    });
-
-    await queryInterface.addIndex('Services', ['type', 'externalPort'], {
-      unique: true,
-      name: 'services_layer4_unique_port'
-    });
-
-    // Add columns back to Services table
+    // Add columns back to Services table first
     await queryInterface.addColumn('Services', 'externalHostname', {
       type: Sequelize.STRING(255),
       allowNull: true
@@ -184,10 +203,27 @@ module.exports = {
     });
 
     // Change type enum back to include tcp and udp
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'transport', 'tcp', 'udp'),
-      allowNull: false
-    });
+    const dialect = queryInterface.sequelize.getDialect();
+    
+    if (dialect === 'postgres') {
+      // Rename the existing enum
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create new enum with tcp, udp, and transport
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'transport', 'tcp', 'udp')");
+      
+      // Update the column to use the new enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+    } else {
+      // SQLite and other databases
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'transport', 'tcp', 'udp'),
+        allowNull: false
+      });
+    }
 
     // Migrate data back from child tables
     const servicesTable = queryInterface.quoteIdentifier('Services');
@@ -218,9 +254,38 @@ module.exports = {
     }
 
     // Remove transport from enum, leaving only http, tcp, udp
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'tcp', 'udp'),
-      allowNull: false
+    if (dialect === 'postgres') {
+      // Rename the existing enum
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create new enum with only http, tcp, udp
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'tcp', 'udp')");
+      
+      // Update the column to use the new enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+    } else {
+      // SQLite and other databases
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'tcp', 'udp'),
+        allowNull: false
+      });
+    }
+
+    // Recreate old indexes on Services table
+    await queryInterface.addIndex('Services', ['externalHostname', 'externalDomainId'], {
+      unique: true,
+      name: 'services_http_unique_hostname_domain',
+      where: {
+        type: 'http'
+      }
+    });
+
+    await queryInterface.addIndex('Services', ['type', 'externalPort'], {
+      unique: true,
+      name: 'services_layer4_unique_port'
     });
 
     // Drop child tables

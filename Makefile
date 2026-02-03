@@ -12,13 +12,15 @@ help:
 
 install: install-create-container install-pull-config install-docs
 
+SYSTEMD_DIR := create-a-container/systemd
+SERVICES    := $(wildcard $(SYSTEMD_DIR)/*.service)
 install-create-container:
-	cd create-a-container && npm install --production
-	cd create-a-container && npm run db:migrate
-	install -m644 -oroot -groot create-a-container/systemd/container-creator.service /etc/systemd/system/container-creator.service
+	cd create-a-container && npm install --omit=dev
+	install -m 644 -o root -g root $(SERVICES) /etc/systemd/system/
 	systemctl daemon-reload || true
-	systemctl enable container-creator.service
-	systemctl start container-creator.service || true
+	@for service in $(notdir $(SERVICES)); do \
+		systemctl enable $$service; \
+	done
 
 install-pull-config:
 	cd pull-config && bash install.sh

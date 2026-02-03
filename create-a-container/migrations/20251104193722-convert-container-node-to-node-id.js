@@ -60,17 +60,13 @@ module.exports = {
       allowNull: true
     });
 
-    // Populate node from nodeId
-    const [nodes, _] = await queryInterface.sequelize.query(
-      'SELECT id, name FROM Nodes'
-    );
-    for (const { id, name } of nodes) {
-      await queryInterface.bulkUpdate('Containers', {
-        node: name
-      }, {
-        nodeId: id
-      });
-    }
+    // Populate node from nodeId using a LEFT JOIN to handle case where Nodes table might not exist or is empty
+    await queryInterface.sequelize.query(`
+      UPDATE "Containers" c
+      SET node = n.name
+      FROM "Nodes" n
+      WHERE c."nodeId" = n.id
+    `);
 
     // Make node NOT NULL
     await queryInterface.changeColumn('Containers', 'node', {

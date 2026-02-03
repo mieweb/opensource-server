@@ -20,8 +20,9 @@
         <thead class="table-light">
           <tr>
             <th>Hostname</th>
+            <th>Status</th>
             <th>IPv4</th>
-            <th>OS Release</th>
+            <th>Template</th>
             <th>Node</th>
             <th>SSH Port</th>
             <th>HTTP Port</th>
@@ -33,13 +34,49 @@
             <% rows.forEach(r => { %>
               <tr>
                 <td><%= r.hostname %></td>
+                <td>
+                  <% if (r.status === 'running') { %>
+                    <span class="badge bg-success" aria-label="Container is running">Running</span>
+                  <% } else if (r.status === 'pending') { %>
+                    <span class="badge bg-warning text-dark" aria-label="Container creation pending">
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      Pending
+                    </span>
+                  <% } else if (r.status === 'creating') { %>
+                    <span class="badge bg-info text-dark" aria-label="Container is being created">
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      Creating
+                    </span>
+                  <% } else if (r.status === 'failed') { %>
+                    <span class="badge bg-danger" aria-label="Container creation failed">Failed</span>
+                  <% } else if (r.status === 'restarting') { %>
+                    <span class="badge bg-info text-dark" aria-label="Container is restarting">
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      Restarting
+                    </span>
+                  <% } else { %>
+                    <span class="badge bg-secondary" aria-label="Container status unknown"><%= r.status || 'Unknown' %></span>
+                  <% } %>
+                  <% if (r.creationJobId && (r.status === 'pending' || r.status === 'creating' || r.status === 'failed')) { %>
+                    <a href="/jobs/<%= r.creationJobId %>" class="btn btn-link btn-sm p-0 ms-1" aria-label="View job details">
+                      <i class="bi bi-info-circle"></i> Details
+                    </a>
+                  <% } %>
+                </td>
                 <td><%= r.ipv4Address || '-' %></td>
-                <td><%= r.osRelease || '-' %></td>
+                <td><%= r.template || '-' %></td>
                 <td><%= r.nodeName %></td>
                 <td><%= r.sshPort || '-' %></td>
                 <td><%= r.httpPort || '-' %></td>
                 <td>
-                  <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>
+                  <% if (r.status === 'running' || r.status === 'failed') { %>
+                    <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>
+                    <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;">
+                      <input type="hidden" name="_method" value="PUT">
+                      <input type="hidden" name="restart" value="true">
+                      <button type="submit" class="btn btn-warning btn-sm" aria-label="Restart container <%= r.hostname %>">Restart</button>
+                    </form>
+                  <% } %>
                   <form method="POST" action="/sites/<%= site.id %>/containers/<%= r.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete container <%= r.hostname %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">
                     <button type="submit" class="btn btn-danger btn-sm" aria-label="Delete container <%= r.hostname %>">Delete</button>
@@ -49,7 +86,7 @@
             <% }) %>
           <% } else { %>
             <tr>
-              <td colspan="7" class="text-muted text-center py-4">
+              <td colspan="8" class="text-muted text-center py-4">
                 No containers found. Click "New Container" to create your first one.
               </td>
             </tr>

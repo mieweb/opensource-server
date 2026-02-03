@@ -23,7 +23,7 @@ RUN apt update && apt -y install curl gnupg2 ca-certificates lsb-release debian-
     && cat /etc/apt/preferences.d/99nginx \
     && apt update \
     && apt install -y nginx ssl-cert \
-    && systemctl enable nginx
+    && echo 'disable nginx-debug.service' >/etc/systemd/system-preset/00-nginx.preset
 
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN apt update && apt -y install dnsmasq && systemctl enable dnsmasq
@@ -39,19 +39,18 @@ ARG LEGO_VERSION=v4.28.1
 RUN curl -fsSL "https://github.com/go-acme/lego/releases/download/${LEGO_VERSION}/lego_${LEGO_VERSION}_linux_amd64.tar.gz" \
     | tar -xz -C /usr/local/bin lego
 
+# Install Postgres 18 from the PGDG repository
+RUN apt update && apt -y install postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt -y install postgresql-18
+
+# We install the nodesource repo for newer versions of NPM fixing compatibility
+# with unprivileged containers. This sets 24.x up which is the LTS at this time
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+
 # Install requisites: git for updating the software, make and npm for installing
 # and management.
-RUN apt update && apt -y install git make npm
-
-# Install the software. We include the .git directory so that the software can
-# update itself without replacing the entire container.
-ARG OPENSOURCE_SERVER_BRANCH=main
-RUN git clone \
-        --branch=${OPENSOURCE_SERVER_BRANCH} \
-        https://github.com/mieweb/opensource-server.git \
-        /opt/opensource-server \
-    && cd /opt/opensource-server \
-    && make install
+RUN apt update && apt -y install git make nodejs sudo
 
 # Install the ldap-gateway package
 ARG LDAP_GATEWAY_BRANCH=main
@@ -66,6 +65,12 @@ RUN git clone \
     && chown -R ldap-gateway:ldap-gateway /opt/ldap-gateway \
     && cp /opt/ldap-gateway/nfpm/systemd/ldap-gateway.service /etc/systemd/system/ldap-gateway.service \
     && systemctl enable ldap-gateway
+
+# Install the software. We include the .git directory so that the software can
+# update itself without replacing the entire container.
+COPY . /opt/opensource-server
+RUN cd /opt/opensource-server \
+    && make install
 
 # Tag the exposed ports for services handled by the container
 # NGINX (http, https, quic)

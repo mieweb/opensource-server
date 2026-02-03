@@ -28,19 +28,20 @@
       </div>
 
       <div class="mb-3">
-        <label for="username" class="form-label">Username / Token Name <span class="text-danger">*</span></label>
+        <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
         <input 
           type="text" 
           class="form-control" 
           id="username" 
           name="username" 
-          placeholder="token-identifier" 
+          placeholder="root@pam" 
           required
         >
+        <div class="form-text">Proxmox username (e.g., root@pam)</div>
       </div>
 
       <div class="mb-3">
-        <label for="password" class="form-label">Password / API Key <span class="text-danger">*</span></label>
+        <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
         <input 
           type="password" 
           class="form-control" 
@@ -49,6 +50,7 @@
           placeholder="••••••••" 
           required
         >
+        <div class="form-text">Proxmox password</div>
       </div>
 
       <div class="mb-3">

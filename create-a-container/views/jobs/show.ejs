@@ -1,0 +1,228 @@
+<%- include('../layouts/header', { 
+  title: `Job #${job.id} - MIE`,
+  breadcrumbs: [
+    { label: 'Jobs', url: '/jobs' },
+    { label: `Job #${job.id}`, url: `/jobs/${job.id}` }
+  ],
+  colWidth: 'col-12 col-lg-10',
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h4 class="mb-0">
+      Job #<%= job.id %>
+      <span id="status-badge" class="badge ms-2 <%= 
+        job.status === 'success' ? 'bg-success' : 
+        job.status === 'failure' ? 'bg-danger' : 
+        job.status === 'cancelled' ? 'bg-secondary' :
+        job.status === 'running' ? 'bg-info' : 'bg-warning text-dark' 
+      %>" aria-label="Job status">
+        <% if (job.status === 'pending' || job.status === 'running') { %>
+          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+        <% } %>
+        <span id="status-text"><%= job.status.charAt(0).toUpperCase() + job.status.slice(1) %></span>
+      </span>
+    </h4>
+    <% if (container) { %>
+      <a href="/sites/<%= container.node.siteId %>/containers" class="btn btn-outline-secondary btn-sm" aria-label="Back to containers">
+        <i class="bi bi-arrow-left"></i> Back to Containers
+      </a>
+    <% } %>
+  </div>
+  
+  <div class="card-body">
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <p class="mb-1"><strong>Command:</strong></p>
+        <code class="d-block bg-light p-2 rounded"><%= job.command %></code>
+      </div>
+      <div class="col-md-3">
+        <p class="mb-1"><strong>Created:</strong></p>
+        <span><%= new Date(job.createdAt).toLocaleString() %></span>
+      </div>
+      <div class="col-md-3">
+        <p class="mb-1"><strong>Created By:</strong></p>
+        <span><%= job.createdBy || 'System' %></span>
+      </div>
+    </div>
+    
+    <% if (container) { %>
+    <div class="alert alert-info mb-3" role="alert">
+      <i class="bi bi-info-circle me-2"></i>
+      Creating container: <strong><%= container.hostname %></strong>
+    </div>
+    <% } %>
+    
+    <div class="mb-2 d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Output</h5>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="auto-scroll" checked aria-label="Auto-scroll output">
+        <label class="form-check-label" for="auto-scroll">Auto-scroll</label>
+      </div>
+    </div>
+    
+    <div id="terminal" class="terminal-output" role="log" aria-live="polite" aria-label="Job output log">
+      <% if (initialOutput && initialOutput.length > 0) { %>
+        <% initialOutput.forEach(line => { %><span class="log-line"><%= line.output %></span><% }) %>
+      <% } %>
+    </div>
+    
+    <div id="connection-status" class="mt-2 small text-muted" aria-live="polite">
+      <% if (job.status === 'pending' || job.status === 'running') { %>
+        <span class="text-info"><i class="bi bi-broadcast"></i> Connecting to live stream...</span>
+      <% } else { %>
+        <span class="text-secondary"><i class="bi bi-check-circle"></i> Job completed</span>
+      <% } %>
+    </div>
+  </div>
+  
+  <div class="card-footer text-muted text-center small">
+    &copy; 2025 Medical Informatics Engineering
+  </div>
+</div>
+
+<style>
+.terminal-output {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-output .log-line {
+  display: block;
+}
+
+.terminal-output .log-line:last-child {
+  padding-bottom: 0.5rem;
+}
+
+.terminal-output::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-output::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.terminal-output::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.terminal-output::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+</style>
+
+<script>
+(function() {
+  const jobId = <%= job.id %>;
+  const jobStatus = '<%= job.status %>';
+  const terminal = document.getElementById('terminal');
+  const statusBadge = document.getElementById('status-badge');
+  const statusText = document.getElementById('status-text');
+  const connectionStatus = document.getElementById('connection-status');
+  const autoScrollCheckbox = document.getElementById('auto-scroll');
+  
+  let lastId = <%= initialOutput && initialOutput.length > 0 ? initialOutput[initialOutput.length - 1].id : 0 %>;
+  
+  function scrollToBottom() {
+    if (autoScrollCheckbox.checked) {
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+  }
+  
+  function appendLog(text) {
+    const span = document.createElement('span');
+    span.className = 'log-line';
+    span.textContent = text;
+    terminal.appendChild(span);
+    scrollToBottom();
+  }
+  
+  function updateStatus(newStatus) {
+    statusText.textContent = newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+    
+    // Remove spinner if present
+    const spinner = statusBadge.querySelector('.spinner-border');
+    if (spinner) spinner.remove();
+    
+    // Update badge color
+    statusBadge.className = 'badge ms-2 ' + (
+      newStatus === 'success' ? 'bg-success' :
+      newStatus === 'failure' ? 'bg-danger' :
+      newStatus === 'cancelled' ? 'bg-secondary' :
+      newStatus === 'running' ? 'bg-info' : 'bg-warning text-dark'
+    );
+  }
+  
+  function setConnectionStatus(html) {
+    connectionStatus.innerHTML = html;
+  }
+  
+  // Only connect to SSE if job is still running
+  if (jobStatus === 'pending' || jobStatus === 'running') {
+    let eventSource = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    
+    function connect() {
+      eventSource = new EventSource('/jobs/' + jobId + '/stream?lastId=' + lastId);
+      
+      eventSource.onopen = function() {
+        reconnectAttempts = 0;
+        setConnectionStatus('<span class="text-success"><i class="bi bi-broadcast"></i> Connected to live stream</span>');
+      };
+      
+      eventSource.addEventListener('log', function(e) {
+        try {
+          const data = JSON.parse(e.data);
+          appendLog(data.output);
+          if (data.id) lastId = data.id;
+        } catch (err) {
+          console.error('Failed to parse log event:', err);
+        }
+      });
+      
+      eventSource.addEventListener('status', function(e) {
+        try {
+          const data = JSON.parse(e.data);
+          updateStatus(data.status);
+          setConnectionStatus('<span class="text-secondary"><i class="bi bi-check-circle"></i> Job completed</span>');
+          eventSource.close();
+        } catch (err) {
+          console.error('Failed to parse status event:', err);
+        }
+      });
+      
+      eventSource.onerror = function() {
+        eventSource.close();
+        reconnectAttempts++;
+        
+        if (reconnectAttempts <= maxReconnectAttempts) {
+          setConnectionStatus('<span class="text-warning"><i class="bi bi-arrow-repeat"></i> Reconnecting... (attempt ' + reconnectAttempts + ')</span>');
+          setTimeout(connect, 2000 * reconnectAttempts);
+        } else {
+          setConnectionStatus('<span class="text-danger"><i class="bi bi-x-circle"></i> Connection lost. <a href="javascript:location.reload()">Refresh</a> to retry.</span>');
+        }
+      };
+    }
+    
+    connect();
+  } else {
+    // Job already complete, just scroll to bottom
+    scrollToBottom();
+  }
+})();
+</script>
+
+<%- include('../layouts/footer') %>

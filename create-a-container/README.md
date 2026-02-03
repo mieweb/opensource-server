@@ -22,11 +22,13 @@ erDiagram
         int id PK
         string hostname UK "FQDN hostname"
         string username "Owner username"
-        string osRelease "OS distribution"
+        string status "pending,creating,running,failed"
+        string template "Template name"
+        int creationJobId FK "References Job"
         int nodeId FK "References Node"
         int containerId UK "Proxmox VMID"
-        string macAddress UK "MAC address"
-        string ipv4Address UK "IPv4 address"
+        string macAddress UK "MAC address (nullable)"
+        string ipv4Address UK "IPv4 address (nullable)"
         string aiContainer "Node type flag"
         datetime createdAt
         datetime updatedAt
@@ -56,6 +58,7 @@ erDiagram
 
 - **User Authentication** - Proxmox VE authentication integration
 - **Container Management** - Create, list, and track LXC containers
+- **Docker/OCI Support** - Pull and deploy containers from Docker Hub, GHCR, or any OCI registry
 - **Service Registry** - Track HTTP/TCP/UDP services running on containers
 - **Dynamic Nginx Config** - Generate nginx reverse proxy configurations on-demand
 - **Real-time Progress** - SSE (Server-Sent Events) for container creation progress
@@ -206,12 +209,14 @@ List all containers for authenticated user
 Display container creation form
 
 #### `POST /containers`
-Create or register a container
-- **Query Parameter**: `init` (boolean) - If true, requires auth and spawns container creation
-- **Body (init=true)**: `{ hostname, osRelease, httpPort, aiContainer }`
-- **Body (init=false)**: Container registration data (for scripts)
-- **Returns (init=true)**: Redirect to status page
-- **Returns (init=false)**: `{ containerId, message }`
+Create a container asynchronously via a background job
+- **Body**: `{ hostname, template, customTemplate, services }` where:
+  - `hostname`: Container hostname
+  - `template`: Template selection in format "nodeName,vmid" OR "custom" for Docker images
+  - `customTemplate`: Docker image reference when template="custom" (e.g., `nginx`, `nginx:alpine`, `myorg/myapp:v1`, `ghcr.io/org/image:tag`)
+  - `services`: Object of service definitions
+- **Returns**: Redirect to containers list with flash message
+- **Process**: Creates pending container, services, and job in a single transaction. Docker image references are normalized to full format (`host/org/image:tag`). The job-runner executes the actual Proxmox operations.
 
 #### `DELETE /containers/:id` (Auth Required)
 Delete a container from both Proxmox and the database
@@ -430,8 +435,11 @@ Test email configuration (development/testing)
 id              INT PRIMARY KEY AUTO_INCREMENT
 hostname        VARCHAR(255) UNIQUE NOT NULL
 username        VARCHAR(255) NOT NULL
-osRelease       VARCHAR(255)
-containerId     INT UNSIGNED UNIQUE
+status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+template        VARCHAR(255)
+creationJobId   INT FOREIGN KEY REFERENCES Jobs(id)
+nodeId          INT FOREIGN KEY REFERENCES Nodes(id)
+containerId     INT UNSIGNED NOT NULL
 macAddress      VARCHAR(17) UNIQUE
 ipv4Address     VARCHAR(45) UNIQUE
 aiContainer     VARCHAR(50) DEFAULT 'N'

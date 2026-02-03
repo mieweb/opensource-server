@@ -8,8 +8,8 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     // Find the next available external port for the given protocol in the specified range
-    static async nextAvailablePortInRange(protocol, minPort, maxPort) {
-      const usedServices = await TransportService.findAll({
+    static async nextAvailablePortInRange(protocol, minPort, maxPort, transaction = null) {
+      const queryOptions = {
         where: {
           protocol: protocol,
           externalPort: {
@@ -18,7 +18,14 @@ module.exports = (sequelize, DataTypes) => {
         },
         attributes: ['externalPort'],
         order: [['externalPort', 'ASC']]
-      });
+      };
+      
+      if (transaction) {
+        queryOptions.transaction = transaction;
+        queryOptions.lock = sequelize.Sequelize.Transaction.LOCK.UPDATE;
+      }
+      
+      const usedServices = await TransportService.findAll(queryOptions);
 
       const usedPorts = new Set(usedServices.map(s => s.externalPort));
 

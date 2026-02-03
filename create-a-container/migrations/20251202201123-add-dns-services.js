@@ -4,10 +4,27 @@
 module.exports = {
   async up (queryInterface, Sequelize) {
     // Add 'dns' to Service type enum
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'transport', 'dns'),
-      allowNull: false
-    });
+    const dialect = queryInterface.sequelize.getDialect();
+    
+    if (dialect === 'postgres') {
+      // Rename the existing enum
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create new enum with dns added
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'transport', 'dns')");
+      
+      // Update the column to use the new enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+    } else {
+      // SQLite and other databases
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'transport', 'dns'),
+        allowNull: false
+      });
+    }
 
     // Create DnsServices table
     await queryInterface.createTable('DnsServices', {
@@ -51,9 +68,26 @@ module.exports = {
     await queryInterface.dropTable('DnsServices');
 
     // Remove 'dns' from Service type enum
-    await queryInterface.changeColumn('Services', 'type', {
-      type: Sequelize.ENUM('http', 'transport'),
-      allowNull: false
-    });
+    const dialect = queryInterface.sequelize.getDialect();
+    
+    if (dialect === 'postgres') {
+      // Rename the existing enum
+      await queryInterface.sequelize.query('ALTER TYPE "enum_Services_type" RENAME TO "enum_Services_type_old"');
+      
+      // Create new enum without dns
+      await queryInterface.sequelize.query("CREATE TYPE \"enum_Services_type\" AS ENUM ('http', 'transport')");
+      
+      // Update the column to use the new enum
+      await queryInterface.sequelize.query('ALTER TABLE "Services" ALTER COLUMN "type" TYPE "enum_Services_type" USING "type"::text::"enum_Services_type"');
+      
+      // Drop old enum
+      await queryInterface.sequelize.query('DROP TYPE "enum_Services_type_old"');
+    } else {
+      // SQLite and other databases
+      await queryInterface.changeColumn('Services', 'type', {
+        type: Sequelize.ENUM('http', 'transport'),
+        allowNull: false
+      });
+    }
   }
 };

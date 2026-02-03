@@ -160,4 +160,39 @@ As of writing, you are able to reboot, start, and shutdown your container as you
 
 ---
 
+## Docker Container Configuration
+
+When creating containers from Docker images, you can configure additional settings that are specific to containerized applications.
+
+### Environment Variables
+
+Environment variables allow you to pass configuration to your containerized application at runtime. These are commonly used for:
+- Database connection strings
+- API keys and secrets
+- Feature flags
+- Application modes (development, production, etc.)
+
+To add environment variables, expand the **Environment Variables** section and click **Add Variable** to create key-value pairs.
+
+:::warning System Containers
+Environment variables are intended for **Docker-based containers** only. System containers (created from Proxmox templates like Debian or Rocky Linux) typically expect `init` as PID 1 and may not use environment variables in the same way. If you're using a standard Linux template, you generally don't need to set environment variables here.
+:::
+
+### Entrypoint Command
+
+The entrypoint command overrides the default startup command for a Docker container. This is useful when you need to:
+- Run a specific script or binary
+- Pass custom arguments to your application
+- Chain multiple startup commands
+
+:::warning System Containers
+The entrypoint command is intended for **Docker-based containers** only. System containers expect `init` as PID 1 and should not have their entrypoint overridden. Changing the entrypoint on a system container may prevent it from starting correctly.
+:::
+
+### Restarting After Configuration Changes
+
+When you modify environment variables or the entrypoint command on an existing container, the system will automatically restart the container to apply the changes. You can monitor the restart progress from the container list page.
+
+---
+
 **Need Help?**: For questions about container configuration or troubleshooting, contact the MIE team.
