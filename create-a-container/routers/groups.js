@@ -46,7 +46,7 @@ router.get('/:id/edit', async (req, res) => {
   const group = await Group.findByPk(req.params.id);
   
   if (!group) {
-    req.flash('error', 'Group not found');
+    await req.flash('error', 'Group not found');
     return res.redirect('/groups');
   }
 
@@ -68,11 +68,11 @@ router.post('/', async (req, res) => {
       isAdmin: isAdmin === 'on' || isAdmin === 'true'
     });
 
-    req.flash('success', `Group ${cn} created successfully`);
+    await req.flash('success', `Group ${cn} created successfully`);
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error creating group:', error);
-    req.flash('error', 'Failed to create group: ' + error.message);
+    await req.flash('error', 'Failed to create group: ' + error.message);
     return res.redirect('/groups/new');
   }
 });
@@ -83,7 +83,7 @@ router.put('/:id', async (req, res) => {
     const group = await Group.findByPk(req.params.id);
     
     if (!group) {
-      req.flash('error', 'Group not found');
+      await req.flash('error', 'Group not found');
       return res.redirect('/groups');
     }
 
@@ -94,11 +94,11 @@ router.put('/:id', async (req, res) => {
       isAdmin: isAdmin === 'on' || isAdmin === 'true'
     });
 
-    req.flash('success', `Group ${cn} updated successfully`);
+    await req.flash('success', `Group ${cn} updated successfully`);
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error updating group:', error);
-    req.flash('error', 'Failed to update group: ' + error.message);
+    await req.flash('error', 'Failed to update group: ' + error.message);
     return res.redirect(`/groups/${req.params.id}/edit`);
   }
 });
@@ -109,18 +109,18 @@ router.delete('/:id', async (req, res) => {
     const group = await Group.findByPk(req.params.id);
     
     if (!group) {
-      req.flash('error', 'Group not found');
+      await req.flash('error', 'Group not found');
       return res.redirect('/groups');
     }
 
     const groupName = group.cn;
     await group.destroy();
 
-    req.flash('success', `Group ${groupName} deleted successfully`);
+    await req.flash('success', `Group ${groupName} deleted successfully`);
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error deleting group:', error);
-    req.flash('error', 'Failed to delete group: ' + error.message);
+    await req.flash('error', 'Failed to delete group: ' + error.message);
     return res.redirect('/groups');
   }
 });

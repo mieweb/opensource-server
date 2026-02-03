@@ -13,7 +13,7 @@
         
         <% if (successMessages && successMessages.length > 0) { %>
             <% successMessages.forEach(function(message) { %>
-                <div style="color: green; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid green; background-color: #d4edda; border-radius: 4px;">
+                <div class="alert alert-success">
                     <%= message %>
                 </div>
             <% }) %>
@@ -21,13 +21,13 @@
         
         <% if (errorMessages && errorMessages.length > 0) { %>
             <% errorMessages.forEach(function(message) { %>
-                <div style="color: red; margin-bottom: 1rem; padding: 0.5rem; border: 1px solid red; background-color: #f8d7da; border-radius: 4px;">
+                <div class="alert alert-error">
                     <%- message %>
                 </div>
             <% }) %>
         <% } %>
         
-        <form method="POST" action="/login">
+        <form method="POST" action="/login" id="loginForm">
             <input type="hidden" name="redirect" value="<%= redirect %>">
             
             <label for="username">Username</label>
@@ -36,8 +36,15 @@
             <label for="password">Password</label>
             <input type="password" name="password" id="password" required>
 
-            <input type="submit" value="Login">
+            <input type="submit" value="Login" id="loginButton">
         </form>
+        
+        <!-- Loading banner for 2FA waiting -->
+        <div id="loadingBanner" class="alert alert-info" style="display: none;">
+            <strong>⏳ Waiting for authentication...</strong>
+            <p>Please check your device and respond to the push notification.</p>
+        </div>
+        
         <hr>
         <div class="signup-section">
             <a href="/reset-password">Forgot your password?</a>
@@ -51,5 +58,19 @@
             &copy; 2025 Medical Informatics Engineering
         </div>
     </div>
+    
+    <script>
+    // Wait for DOM to be fully loaded before attaching event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show loading banner when form is submitted
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            // Show loading banner
+            document.getElementById('loadingBanner').style.display = 'block';
+            // Disable submit button to prevent double submission
+            document.getElementById('loginButton').disabled = true;
+            document.getElementById('loginButton').value = 'Authenticating...';
+        });
+    });
+    </script>
 </body>
 </html>

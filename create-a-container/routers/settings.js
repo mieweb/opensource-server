@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
   const enabled = push_notification_enabled === 'on';
   
   if (enabled && (!push_notification_url || push_notification_url.trim() === '')) {
-    req.flash('error', 'Push notification URL is required when push notifications are enabled');
+    await req.flash('error', 'Push notification URL is required when push notifications are enabled');
     return res.redirect('/settings');
   }
   
@@ -43,7 +43,7 @@ router.post('/', async (req, res) => {
   await Setting.set('smtp_url', smtp_url || '');
   await Setting.set('smtp_noreply_address', smtp_noreply_address || '');
   
-  req.flash('success', 'Settings saved successfully');
+  await req.flash('success', 'Settings saved successfully');
   return res.redirect('/settings');
 });
 

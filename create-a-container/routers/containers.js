@@ -67,7 +67,7 @@ router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
   
@@ -121,7 +121,7 @@ router.get('/', requireAuth, async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -186,7 +186,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -228,7 +228,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
   });
 
   if (!container) {
-    req.flash('error', 'Container not found');
+    await req.flash('error', 'Container not found');
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
@@ -255,7 +255,7 @@ router.post('/', async (req, res) => {
   // Validate site exists
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -422,7 +422,7 @@ router.post('/', async (req, res) => {
     // Commit the transaction
     await t.commit();
 
-    req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
+    await req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
     return res.redirect(`/jobs/${job.id}`);
   } catch (err) {
     // Rollback the transaction
@@ -444,7 +444,7 @@ router.post('/', async (req, res) => {
       errorMessage += err.message;
     }
     
-    req.flash('error', errorMessage);
+    await req.flash('error', errorMessage);
     return res.redirect(`/sites/${siteId}/containers/new`);
   }
 });
@@ -456,7 +456,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -477,7 +477,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     });
 
     if (!container) {
-      req.flash('error', 'Container not found');
+      await req.flash('error', 'Container not found');
       return res.redirect(`/sites/${siteId}/containers`);
     }
 
@@ -624,15 +624,15 @@ router.put('/:id', requireAuth, async (req, res) => {
     });
 
     if (restartJob) {
-      req.flash('success', 'Container configuration updated. Restarting container...');
+      await req.flash('success', 'Container configuration updated. Restarting container...');
       return res.redirect(`/jobs/${restartJob.id}`);
     } else {
-      req.flash('success', 'Container services updated successfully');
+      await req.flash('success', 'Container services updated successfully');
     }
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
     console.error('Error updating container:', err);
-    req.flash('error', 'Failed to update container: ' + err.message);
+    await req.flash('error', 'Failed to update container: ' + err.message);
     return res.redirect(`/sites/${siteId}/containers/${containerId}/edit`);
   }
 });
@@ -645,7 +645,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   // Validate site exists
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
   
@@ -663,24 +663,24 @@ router.delete('/:id', requireAuth, async (req, res) => {
   });
   
   if (!container) {
-    req.flash('error', 'Container not found');
+    await req.flash('error', 'Container not found');
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
   // Verify the container's node belongs to this site
   if (!container.node || container.node.siteId !== siteId) {
-    req.flash('error', 'Container does not belong to this site');
+    await req.flash('error', 'Container does not belong to this site');
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
   const node = container.node;
   if (!node.apiUrl) {
-    req.flash('error', 'Node API URL not configured');
+    await req.flash('error', 'Node API URL not configured');
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
   if (!node.tokenId || !node.secret) {
-    req.flash('error', 'Node API token not configured');
+    await req.flash('error', 'Node API token not configured');
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
@@ -696,7 +696,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
         
         if (proxmoxHostname && proxmoxHostname !== container.hostname) {
           console.error(`Hostname mismatch: DB has "${container.hostname}", Proxmox has "${proxmoxHostname}" for VMID ${container.containerId}`);
-          req.flash('error', `Safety check failed: Proxmox container hostname "${proxmoxHostname}" does not match database hostname "${container.hostname}". Manual intervention required.`);
+          await req.flash('error', `Safety check failed: Proxmox container hostname "${proxmoxHostname}" does not match database hostname "${container.hostname}". Manual intervention required.`);
           return res.redirect(`/sites/${siteId}/containers`);
         }
         
@@ -721,11 +721,11 @@ router.delete('/:id', requireAuth, async (req, res) => {
     await container.destroy();
   } catch (error) {
     console.error(error);
-    req.flash('error', `Failed to delete container: ${error.message}`);
+    await req.flash('error', `Failed to delete container: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
-  req.flash('success', `Container ${container.hostname} deleted successfully`);
+  await req.flash('success', `Container ${container.hostname} deleted successfully`);
   return res.redirect(`/sites/${siteId}/containers`);
 });
 

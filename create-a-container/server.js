@@ -69,6 +69,23 @@ async function main() {
   }));
 
   app.use(flash());
+  // fix flash with postgres
+  app.use((req, res, next) => {
+    const _flash = req.flash;
+    req.flash = function(type, msg) {
+      const result = _flash.apply(this, arguments);
+      if (type && msg) {
+        return new Promise((resolve, reject) => {
+          this.session.save((err) => {
+            if (err) return reject(err);
+            resolve(result);
+          });
+        });
+      }
+      return result;
+    }
+    next();
+  });
   app.use(express.static('public'));
   app.use(RateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes

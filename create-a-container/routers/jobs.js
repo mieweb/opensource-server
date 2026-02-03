@@ -44,7 +44,7 @@ router.get('/:id', async (req, res) => {
     const job = await Job.findByPk(id);
     if (!job) {
       if (req.accepts('html')) {
-        req.flash('error', 'Job not found');
+        await req.flash('error', 'Job not found');
         return res.redirect('/');
       }
       return res.status(404).json({ error: 'Job not found' });
@@ -53,7 +53,7 @@ router.get('/:id', async (req, res) => {
     // Authorization: only owner or admin can view
     if (!await canAccessJob(job, req)) {
       if (req.accepts('html')) {
-        req.flash('error', 'Job not found');
+        await req.flash('error', 'Job not found');
         return res.redirect('/');
       }
       return res.status(404).json({ error: 'Job not found' });
@@ -94,7 +94,7 @@ router.get('/:id', async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch job:', err);
     if (req.accepts('html')) {
-      req.flash('error', 'Failed to load job');
+      await req.flash('error', 'Failed to load job');
       return res.redirect('/');
     }
     return res.status(500).json({ error: 'Failed to fetch job' });
