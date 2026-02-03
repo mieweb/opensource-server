@@ -253,7 +253,7 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
   const site = await Site.findByPk(req.params.id);
   
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -278,11 +278,11 @@ router.post('/', requireAdmin, async (req, res) => {
       dnsForwarders
     });
 
-    req.flash('success', `Site ${name} created successfully`);
+    await req.flash('success', `Site ${name} created successfully`);
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error creating site:', error);
-    req.flash('error', 'Failed to create site: ' + error.message);
+    await req.flash('error', 'Failed to create site: ' + error.message);
     return res.redirect('/sites/new');
   }
 });
@@ -293,7 +293,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     const site = await Site.findByPk(req.params.id);
     
     if (!site) {
-      req.flash('error', 'Site not found');
+      await req.flash('error', 'Site not found');
       return res.redirect('/sites');
     }
 
@@ -308,11 +308,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
       dnsForwarders
     });
 
-    req.flash('success', `Site ${name} updated successfully`);
+    await req.flash('success', `Site ${name} updated successfully`);
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error updating site:', error);
-    req.flash('error', 'Failed to update site: ' + error.message);
+    await req.flash('error', 'Failed to update site: ' + error.message);
     return res.redirect(`/sites/${req.params.id}/edit`);
   }
 });
@@ -325,23 +325,23 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     });
     
     if (!site) {
-      req.flash('error', 'Site not found');
+      await req.flash('error', 'Site not found');
       return res.redirect('/sites');
     }
 
     if (site.nodes && site.nodes.length > 0) {
-      req.flash('error', 'Cannot delete site with associated nodes');
+      await req.flash('error', 'Cannot delete site with associated nodes');
       return res.redirect('/sites');
     }
 
     const siteName = site.name;
     await site.destroy();
 
-    req.flash('success', `Site ${siteName} deleted successfully`);
+    await req.flash('success', `Site ${siteName} deleted successfully`);
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error deleting site:', error);
-    req.flash('error', 'Failed to delete site: ' + error.message);
+    await req.flash('error', 'Failed to delete site: ' + error.message);
     return res.redirect('/sites');
   }
 });

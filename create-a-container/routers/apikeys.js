@@ -11,7 +11,7 @@ router.use(requireAuth);
 router.get('/', async (req, res) => {
   const user = await User.findOne({ where: { uid: req.session.user } });
   if (!user) {
-    req.flash('error', 'User not found');
+    await req.flash('error', 'User not found');
     return res.redirect('/login');
   }
   
@@ -46,7 +46,7 @@ router.get('/new', (req, res) => {
 router.post('/', async (req, res) => {
   const user = await User.findOne({ where: { uid: req.session.user } });
   if (!user) {
-    req.flash('error', 'User not found');
+    await req.flash('error', 'User not found');
     return res.redirect('/login');
   }
   
@@ -79,7 +79,7 @@ router.post('/', async (req, res) => {
     });
   }
 
-  req.flash('success', 'API key created successfully. This is the only time it will be shown!');
+  await req.flash('success', 'API key created successfully. This is the only time it will be shown!');
   return res.render('apikeys/created', {
     plainKey: apiKeyData.plainKey,
     apiKey,
@@ -91,7 +91,7 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const user = await User.findOne({ where: { uid: req.session.user } });
   if (!user) {
-    req.flash('error', 'User not found');
+    await req.flash('error', 'User not found');
     return res.redirect('/login');
   }
   
@@ -113,7 +113,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'API key not found' });
     }
     
-    req.flash('error', 'API key not found');
+    await req.flash('error', 'API key not found');
     return res.redirect('/apikeys');
   }
 
@@ -135,7 +135,7 @@ router.get('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const user = await User.findOne({ where: { uid: req.session.user } });
   if (!user) {
-    req.flash('error', 'User not found');
+    await req.flash('error', 'User not found');
     return res.redirect('/login');
   }
   
@@ -156,7 +156,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'API key not found' });
     }
     
-    req.flash('error', 'API key not found');
+    await req.flash('error', 'API key not found');
     return res.redirect('/apikeys');
   }
 
@@ -170,7 +170,7 @@ router.delete('/:id', async (req, res) => {
     return res.status(204).send();
   }
 
-  req.flash('success', 'API key deleted successfully');
+  await req.flash('success', 'API key deleted successfully');
   return res.redirect('/apikeys');
 });
 

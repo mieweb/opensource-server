@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -52,7 +52,7 @@ router.get('/new', async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -70,7 +70,7 @@ router.get('/import', async (req, res) => {
 
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -84,7 +84,7 @@ router.get('/:id/edit', async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
   
@@ -94,7 +94,7 @@ router.get('/:id/edit', async (req, res) => {
   });
   
   if (!node) {
-    req.flash('error', 'Node not found');
+    await req.flash('error', 'Node not found');
     return res.redirect(`/sites/${siteId}/nodes`);
   }
 
@@ -113,7 +113,7 @@ router.post('/', async (req, res) => {
   try {
     const site = await Site.findByPk(siteId);
     if (!site) {
-      req.flash('error', 'Site not found');
+      await req.flash('error', 'Site not found');
       return res.redirect('/sites');
     }
 
@@ -130,11 +130,11 @@ router.post('/', async (req, res) => {
       siteId
     });
 
-    req.flash('success', `Node ${name} created successfully`);
+    await req.flash('success', `Node ${name} created successfully`);
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error creating node:', err);
-    req.flash('error', `Failed to create node: ${err.message}`);
+    await req.flash('error', `Failed to create node: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/new`);
   }
 });
@@ -144,7 +144,7 @@ router.post('/import', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -223,7 +223,7 @@ router.post('/import', async (req, res) => {
     res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.log(err);
-    req.flash('error', `Failed to import nodes: ${err.message}`);
+    await req.flash('error', `Failed to import nodes: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/import`);
   }
 });
@@ -236,7 +236,7 @@ router.put('/:id', async (req, res) => {
   try {
     const site = await Site.findByPk(siteId);
     if (!site) {
-      req.flash('error', 'Site not found');
+      await req.flash('error', 'Site not found');
       return res.redirect('/sites');
     }
 
@@ -245,7 +245,7 @@ router.put('/:id', async (req, res) => {
     });
     
     if (!node) {
-      req.flash('error', 'Node not found');
+      await req.flash('error', 'Node not found');
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
@@ -267,11 +267,11 @@ router.put('/:id', async (req, res) => {
 
     await node.update(updateData);
 
-    req.flash('success', `Node ${name} updated successfully`);
+    await req.flash('success', `Node ${name} updated successfully`);
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error updating node:', err);
-    req.flash('error', `Failed to update node: ${err.message}`);
+    await req.flash('error', `Failed to update node: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes/${nodeId}/edit`);
   }
 });
@@ -312,7 +312,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const site = await Site.findByPk(siteId);
     if (!site) {
-      req.flash('error', 'Site not found');
+      await req.flash('error', 'Site not found');
       return res.redirect('/sites');
     }
 
@@ -322,23 +322,23 @@ router.delete('/:id', async (req, res) => {
     });
     
     if (!node) {
-      req.flash('error', 'Node not found');
+      await req.flash('error', 'Node not found');
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
     // Check if node has containers
     if (node.containers && node.containers.length > 0) {
-      req.flash('error', `Cannot delete node ${node.name}: ${node.containers.length} container(s) still reference this node`);
+      await req.flash('error', `Cannot delete node ${node.name}: ${node.containers.length} container(s) still reference this node`);
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
     await node.destroy();
     
-    req.flash('success', `Node ${node.name} deleted successfully`);
+    await req.flash('success', `Node ${node.name} deleted successfully`);
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error deleting node:', err);
-    req.flash('error', `Failed to delete node: ${err.message}`);
+    await req.flash('error', `Failed to delete node: ${err.message}`);
     return res.redirect(`/sites/${siteId}/nodes`);
   }
 });

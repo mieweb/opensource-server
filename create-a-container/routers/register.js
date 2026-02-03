@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
 
   try {
     await User.create(userParams);
-    req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
+    await req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
     return res.redirect('/login');
   } catch (err) {
     console.error('Registration error:', err);
@@ -35,14 +35,14 @@ router.post('/', async (req, res) => {
     if (err.name === 'SequelizeUniqueConstraintError' && err.errors && err.errors.length > 0) {
       const field = err.errors[0]?.path;
       if (field === 'uid') {
-        req.flash('error', 'This username is already registered. Please choose a different username or login with your existing account.');
+        await req.flash('error', 'This username is already registered. Please choose a different username or login with your existing account.');
       } else if (field === 'mail') {
-        req.flash('error', 'This email address is already registered. Please use a different email or login with your existing account.');
+        await req.flash('error', 'This email address is already registered. Please use a different email or login with your existing account.');
       } else {
-        req.flash('error', 'A user with these details is already registered. Please login with your existing account.');
+        await req.flash('error', 'A user with these details is already registered. Please login with your existing account.');
       }
     } else {
-      req.flash('error', 'Registration failed: ' + err.message);
+      await req.flash('error', 'Registration failed: ' + err.message);
     }
     return res.redirect('/register');
   }

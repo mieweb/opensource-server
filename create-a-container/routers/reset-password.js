@@ -16,7 +16,7 @@ router.post('/', async (req, res) => {
   const { usernameOrEmail } = req.body;
   
   if (!usernameOrEmail || usernameOrEmail.trim() === '') {
-    req.flash('error', 'Please enter your username or email address');
+    await req.flash('error', 'Please enter your username or email address');
     return res.redirect('/reset-password');
   }
   
@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
     });
     
     if (!user) {
-      req.flash('error', 'User not found');
+      await req.flash('error', 'User not found');
       return res.redirect('/reset-password');
     }
     
@@ -45,16 +45,16 @@ router.post('/', async (req, res) => {
     // Send email
     try {
       await sendPasswordResetEmail(user.mail, user.uid, resetUrl);
-      req.flash('success', 'Password reset instructions have been sent to your email address');
+      await req.flash('success', 'Password reset instructions have been sent to your email address');
       return res.redirect('/login');
     } catch (emailError) {
       console.error('Failed to send password reset email:', emailError);
-      req.flash('error', 'Password reset failed, please contact an administrator');
+      await req.flash('error', 'Password reset failed, please contact an administrator');
       return res.redirect('/reset-password');
     }
   } catch (error) {
     console.error('Password reset error:', error);
-    req.flash('error', 'Password reset failed, please contact an administrator');
+    await req.flash('error', 'Password reset failed, please contact an administrator');
     return res.redirect('/reset-password');
   }
 });
@@ -67,7 +67,7 @@ router.get('/:token', async (req, res) => {
     const resetToken = await PasswordResetToken.validateToken(token);
     
     if (!resetToken) {
-      req.flash('error', 'Invalid or expired password reset link');
+      await req.flash('error', 'Invalid or expired password reset link');
       return res.redirect('/login');
     }
     
@@ -79,7 +79,7 @@ router.get('/:token', async (req, res) => {
     });
   } catch (error) {
     console.error('Password reset token validation error:', error);
-    req.flash('error', 'Password reset failed, please contact an administrator');
+    await req.flash('error', 'Password reset failed, please contact an administrator');
     return res.redirect('/login');
   }
 });
@@ -91,17 +91,17 @@ router.post('/:token', async (req, res) => {
   
   // Validate passwords
   if (!password || !confirmPassword) {
-    req.flash('error', 'Please enter and confirm your new password');
+    await req.flash('error', 'Please enter and confirm your new password');
     return res.redirect(`/reset-password/${token}`);
   }
   
   if (password !== confirmPassword) {
-    req.flash('error', 'Passwords do not match');
+    await req.flash('error', 'Passwords do not match');
     return res.redirect(`/reset-password/${token}`);
   }
   
   if (password.length < 8) {
-    req.flash('error', 'Password must be at least 8 characters long');
+    await req.flash('error', 'Password must be at least 8 characters long');
     return res.redirect(`/reset-password/${token}`);
   }
   
@@ -109,7 +109,7 @@ router.post('/:token', async (req, res) => {
     const resetToken = await PasswordResetToken.validateToken(token);
     
     if (!resetToken) {
-      req.flash('error', 'Invalid or expired password reset link');
+      await req.flash('error', 'Invalid or expired password reset link');
       return res.redirect('/login');
     }
     
@@ -121,11 +121,11 @@ router.post('/:token', async (req, res) => {
     // Mark token as used
     await resetToken.markAsUsed();
     
-    req.flash('success', 'Your password has been reset successfully. Please log in with your new password.');
+    await req.flash('success', 'Your password has been reset successfully. Please log in with your new password.');
     return res.redirect('/login');
   } catch (error) {
     console.error('Password reset error:', error);
-    req.flash('error', 'Password reset failed, please contact an administrator');
+    await req.flash('error', 'Password reset failed, please contact an administrator');
     return res.redirect(`/reset-password/${token}`);
   }
 });

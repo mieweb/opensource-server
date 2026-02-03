@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -45,7 +45,7 @@ router.get('/new', requireAdmin, async (req, res) => {
   
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -64,7 +64,7 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
 
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -73,7 +73,7 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
   });
 
   if (!externalDomain) {
-    req.flash('error', 'External domain not found');
+    await req.flash('error', 'External domain not found');
     return res.redirect(`/sites/${siteId}/external-domains`);
   }
 
@@ -91,7 +91,7 @@ router.post('/', requireAdmin, async (req, res) => {
 
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -159,19 +159,19 @@ router.post('/', requireAdmin, async (req, res) => {
         const { stdout, stderr } = await run('lego', legoArgs, { env });
         console.log(`Certificate provisioned for ${externalDomain.name}`);
         
-        req.flash('success', `External domain ${name} created and certificate provisioned successfully`);
+        await req.flash('success', `External domain ${name} created and certificate provisioned successfully`);
       } catch (certError) {
         console.error('Certificate provisioning error:', certError);
-        req.flash('warning', `External domain ${name} created, but certificate provisioning failed: ${certError.message}`);
+        await req.flash('warning', `External domain ${name} created, but certificate provisioning failed: ${certError.message}`);
       }
     } else {
-      req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
+      await req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
     }
 
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
     console.error('Error creating external domain:', error);
-    req.flash('error', 'Failed to create external domain: ' + error.message);
+    await req.flash('error', 'Failed to create external domain: ' + error.message);
     return res.redirect(`/sites/${siteId}/external-domains/new`);
   }
 });
@@ -183,7 +183,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -193,7 +193,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     });
 
     if (!externalDomain) {
-      req.flash('error', 'External domain not found');
+      await req.flash('error', 'External domain not found');
       return res.redirect(`/sites/${siteId}/external-domains`);
     }
 
@@ -213,11 +213,11 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
     await externalDomain.update(updateData);
 
-    req.flash('success', `External domain ${name} updated successfully`);
+    await req.flash('success', `External domain ${name} updated successfully`);
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
     console.error('Error updating external domain:', error);
-    req.flash('error', 'Failed to update external domain: ' + error.message);
+    await req.flash('error', 'Failed to update external domain: ' + error.message);
     return res.redirect(`/sites/${siteId}/external-domains/${domainId}/edit`);
   }
 });
@@ -229,7 +229,7 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 
   const site = await Site.findByPk(siteId);
   if (!site) {
-    req.flash('error', 'Site not found');
+    await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
 
@@ -239,18 +239,18 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     });
 
     if (!externalDomain) {
-      req.flash('error', 'External domain not found');
+      await req.flash('error', 'External domain not found');
       return res.redirect(`/sites/${siteId}/external-domains`);
     }
 
     const domainName = externalDomain.name;
     await externalDomain.destroy();
 
-    req.flash('success', `External domain ${domainName} deleted successfully`);
+    await req.flash('success', `External domain ${domainName} deleted successfully`);
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
     console.error('Error deleting external domain:', error);
-    req.flash('error', 'Failed to delete external domain: ' + error.message);
+    await req.flash('error', 'Failed to delete external domain: ' + error.message);
     return res.redirect(`/sites/${siteId}/external-domains`);
   }
 });

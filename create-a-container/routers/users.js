@@ -56,7 +56,7 @@ router.get('/:id/edit', async (req, res) => {
   });
   
   if (!user) {
-    req.flash('error', 'User not found');
+    await req.flash('error', 'User not found');
     return res.redirect('/users');
   }
 
@@ -100,11 +100,11 @@ router.post('/', async (req, res) => {
       await user.setGroups(groups);
     }
 
-    req.flash('success', `User ${uid} created successfully`);
+    await req.flash('success', `User ${uid} created successfully`);
     return res.redirect('/users');
   } catch (error) {
     console.error('Error creating user:', error);
-    req.flash('error', 'Failed to create user: ' + error.message);
+    await req.flash('error', 'Failed to create user: ' + error.message);
     return res.redirect('/users/new');
   }
 });
@@ -117,7 +117,7 @@ router.put('/:id', async (req, res) => {
     const user = await User.findByPk(uidNumber);
     
     if (!user) {
-      req.flash('error', 'User not found');
+      await req.flash('error', 'User not found');
       return res.redirect('/users');
     }
 
@@ -151,11 +151,11 @@ router.put('/:id', async (req, res) => {
       await user.setGroups([]);
     }
 
-    req.flash('success', `User ${uid} updated successfully`);
+    await req.flash('success', `User ${uid} updated successfully`);
     return res.redirect('/users');
   } catch (error) {
     console.error('Error updating user:', error);
-    req.flash('error', 'Failed to update user: ' + error.message);
+    await req.flash('error', 'Failed to update user: ' + error.message);
     return res.redirect(`/users/${uidNumber}/edit`);
   }
 });
@@ -168,18 +168,18 @@ router.delete('/:id', async (req, res) => {
     const user = await User.findByPk(uidNumber);
     
     if (!user) {
-      req.flash('error', 'User not found');
+      await req.flash('error', 'User not found');
       return res.redirect('/users');
     }
 
     const username = user.uid;
     await user.destroy();
     
-    req.flash('success', `User ${username} deleted successfully`);
+    await req.flash('success', `User ${username} deleted successfully`);
     return res.redirect('/users');
   } catch (error) {
     console.error('Error deleting user:', error);
-    req.flash('error', 'Failed to delete user: ' + error.message);
+    await req.flash('error', 'Failed to delete user: ' + error.message);
     return res.redirect('/users');
   }
 });
