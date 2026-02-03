@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
     console.error('Registration error:', err);
     
     // Handle Sequelize unique constraint errors with user-friendly messages
-    if (err.name === 'SequelizeUniqueConstraintError') {
+    if (err.name === 'SequelizeUniqueConstraintError' && err.errors && err.errors.length > 0) {
       const field = err.errors[0]?.path;
       if (field === 'uid') {
         req.flash('error', 'This username is already registered. Please choose a different username or login with your existing account.');

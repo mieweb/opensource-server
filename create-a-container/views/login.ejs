@@ -60,13 +60,16 @@
     </div>
     
     <script>
-    // Show loading banner when form is submitted
-    document.getElementById('loginForm').addEventListener('submit', function(e) {
-        // Show loading banner
-        document.getElementById('loadingBanner').style.display = 'block';
-        // Disable submit button to prevent double submission
-        document.getElementById('loginButton').disabled = true;
-        document.getElementById('loginButton').value = 'Authenticating...';
+    // Wait for DOM to be fully loaded before attaching event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show loading banner when form is submitted
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            // Show loading banner
+            document.getElementById('loadingBanner').style.display = 'block';
+            // Disable submit button to prevent double submission
+            document.getElementById('loginButton').disabled = true;
+            document.getElementById('loginButton').value = 'Authenticating...';
+        });
     });
     </script>
 </body>
