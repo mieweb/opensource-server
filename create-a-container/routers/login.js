@@ -20,18 +20,18 @@ router.post('/', async (req, res) => {
     include: [{ association: 'groups' }]
   });
   if (!user) {
-    req.flash('error', 'Invalid username or password');
+    await req.flash('error', 'Invalid username or password');
     return res.redirect('/login');
   }
 
   const isValidPassword = await user.validatePassword(password);
   if (!isValidPassword) {
-    req.flash('error', 'Invalid username or password');
+    await req.flash('error', 'Invalid username or password');
     return res.redirect('/login');
   }
 
   if (user.status !== 'active') {
-    req.flash('error', 'Account is not active. Please contact the administrator.');
+    await req.flash('error', 'Account is not active. Please contact the administrator.');
     return res.redirect('/login');
   }
 
@@ -65,29 +65,29 @@ router.post('/', async (req, res) => {
       // Check for no device found error
       if (result.success === false && result.error?.includes('No device found with this Username')) {
         const registrationUrl = pushNotificationUrl;
-        req.flash('error', `No device found with this username. Please register your device at: <a href="${registrationUrl}" target="_blank" rel="noopener noreferrer" style="color: #721c24; text-decoration: underline;">${registrationUrl}</a>`);
+        await req.flash('error', `No device found with this username. Please register your device at: <a href="${registrationUrl}" target="_blank" rel="noopener noreferrer" style="color: #721c24; text-decoration: underline;">${registrationUrl}</a>`);
         return res.redirect('/login');
       }
 
       if (!response.ok) {
-        req.flash('error', 'Failed to send push notification. Please contact support.');
+        await req.flash('error', 'Failed to send push notification. Please contact support.');
         return res.redirect('/login');
       }
 
       if (result.action !== 'approve') {
         // Distinguish between different failure scenarios
         if (result.action === 'reject') {
-          req.flash('error', 'Second factor push notification was denied.');
+          await req.flash('error', 'Second factor push notification was denied.');
         } else if (result.action === 'timeout') {
-          req.flash('error', 'Second factor push notification timed out. Please try again.');
+          await req.flash('error', 'Second factor push notification timed out. Please try again.');
         } else {
-          req.flash('error', `Second factor push notification failed: ${result.action}. Please contact support.`);
+          await req.flash('error', `Second factor push notification failed: ${result.action}. Please contact support.`);
         }
         return res.redirect('/login');
       }
     } catch (error) {
       console.error('Push notification error:', error);
-      req.flash('error', 'Failed to send push notification. Please contact support.');
+      await req.flash('error', 'Failed to send push notification. Please contact support.');
       return res.redirect('/login');
     }
   }
