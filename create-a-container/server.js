@@ -114,6 +114,7 @@ async function main() {
   });
 
   // --- Mount Routers ---
+  const apiContainersRouter = require('./routers/api_containers');
   const loginRouter = require('./routers/login');
   const registerRouter = require('./routers/register');
   const usersRouter = require('./routers/users');
