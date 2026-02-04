@@ -10,13 +10,18 @@ const serviceMap = require('../data/services.json');
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
  * Examples:
- *   nginx              → docker.io/library/nginx:latest
- *   nginx:alpine       → docker.io/library/nginx:alpine
- *   myorg/myapp        → docker.io/myorg/myapp:latest
- *   myorg/myapp:v1     → docker.io/myorg/myapp:v1
- *   ghcr.io/org/app:v1 → ghcr.io/org/app:v1
+ * nginx               → docker.io/library/nginx:latest
+ * nginx:alpine        → docker.io/library/nginx:alpine
+ * myorg/myapp         → docker.io/myorg/myapp:latest
+ * myorg/myapp:v1      → docker.io/myorg/myapp:v1
+ * ghcr.io/org/app:v1  → ghcr.io/org/app:v1
  */
 function normalizeDockerRef(ref) {
+  // If this looks like a git URL (starts with http/https/git), return as is
+  if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) {
+    return ref;
+  }
+
   // Split off tag first
   let tag = 'latest';
   let imagePart = ref;
@@ -59,6 +64,12 @@ function normalizeDockerRef(ref) {
   }
   
   return `${host}/${org}/${image}:${tag}`;
+}
+
+// Helper to detect API bearer requests
+function isApiRequest(req) {
+  const accept = (req.get('accept') || '').toLowerCase();
+  return accept.includes('application/json') || accept.includes('application/vnd.api+json');
 }
 
 // GET /sites/:siteId/containers/new - Display form for creating a new container
@@ -114,12 +125,6 @@ router.get('/new', requireAuth, async (req, res) => {
     req 
   });
 });
-
-// Helper to detect API bearer requests
-function isApiRequest(req) {
-  const accept = (req.get('accept') || '').toLowerCase();
-  return accept.includes('application/json') || accept.includes('application/vnd.api+json');
-}
 
 // GET /sites/:siteId/containers - List all containers for the logged-in user in this site
 router.get('/', async (req, res) => {
@@ -286,10 +291,12 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
 // POST /sites/:siteId/containers - Create a new container (async via job)
 router.post('/', async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
+  const isApi = isApiRequest(req);
   
   // Validate site exists
   const site = await Site.findByPk(siteId);
   if (!site) {
+    if (isApi) return res.status(404).json({ error: 'Site not found' });
     await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
@@ -297,8 +304,36 @@ router.post('/', async (req, res) => {
   const t = await sequelize.transaction();
   
   try {
-    const { hostname, template, customTemplate, services, environmentVars, entrypoint } = req.body;
+    let { hostname, template, customTemplate, services, environmentVars, entrypoint, 
+          // Extract specific API fields if they differ from form data
+          template_name, repository, branch 
+        } = req.body;
+
+    // Handle API-specific payload mapping
+    if (isApi) {
+      // If repository is provided, treat it as a custom build
+      if (repository) {
+        template = 'custom';
+        customTemplate = repository;
+        
+        // Inject repo/branch into env vars so the build script can use them
+        if (!environmentVars) environmentVars = [];
+        // Ensure environmentVars is an array if it came in as something else
+        if (!Array.isArray(environmentVars)) environmentVars = [];
+        
+        environmentVars.push({ key: 'BUILD_REPOSITORY', value: repository });
+        environmentVars.push({ key: 'BUILD_BRANCH', value: branch || 'master' });
+        if (template_name) environmentVars.push({ key: 'TEMPLATE_NAME', value: template_name });
+      } else if (template_name && !template) {
+        // Fallback: if only template_name provided, assume it's the template
+        template = template_name;
+      }
+    }
     
+    // Determine user (Session user or API fallback)
+    // Note: If using Bearer auth, ensure your middleware populates req.user or similar
+    const currentUser = req.session?.user || req.user?.username || 'api-user';
+
     // Convert environment variables array to JSON object
     let envVarsJson = null;
     if (environmentVars && Array.isArray(environmentVars)) {
@@ -316,9 +351,9 @@ router.post('/', async (req, res) => {
     let nodeName, templateName, node;
     
     if (template === 'custom' || !template) {
-      // Custom Docker image - parse and normalize the reference
+      // Custom Docker image or Git Repo
       if (!customTemplate || customTemplate.trim() === '') {
-        throw new Error('Custom template image is required');
+        throw new Error('Custom template image or repository URL is required');
       }
       
       templateName = normalizeDockerRef(customTemplate.trim());
@@ -338,30 +373,53 @@ router.post('/', async (req, res) => {
       }
     } else {
       // Standard Proxmox template
-      const [ nodeNamePart, templateVmid ] = template.split(',');
-      nodeName = nodeNamePart;
-      node = await Node.findOne({ where: { name: nodeName, siteId } });
-      
+      // Check if format is "nodeName,vmid" (Form) or just "vmid" or "name" (API)
+      let templateVmid;
+
+      if (template.includes(',')) {
+        const [ nodeNamePart, vmidPart ] = template.split(',');
+        nodeName = nodeNamePart;
+        templateVmid = vmidPart;
+      } else {
+         // If just a name is passed via API, we have to find a node that has it
+         // This is a naive implementation finding the first node with this template
+         // Ideal for API usage where you might not know the exact node
+         const allNodes = await Node.findAll({ where: { siteId }});
+         for (const n of allNodes) {
+             const api = await n.api();
+             const tpls = await api.getLxcTemplates(n.name);
+             const found = tpls.find(t => t.name === template || t.vmid.toString() === template);
+             if (found) {
+                 node = n;
+                 nodeName = n.name;
+                 templateVmid = found.vmid;
+                 templateName = found.name;
+                 break;
+             }
+         }
+         if (!node) throw new Error(`Template "${template}" not found on any node in this site`);
+      }
+
       if (!node) {
-        throw new Error(`Node "${nodeName}" not found`);
+          node = await Node.findOne({ where: { name: nodeName, siteId } });
+          if (!node) throw new Error(`Node "${nodeName}" not found`);
+          
+           // Get the template name from Proxmox
+          const client = await node.api();
+          const templates = await client.getLxcTemplates(node.name);
+          const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
+          
+          if (!templateContainer) {
+            throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
+          }
+          templateName = templateContainer.name;
       }
-      
-      // Get the template name from Proxmox
-      const client = await node.api();
-      const templates = await client.getLxcTemplates(node.name);
-      const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
-      
-      if (!templateContainer) {
-        throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
-      }
-      
-      templateName = templateContainer.name;
     }
     
     // Create the container record in pending status (VMID allocated by job)
     const container = await Container.create({
       hostname,
-      username: req.session.user,
+      username: currentUser,
       status: 'pending',
       template: templateName,
       nodeId: node.id,
@@ -447,7 +505,7 @@ router.post('/', async (req, res) => {
     // Create the job to perform the actual container creation
     const job = await Job.create({
       command: `node bin/create-container.js --container-id=${container.id}`,
-      createdBy: req.session.user,
+      createdBy: currentUser,
       status: 'pending'
     }, { transaction: t });
 
@@ -456,6 +514,19 @@ router.post('/', async (req, res) => {
 
     // Commit the transaction
     await t.commit();
+
+    if (isApi) {
+        return res.status(202).json({
+            message: 'Container creation initiated',
+            status: 'pending',
+            jobId: job.id,
+            container: {
+                id: container.id,
+                hostname: container.hostname,
+                status: 'pending'
+            }
+        });
+    }
 
     await req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
     return res.redirect(`/jobs/${job.id}`);
@@ -479,6 +550,13 @@ router.post('/', async (req, res) => {
       errorMessage += err.message;
     }
     
+    if (isApi) {
+        return res.status(400).json({ 
+            error: errorMessage,
+            details: err.message
+        });
+    }
+
     await req.flash('error', errorMessage);
     return res.redirect(`/sites/${siteId}/containers/new`);
   }
