@@ -60,10 +60,11 @@ function isApiRequest(req) {
   return accept.includes('application/json') || accept.includes('application/vnd.api+json');
 }
 
-// GET /sites/:siteId/containers/new - List available templates and options
+// GET /sites/:siteId/containers/new - List available templates via API or HTML form
 router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
-  const isApi = isApiRequest(req);
+  // Check if this is an API request (requires the helper function defined earlier)
+  const isApi = isApiRequest(req); 
 
   // verify site exists
   const site = await Site.findByPk(siteId);
@@ -93,8 +94,9 @@ router.get('/new', requireAuth, async (req, res) => {
       
       for (const lxc of lxcTemplates) {
         templates.push({
-          // The wrapper likely maps Proxmox 'volid' to 'name' or similar
+          // Proxmox usually returns 'name' (filename) or 'volid'
           name: lxc.name || lxc.volid, 
+          vmid: lxc.vmid,
           size: lxc.size,
           node: node.name
         });
@@ -117,13 +119,13 @@ router.get('/new', requireAuth, async (req, res) => {
       domains: externalDomains
     });
   }
-  // ----------------------
+  // ----------------------------
 
   return res.render('containers/form', { 
     site,
     templates,
     externalDomains,
-    container: undefined, // Not editing
+    container: undefined, 
     req 
   });
 });
