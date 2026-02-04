@@ -60,15 +60,20 @@ function isApiRequest(req) {
   return accept.includes('application/json') || accept.includes('application/vnd.api+json');
 }
 
-// GET /sites/:siteId/containers/new
+// GET /sites/:siteId/containers/new - List available templates and options
 router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
+  const isApi = isApiRequest(req);
+
+  // verify site exists
   const site = await Site.findByPk(siteId);
   if (!site) {
+    if (isApi) return res.status(404).json({ error: 'Site not found' });
     await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
   
+  // Get valid container templates from all nodes in this site
   const templates = [];
   const nodes = await Node.findAll({
     where: {
@@ -82,28 +87,43 @@ router.get('/new', requireAuth, async (req, res) => {
   });
 
   for (const node of nodes) {
-    const client = await node.api();
-    const lxcTemplates = await client.getLxcTemplates(node.name);
-    for (const lxc of lxcTemplates) {
-      templates.push({
-        vmid: lxc.vmid,
-        name: lxc.name,
-        status: lxc.status,
-        node: node.name
-      });
+    try {
+      const client = await node.api();
+      const lxcTemplates = await client.getLxcTemplates(node.name);
+      
+      for (const lxc of lxcTemplates) {
+        templates.push({
+          // The wrapper likely maps Proxmox 'volid' to 'name' or similar
+          name: lxc.name || lxc.volid, 
+          size: lxc.size,
+          node: node.name
+        });
+      }
+    } catch (err) {
+      console.error(`Error fetching templates from node ${node.name}:`, err.message);
     }
   }
 
+  // Get external domains for this site
   const externalDomains = await ExternalDomain.findAll({
     where: { siteId },
     order: [['name', 'ASC']]
   });
 
+  if (isApi) {
+    return res.json({
+      site_id: site.id,
+      templates: templates, 
+      domains: externalDomains
+    });
+  }
+  // ----------------------
+
   return res.render('containers/form', { 
     site,
     templates,
     externalDomains,
-    container: undefined,
+    container: undefined, // Not editing
     req 
   });
 });
