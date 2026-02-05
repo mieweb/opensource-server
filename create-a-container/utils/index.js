@@ -32,9 +32,9 @@ function run(cmd, args, opts) {
  */
 function getVersionInfo() {
   try {
-    const commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-    const commitDate = execSync('git log -1 --format=%ad --date=short', { encoding: 'utf8' }).trim();
-    const tag = execSync('git describe --tags --exact-match 2>/dev/null || echo ""', { encoding: 'utf8' }).trim();
+    const commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8', shell: true }).trim();
+    const commitDate = execSync('git log -1 --format=%ad --date=short', { encoding: 'utf8', shell: true }).trim();
+    const tag = execSync('git describe --tags --exact-match 2>/dev/null || echo ""', { encoding: 'utf8', shell: true }).trim();
     
     return {
       hash: commitHash,

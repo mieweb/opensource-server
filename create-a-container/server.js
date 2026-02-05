@@ -93,6 +93,7 @@ async function main() {
   }));
 
   // Middleware to inject version info into all views
+  // Note: Version info is cached at startup. Server restart required to update version.
   const { getVersionInfo } = require('./utils');
   const versionInfo = getVersionInfo();
   app.use((req, res, next) => {
