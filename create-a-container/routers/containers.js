@@ -5,6 +5,7 @@ const dns = require('dns').promises;
 const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Job, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
+const { queueTraefikConfigJob } = require('../utils/traefik');
 const serviceMap = require('../data/services.json');
 
 /**
@@ -338,6 +339,7 @@ router.post('/', async (req, res) => {
     }, { transaction: t });
 
     // Create services if provided (validate within transaction)
+    let hasTransportServices = false;
     if (services && typeof services === 'object') {
       for (const key in services) {
         const service = services[key];
@@ -358,6 +360,7 @@ router.post('/', async (req, res) => {
           // tcp or udp
           serviceType = 'transport';
           protocol = type;
+          hasTransportServices = true;
         }
         
         const serviceData = {
@@ -421,6 +424,11 @@ router.post('/', async (req, res) => {
 
     // Commit the transaction
     await t.commit();
+
+    // Queue Traefik config job if transport services were created
+    if (hasTransportServices) {
+      await queueTraefikConfigJob(siteId, req.session.user);
+    }
 
     await req.flash('success', `Container "${hostname}" is being created. Check back shortly for status updates.`);
     return res.redirect(`/jobs/${job.id}`);
@@ -511,6 +519,7 @@ router.put('/:id', requireAuth, async (req, res) => {
 
     // Wrap all database operations in a transaction
     let restartJob = null;
+    let transportServicesChanged = false;
     await sequelize.transaction(async (t) => {
       // Update environment variables and entrypoint if changed
       if (envChanged || entrypointChanged) {
@@ -538,9 +547,13 @@ router.put('/:id', requireAuth, async (req, res) => {
         // Phase 1: Delete marked services
         for (const key in services) {
           const service = services[key];
-          const { id, deleted } = service;
+          const { id, deleted, type } = service;
           
           if (deleted === 'true' && id) {
+            // Check if this is a transport service being deleted
+            if (type === 'tcp' || type === 'udp') {
+              transportServicesChanged = true;
+            }
             await Service.destroy({ 
               where: { id: parseInt(id, 10), containerId: container.id },
               transaction: t
@@ -571,6 +584,7 @@ router.put('/:id', requireAuth, async (req, res) => {
             // tcp or udp
             serviceType = 'transport';
             protocol = type;
+            transportServicesChanged = true;
           }
           
           const serviceData = {
@@ -622,6 +636,11 @@ router.put('/:id', requireAuth, async (req, res) => {
         }
       }
     });
+
+    // Queue Traefik config job if transport services changed
+    if (transportServicesChanged) {
+      await queueTraefikConfigJob(siteId, req.session.user);
+    }
 
     if (restartJob) {
       await req.flash('success', 'Container configuration updated. Restarting container...');

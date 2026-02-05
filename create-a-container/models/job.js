@@ -19,6 +19,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('pending','running','success','failure','cancelled'),
       allowNull: false,
       defaultValue: 'pending'
+    },
+    serialGroup: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null
     }
   }, {
     sequelize,

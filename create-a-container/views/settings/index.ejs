@@ -92,6 +92,28 @@
         </div>
       </div>
 
+      <div class="mb-4">
+        <h5 class="mb-3">Traefik Configuration</h5>
+        
+        <div class="mb-3">
+          <label for="base_url" class="form-label">
+            Base URL
+          </label>
+          <input 
+            type="url" 
+            class="form-control" 
+            id="base_url" 
+            name="base_url" 
+            value="<%= baseUrl %>"
+            placeholder="http://10.0.0.1:3000"
+            aria-describedby="base_url_help"
+          >
+          <div id="base_url_help" class="form-text">
+            Base URL for Traefik HTTP provider to reach this application. If empty, defaults to http://&lt;job-runner-ip&gt;:3000
+          </div>
+        </div>
+      </div>
+
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary" aria-label="Save settings">
           Save Settings
