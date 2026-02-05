@@ -404,3 +404,80 @@ main {
   margin: 0.5rem 0 0 0;
   font-size: 0.9em;
 }
+
+/* Footer with version info */
+.version-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #1a252f;
+  color: #adb5bd;
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  z-index: 1000;
+  border-top: 1px solid #2c3e50;
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.version-label {
+  font-weight: 600;
+  color: #6c757d;
+}
+
+.version-link {
+  color: #3498db;
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  transition: color 0.2s;
+}
+
+.version-link:hover {
+  color: #5dade2;
+  text-decoration: underline;
+}
+
+.version-date {
+  color: #6c757d;
+  font-size: 0.8rem;
+}
+
+.issue-report {
+  display: flex;
+  align-items: center;
+}
+
+.report-issue-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #adb5bd;
+  text-decoration: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  background-color: #2c3e50;
+  transition: all 0.2s;
+  font-size: 0.85rem;
+}
+
+.report-issue-link:hover {
+  background-color: #3498db;
+  color: #fff;
+}
+
+.report-issue-link i {
+  font-size: 1rem;
+}
+
+/* Add padding to main content to prevent footer overlap */
+main {
+  padding-bottom: 3rem;
+}

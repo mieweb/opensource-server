@@ -2,6 +2,26 @@
     </div>
   </div>
 
+  <!-- Footer with version and issue reporting -->
+  <footer class="version-footer">
+    <div class="version-info">
+      <span class="version-label">Version:</span>
+      <a href="<%= versionInfo.url %>" target="_blank" rel="noopener noreferrer" class="version-link">
+        <%= versionInfo.display %>
+      </a>
+      <span class="version-date">(<%= versionInfo.date %>)</span>
+    </div>
+    <div class="issue-report">
+      <a href="https://github.com/mieweb/opensource-server/issues/new?title=Bug%20report&labels=bug,triage&body=**Current%20URL:**%20<%- encodeURIComponent(req.originalUrl || '/') %>%0A**User:**%20<%= req.session && req.session.user ? req.session.user.username : 'Not logged in' %>%0A**Version:**%20<%= versionInfo.display %>%0A%0A**Steps%20to%20reproduce:**%0A1.%20...%0A%0A**Expected%20behavior:**%0A%0A**Actual%20behavior:**" 
+         target="_blank" 
+         rel="noopener noreferrer" 
+         class="report-issue-link"
+         aria-label="Report an issue on GitHub">
+        <i class="bi bi-bug"></i> Report Issue
+      </a>
+    </div>
+  </footer>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
   <script>
     const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');

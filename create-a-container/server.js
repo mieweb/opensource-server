@@ -92,6 +92,14 @@ async function main() {
     max: 100, // limit each IP to 100 requests per windowMs
   }));
 
+  // Middleware to inject version info into all views
+  const { getVersionInfo } = require('./utils');
+  const versionInfo = getVersionInfo();
+  app.use((req, res, next) => {
+    res.locals.versionInfo = versionInfo;
+    next();
+  });
+
   // Middleware to load sites for authenticated users
   app.use((req, res, next) => {
     if (req.session && req.session.user) {
