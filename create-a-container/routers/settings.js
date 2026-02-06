@@ -11,7 +11,8 @@ router.get('/', async (req, res) => {
     'push_notification_url', 
     'push_notification_enabled',
     'smtp_url',
-    'smtp_noreply_address'
+    'smtp_noreply_address',
+    'base_url'
   ]);
   
   res.render('settings/index', {
@@ -19,6 +20,7 @@ router.get('/', async (req, res) => {
     pushNotificationEnabled: settings.push_notification_enabled === 'true',
     smtpUrl: settings.smtp_url || '',
     smtpNoreplyAddress: settings.smtp_noreply_address || '',
+    baseUrl: settings.base_url || '',
     req
   });
 });
@@ -28,7 +30,8 @@ router.post('/', async (req, res) => {
     push_notification_url, 
     push_notification_enabled,
     smtp_url,
-    smtp_noreply_address
+    smtp_noreply_address,
+    base_url
   } = req.body;
   
   const enabled = push_notification_enabled === 'on';
@@ -42,6 +45,7 @@ router.post('/', async (req, res) => {
   await Setting.set('push_notification_enabled', enabled ? 'true' : 'false');
   await Setting.set('smtp_url', smtp_url || '');
   await Setting.set('smtp_noreply_address', smtp_noreply_address || '');
+  await Setting.set('base_url', base_url || '');
   
   await req.flash('success', 'Settings saved successfully');
   return res.redirect('/settings');

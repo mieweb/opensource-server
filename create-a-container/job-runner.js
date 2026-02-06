@@ -30,6 +30,22 @@ async function claimPendingJob() {
 
     if (!job) return null;
 
+    // If job has a serialGroup, check if another job in that group is running (in database)
+    if (job.serialGroup) {
+      const runningInGroup = await db.Job.findOne({
+        where: {
+          serialGroup: job.serialGroup,
+          status: 'running'
+        },
+        transaction: t,
+      });
+      
+      if (runningInGroup) {
+        // Another job in this group is running, skip this one for now
+        return null;
+      }
+    }
+
     await job.update({ status: 'running' }, { transaction: t });
     return job;
   });

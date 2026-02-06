@@ -4,6 +4,7 @@ const { ExternalDomain, Site, Sequelize } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 const path = require('path');
 const { run } = require('../utils');
+const { queueTraefikConfigJob } = require('../utils/traefik');
 const axios = require('axios');
 
 // All routes require authentication
@@ -168,6 +169,9 @@ router.post('/', requireAdmin, async (req, res) => {
       await req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
     }
 
+    // Queue Traefik config regeneration job
+    await queueTraefikConfigJob(siteId, req.session?.user?.uid);
+
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
     console.error('Error creating external domain:', error);
@@ -213,6 +217,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
 
     await externalDomain.update(updateData);
 
+    // Queue Traefik config regeneration job
+    await queueTraefikConfigJob(siteId, req.session?.user?.uid);
+
     await req.flash('success', `External domain ${name} updated successfully`);
     return res.redirect(`/sites/${siteId}/external-domains`);
   } catch (error) {
@@ -245,6 +252,9 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 
     const domainName = externalDomain.name;
     await externalDomain.destroy();
+
+    // Queue Traefik config regeneration job
+    await queueTraefikConfigJob(siteId, req.session?.user?.uid);
 
     await req.flash('success', `External domain ${domainName} deleted successfully`);
     return res.redirect(`/sites/${siteId}/external-domains`);

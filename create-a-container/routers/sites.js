@@ -3,8 +3,9 @@ const os = require('os');
 const path = require('path')
 const express = require('express');
 const stringify = require('dotenv-stringify');
-const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain, sequelize } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain, Job, sequelize } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
+const { queueTraefikConfigJob } = require('../utils/traefik');
 
 const router = express.Router();
 
@@ -99,6 +100,167 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   
   res.set('Content-Type', 'text/plain');
   return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
+});
+
+// GET /sites/:siteId/traefik.json - Dynamic configuration for Traefik HTTP provider
+router.get('/:siteId/traefik.json', async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  // Fetch services for the specific site (only from running containers)
+  const site = await Site.findByPk(siteId, {
+    include: [{
+      model: Node,
+      as: 'nodes',
+      include: [{
+        model: Container,
+        as: 'containers',
+        where: { status: 'running' },
+        required: false,
+        include: [{
+          model: Service,
+          as: 'services',
+          include: [
+            {
+              model: HTTPService,
+              as: 'httpService',
+              include: [{
+                model: ExternalDomain,
+                as: 'externalDomain'
+              }]
+            },
+            {
+              model: TransportService,
+              as: 'transportService'
+            }
+          ]
+        }]
+      }]
+    }, {
+      model: ExternalDomain,
+      as: 'externalDomains'
+    }]
+  });
+
+  if (!site) {
+    return res.status(404).json({ error: 'Site not found' });
+  }
+
+  // Build Traefik dynamic configuration
+  const config = {
+    http: {
+      routers: {},
+      services: {}
+    },
+    tcp: {
+      routers: {},
+      services: {}
+    },
+    udp: {
+      routers: {},
+      services: {}
+    }
+  };
+
+  // Helper to sanitize names for Traefik identifiers
+  const sanitizeName = (name) => name.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  // Process all services from site→nodes→containers→services
+  site?.nodes?.forEach(node => {
+    node?.containers?.forEach(container => {
+      container?.services?.forEach(service => {
+        if (service.type === 'http' && service.httpService) {
+          const hs = service.httpService;
+          const domain = hs.externalDomain;
+          if (!domain) return;
+
+          const fqdn = `${hs.externalHostname}.${domain.name}`;
+          const routerName = sanitizeName(fqdn);
+          const serviceName = sanitizeName(fqdn);
+          const resolverName = domain.name.replace(/[.-]/g, '_');
+
+          // HTTP Router
+          config.http.routers[routerName] = {
+            rule: `Host(\`${fqdn}\`)`,
+            service: serviceName,
+            entryPoints: ['websecure'],
+            tls: {
+              certResolver: resolverName
+            }
+          };
+
+          // HTTP Service
+          config.http.services[serviceName] = {
+            loadBalancer: {
+              servers: [
+                { url: `http://${container.ipv4Address}:${service.internalPort}` }
+              ]
+            }
+          };
+
+        } else if (service.type === 'transport' && service.transportService) {
+          const ts = service.transportService;
+          const protocol = ts.protocol;
+          const port = ts.externalPort;
+          const entryPointName = `${protocol}-${port}`;
+          const routerName = sanitizeName(`${container.hostname}-${protocol}-${port}`);
+          const serviceName = routerName;
+
+          if (protocol === 'tcp') {
+            // TCP Router
+            config.tcp.routers[routerName] = {
+              entryPoints: [entryPointName],
+              rule: 'HostSNI(`*`)',
+              service: serviceName
+            };
+
+            // Add TLS if configured
+            if (ts.tls) {
+              config.tcp.routers[routerName].tls = {};
+            }
+
+            // TCP Service
+            config.tcp.services[serviceName] = {
+              loadBalancer: {
+                servers: [
+                  { address: `${container.ipv4Address}:${service.internalPort}` }
+                ]
+              }
+            };
+
+          } else if (protocol === 'udp') {
+            // UDP Router
+            config.udp.routers[routerName] = {
+              entryPoints: [entryPointName],
+              service: serviceName
+            };
+
+            // UDP Service
+            config.udp.services[serviceName] = {
+              loadBalancer: {
+                servers: [
+                  { address: `${container.ipv4Address}:${service.internalPort}` }
+                ]
+              }
+            };
+          }
+        }
+      });
+    });
+  });
+
+  // Clean up empty sections
+  if (Object.keys(config.http.routers).length === 0) {
+    delete config.http;
+  }
+  if (Object.keys(config.tcp.routers).length === 0) {
+    delete config.tcp;
+  }
+  if (Object.keys(config.udp.routers).length === 0) {
+    delete config.udp;
+  }
+
+  res.set('Content-Type', 'application/json');
+  return res.json(config);
 });
 
 // GET /sites/:siteId/ldap.conf - Public endpoint for LDAP configuration
@@ -212,6 +374,46 @@ const externalDomainsRouter = require('./external-domains');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
 router.use('/:siteId/external-domains', externalDomainsRouter);
+
+// POST /sites/:siteId/reconfigure-traefik - Queue Traefik config regeneration job (admin only)
+router.post('/:siteId/reconfigure-traefik', requireAdmin, async (req, res) => {
+  const siteId = parseInt(req.params.siteId, 10);
+  
+  try {
+    const site = await Site.findByPk(siteId);
+    if (!site) {
+      await req.flash('error', 'Site not found');
+      return res.redirect('/sites');
+    }
+
+    const job = await queueTraefikConfigJob(siteId, req.session.user);
+    
+    if (job) {
+      return res.redirect(`/jobs/${job.id}`);
+    } else {
+      // Job already pending - find it and redirect to it
+      const existingJob = await Job.findOne({
+        where: {
+          serialGroup: `traefik-config-${siteId}`,
+          status: ['pending', 'running']
+        },
+        order: [['createdAt', 'DESC']]
+      });
+      
+      if (existingJob) {
+        await req.flash('info', 'Traefik config job already in progress');
+        return res.redirect(`/jobs/${existingJob.id}`);
+      }
+      
+      await req.flash('info', 'Traefik config job already pending');
+      return res.redirect(`/sites/${siteId}/nodes`);
+    }
+  } catch (err) {
+    console.error('Error queuing Traefik config job:', err);
+    await req.flash('error', `Failed to queue Traefik config job: ${err.message}`);
+    return res.redirect(`/sites/${siteId}/nodes`);
+  }
+});
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {

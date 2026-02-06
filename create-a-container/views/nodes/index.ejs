@@ -12,6 +12,11 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="card-title mb-0">Proxmox Nodes for <%= site.name %></h4>
       <div>
+        <form method="POST" action="/sites/<%= site.id %>/reconfigure-traefik" style="display: inline;">
+          <button type="submit" class="btn btn-warning me-2" aria-label="Regenerate Traefik configuration for this site">
+            <i class="bi bi-arrow-clockwise"></i> Regenerate Traefik Config
+          </button>
+        </form>
         <a class="btn btn-secondary me-2" href="/sites/<%= site.id %>/nodes/import" role="button" aria-label="Import nodes from external API">Import Nodes</a>
         <a class="btn btn-primary" href="/sites/<%= site.id %>/nodes/new" role="button" aria-label="Create new Proxmox node">New Node</a>
       </div>
