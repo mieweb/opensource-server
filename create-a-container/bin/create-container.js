@@ -35,30 +35,100 @@ const { Container, Node, Site } = db;
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 
 /**
- * Fetch JSON from a URL with optional headers
+ * Low-level HTTP GET that returns status, headers, and body without throwing on 4xx
  * @param {string} url - The URL to fetch
- * @param {object} headers - Optional headers
- * @returns {Promise<object>} Parsed JSON response
+ * @param {object} headers - Optional request headers
+ * @returns {Promise<{statusCode: number, headers: object, body: string}>}
  */
-function fetchJson(url, headers = {}) {
+function httpGet(url, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-        } else {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(new Error(`Failed to parse JSON: ${e.message}`));
-          }
-        }
+        resolve({ statusCode: res.statusCode, headers: res.headers, body: data });
       });
     });
     req.on('error', reject);
   });
+}
+
+/**
+ * Fetch JSON from a URL with optional headers (throws on non-2xx)
+ * @param {string} url - The URL to fetch
+ * @param {object} headers - Optional headers
+ * @returns {Promise<object>} Parsed JSON response
+ */
+async function fetchJson(url, headers = {}) {
+  const res = await httpGet(url, headers);
+  if (res.statusCode >= 400) {
+    throw new Error(`HTTP ${res.statusCode}: ${res.body}`);
+  }
+  return JSON.parse(res.body);
+}
+
+/**
+ * Parse a WWW-Authenticate Bearer challenge header
+ * Example: Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"
+ * @param {string} header - The WWW-Authenticate header value
+ * @returns {object|null} Parsed fields { realm, service, scope } or null if not Bearer
+ */
+function parseWwwAuthenticate(header) {
+  if (!header || !header.startsWith('Bearer ')) return null;
+  const params = {};
+  const regex = /(\w+)="([^"]*)"/g;
+  let match;
+  while ((match = regex.exec(header)) !== null) {
+    params[match[1]] = match[2];
+  }
+  return params;
+}
+
+/**
+ * Fetch JSON from a registry URL with automatic token authentication
+ * Implements the Docker Registry Token Authentication spec:
+ *   1. Attempt the request
+ *   2. If 401, parse WWW-Authenticate for Bearer challenge
+ *   3. Request a token from the auth service
+ *   4. Retry with the Bearer token
+ * @param {string} url - The registry URL to fetch
+ * @param {object} headers - Optional request headers
+ * @returns {Promise<object>} Parsed JSON response
+ */
+async function authenticatedFetchJson(url, headers = {}) {
+  const res = await httpGet(url, headers);
+
+  if (res.statusCode === 200) {
+    return JSON.parse(res.body);
+  }
+
+  if (res.statusCode !== 401) {
+    throw new Error(`HTTP ${res.statusCode}: ${res.body}`);
+  }
+
+  // Parse the Bearer challenge from WWW-Authenticate header
+  const challenge = parseWwwAuthenticate(res.headers['www-authenticate']);
+  if (!challenge || !challenge.realm) {
+    throw new Error(`Registry returned 401 but no Bearer challenge in WWW-Authenticate header`);
+  }
+
+  // Build token request URL with query parameters from the challenge
+  const tokenUrl = new URL(challenge.realm);
+  if (challenge.service) tokenUrl.searchParams.set('service', challenge.service);
+  if (challenge.scope) tokenUrl.searchParams.set('scope', challenge.scope);
+
+  const tokenData = await fetchJson(tokenUrl.toString());
+  if (!tokenData.token) {
+    throw new Error('Auth service did not return a token');
+  }
+
+  // Retry the original request with the Bearer token
+  headers['Authorization'] = `Bearer ${tokenData.token}`;
+  const retryRes = await httpGet(url, headers);
+  if (retryRes.statusCode >= 400) {
+    throw new Error(`HTTP ${retryRes.statusCode} after auth: ${retryRes.body}`);
+  }
+  return JSON.parse(retryRes.body);
 }
 
 /**
@@ -70,27 +140,20 @@ function fetchJson(url, headers = {}) {
  * @returns {Promise<string>} Short digest (first 12 chars of sha256)
  */
 async function getImageDigest(registry, repo, tag) {
-  let headers = {};
-  
-  // Docker Hub requires auth token
-  if (registry === 'docker.io' || registry === 'registry-1.docker.io') {
-    const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`;
-    const tokenData = await fetchJson(tokenUrl);
-    headers['Authorization'] = `Bearer ${tokenData.token}`;
-  }
-  
   const registryHost = registry === 'docker.io' ? 'registry-1.docker.io' : registry;
   
-  // Fetch manifest - accept both single manifest and manifest list
-  headers['Accept'] = [
-    'application/vnd.docker.distribution.manifest.v2+json',
-    'application/vnd.oci.image.manifest.v1+json',
-    'application/vnd.docker.distribution.manifest.list.v2+json',
-    'application/vnd.oci.image.index.v1+json'
-  ].join(', ');
+  // Fetch manifest with automatic registry auth challenge-response
+  const acceptHeaders = {
+    'Accept': [
+      'application/vnd.docker.distribution.manifest.v2+json',
+      'application/vnd.oci.image.manifest.v1+json',
+      'application/vnd.docker.distribution.manifest.list.v2+json',
+      'application/vnd.oci.image.index.v1+json'
+    ].join(', ')
+  };
   
   const manifestUrl = `https://${registryHost}/v2/${repo}/manifests/${tag}`;
-  let manifest = await fetchJson(manifestUrl, headers);
+  let manifest = await authenticatedFetchJson(manifestUrl, { ...acceptHeaders });
   
   // Handle manifest list (multi-arch) - select amd64/linux
   if (manifest.manifests && Array.isArray(manifest.manifests)) {
@@ -101,10 +164,12 @@ async function getImageDigest(registry, repo, tag) {
       throw new Error('No amd64/linux manifest found in manifest list');
     }
     
-    // Fetch the actual manifest for amd64
-    headers['Accept'] = 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json';
+    // Fetch the actual manifest for amd64 (reuse same auth flow)
+    const archHeaders = {
+      'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
+    };
     const archManifestUrl = `https://${registryHost}/v2/${repo}/manifests/${amd64Manifest.digest}`;
-    manifest = await fetchJson(archManifestUrl, headers);
+    manifest = await authenticatedFetchJson(archManifestUrl, { ...archHeaders });
   }
   
   // Get config digest from manifest
