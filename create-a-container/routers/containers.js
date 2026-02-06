@@ -6,13 +6,14 @@ const { Container, Service, HTTPService, TransportService, DnsService, Node, Sit
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
+// Imported from utils as requested
+const { isApiRequest } = require('../utils/http-utils'); 
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
  */
 function normalizeDockerRef(ref) {
   // If this looks like a git URL (starts with http/https/git), return as is
-  // (Though with the fix below, this shouldn't be called for git repos anymore)
   if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) {
     return ref;
   }
@@ -54,16 +55,9 @@ function normalizeDockerRef(ref) {
   return `${host}/${org}/${image}:${tag}`;
 }
 
-// Helper to detect API bearer requests
-function isApiRequest(req) {
-  const accept = (req.get('accept') || '').toLowerCase();
-  return accept.includes('application/json') || accept.includes('application/vnd.api+json');
-}
-
 // GET /sites/:siteId/containers/new - List available templates via API or HTML form
 router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
-  // Check if this is an API request (requires the helper function defined earlier)
   const isApi = isApiRequest(req); 
 
   // verify site exists
@@ -131,36 +125,16 @@ router.get('/new', requireAuth, async (req, res) => {
 });
 
 // GET /sites/:siteId/containers
-router.get('/', async (req, res) => {
-  if (isApiRequest(req)) {
-    try {
-      const siteId = parseInt(req.params.siteId, 10);
-      const site = await Site.findByPk(siteId);
-      if (!site) return res.status(404).json([]);
-
-      const nodes = await Node.findAll({ where: { siteId }, attributes: ['id'] });
-      const nodeIds = nodes.map(n => n.id);
-
-      const { hostname } = req.query;
-      const where = {};
-      if (hostname) where.hostname = hostname;
-      where.nodeId = nodeIds;
-
-      const containers = await Container.findAll({ where, include: [{ association: 'node', attributes: ['id', 'name'] }] });
-      const out = containers.map(c => ({ id: c.id, hostname: c.hostname, ipv4Address: c.ipv4Address, macAddress: c.macAddress, node: c.node ? { id: c.node.id, name: c.node.name } : null, createdAt: c.createdAt }));
-      return res.json(out);
-    } catch (err) {
-      console.error('API GET /sites/:siteId/containers error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  }
-
-  await new Promise(resolve => requireAuth(req, res, resolve));
-  if (res.headersSent) return;
-
+// Added requireAuth to ensure API keys and Sessions are validated
+router.get('/', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
+  
+  // Unified Error Handling for Site 404
   if (!site) {
+    if (isApiRequest(req)) {
+      return res.status(404).json({ error: 'Site not found' });
+    }
     await req.flash('error', 'Site not found');
     return res.redirect('/sites');
   }
@@ -168,11 +142,22 @@ router.get('/', async (req, res) => {
   const nodes = await Node.findAll({ where: { siteId }, attributes: ['id'] });
   const nodeIds = nodes.map(n => n.id);
 
+  // Determine current user (support Session or API Token via requireAuth)
+  const currentUser = req.session?.user || req.user?.username;
+
+  // Build query
+  const whereClause = { 
+    username: currentUser,
+    nodeId: nodeIds
+  };
+
+  // Support hostname filtering for API requests if provided
+  if (req.query.hostname) {
+    whereClause.hostname = req.query.hostname;
+  }
+
   const containers = await Container.findAll({
-    where: { 
-      username: req.session.user,
-      nodeId: nodeIds
-    },
+    where: whereClause,
     include: [
       { 
         association: 'services',
@@ -191,18 +176,27 @@ router.get('/', async (req, res) => {
     const sshPort = ssh?.transportService?.externalPort || null;
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
+    
+    // Common object structure for both API and View
     return {
       id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
+      // API might want raw MacAddress, View might not need it, but including it doesn't hurt
+      macAddress: c.macAddress, 
       status: c.status,
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
       httpPort,
-      nodeName: c.node ? c.node.name : '-'
+      nodeName: c.node ? c.node.name : '-',
+      createdAt: c.createdAt
     };
   });
+
+  if (isApiRequest(req)) {
+    return res.json({ containers: rows });
+  }
 
   return res.render('containers/index', { rows, site, req });
 });
