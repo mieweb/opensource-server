@@ -481,3 +481,10 @@ main {
 main {
   padding-bottom: 3rem;
 }
+
+/* Readonly input styling */
+input[readonly].input-locked {
+  background-color: #e9ecef;
+  color: #6c757d;
+  cursor: not-allowed;
+}
