@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { User, Group } = require('../models');
+const { User, Group, InviteToken, Setting } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
+const { sendInviteEmail } = require('../utils/email');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -45,6 +46,62 @@ router.get('/new', async (req, res) => {
     isEdit: false,
     req
   });
+});
+
+// GET /users/invite - Display form for inviting a user via email
+router.get('/invite', async (req, res) => {
+  res.render('users/invite', {
+    req
+  });
+});
+
+// POST /users/invite - Send invitation email
+router.post('/invite', async (req, res) => {
+  const { email } = req.body;
+  
+  if (!email || email.trim() === '') {
+    await req.flash('error', 'Please enter an email address');
+    return res.redirect('/users/invite');
+  }
+  
+  const normalizedEmail = email.toLowerCase().trim();
+  
+  try {
+    // Check if SMTP is configured
+    const settings = await Setting.getMultiple(['smtp_url']);
+    if (!settings.smtp_url || settings.smtp_url.trim() === '') {
+      await req.flash('error', 'SMTP is not configured. Please configure SMTP settings before sending invitations.');
+      return res.redirect('/users/invite');
+    }
+    
+    // Check if email is already registered
+    const existingUser = await User.findOne({ where: { mail: normalizedEmail } });
+    if (existingUser) {
+      await req.flash('error', 'A user with this email address is already registered');
+      return res.redirect('/users/invite');
+    }
+    
+    // Generate invite token (24-hour expiry)
+    const { token } = await InviteToken.generateToken(normalizedEmail, 24);
+    
+    // Build invite URL
+    const inviteUrl = `${req.protocol}://${req.get('host')}/register?token=${token}`;
+    
+    // Send invite email
+    try {
+      await sendInviteEmail(normalizedEmail, inviteUrl);
+      await req.flash('success', `Invitation sent to ${normalizedEmail}`);
+      return res.redirect('/users');
+    } catch (emailError) {
+      console.error('Failed to send invite email:', emailError);
+      await req.flash('error', 'Failed to send invitation email. Please check SMTP settings.');
+      return res.redirect('/users/invite');
+    }
+  } catch (error) {
+    console.error('Invite error:', error);
+    await req.flash('error', 'Failed to send invitation: ' + error.message);
+    return res.redirect('/users/invite');
+  }
 });
 
 // GET /users/:id/edit - Display form for editing an existing user

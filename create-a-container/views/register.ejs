@@ -11,6 +11,12 @@
   <div class="login-container">
     <h2>Register for an Opensource Account</h2>
 
+    <% if (typeof inviteEmail !== 'undefined' && inviteEmail) { %>
+      <div class="alert alert-success">
+        You've been invited! Complete the form below to create your account.
+      </div>
+    <% } %>
+
     <% if (successMessages && successMessages.length > 0) { %>
       <% successMessages.forEach(function(message) { %>
         <div class="alert alert-success">
@@ -28,6 +34,9 @@
     <% } %>
 
     <form id="accountRequestForm" method="POST" action="/register">
+      <% if (typeof inviteToken !== 'undefined' && inviteToken) { %>
+        <input type="hidden" name="inviteToken" value="<%= inviteToken %>">
+      <% } %>
 
       <label for="givenName">First Name</label>
       <input type="text" id="givenName" name="givenName" required>
@@ -39,7 +48,11 @@
       <input type="text" id="uid" name="uid" required>
 
       <label for="mail">Email</label>
-      <input type="email" id="mail" name="mail" required>
+      <% if (typeof inviteEmail !== 'undefined' && inviteEmail) { %>
+        <input type="email" id="mail" name="mail" value="<%= inviteEmail %>" readonly tabindex="-1" required class="input-locked">
+      <% } else { %>
+        <input type="email" id="mail" name="mail" required>
+      <% } %>
 
       <label for="userPassword">Password</label>
       <input type="password" id="userPassword" name="userPassword" required>

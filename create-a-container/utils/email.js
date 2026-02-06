@@ -95,7 +95,67 @@ Medical Informatics Engineering`,
   await transporter.sendMail(mailOptions);
 }
 
+/**
+ * Send invite email to a new user
+ * @param {string} to - Recipient email address
+ * @param {string} inviteUrl - Full URL for registration with invite token
+ */
+async function sendInviteEmail(to, inviteUrl) {
+  const settings = await Setting.getMultiple(['smtp_noreply_address']);
+  const from = settings.smtp_noreply_address || 'noreply@localhost';
+  
+  const transporter = await createTransport();
+  
+  const mailOptions = {
+    from,
+    to,
+    subject: 'You\'re Invited to Join MIE Container Creation',
+    text: `Hello,
+
+You have been invited to create an account on the MIE Container Creation system.
+
+Please click the following link to register your account:
+${inviteUrl}
+
+This link will expire in 24 hours.
+
+If you did not expect this invitation, please ignore this email.
+
+---
+Medical Informatics Engineering`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">You're Invited!</h2>
+        <p>Hello,</p>
+        <p>You have been invited to create an account on the MIE Container Creation system.</p>
+        <p>Please click the button below to register your account:</p>
+        <div style="margin: 30px 0;">
+          <a href="${inviteUrl}" 
+             style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+            Create Your Account
+          </a>
+        </div>
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #666; font-size: 14px;">
+          ${inviteUrl}
+        </p>
+        <p style="color: #999; font-size: 12px;">This link will expire in 24 hours.</p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #999; font-size: 12px;">
+          If you did not expect this invitation, please ignore this email.
+        </p>
+        <p style="color: #333; font-size: 14px;">
+          <strong>Medical Informatics Engineering</strong>
+        </p>
+      </div>
+    `
+  };
+  
+  await transporter.sendMail(mailOptions);
+}
+
 module.exports = {
   createTransport,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendInviteEmail
 };

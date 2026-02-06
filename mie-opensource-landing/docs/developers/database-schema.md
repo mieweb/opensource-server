@@ -23,6 +23,8 @@ erDiagram
     Users }o--o{ Groups : "member of"
     UserGroups }|--|| Users : joins
     UserGroups }|--|| Groups : joins
+    PasswordResetTokens }o--|| Users : "for"
+    InviteTokens ||--o| Users : "creates"
 
     Sites {
         int id PK
@@ -143,6 +145,22 @@ erDiagram
     Settings {
         string key PK,UK
         string value
+    }
+
+    PasswordResetTokens {
+        uuid id PK
+        int uidNumber FK
+        string token UK
+        datetime expiresAt
+        boolean used
+    }
+
+    InviteTokens {
+        uuid id PK
+        string email
+        string token UK
+        datetime expiresAt
+        boolean used
     }
 ```
 
@@ -337,6 +355,52 @@ The **UserGroup** model is a join table for the many-to-many User-Group relation
 
 **Constraints:**
 - Composite primary key on `(uidNumber, gidNumber)`
+
+### PasswordResetToken
+
+The **PasswordResetToken** model stores password reset tokens for users.
+
+**Key Fields:**
+- `id`: UUID primary key
+- `uidNumber`: Foreign key to Users
+- `token`: Unique 64-character hex token
+- `expiresAt`: Token expiration timestamp
+- `used`: Whether the token has been used
+
+**Relationships:**
+- Belongs to User
+
+**Static Methods:**
+- `generateToken(uidNumber, expirationHours)`: Creates a new token (default 1 hour expiry)
+- `validateToken(token)`: Validates and returns token if valid and unused
+- `cleanup()`: Removes expired and used tokens
+
+**Instance Methods:**
+- `markAsUsed()`: Marks the token as used
+
+### InviteToken
+
+The **InviteToken** model stores user invitation tokens sent by administrators.
+
+**Key Fields:**
+- `id`: UUID primary key
+- `email`: Email address the invitation was sent to
+- `token`: Unique 64-character hex token
+- `expiresAt`: Token expiration timestamp (default 24 hours)
+- `used`: Whether the token has been used
+
+**Static Methods:**
+- `generateToken(email, expirationHours)`: Creates a new invite token (default 24 hour expiry)
+- `validateToken(token)`: Validates and returns token if valid, unused, and not expired
+- `cleanup()`: Removes expired and used tokens
+
+**Instance Methods:**
+- `markAsUsed()`: Marks the token as used after successful registration
+
+**Usage:**
+- Created when an admin invites a user via email
+- Validated during registration to auto-activate the user's account
+- Email is tied to the token and cannot be changed during registration
 
 ## Job Management Models
 
