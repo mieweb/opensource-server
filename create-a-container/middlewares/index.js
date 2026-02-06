@@ -14,18 +14,14 @@ async function requireAuth(req, res, next) {
   
   // Try API key authentication
   const authHeader = req.get('Authorization');
-  console.log(`[AUTH DEBUG] Authorization header: "${authHeader || 'NONE'}" (length: ${authHeader?.length || 0})`);
-  
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const apiKey = authHeader.substring(7);
-    console.log(`[AUTH DEBUG] Extracted API key, length: ${apiKey.length}, first 8 chars: ${apiKey.substring(0, 8)}`);
     
-    if (apiKey && apiKey.length > 0) {
+    if (apiKey) {
       const { ApiKey, User } = require('../models');
       const { extractKeyPrefix } = require('../utils/apikey');
       
       const keyPrefix = extractKeyPrefix(apiKey);
-      console.log(`[AUTH DEBUG] Key prefix: ${keyPrefix}`);
       
       const apiKeys = await ApiKey.findAll({
         where: { keyPrefix },
@@ -36,25 +32,8 @@ async function requireAuth(req, res, next) {
         }]
       });
 
-      console.log(`[AUTH DEBUG] Found ${apiKeys.length} API keys with matching prefix`);
-      
-      if (apiKeys.length === 0) {
-        console.log(`[AUTH DEBUG] No API keys found in database with prefix: ${keyPrefix}`);
-        console.log(`[AUTH DEBUG] Listing all API key prefixes in database...`);
-        const allKeys = await ApiKey.findAll({ attributes: ['keyPrefix', 'description', 'uidNumber'] });
-        console.log(`[AUTH DEBUG] All API keys:`, allKeys.map(k => ({ prefix: k.keyPrefix, desc: k.description, uid: k.uidNumber })));
-      }
-
       for (const storedKey of apiKeys) {
-        console.log(`[AUTH DEBUG] Validating key for user: ${storedKey.user?.uid || 'NO USER'}`);
-        if (!storedKey.user) {
-          console.log(`[AUTH DEBUG] API key has no associated user! uidNumber: ${storedKey.uidNumber}`);
-          continue;
-        }
-        
         const isValid = await storedKey.validateKey(apiKey);
-        console.log(`[AUTH DEBUG] Key validation result: ${isValid}`);
-        
         if (isValid) {
           req.user = storedKey.user;
           req.apiKey = storedKey;
@@ -71,16 +50,10 @@ async function requireAuth(req, res, next) {
             console.error('Failed to update API key last used timestamp:', err);
           });
           
-          console.log(`[AUTH DEBUG] ✓ Authentication successful for user: ${storedKey.user.uid}`);
           return next();
         }
       }
-      console.log(`[AUTH DEBUG] ✗ No valid API key matched`);
-    } else {
-      console.log(`[AUTH DEBUG] API key is empty after extraction!`);
     }
-  } else {
-    console.log(`[AUTH DEBUG] Authorization header does not start with "Bearer " (case-sensitive, note the space)`);
   }
   
   // Neither session nor API key authentication succeeded
