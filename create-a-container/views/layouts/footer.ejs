@@ -12,7 +12,7 @@
       <span class="version-date">(<%= versionInfo.date %>)</span>
     </div>
     <div class="issue-report">
-      <a href="https://github.com/mieweb/opensource-server/issues/new?template=bug_report.yml&url=<%- encodeURIComponent(req.originalUrl || '/') %>&username=<%- encodeURIComponent(req.session && req.session.user ? req.session.user.username : 'Not logged in') %>&version=<%- encodeURIComponent(versionInfo.display) %>" 
+      <a href="https://github.com/mieweb/opensource-server/issues/new?template=bug_report.yml&url=<%- encodeURIComponent(req.originalUrl || '/') %>&username=<%- encodeURIComponent(req?.session?.user || 'Not logged in') %>&version=<%- encodeURIComponent(versionInfo.display) %>" 
          target="_blank" 
          rel="noopener noreferrer" 
          class="report-issue-link"
