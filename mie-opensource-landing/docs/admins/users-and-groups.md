@@ -60,6 +60,33 @@ Newly registered users are automatically:
 Administrators can also create user accounts manually through the admin interface, skipping the registration process.
 :::
 
+### Inviting Users
+
+Administrators can invite new users via email, which streamlines onboarding by automatically activating accounts upon registration.
+
+**To invite a user:**
+
+1. Navigate to **Users** in the administration interface
+2. Click **Invite User** (next to the "New User" button)
+3. Enter the email address of the person you want to invite
+4. Click **Send Invitation**
+
+**How it works:**
+
+- The system sends an email with a secure registration link
+- The link expires after **24 hours**
+- When the recipient registers using the link, their email is pre-filled and locked
+- Their account is **automatically activated** (no admin approval needed)
+- Each invitation link can only be used once
+
+:::important SMTP Configuration Required
+You must configure SMTP settings before sending invitations. If SMTP is not configured, you'll receive an error message prompting you to set it up in **Settings**.
+:::
+
+:::note Duplicate Emails
+You cannot invite an email address that is already registered to an existing user.
+:::
+
 ### User Statuses
 
 Users can have one of three statuses:
