@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a bug in the opensource-server application
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  
+  - type: input
+    id: url
+    attributes:
+      label: Current URL
+      description: What page were you on when the bug occurred?
+      placeholder: e.g., /sites/1/containers
+    validations:
+      required: false
+  
+  - type: input
+    id: username
+    attributes:
+      label: Username
+      description: Your username (if logged in)
+      placeholder: e.g., testuser
+    validations:
+      required: false
+  
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Application version/commit hash
+      placeholder: e.g., 0c6c7d0
+    validations:
+      required: false
+  
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+  
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: Describe the expected behavior
+    validations:
+      required: true
+  
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+      placeholder: Describe what actually happened
+    validations:
+      required: true
+  
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here (screenshots, logs, etc.)
+    validations:
+      required: false

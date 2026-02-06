@@ -92,6 +92,11 @@ async function main() {
     max: 100, // limit each IP to 100 requests per windowMs
   }));
 
+  // Set version info once at startup in app.locals
+  // Note: Version info is cached at startup. Server restart required to update version.
+  const { getVersionInfo } = require('./utils');
+  app.locals.versionInfo = getVersionInfo();
+
   // Middleware to load sites for authenticated users
   app.use((req, res, next) => {
     if (req.session && req.session.user) {

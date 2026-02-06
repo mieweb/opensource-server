@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const ProxmoxApi = require('./proxmox-api');
 
 function run(cmd, args, opts) {
@@ -27,6 +27,35 @@ function run(cmd, args, opts) {
 }
 
 /**
+ * Get version information from git
+ * @returns {Object} Version information with hash, date, and tag
+ */
+function getVersionInfo() {
+  try {
+    const commitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8', shell: true }).trim();
+    const commitDate = execSync('git log -1 --format=%ad --date=short', { encoding: 'utf8', shell: true }).trim();
+    const tag = execSync('git describe --tags --exact-match 2>/dev/null || echo ""', { encoding: 'utf8', shell: true }).trim();
+    
+    return {
+      hash: commitHash,
+      date: commitDate,
+      tag: tag || null,
+      display: tag ? `${tag} (${commitHash})` : commitHash,
+      url: `https://github.com/mieweb/opensource-server/commit/${commitHash}`
+    };
+  } catch (error) {
+    console.error('Error getting version info:', error);
+    return {
+      hash: 'unknown',
+      date: new Date().toISOString().split('T')[0],
+      tag: null,
+      display: 'development',
+      url: 'https://github.com/mieweb/opensource-server'
+    };
+  }
+}
+
+/**
  * Helper to validate that a redirect URL is a safe relative path.
  * @param {string} url - the URL to validate
  * @returns {boolean}
@@ -45,5 +74,6 @@ function isSafeRelativeUrl(url) {
 module.exports = {
   ProxmoxApi,
   run,
-  isSafeRelativeUrl
+  isSafeRelativeUrl,
+  getVersionInfo
 };
