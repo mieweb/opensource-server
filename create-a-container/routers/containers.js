@@ -13,7 +13,6 @@ const { isApiRequest } = require('../utils/http');
  */
 function normalizeDockerRef(ref) {
   // If this looks like a git URL (starts with http/https/git), return as is
-  // (Though with the fix below, this shouldn't be called for git repos anymore)
   if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) {
     return ref;
   }
@@ -58,7 +57,6 @@ function normalizeDockerRef(ref) {
 // GET /sites/:siteId/containers/new - List available templates via API or HTML form
 router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
-  // Check if this is an API request (requires the helper function defined earlier)
   const isApi = isApiRequest(req); 
 
   // verify site exists
@@ -126,9 +124,12 @@ router.get('/new', requireAuth, async (req, res) => {
 });
 
 // GET /sites/:siteId/containers
+// Added requireAuth to ensure API keys and Sessions are validated
 router.get('/', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
+  
+  // Unified Error Handling for Site 404
   if (!site) {
     if (isApiRequest(req)) {
       return res.status(404).json({ error: 'Site not found' });
@@ -168,16 +169,21 @@ router.get('/', requireAuth, async (req, res) => {
     const sshPort = ssh?.transportService?.externalPort || null;
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
+    
+    // Common object structure for both API and View
     return {
       id: c.id,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
+      // API might want raw MacAddress, View might not need it, but including it doesn't hurt
+      macAddress: c.macAddress, 
       status: c.status,
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
       httpPort,
-      nodeName: c.node ? c.node.name : '-'
+      nodeName: c.node ? c.node.name : '-',
+      createdAt: c.createdAt
     };
   });
 
