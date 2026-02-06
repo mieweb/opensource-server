@@ -14,16 +14,18 @@ async function requireAuth(req, res, next) {
   
   // Try API key authentication
   const authHeader = req.get('Authorization');
+  console.log(`[AUTH DEBUG] Authorization header: "${authHeader || 'NONE'}" (length: ${authHeader?.length || 0})`);
+  
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const apiKey = authHeader.substring(7);
-    console.log(`[AUTH DEBUG] Received API key, length: ${apiKey.length}`);
+    console.log(`[AUTH DEBUG] Extracted API key, length: ${apiKey.length}, first 8 chars: ${apiKey.substring(0, 8)}`);
     
-    if (apiKey) {
+    if (apiKey && apiKey.length > 0) {
       const { ApiKey, User } = require('../models');
       const { extractKeyPrefix } = require('../utils/apikey');
       
       const keyPrefix = extractKeyPrefix(apiKey);
-      console.log(`[AUTH DEBUG] Extracted key prefix: ${keyPrefix}`);
+      console.log(`[AUTH DEBUG] Key prefix: ${keyPrefix}`);
       
       const apiKeys = await ApiKey.findAll({
         where: { keyPrefix },
@@ -74,9 +76,11 @@ async function requireAuth(req, res, next) {
         }
       }
       console.log(`[AUTH DEBUG] ✗ No valid API key matched`);
+    } else {
+      console.log(`[AUTH DEBUG] API key is empty after extraction!`);
     }
   } else {
-    console.log(`[AUTH DEBUG] No Bearer token in Authorization header. Header value: ${authHeader ? authHeader.substring(0, 20) + '...' : 'none'}`);
+    console.log(`[AUTH DEBUG] Authorization header does not start with "Bearer " (case-sensitive, note the space)`);
   }
   
   // Neither session nor API key authentication succeeded
