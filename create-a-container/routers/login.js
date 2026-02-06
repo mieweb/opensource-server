@@ -102,7 +102,14 @@ router.post('/', async (req, res) => {
     // ensure redirect is a relative path
     redirectUrl = '/';
   }
-  return res.redirect(redirectUrl);
+  
+  // Save session before redirect to ensure it's persisted
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+    }
+    return res.redirect(redirectUrl);
+  });
 });
 
 module.exports = router;
