@@ -6,6 +6,7 @@ const { Container, Service, HTTPService, TransportService, DnsService, Node, Sit
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
+const { isApiRequest } = require('../utils/http');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -52,12 +53,6 @@ function normalizeDockerRef(ref) {
   }
   
   return `${host}/${org}/${image}:${tag}`;
-}
-
-// Helper to detect API bearer requests
-function isApiRequest(req) {
-  const accept = (req.get('accept') || '').toLowerCase();
-  return accept.includes('application/json') || accept.includes('application/vnd.api+json');
 }
 
 // GET /sites/:siteId/containers/new - List available templates via API or HTML form
@@ -131,48 +126,30 @@ router.get('/new', requireAuth, async (req, res) => {
 });
 
 // GET /sites/:siteId/containers
-router.get('/', async (req, res) => {
-  if (isApiRequest(req)) {
-    try {
-      const siteId = parseInt(req.params.siteId, 10);
-      const site = await Site.findByPk(siteId);
-      if (!site) return res.status(404).json([]);
-
-      const nodes = await Node.findAll({ where: { siteId }, attributes: ['id'] });
-      const nodeIds = nodes.map(n => n.id);
-
-      const { hostname } = req.query;
-      const where = {};
-      if (hostname) where.hostname = hostname;
-      where.nodeId = nodeIds;
-
-      const containers = await Container.findAll({ where, include: [{ association: 'node', attributes: ['id', 'name'] }] });
-      const out = containers.map(c => ({ id: c.id, hostname: c.hostname, ipv4Address: c.ipv4Address, macAddress: c.macAddress, node: c.node ? { id: c.node.id, name: c.node.name } : null, createdAt: c.createdAt }));
-      return res.json(out);
-    } catch (err) {
-      console.error('API GET /sites/:siteId/containers error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  }
-
-  await new Promise(resolve => requireAuth(req, res, resolve));
-  if (res.headersSent) return;
-
+router.get('/', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const site = await Site.findByPk(siteId);
   if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
+    if (isApiRequest(req)) {
+      return res.status(404).json({ error: 'Site not found' });
+    } else {
+      await req.flash('error', 'Site not found');
+      return res.redirect('/sites');
+    }
   }
 
   const nodes = await Node.findAll({ where: { siteId }, attributes: ['id'] });
   const nodeIds = nodes.map(n => n.id);
 
+  const { hostname } = req.query;
+  const where = { 
+    username: req.session.user,
+    nodeId: nodeIds
+  };
+  if (hostname) where.hostname = hostname;
+
   const containers = await Container.findAll({
-    where: { 
-      username: req.session.user,
-      nodeId: nodeIds
-    },
+    where,
     include: [
       { 
         association: 'services',
@@ -204,7 +181,11 @@ router.get('/', async (req, res) => {
     };
   });
 
-  return res.render('containers/index', { rows, site, req });
+  if (isApiRequest(req)) {
+    return res.json({ containers: rows });
+  } else {
+    return res.render('containers/index', { rows, site, req });
+  }
 });
 
 // GET /sites/:siteId/containers/:id/edit
@@ -517,7 +498,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /sites/:siteId/containers/:id
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
   
@@ -645,7 +626,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /sites/:siteId/containers/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
 
