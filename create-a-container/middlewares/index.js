@@ -16,12 +16,14 @@ async function requireAuth(req, res, next) {
   const authHeader = req.get('Authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const apiKey = authHeader.substring(7);
+    console.log(`[AUTH DEBUG] Received API key, length: ${apiKey.length}`);
     
     if (apiKey) {
       const { ApiKey, User } = require('../models');
       const { extractKeyPrefix } = require('../utils/apikey');
       
       const keyPrefix = extractKeyPrefix(apiKey);
+      console.log(`[AUTH DEBUG] Extracted key prefix: ${keyPrefix}`);
       
       const apiKeys = await ApiKey.findAll({
         where: { keyPrefix },
@@ -32,8 +34,25 @@ async function requireAuth(req, res, next) {
         }]
       });
 
+      console.log(`[AUTH DEBUG] Found ${apiKeys.length} API keys with matching prefix`);
+      
+      if (apiKeys.length === 0) {
+        console.log(`[AUTH DEBUG] No API keys found in database with prefix: ${keyPrefix}`);
+        console.log(`[AUTH DEBUG] Listing all API key prefixes in database...`);
+        const allKeys = await ApiKey.findAll({ attributes: ['keyPrefix', 'description', 'uidNumber'] });
+        console.log(`[AUTH DEBUG] All API keys:`, allKeys.map(k => ({ prefix: k.keyPrefix, desc: k.description, uid: k.uidNumber })));
+      }
+
       for (const storedKey of apiKeys) {
+        console.log(`[AUTH DEBUG] Validating key for user: ${storedKey.user?.uid || 'NO USER'}`);
+        if (!storedKey.user) {
+          console.log(`[AUTH DEBUG] API key has no associated user! uidNumber: ${storedKey.uidNumber}`);
+          continue;
+        }
+        
         const isValid = await storedKey.validateKey(apiKey);
+        console.log(`[AUTH DEBUG] Key validation result: ${isValid}`);
+        
         if (isValid) {
           req.user = storedKey.user;
           req.apiKey = storedKey;
@@ -50,10 +69,14 @@ async function requireAuth(req, res, next) {
             console.error('Failed to update API key last used timestamp:', err);
           });
           
+          console.log(`[AUTH DEBUG] ✓ Authentication successful for user: ${storedKey.user.uid}`);
           return next();
         }
       }
+      console.log(`[AUTH DEBUG] ✗ No valid API key matched`);
     }
+  } else {
+    console.log(`[AUTH DEBUG] No Bearer token in Authorization header. Header value: ${authHeader ? authHeader.substring(0, 20) + '...' : 'none'}`);
   }
   
   // Neither session nor API key authentication succeeded
