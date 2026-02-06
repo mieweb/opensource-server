@@ -6,8 +6,7 @@ const { Container, Service, HTTPService, TransportService, DnsService, Node, Sit
 const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
-// Imported from utils as requested
-const { isApiRequest } = require('../utils/http-utils'); 
+const { isApiRequest } = require('../utils/http'); 
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
