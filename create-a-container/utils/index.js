@@ -1,5 +1,6 @@
 const { spawn, execSync } = require('child_process');
 const ProxmoxApi = require('./proxmox-api');
+const MockProxmoxApi = require('./mock-proxmox-api');
 
 function run(cmd, args, opts) {
   return new Promise((resolve, reject) => {
@@ -73,6 +74,7 @@ function isSafeRelativeUrl(url) {
 
 module.exports = {
   ProxmoxApi,
+  MockProxmoxApi,
   run,
   isSafeRelativeUrl,
   getVersionInfo

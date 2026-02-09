@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { User, Group, Setting } = require('../models');
+const { User, Group, Site, Node, Setting } = require('../models');
 const { isSafeRelativeUrl } = require('../utils');
 
 const TEST_ENABLED = process.env.TEST_ENABLED === 'true';
@@ -26,6 +26,52 @@ const TEST_USERS = [
     gidNumber: 2001
   }
 ];
+
+// Test site and node configuration
+const TEST_SITE = {
+  name: 'Test Site',
+  internalDomain: 'test.internal',
+  dhcpRange: '10.0.0.100,10.0.0.200',
+  subnetMask: '255.255.255.0',
+  gateway: '10.0.0.1',
+  dnsForwarders: '8.8.8.8,8.8.4.4'
+};
+
+const TEST_NODE = {
+  name: 'test-node',
+  ipv4Address: '10.0.0.10',
+  apiUrl: 'https://mock-proxmox:8006',
+  tokenId: 'test@pam!test-token',
+  secret: 'mock-secret-not-used',
+  tlsVerify: false,
+  imageStorage: 'local'
+};
+
+/**
+ * Ensure test site and node exist in the database
+ */
+async function ensureTestSiteAndNode() {
+  if (!TEST_ENABLED) return;
+  
+  // Check if test site exists
+  let site = await Site.findOne({ where: { name: TEST_SITE.name } });
+  
+  if (!site) {
+    site = await Site.create(TEST_SITE);
+    console.log('[TEST MODE] Created test site:', site.name);
+  }
+  
+  // Check if test node exists for this site
+  let node = await Node.findOne({ where: { name: TEST_NODE.name, siteId: site.id } });
+  
+  if (!node) {
+    node = await Node.create({
+      ...TEST_NODE,
+      siteId: site.id
+    });
+    console.log('[TEST MODE] Created test node:', node.name);
+  }
+}
 
 /**
  * Ensure test users exist in the database
@@ -77,6 +123,7 @@ router.get('/', async (req, res) => {
   let testUsers = [];
   if (TEST_ENABLED) {
     testUsers = await ensureTestUsers();
+    await ensureTestSiteAndNode();
   }
   
   res.render('login', {
