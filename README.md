@@ -111,6 +111,73 @@ graph TD
     class DB,Sites,Nodes,Containers,Services data
 ```
 
+### Authentication Flow
+
+```mermaid
+graph TD
+    subgraph "Web UI Login"
+        WebUser[Admin User] --> WebUI[create-a-container Web UI]
+        WebUI --> DB[(SQLite Database)]
+        WebUI -.-> MIEAuth[MIEAuth Push 2FA]
+    end
+    
+    subgraph "Container SSH Login"
+        SSHUser[Container User] --> LXC[LXC Container]
+        LXC --> SSSD[SSSD/PAM]
+        SSSD --> LDAP[LDAP Gateway]
+        LDAP --> DB
+        LDAP -.-> MIEAuth
+    end
+    
+    classDef user fill:#f57c00,stroke:#fff3e0,stroke-width:2px,color:#ffffff
+    classDef app fill:#1976d2,stroke:#e3f2fd,stroke-width:2px,color:#ffffff
+    classDef auth fill:#c62828,stroke:#ffcdd2,stroke-width:2px,color:#ffffff
+    classDef data fill:#7b1fa2,stroke:#f3e5f5,stroke-width:2px,color:#ffffff
+    
+    class WebUser,SSHUser user
+    class WebUI,LXC app
+    class SSSD,LDAP,MIEAuth auth
+    class DB data
+```
+
+The LDAP Gateway (from [mieweb/LDAPServer](https://github.com/mieweb/LDAPServer)) provides centralized authentication:
+- Users in the `ldapusers` group can SSH into containers
+- SSSD on containers connects to the LDAP Gateway for PAM/NSS
+- Optional push notification 2FA via [MIEAuth](https://github.com/mieweb/mieweb_auth_app)
+
+### User Management
+
+Users are managed through the `create-a-container` Web UI and stored in the SQLite database. The LDAP Gateway reads from this same database, so changes are immediately available for container authentication.
+
+| Operation | Route | Access |
+|-----------|-------|--------|
+| Self-Register | `POST /register` | Anyone (status = `pending`) |
+| Invited Register | `POST /register?token=...` | Invited users (auto-activated) |
+| Admin Create | `POST /users` | Admins only |
+| Admin Update | `PUT /users/:id` | Admins only |
+| Admin Delete | `DELETE /users/:id` | Admins only |
+| Send Invite | `POST /users/invite` | Admins only |
+
+```mermaid
+graph LR
+    subgraph "User Registration"
+        A[Self-Signup] -->|pending| DB[(Database)]
+        B[Admin Create] -->|active| DB
+        C[Email Invite] -->|active| DB
+    end
+    
+    DB --> LDAP[LDAP Gateway]
+    LDAP --> Containers[LXC Containers]
+    
+    classDef pending fill:#ff9800,stroke:#e65100,color:#fff
+    classDef active fill:#4caf50,stroke:#1b5e20,color:#fff
+    classDef data fill:#7b1fa2,stroke:#f3e5f5,color:#fff
+    
+    class A pending
+    class B,C active
+    class DB,LDAP,Containers data
+```
+
 ---
 
 Contributors: Carter Myers, Maxwell Klema, Anisha Pant, and Robert Gingras

@@ -2,6 +2,150 @@
 
 A web application for managing LXC container creation, configuration, and lifecycle on Proxmox VE infrastructure. Provides a user-friendly interface and REST API for container management with automated database tracking and nginx reverse proxy configuration generation.
 
+## Technology Stack
+
+```mermaid
+graph TB
+    subgraph "Frontend"
+        EJS[EJS Templates]
+        CSS[CSS/Static Assets]
+    end
+    
+    subgraph "Backend"
+        Express[Express.js 5.x]
+        Sequelize[Sequelize ORM]
+        Session[express-session]
+    end
+    
+    subgraph "Background Processing"
+        JobRunner[job-runner.js]
+    end
+    
+    subgraph "Database"
+        SQLite[(SQLite)]
+        MySQL[(MySQL/MariaDB)]
+        PostgreSQL[(PostgreSQL)]
+    end
+    
+    subgraph "External Services"
+        Proxmox[Proxmox VE API]
+        SMTP[SMTP Server]
+        MIEAuth[MIEAuth 2FA]
+    end
+    
+    EJS --> Express
+    CSS --> Express
+    Express --> Sequelize
+    Express --> Session
+    Sequelize --> SQLite
+    Sequelize --> MySQL
+    Sequelize --> PostgreSQL
+    Express --> Proxmox
+    Express --> SMTP
+    Express --> MIEAuth
+    JobRunner --> Sequelize
+    JobRunner --> Proxmox
+    
+    classDef frontend fill:#42a5f5,stroke:#1565c0,color:#fff
+    classDef backend fill:#66bb6a,stroke:#2e7d32,color:#fff
+    classDef db fill:#ab47bc,stroke:#6a1b9a,color:#fff
+    classDef external fill:#ff7043,stroke:#d84315,color:#fff
+    classDef bg fill:#ffa726,stroke:#ef6c00,color:#fff
+    
+    class EJS,CSS frontend
+    class Express,Sequelize,Session backend
+    class SQLite,MySQL,PostgreSQL db
+    class Proxmox,SMTP,MIEAuth external
+    class JobRunner bg
+```
+
+### Core Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `express` | 5.x | Web framework |
+| `sequelize` | 6.x | Database ORM (SQLite, MySQL, PostgreSQL) |
+| `ejs` | 3.x | Server-side templating |
+| `express-session` | 1.x | Session management |
+| `argon2` | 0.x | Password hashing |
+| `axios` | 1.x | HTTP client for Proxmox API |
+| `nodemailer` | 7.x | Email sending |
+
+### Directory Structure
+
+```
+create-a-container/
+├── server.js           # Express app entry point
+├── job-runner.js       # Background job processor
+├── package.json        # Dependencies and scripts
+├── config/
+│   └── config.js       # Database configuration
+├── models/             # Sequelize models
+│   ├── index.js        # Model loader and associations
+│   ├── user.js         # User accounts (LDAP-compatible)
+│   ├── group.js        # User groups
+│   ├── container.js    # LXC containers
+│   ├── service.js      # Base service (STI pattern)
+│   ├── http-service.js # HTTP reverse proxy services
+│   ├── transport-service.js  # TCP/UDP services
+│   ├── dns-service.js  # DNS record services
+│   ├── site.js         # Multi-tenant sites
+│   ├── node.js         # Proxmox nodes
+│   ├── job.js          # Background jobs
+│   └── ...
+├── routers/            # Express route handlers
+│   ├── login.js        # Authentication
+│   ├── register.js     # User registration
+│   ├── users.js        # User management (admin)
+│   ├── groups.js       # Group management (admin)
+│   ├── sites.js        # Site management
+│   ├── nodes.js        # Node management
+│   ├── containers.js   # Container CRUD
+│   ├── jobs.js         # Job status API
+│   ├── settings.js     # System settings
+│   ├── apikeys.js      # API key management
+│   └── ...
+├── middlewares/        # Express middleware
+│   ├── index.js        # Auth, admin checks
+│   └── currentSite.js  # Multi-site context
+├── migrations/         # Database schema migrations
+├── seeders/            # Initial data seeds
+├── views/              # EJS templates
+├── public/             # Static assets (CSS, JS, images)
+├── utils/              # Helper functions
+├── systemd/            # Systemd service files
+└── bin/                # CLI scripts
+```
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Express
+    participant Middleware
+    participant Router
+    participant Sequelize
+    participant Database
+    participant Proxmox
+    
+    Browser->>Express: HTTP Request
+    Express->>Middleware: Rate Limit Check
+    Middleware->>Middleware: Session Auth
+    Middleware->>Router: Route Handler
+    Router->>Sequelize: Database Query
+    Sequelize->>Database: SQL
+    Database-->>Sequelize: Results
+    
+    alt Container Operations
+        Router->>Proxmox: API Call
+        Proxmox-->>Router: Response
+    end
+    
+    Router->>Express: Render EJS
+    Express-->>Browser: HTML Response
+```
+
 ## Data Model
 
 ```mermaid
