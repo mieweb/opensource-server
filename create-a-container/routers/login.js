@@ -1,14 +1,90 @@
 const express = require('express');
 const router = express.Router();
-const { User, Setting } = require('../models');
+const { User, Group, Setting } = require('../models');
 const { isSafeRelativeUrl } = require('../utils');
 
+const TEST_ENABLED = process.env.TEST_ENABLED === 'true';
+
+// Test user definitions - one per group
+const TEST_USERS = [
+  {
+    uid: 'test-sysadmin',
+    givenName: 'Test',
+    sn: 'Sysadmin',
+    mail: 'test-sysadmin@example.com',
+    userPassword: 'TestPassword123!',
+    groupName: 'sysadmins',
+    gidNumber: 2000
+  },
+  {
+    uid: 'test-ldapuser',
+    givenName: 'Test',
+    sn: 'LdapUser',
+    mail: 'test-ldapuser@example.com',
+    userPassword: 'TestPassword123!',
+    groupName: 'ldapusers',
+    gidNumber: 2001
+  }
+];
+
+/**
+ * Ensure test users exist in the database
+ */
+async function ensureTestUsers() {
+  if (!TEST_ENABLED) return [];
+  
+  const testUsers = [];
+  
+  for (const testUser of TEST_USERS) {
+    let user = await User.findOne({ where: { uid: testUser.uid } });
+    
+    if (!user) {
+      // Create the test user
+      const uidNumber = await User.nextUidNumber();
+      user = await User.create({
+        uidNumber,
+        uid: testUser.uid,
+        gidNumber: testUser.gidNumber,
+        homeDirectory: `/home/${testUser.uid}`,
+        loginShell: '/bin/bash',
+        cn: `${testUser.givenName} ${testUser.sn}`,
+        sn: testUser.sn,
+        givenName: testUser.givenName,
+        mail: testUser.mail,
+        userPassword: testUser.userPassword,
+        status: 'active'
+      });
+      
+      // Add user to their designated group
+      const group = await Group.findByPk(testUser.gidNumber);
+      if (group) {
+        await user.addGroup(group);
+      }
+    }
+    
+    testUsers.push({
+      uid: testUser.uid,
+      displayName: `${testUser.givenName} ${testUser.sn}`,
+      groupName: testUser.groupName
+    });
+  }
+  
+  return testUsers;
+}
+
 // GET / - Display login form
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  let testUsers = [];
+  if (TEST_ENABLED) {
+    testUsers = await ensureTestUsers();
+  }
+  
   res.render('login', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
-    redirect: req.query.redirect || '/'
+    redirect: req.query.redirect || '/',
+    testEnabled: TEST_ENABLED,
+    testUsers
   });
 });
 
@@ -104,6 +180,49 @@ router.post('/', async (req, res) => {
   }
   
   // Save session before redirect to ensure it's persisted
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+    }
+    return res.redirect(redirectUrl);
+  });
+});
+
+// POST /test-login - Handle test user quick login (only when TEST_ENABLED)
+router.post('/test-login', async (req, res) => {
+  if (!TEST_ENABLED) {
+    await req.flash('error', 'Test login is not enabled');
+    return res.redirect('/login');
+  }
+
+  const { testUser, redirect } = req.body;
+  
+  // Validate the test user is one of our allowed test users
+  const allowedTestUser = TEST_USERS.find(u => u.uid === testUser);
+  if (!allowedTestUser) {
+    await req.flash('error', 'Invalid test user');
+    return res.redirect('/login');
+  }
+
+  const user = await User.findOne({ 
+    where: { uid: testUser },
+    include: [{ association: 'groups' }]
+  });
+
+  if (!user) {
+    await req.flash('error', 'Test user not found');
+    return res.redirect('/login');
+  }
+
+  // Set session variables (skip password and 2FA for test users)
+  req.session.user = user.uid;
+  req.session.isAdmin = user.groups?.some(group => group.isAdmin) || false;
+
+  let redirectUrl = redirect || '/';
+  if (!isSafeRelativeUrl(redirectUrl)) {
+    redirectUrl = '/';
+  }
+
   req.session.save((err) => {
     if (err) {
       console.error('Session save error:', err);
