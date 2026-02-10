@@ -13,15 +13,17 @@ COPY --from=builder /rootfs /
 
 # Install and setup sssd autoconfiguration
 RUN apt-get update && \
-    apt-get install -y sssd && \
+    apt-get install -y sssd sudo && \
+    pam-auth-update --enable mkhomedir && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-COPY sssd-autoconfigure.sh /usr/local/bin/sssd-autoconfigure
-COPY sssd-autoconfigure.service /etc/systemd/system/
-RUN chmod +x /usr/local/bin/sssd-autoconfigure && \
-    systemctl enable sssd-autoconfigure.service
+COPY --chmod=0440 sssd.conf /etc/sssd/sssd.conf
+COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 
 # Configure systemd to run properly in a container. This isn't nessary for LXC
 # in Proxmox, but is useful for testing with Docker directly.
 STOPSIGNAL SIGRTMIN+3
 ENTRYPOINT [ "/sbin/init" ]
+
+# Service metadata, includes port 22/tcp for automatic SSH exposure
+EXPOSE 22
