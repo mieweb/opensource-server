@@ -226,6 +226,62 @@ function generateImageFilename(parsed, digest) {
 }
 
 /**
+ * Setup ACL for container owner
+ * Grants PVEVMUser role to username@ldap on /vms/{vmid}
+ * Non-blocking: logs errors but continues on failure
+ * @param {ProxmoxApi} client - Proxmox API client
+ * @param {string} nodeName - Node name for logging
+ * @param {number} vmid - Container VMID
+ * @param {string} username - Container owner username
+ * @returns {Promise<boolean>} True if ACL created successfully, false otherwise
+ */
+async function setupContainerAcl(client, nodeName, vmid, username) {
+  const userWithRealm = `${username}@ldap`;
+  const aclPath = `/vms/${vmid}`;
+  
+  console.log(`Setting up ACL for ${userWithRealm} on ${aclPath}...`);
+  
+  try {
+    // Attempt to create ACL
+    await client.updateAcl(aclPath, 'PVEVMUser', null, true, null, userWithRealm);
+    console.log(`ACL created successfully: ${userWithRealm} -> PVEVMUser on ${aclPath}`);
+    return true;
+  } catch (firstError) {
+    console.log(`ACL creation failed: ${firstError.message}`);
+    
+    // Check if error is due to user not existing
+    const errorMsg = firstError.response?.data?.errors || firstError.message || '';
+    const isUserNotFound = errorMsg.toLowerCase().includes('user') && 
+                          (errorMsg.toLowerCase().includes('not found') || 
+                           errorMsg.toLowerCase().includes('does not exist'));
+    
+    if (isUserNotFound) {
+      console.log('User not found in Proxmox LDAP realm, attempting LDAP sync...');
+      
+      try {
+        // Sync LDAP realm
+        await client.syncLdapRealm('ldap');
+        console.log('LDAP realm sync completed successfully');
+        
+        // Retry ACL creation
+        console.log('Retrying ACL creation...');
+        await client.updateAcl(aclPath, 'PVEVMUser', null, true, null, userWithRealm);
+        console.log(`ACL created successfully after sync: ${userWithRealm} -> PVEVMUser on ${aclPath}`);
+        return true;
+      } catch (syncError) {
+        console.log(`LDAP sync or retry failed: ${syncError.message}`);
+        console.log('Continuing without ACL - container owner will need manual access grant');
+        return false;
+      }
+    } else {
+      console.log('ACL creation failed for non-user-related reason');
+      console.log('Continuing without ACL - container owner will need manual access grant');
+      return false;
+    }
+  }
+}
+
+/**
  * Main function
  */
 async function main() {
@@ -445,6 +501,9 @@ async function main() {
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }
+    
+    // Setup ACL for container owner
+    await setupContainerAcl(client, node.name, vmid, container.username);
     
     // Store the VMID now that creation succeeded
     await container.update({ containerId: vmid });
