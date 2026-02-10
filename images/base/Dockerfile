@@ -20,6 +20,13 @@ RUN apt-get update && \
 COPY --chmod=0440 sssd.conf /etc/sssd/sssd.conf
 COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 
+# The following service ensures environment variables set in the OCI metadata
+# or container configuration are passed to programs executed by systemd which
+# includes user sessions
+COPY environment.sh /usr/local/bin/environment.sh
+COPY environment.service /etc/systemd/system/environment.service
+RUN systemctl enable environment.service
+
 # Configure systemd to run properly in a container. This isn't nessary for LXC
 # in Proxmox, but is useful for testing with Docker directly.
 STOPSIGNAL SIGRTMIN+3
