@@ -5,194 +5,299 @@ sidebar_position: 1
 import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceUrl';
 
 # Using the Web GUI
-:::note Note
-This walkthrough assumes that you already have a registered proxmox account in the cluster. If not, see [Introduction](/docs/intro).
+
+This guide shows you how to create and manage LXC containers using the web-based graphical interface.
+
+## Prerequisites
+
+- A registered account in the system
+- At least one configured site with Proxmox nodes
+- For first-time users, see the [Introduction](/docs/intro) for account setup
+
+## Logging In
+
+Navigate to the web interface and enter your credentials:
+
+![Login Page](img/login-page.png)
+
+**Login Details:**
+- **Username**: Your account username
+- **Password**: Your account password
+
+If you don't have an account, click "Register" to create one.
+
+:::info First Time Registration
+New registrations require administrator approval before you can log in. You'll receive an email notification once your account is approved.
 :::
 
-This guide shows you how to set up a basic LXC container on the MIE Opensource Proxmox Cluster using the a Web GUI. The Web GUI can be accessed at <ContainerCreationUrl><ContainerCreationUrl /></ContainerCreationUrl>.
+## Navigating the Interface
 
-## 1. Authenticate Your Proxmox Account
- 
-Upon navigating, you will be prompted for your Proxmox Login Credentials, as shown in the image below:
+After logging in, you'll see the main navigation:
 
-![Login Page](img/login.jpg)
+### Top Navigation
+- **MIE Logo**: Return to the main dashboard
+- **Breadcrumbs**: Show your current location (Sites / Site Name / Page)
+- **Logout**: Sign out of your session
 
-**Options:**
-- Enter your valid Proxmox username and password
-- If authentication fails, you'll see a "Invalid username or password" message and be prompted again.
+### Sidebar
+- **Sites**: View and manage all sites
+- **Site Selector**: Quickly switch between sites
+- **Containers**: View containers for the selected site (when a site is selected)
+- **API Keys**: Manage your API authentication tokens
 
-## 2. Choose a Container Hostname
+## Selecting a Site
 
-This will be your container's subdomain:
+Before creating containers, you must select a site. The site determines which Proxmox cluster and network configuration will be used.
 
-![Hostname](img/hostname.jpg)
+![Sites List](img/sites-list.png)
 
-**Options:**
-- Use a single word containing only letters, numbers, and hyphens (e.g., `myapp`, `test-api`)
-- The hostname will be available at `your-hostname.opensource.mieweb.org`
-- If the name is already taken or contains invalid characters, you'll be asked to choose another
+**Site Information Displayed:**
+- **ID**: Unique site identifier
+- **Name**: Human-readable site name
+- **Internal Domain**: DNS domain for containers (e.g., `demo.local`)
+- **DHCP Range**: IP address pool for containers
+- **Gateway**: Network gateway address
+- **Node Count**: Number of Proxmox nodes in this site
 
-## 3. Select a Linux Distribution
+Click **Containers** to view and manage containers for a specific site.
 
-This dropdown presents available distributions:
+## Viewing Your Containers
 
-![Hostname](img/distro.jpg)
+After selecting a site, you'll see your container list:
 
-**Options:**
-- Type `debian` for Debian 12 (Bookworm)
-- Type `rocky` for Rocky Linux 9
-- Any invalid input defaults to Debian
+![Containers List](img/containers-list.png)
 
-## 4. Set the HTTP Port
+**Container Information:**
+- **Hostname**: Container's network hostname
+- **Status**: Current state (pending, creating, running, stopped, failed)
+- **IPv4**: Internal IP address assigned by DHCP
+- **Template**: The image or template used to create the container
+- **Node**: Which Proxmox node hosts this container
+- **SSH Port**: External SSH port for remote access
+- **HTTP Port**: External HTTP port (if configured)
+- **Actions**: Start, stop, restart, configure, or delete
 
-Specify which port your application will listen on:
+Click **New Container** to create a new container.
 
-![Hostname](img/port.jpg)
+## Creating a Container
 
-**Options:**
-- Any number between 80 and 60,000
-- Common choices: 80, 3000, 8080, 5000, 8000
-- Invalid entries will prompt you to try again
+### Step 1: Container Basics
 
-## 5. Configure SSH Access
+![New Container Form](img/new-container-form.png)
 
-Enter a public key from your local machine:
+Fill in the basic information:
 
-![Hostname](img/ssh.jpg)
+**Container Hostname**
+- A unique name for your container
+- Must contain only lowercase letters, numbers, and hyphens
+- Will be used as the subdomain (e.g., `myapp.demo.local`)
+- Examples: `web-server`, `api-backend`, `test-env`
 
-**Options:**
-- Enter your SSH public key (starts with `ssh-rsa`, `ssh-ed25519`, etc.)
-- Leave blank to skip SSH key configuration
-- Invalid keys will prompt for a valid key or blank entry
+**Container Template**
+- Select from available templates or choose "Custom Docker Image..."
+- **Proxmox Templates**: Pre-configured LXC templates (Debian, Ubuntu, etc.)
+- **Docker Images**: Pull from container registries (Docker Hub, GHCR, etc.)
 
-:::important Important
-Entering a public key is highly recommended. It will allow you to access the create-container command line setup without entering a password. Additionally, it will allow you to SSH to your container without having to input your proxmox password, making the connection process faster and more secure.
-
-To create a private/public key pair on your machine, reference [this guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#generating-a-new-ssh-key).
+:::tip Docker Image Format
+When using custom Docker images, use the full registry path:
+- `docker.io/library/nginx:latest`
+- `ghcr.io/mieweb/opensource-server/base:main`
 :::
 
-## 6. Container Creation Process
+![Template Dropdown](img/template-dropdown.png)
 
-After providing all required information, the system will:
-1. Transfer your configuration to the hypervisor
-2. Begin the container creation process
-3. Set up networking, DNS, and reverse proxy
-4. Configure the container with your specified settings
-5. Deploy your application if requested
+### Step 2: Configure Services (Optional)
 
-Once the container creation process is complete, your container will be accessible via an ssh command in the form of:
+Expand the **Services** section to expose container ports:
 
-```
-ssh -p <your-container-port> <proxmox-username>@opensource.mieweb.org
-```
+![Services Section](img/services-section.png)
 
-## 7. Understanding the Output
+**Adding a Service:**
+1. Click **Add Service**
+2. Select service **Type** (SSH, HTTP, HTTPS, Custom)
+3. Enter the **Internal Port** your application listens on
+4. External port will be automatically assigned
+5. Click **Add** to save
 
-Once your container is created, you will receieve an output that looks somthing like this:
+**Common Service Examples:**
+- SSH: Internal port 22
+- HTTP: Internal port 80, 3000, 8080
+- HTTPS: Internal port 443
+- Custom: Any port your application uses
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔔  COPY THESE PORTS DOWN — For External Access
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📌  Note: Your container listens on SSH Port 22 internally,
-    but EXTERNAL traffic must use the SSH port listed below:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅  Hostname Registration: max-demo-container → 10.15.19.181
-🔐  SSH Port               : 2376
-🌐  HTTP Port              : 3000
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦  Container ID        : 116
-🌐  Internal IP         : 10.15.19.181
-🔗  Domain Name         : https://max-demo-container.opensource.mieweb.org
-🛠️  SSH Access          : ssh -p 2376 demouser@max-demo-container.opensource.mieweb.org
-🔑  Container Password  : Your proxmox account password
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NOTE: Additional background scripts are being ran in detached terminal sessions.
-Wait up to two minutes for all processes to complete.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Still not working? Contact Max K. at maxklema@gmail.com
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-:::important Important
-Your container password is the same as your Proxmox Account Password.
+:::info External Ports
+External ports are automatically assigned from available ranges and used for accessing your container from outside the internal network.
 :::
 
-The first block will list all of the ports that your container uses. By default, it will display an SSH Port and an HTTP Port. If you added any other special protocols, they will appear there as well.
+### Step 3: Environment Variables (Optional)
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅  Hostname Registration: max-demo-container → 10.15.19.181
-🔐  SSH Port               : 2376
-🌐  HTTP Port              : 3000
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
+Expand **Environment Variables** to configure your application:
 
-The second block contains network information about your container specifically, including its IP address, public domain name, and ssh command:
+![Environment Variables Section](img/env-vars-section.png)
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦  Container ID        : 116
-🌐  Internal IP         : 10.15.19.181
-🔗  Domain Name         : https://max-demo-container.opensource.mieweb.org
-🛠️  SSH Access          : ssh -p 2376 demouser@max-demo-container.opensource.mieweb.org
-🔑  Container Password  : Your proxmox account password
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
+**Adding Variables:**
+1. Click **Add Variable**
+2. Enter the variable **Key** (e.g., `DATABASE_URL`, `API_KEY`)
+3. Enter the **Value**
+4. Click **Add** to save
 
-:::note Note
-The IP that is given is an **internal IP** allocated by our local DHCP server. It is not public. Additionally, since we are setting up a basic container, nothing will be deployed yet, so navigating to the domain will return a 502 bad gateway error from our nginx server. This is expected.
-:::
-
-:::warning Warning
-Save your SSH port number, as well as any port numbers, because you will not be able to see them again. This will be fixed at a later time.
-:::
-
-## 8. Viewing your Container on Proxmox
-
-To see your container on the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Once signed in, on the summary view, you should see the name of your container. If you double click on it, you will be able to access details, like the shell, metrics, and other network/filesystem information.
-
-![Hostname](img/proxmox-lxc.jpg)
-
-:::note Note
-As of writing, you are able to reboot, start, and shutdown your container as you please. However, you must reach out to a cluster admin to delete your container.
-:::
-
----
-
-## Docker Container Configuration
-
-When creating containers from Docker images, you can configure additional settings that are specific to containerized applications.
-
-### Environment Variables
-
-Environment variables allow you to pass configuration to your containerized application at runtime. These are commonly used for:
+**Common Use Cases:**
 - Database connection strings
 - API keys and secrets
+- Application configuration (debug mode, port numbers)
 - Feature flags
-- Application modes (development, production, etc.)
 
-To add environment variables, expand the **Environment Variables** section and click **Add Variable** to create key-value pairs.
-
-:::warning System Containers
-Environment variables are intended for **Docker-based containers** only. System containers (created from Proxmox templates like Debian or Rocky Linux) typically expect `init` as PID 1 and may not use environment variables in the same way. If you're using a standard Linux template, you generally don't need to set environment variables here.
+:::warning Docker Images Only
+Environment variables are intended for Docker-based containers. System templates (Debian, Ubuntu) may not use them in the same way.
 :::
 
-### Entrypoint Command
+### Step 4: Entrypoint Command (Optional)
 
-The entrypoint command overrides the default startup command for a Docker container. This is useful when you need to:
-- Run a specific script or binary
-- Pass custom arguments to your application
-- Chain multiple startup commands
+Expand **Entrypoint Command** to override the startup command:
+
+![Entrypoint Section](img/entrypoint-section.png)
+
+**Default Value:** `/sbin/init` (for system containers)
+
+**When to Override:**
+- Running a specific application binary
+- Starting with custom arguments
+- Chaining multiple commands
+- Using Docker containers with custom startup scripts
+
+**Examples:**
+- `/usr/bin/python app.py`
+- `/bin/bash -c "npm start"`
+- `/usr/local/bin/my-application --config=/etc/app.conf`
 
 :::warning System Containers
-The entrypoint command is intended for **Docker-based containers** only. System containers expect `init` as PID 1 and should not have their entrypoint overridden. Changing the entrypoint on a system container may prevent it from starting correctly.
+Do not change the entrypoint for system templates (Debian, Ubuntu, etc.). They expect `/sbin/init` as PID 1. Changing it will prevent the container from starting properly.
 :::
 
-### Restarting After Configuration Changes
+### Step 5: Create the Container
 
-When you modify environment variables or the entrypoint command on an existing container, the system will automatically restart the container to apply the changes. You can monitor the restart progress from the container list page.
+Once you've configured all settings, click **Create Container**.
+
+The system will:
+1. Validate your configuration
+2. Queue a creation job
+3. Allocate a container ID (VMID) from Proxmox
+4. Pull the Docker image or clone the template
+5. Configure networking and services
+6. Start the container
+7. Assign IP address via DHCP
+8. Configure DNS and reverse proxy
+
+:::info Creation Time
+Container creation typically takes 1-3 minutes depending on the image size and whether it needs to be pulled from a registry.
+:::
+
+## Monitoring Container Status
+
+After creation, you can monitor your container's status from the containers list:
+
+**Status Values:**
+- **pending**: Waiting to be created
+- **creating**: Currently being built and configured
+- **running**: Container is active and accessible
+- **stopped**: Container is stopped
+- **failed**: Creation or startup failed (check job logs)
+
+## Accessing Your Container
+
+Once your container is running, you can access it via:
+
+**SSH Access:**
+```bash
+ssh -p <SSH-PORT> <username>@<hostname>.<domain>
+```
+
+**HTTP Access:**
+If you configured an HTTP service:
+```
+http://<hostname>.<domain>
+```
+
+or via the external port:
+```
+http://<gateway-ip>:<HTTP-PORT>
+```
+
+**Proxmox Console:**
+You can also access the container console directly through the Proxmox web interface at <ProxmoxUrl />.
+
+## Managing Containers
+
+### Starting and Stopping
+
+Use the **Actions** column to:
+- **Start**: Power on a stopped container
+- **Stop**: Gracefully shut down a container
+- **Restart**: Stop and start the container
+- **Force Stop**: Immediately kill the container process
+
+### Editing Configuration
+
+Click **Edit** to modify:
+- Environment variables
+- Entrypoint command
+- Services (add/remove ports)
+
+:::info Restart Required
+Changing environment variables or entrypoint requires a container restart to take effect.
+:::
+
+### Deleting Containers
+
+Click **Delete** to permanently remove a container.
+
+:::danger Data Loss
+Deleting a container is permanent and will erase all data inside it. Make sure to backup any important data first.
+:::
+
+## Troubleshooting
+
+### Container Won't Start
+
+**Check the status:**
+- If status is "failed", check the creation job logs
+- Verify the template/image name is correct
+- Ensure the entrypoint command is valid for your image type
+
+**Common Issues:**
+- Wrong entrypoint for system containers (should be `/sbin/init`)
+- Invalid Docker image reference
+- Network connectivity issues pulling images
+- Insufficient resources on Proxmox node
+
+### Can't Connect via SSH
+
+**Verify:**
+- Container status is "running"
+- Using the correct external SSH port
+- Your SSH key is configured (if using key-based auth)
+- Firewall allows the connection
+
+### HTTP Service Not Accessible
+
+**Check:**
+- Your application is actually listening on the configured internal port
+- Container status is "running"
+- HTTP service was added during creation
+- Using the correct external HTTP port or domain name
+
+### Need Help?
+
+For additional support:
+- Check container logs in Proxmox console
+- Review job logs for creation failures
+- Contact your system administrator
+- Report issues via the "Report Issue" link at the bottom of any page
 
 ---
 
-**Need Help?**: For questions about container configuration or troubleshooting, contact the MIE team.
+## Next Steps
+
+- [Learn about API Keys](./api-keys.mdx) for programmatic access
+- [Use the Command Line](./command-line.mdx) for automation
+- [Understand the System Architecture](../../developers/system-architecture.md)
