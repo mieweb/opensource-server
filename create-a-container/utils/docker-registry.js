@@ -299,29 +299,39 @@ function extractImageMetadata(config) {
     entrypoint: ''
   };
   
-  // Extract exposed ports
-  // Format: { "80/tcp": {}, "443/tcp": {}, "8080/udp": {} }
-  if (config.config?.ExposedPorts) {
-    for (const portSpec of Object.keys(config.config.ExposedPorts)) {
-      const [port, protocol = 'tcp'] = portSpec.split('/');
-      metadata.ports.push({
-        port: parseInt(port, 10),
-        protocol: protocol.toLowerCase()
-      });
-    }
-  }
-  
-  // Extract HTTP service from OCI labels
+  // Extract HTTP service from OCI labels first
   // Label: org.mieweb.opensource-server.services.http.default-port
+  let httpServicePort = null;
   if (config.config?.Labels) {
     const httpPortLabel = config.config.Labels['org.mieweb.opensource-server.services.http.default-port'];
     if (httpPortLabel) {
       const port = parseInt(httpPortLabel, 10);
       if (!isNaN(port) && port > 0 && port <= 65535) {
+        httpServicePort = port;
         metadata.httpServices.push({
           port: port
         });
       }
+    }
+  }
+  
+  // Extract exposed ports (excluding HTTP service port on TCP to avoid duplicates)
+  // Format: { "80/tcp": {}, "443/tcp": {}, "8080/udp": {} }
+  if (config.config?.ExposedPorts) {
+    for (const portSpec of Object.keys(config.config.ExposedPorts)) {
+      const [port, protocol = 'tcp'] = portSpec.split('/');
+      const portNum = parseInt(port, 10);
+      
+      // Skip if this port is designated as an HTTP service AND it's TCP
+      // (HTTP runs over TCP, but keep UDP ports even if same number)
+      if (portNum === httpServicePort && protocol.toLowerCase() === 'tcp') {
+        continue;
+      }
+      
+      metadata.ports.push({
+        port: portNum,
+        protocol: protocol.toLowerCase()
+      });
     }
   }
   
