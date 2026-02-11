@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # This first layer is only to build the root filesystem. We use Proxmox's
 # minimal Debian template as it is well maintained and optimized for LXC usage.
 FROM debian:13 AS builder

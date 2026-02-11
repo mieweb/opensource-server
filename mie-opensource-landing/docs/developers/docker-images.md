@@ -20,45 +20,109 @@ The base image includes:
 
 **Source:** [`images/base/`](https://github.com/mieweb/opensource-server/tree/main/images/base)
 
+## Available Images
+
+### Base Image (`base`)
+
+The base image includes:
+- Debian 13 minimal root filesystem (from Proxmox template)
+- SSSD (System Security Services Daemon) for LDAP authentication
+- PAM configuration for automatic home directory creation
+- Pre-configured for integration with the cluster's LDAP authentication
+
+**Registry Path:** `ghcr.io/mieweb/opensource-server/base`
+
+**Source:** [`images/base/`](https://github.com/mieweb/opensource-server/tree/main/images/base)
+
+### NodeJS Image (`nodejs`)
+
+The nodejs image extends the base image with:
+- Latest NodeJS runtime from NodeSource
+- Built on top of the base image (inherits LDAP authentication)
+- Suitable for Node.js applications
+
+**Registry Path:** `ghcr.io/mieweb/opensource-server/nodejs`
+
+**Source:** [`images/nodejs/`](https://github.com/mieweb/opensource-server/tree/main/images/nodejs)
+
 ## Image Structure
 
-Each image is located in a subdirectory under `images/` in the repository:
+Images are organized under `images/` in the repository with build dependencies managed by Docker Bake:
 
 ```
 images/
+├── docker-bake.hcl          # Build configuration with dependency ordering
 ├── base/
 │   ├── Dockerfile
 │   ├── sssd.conf
 │   └── ldapusers
-└── (future images...)
+└── nodejs/
+    └── Dockerfile           # Depends on base image
 ```
 
 Each subdirectory contains:
 - **Dockerfile**: The image build instructions
 - **Supporting files**: Configuration files, scripts, etc.
 
+### Build Dependencies
+
+The `docker-bake.hcl` file defines build order and dependencies:
+
+```hcl
+group "default" {
+    targets = ["base", "nodejs"]
+}
+
+target "base" {
+    context = "./base"
+}
+
+target "nodejs" {
+    context = "./nodejs"
+    contexts = {
+        base = "target:base"
+    }
+}
+```
+
+This ensures:
+- **base** is built first
+- **nodejs** is built after base and uses it as the foundation
+- Dependencies are properly resolved during parallel builds
+
 ## Automated Builds
 
-Images are automatically built and pushed by the [`build-images.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/build-images.yml) GitHub Actions workflow.
+Images are automatically built and pushed by the [`build-images.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/build-images.yml) GitHub Actions workflow using Docker Bake.
+
+### Build System
+
+The build system uses **Docker Bake** (`docker buildx bake`) to:
+- Build multiple images with proper dependency ordering
+- Handle inter-image dependencies (e.g., nodejs depends on base)
+- Enable efficient layer caching across related images
+- Support multi-target builds in a single workflow run
+
+Configuration is defined in [`images/docker-bake.hcl`](https://github.com/mieweb/opensource-server/blob/main/images/docker-bake.hcl).
 
 ### Build Triggers
 
 Images are built automatically in the following scenarios:
 
-1. **On file changes** - When you push changes to any files within an image's directory (e.g., `images/base/**`)
+1. **On file changes** - When you push changes to any files within `images/` directory
 2. **Weekly schedule** - Every Sunday at 11:00 PM UTC, all images are rebuilt regardless of changes
 3. **Manual trigger** - Maintainers can manually trigger builds from the GitHub Actions tab
 4. **Tag pushes** - When Git tags are pushed
 
-### Change Detection
+### Build Process
 
-The workflow intelligently detects which images need to be built:
-
-- **Push events**: Only images with modified files are rebuilt
-- **Scheduled builds**: All images are rebuilt to ensure they have the latest base image updates
-- **New branches**: All images are built when a new branch is created
-
-Multiple images can be built in parallel using GitHub Actions matrix strategy.
+When triggered, the workflow:
+1. Checks out the repository
+2. Logs into GitHub Container Registry (GHCR)
+3. Generates tags for all images based on commit/branch/tag
+4. Runs `docker buildx bake` with the `docker-bake.hcl` configuration
+5. Builds images in dependency order (base → nodejs)
+6. Pushes all images with appropriate tags
+7. Uses GitHub Actions cache for faster subsequent builds
 
 ## Image Tags
 
@@ -144,23 +208,51 @@ To add a new Docker image to the project:
    - Scripts
    - Documentation
 
-4. **Test locally:**
+4. **Update docker-bake.hcl:**
    ```bash
-   docker build -t myimage:test .
-   docker run -it myimage:test
+   cd images
+   # Edit docker-bake.hcl to add your new target
+   ```
+   
+   Add to the bake file:
+   ```hcl
+   group "default" {
+       targets = ["base", "nodejs", "myimage"]
+   }
+   
+   # ... existing targets ...
+   
+   target "myimage" {
+       context = "./myimage"
+       # If it depends on base:
+       contexts = {
+           base = "target:base"
+       }
+   }
    ```
 
-5. **Commit and push:**
+5. **Test locally:**
    ```bash
-   git add images/myimage/
+   cd images
+   docker buildx bake myimage
+   ```
+
+6. **Commit and push:**
+   ```bash
+   git add images/myimage/ images/docker-bake.hcl
    git commit -m "Add myimage Docker image"
    git push
    ```
 
 The GitHub Actions workflow will automatically:
-- Detect the new image
-- Build it
+- Detect the changes in `images/`
+- Build all targets defined in `docker-bake.hcl`  
+- Respect dependency ordering (base → nodejs → myimage)
 - Push to `ghcr.io/mieweb/opensource-server/myimage:<tags>`
+
+:::tip Image Dependencies
+If your new image depends on another image in the project (like `base`), use the `contexts` attribute in the bake target to reference it. This ensures proper build ordering and allows the dependent image to use the freshly built base image from the same build run.
+:::
 
 ## Local Development
 

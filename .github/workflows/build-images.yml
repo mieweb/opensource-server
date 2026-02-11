@@ -17,68 +17,11 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # Job to detect which images need to be built
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      images: ${{ steps.detect.outputs.images }}
-      all_images: ${{ steps.list-all.outputs.images }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: List all images
-        id: list-all
-        run: |
-          images=$(find images -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "images=$images" >> $GITHUB_OUTPUT
-          echo "All images: $images"
-
-      - name: Detect changed images
-        id: detect
-        run: |
-          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # For scheduled/manual runs, build all images
-            images=$(find images -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "Scheduled/manual build - building all images"
-          else
-            # For push events, detect which images have changes
-            if [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
-              # New branch - build all images
-              images=$(find images -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | jq -R -s -c 'split("\n") | map(select(length > 0))')
-              echo "New branch - building all images"
-            else
-              # Get list of changed files
-              changed_files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} || echo "")
-
-              # Extract unique image directories from changed files
-              changed_images=$(echo "$changed_files" | grep '^images/' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
-
-              if [ "$changed_images" == "[]" ] || [ -z "$changed_images" ]; then
-                echo "No image changes detected"
-                images="[]"
-              else
-                images="$changed_images"
-                echo "Changed images: $images"
-              fi
-            fi
-          fi
-          echo "images=$images" >> $GITHUB_OUTPUT
-
-  # Job to build and push images
   build-and-push:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.images != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        image: ${{ fromJson(needs.detect-changes.outputs.images) }}
-      fail-fast: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -93,50 +36,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata and tags
-        id: meta
-        run: |
-          IMAGE_BASE="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}"
-          COMMIT_HASH="${{ github.sha }}"
-
-          # Start with commit hash tag
-          TAGS="${IMAGE_BASE}:${COMMIT_HASH}"
-
-          # Add branch name tag
-          if [ "${{ github.ref_type }}" == "branch" ]; then
-            BRANCH_NAME="${{ github.ref_name }}"
-            # Sanitize branch name for Docker tag (replace / with -)
-            BRANCH_TAG=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
-            TAGS="${TAGS},${IMAGE_BASE}:${BRANCH_TAG}"
-
-            # Add 'latest' tag if branch is main
-            if [ "$BRANCH_NAME" == "main" ]; then
-              TAGS="${TAGS},${IMAGE_BASE}:latest"
-            fi
-          fi
-
-          # Add tag name if this is a tag push
-          if [ "${{ github.ref_type }}" == "tag" ]; then
-            TAG_NAME="${{ github.ref_name }}"
-            TAGS="${TAGS},${IMAGE_BASE}:${TAG_NAME}"
-          fi
-
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
-          echo "Generated tags for ${{ matrix.image }}:"
-          echo "$TAGS" | tr ',' '\n'
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Docker Meta (Base)
+        id: meta-base
+        uses: docker/metadata-action@v5
         with:
-          context: ./images/${{ matrix.image }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/base
+          bake-target: base
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Image build summary
-        run: |
-          echo "### ✅ Successfully built and pushed: ${{ matrix.image }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo '${{ steps.meta.outputs.tags }}' | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+      - name: Docker Meta (NodeJS)
+        id: meta-nodejs
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/nodejs
+          bake-target: nodejs
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/bake-action@v5
+        with:
+          workdir: ./images
+          push: true
+          files: |
+            ./docker-bake.hcl
+            ${{ steps.meta-base.outputs.bake-file }}
+            ${{ steps.meta-nodejs.outputs.bake-file }}
+          set: |
+            base.cache-from=type=gha,scope=base-${{ github.ref_name }}
+            base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}
+            nodejs.cache-from=type=gha,scope=nodejs-${{ github.ref_name }}
+            nodejs.cache-to=type=gha,mode=max,scope=nodejs-${{ github.ref_name }}
