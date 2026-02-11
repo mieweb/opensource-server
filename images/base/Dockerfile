@@ -14,7 +14,7 @@ COPY --from=builder /rootfs /
 
 # Install and setup sssd autoconfiguration
 RUN apt-get update && \
-    apt-get install -y sssd sudo && \
+    apt-get install -y sssd sudo tmux curl git jq && \
     pam-auth-update --enable mkhomedir && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
