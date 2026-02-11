@@ -110,38 +110,6 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get valid container templates from all nodes in this site
-  const templates = [];
-  const nodes = await Node.findAll({
-    where: {
-      [Sequelize.Op.and]: {
-        siteId,
-        apiUrl: { [Sequelize.Op.ne]: null },
-        tokenId: { [Sequelize.Op.ne]: null },
-        secret: { [Sequelize.Op.ne]: null }
-      }
-    },
-  });
-
-  for (const node of nodes) {
-    try {
-      const client = await node.api();
-      const lxcTemplates = await client.getLxcTemplates(node.name);
-      
-      for (const lxc of lxcTemplates) {
-        templates.push({
-          // Proxmox usually returns 'name' (filename) or 'volid'
-          name: lxc.name || lxc.volid, 
-          vmid: lxc.vmid,
-          size: lxc.size,
-          node: node.name
-        });
-      }
-    } catch (err) {
-      console.error(`Error fetching templates from node ${node.name}:`, err.message);
-    }
-  }
-
   // Get external domains for this site
   const externalDomains = await ExternalDomain.findAll({
     where: { siteId },
@@ -151,7 +119,6 @@ router.get('/new', requireAuth, async (req, res) => {
   if (isApi) {
     return res.json({
       site_id: site.id,
-      templates: templates, 
       domains: externalDomains
     });
   }
@@ -159,7 +126,6 @@ router.get('/new', requireAuth, async (req, res) => {
 
   return res.render('containers/form', { 
     site,
-    templates,
     externalDomains,
     container: undefined, 
     req 

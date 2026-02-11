@@ -38,13 +38,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         <% } else { %>
           <select id="templateSelect" name="template" required>
             <option value="">Select a template...</option>
-            <% if (typeof templates !== 'undefined' && templates && templates.length > 0) { %>
-              <% templates.forEach(template => { %>
-                <option value="<%= template.node %>,<%= template.vmid %>">
-                  <%= template.name %> (<%= template.node %>)
-                </option>
-              <% }) %>
-            <% } %>
+            <option value="ghcr.io/mieweb/opensource-server/base:latest">Debian 13</option>
+            <option value="ghcr.io/mieweb/opensource-server/nodejs:latest">NodeJS 24</option>
             <option value="custom">Custom Docker Image...</option>
           </select>
           <div id="customTemplateContainer" style="display: none; margin-top: 8px;">
@@ -173,12 +168,22 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   const customTemplateInput = document.getElementById('customTemplate');
   
   if (templateSelect) {
-    templateSelect.addEventListener('change', function() {
+    templateSelect.addEventListener('change', async function() {
       if (this.value === 'custom') {
         customTemplateContainer.style.display = 'block';
         customTemplateInput.required = true;
         this.removeAttribute('name'); // Don't submit the select value
+      } else if (this.value) {
+        // Standard image selected (not empty and not custom)
+        customTemplateContainer.style.display = 'none';
+        customTemplateInput.required = false;
+        customTemplateInput.value = '';
+        this.setAttribute('name', 'template'); // Submit select value
+        
+        // Fetch metadata for standard image
+        await fetchAndPopulateMetadata(this.value, this);
       } else {
+        // Empty selection
         customTemplateContainer.style.display = 'none';
         customTemplateInput.required = false;
         customTemplateInput.value = '';
@@ -191,72 +196,86 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   let metadataLoadTimeout = null;
   let lastFetchedImage = '';
   
+  // Reusable function to fetch metadata for any image reference
+  async function fetchAndPopulateMetadata(imageRef, sourceElement) {
+    // Skip if empty or already fetched
+    if (!imageRef || imageRef === lastFetchedImage) return;
+    
+    // Clear any pending timeout
+    if (metadataLoadTimeout) clearTimeout(metadataLoadTimeout);
+    
+    // Show loading indicator
+    const loadingMsg = document.createElement('small');
+    loadingMsg.style.color = '#666';
+    loadingMsg.style.display = 'block';
+    loadingMsg.style.marginTop = '4px';
+    loadingMsg.textContent = '🔄 Fetching image metadata...';
+    loadingMsg.id = 'metadataLoadingMsg';
+    sourceElement.parentElement.appendChild(loadingMsg);
+    
+    lastFetchedImage = imageRef;
+    
+    try {
+      const response = await fetch(`/sites/<%= site.id %>/containers/metadata?image=${encodeURIComponent(imageRef)}`);
+      
+      // Remove loading message
+      const existingMsg = document.getElementById('metadataLoadingMsg');
+      if (existingMsg) existingMsg.remove();
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+      
+      const metadata = await response.json();
+      
+      // Show success message
+      const successMsg = document.createElement('small');
+      successMsg.style.color = '#28a745';
+      successMsg.style.display = 'block';
+      successMsg.style.marginTop = '4px';
+      successMsg.textContent = '✅ Metadata loaded successfully';
+      successMsg.id = 'metadataSuccessMsg';
+      sourceElement.parentElement.appendChild(successMsg);
+      
+      // Auto-dismiss success message after 3 seconds
+      metadataLoadTimeout = setTimeout(() => {
+        const msg = document.getElementById('metadataSuccessMsg');
+        if (msg) msg.remove();
+      }, 3000);
+      
+      // Populate form with metadata
+      populateMetadata(metadata);
+      
+    } catch (error) {
+      console.error('Error fetching metadata:', error);
+      
+      // Remove loading message if still present
+      const existingMsg = document.getElementById('metadataLoadingMsg');
+      if (existingMsg) existingMsg.remove();
+      
+      // Show error message
+      const errorMsg = document.createElement('small');
+      errorMsg.style.color = '#dc3545';
+      errorMsg.style.display = 'block';
+      errorMsg.style.marginTop = '4px';
+      errorMsg.textContent = `⚠️ Could not fetch metadata: ${error.message}`;
+      errorMsg.id = 'metadataErrorMsg';
+      sourceElement.parentElement.appendChild(errorMsg);
+      
+      // Auto-dismiss error message after 5 seconds
+      metadataLoadTimeout = setTimeout(() => {
+        const msg = document.getElementById('metadataErrorMsg');
+        if (msg) msg.remove();
+      }, 5000);
+    }
+  }
+  
+  // Handle custom Docker image input
   if (customTemplateInput) {
     customTemplateInput.addEventListener('blur', async function() {
       const imageRef = this.value.trim();
-      
-      // Skip if empty or already fetched
-      if (!imageRef || imageRef === lastFetchedImage) return;
-      
-      // Clear any pending timeout
-      if (metadataLoadTimeout) clearTimeout(metadataLoadTimeout);
-      
-      // Show loading indicator
-      const loadingMsg = document.createElement('small');
-      loadingMsg.id = 'metadata-loading';
-      loadingMsg.style.cssText = 'display: block; margin-top: 4px; color: #0d6efd;';
-      loadingMsg.innerHTML = '<i class="bi bi-hourglass-split"></i> Fetching image metadata...';
-      customTemplateInput.parentElement.appendChild(loadingMsg);
-      
-      try {
-        const response = await fetch(`/sites/<%=site.id%>/containers/metadata?image=${encodeURIComponent(imageRef)}`);
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch metadata');
-        }
-        
-        // Remove loading indicator
-        const loading = document.getElementById('metadata-loading');
-        if (loading) loading.remove();
-        
-        // Pre-populate form fields
-        populateMetadata(data);
-        
-        // Show success message
-        const successMsg = document.createElement('small');
-        successMsg.id = 'metadata-success';
-        successMsg.style.cssText = 'display: block; margin-top: 4px; color: #198754;';
-        successMsg.innerHTML = '<i class="bi bi-check-circle"></i> Metadata loaded successfully';
-        customTemplateInput.parentElement.appendChild(successMsg);
-        
-        // Auto-remove success message after 3 seconds
-        setTimeout(() => {
-          const msg = document.getElementById('metadata-success');
-          if (msg) msg.remove();
-        }, 3000);
-        
-        lastFetchedImage = imageRef;
-      } catch (err) {
-        console.error('Error fetching metadata:', err);
-        
-        // Remove loading indicator
-        const loading = document.getElementById('metadata-loading');
-        if (loading) loading.remove();
-        
-        // Show error message
-        const errorMsg = document.createElement('small');
-        errorMsg.id = 'metadata-error';
-        errorMsg.style.cssText = 'display: block; margin-top: 4px; color: #dc3545;';
-        errorMsg.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${err.message}`;
-        customTemplateInput.parentElement.appendChild(errorMsg);
-        
-        // Auto-remove error after 5 seconds
-        setTimeout(() => {
-          const msg = document.getElementById('metadata-error');
-          if (msg) msg.remove();
-        }, 5000);
-      }
+      await fetchAndPopulateMetadata(imageRef, this);
     });
   }
   
