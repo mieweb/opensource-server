@@ -264,7 +264,18 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     // Clear existing auto-populated rows (not manually added ones)
     // We'll just append to existing for now to avoid data loss
     
-    // Pre-populate Services
+    // Pre-populate HTTP Services from OCI labels
+    if (metadata.httpServices && Array.isArray(metadata.httpServices)) {
+      for (const httpService of metadata.httpServices) {
+        // Use container hostname as the external hostname
+        const hostname = document.getElementById('hostname')?.value || '';
+        // Auto-select first domain if available
+        const firstDomainId = externalDomains.length > 0 ? externalDomains[0].id : '';
+        addServiceRow('http', httpService.port, hostname, firstDomainId);
+      }
+    }
+    
+    // Pre-populate Transport Services from EXPOSE directives
     if (metadata.ports && Array.isArray(metadata.ports)) {
       for (const portInfo of metadata.ports) {
         const type = portInfo.protocol || 'tcp';

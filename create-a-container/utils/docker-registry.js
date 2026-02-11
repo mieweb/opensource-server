@@ -289,11 +289,12 @@ async function getImageConfig(registry, repo, tag) {
 /**
  * Extract metadata from image config for container creation
  * @param {object} config - Raw image config from registry
- * @returns {object} Structured metadata: { ports, env, entrypoint }
+ * @returns {object} Structured metadata: { ports, httpServices, env, entrypoint }
  */
 function extractImageMetadata(config) {
   const metadata = {
     ports: [],
+    httpServices: [],
     env: {},
     entrypoint: ''
   };
@@ -307,6 +308,20 @@ function extractImageMetadata(config) {
         port: parseInt(port, 10),
         protocol: protocol.toLowerCase()
       });
+    }
+  }
+  
+  // Extract HTTP service from OCI labels
+  // Label: org.mieweb.opensource-server.services.http.default-port
+  if (config.config?.Labels) {
+    const httpPortLabel = config.config.Labels['org.mieweb.opensource-server.services.http.default-port'];
+    if (httpPortLabel) {
+      const port = parseInt(httpPortLabel, 10);
+      if (!isNaN(port) && port > 0 && port <= 65535) {
+        metadata.httpServices.push({
+          port: port
+        });
+      }
     }
   }
   
