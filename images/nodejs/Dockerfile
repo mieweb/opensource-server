@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM ghcr.io/mieweb/opensource-server/base:latest AS base
+FROM base
 
 # We install the binary release from NodeSource to get the most up-to-date
 # NodeJS releases.
 ARG NODE_MAJOR_VERSION=24
 RUN curl -fsSL https://deb.nodesource.com/setup_$NODE_MAJOR_VERSION.x | bash - && \
     apt-get update && \
-    apt-get install nodejs && \
+    apt-get install -y nodejs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
