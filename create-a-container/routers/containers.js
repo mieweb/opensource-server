@@ -7,6 +7,7 @@ const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
+const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -53,6 +54,48 @@ function normalizeDockerRef(ref) {
   
   return `${host}/${org}/${image}:${tag}`;
 }
+
+// GET /sites/:siteId/containers/metadata - Fetch Docker image metadata
+router.get('/metadata', requireAuth, async (req, res) => {
+  try {
+    const { image } = req.query;
+    
+    if (!image || !image.trim()) {
+      return res.status(400).json({ error: 'Image parameter is required' });
+    }
+    
+    // Normalize the image reference
+    const normalizedImage = normalizeDockerRef(image.trim());
+    
+    // Parse into components
+    const parsed = parseDockerRef(normalizedImage);
+    const repo = `${parsed.namespace}/${parsed.image}`;
+    
+    // Fetch image config from registry
+    const config = await getImageConfig(parsed.registry, repo, parsed.tag);
+    
+    // Extract metadata
+    const metadata = extractImageMetadata(config);
+    
+    return res.json(metadata);
+  } catch (err) {
+    console.error('Error fetching image metadata:', err);
+    
+    let errorMessage = 'Failed to fetch image metadata';
+    if (err.message.includes('HTTP 404')) {
+      errorMessage = 'Image not found in registry';
+    } else if (err.message.includes('timeout')) {
+      errorMessage = 'Request timed out. Registry may be unavailable.';
+    } else if (err.message.includes('auth')) {
+      errorMessage = 'Authentication failed. Image may be private.';
+    }
+    
+    return res.status(500).json({ 
+      error: errorMessage,
+      details: err.message 
+    });
+  }
+});
 
 // GET /sites/:siteId/containers/new - List available templates via API or HTML form
 router.get('/new', requireAuth, async (req, res) => {

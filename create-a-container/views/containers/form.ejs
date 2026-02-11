@@ -187,6 +187,107 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     });
   }
 
+  // Docker image metadata fetching
+  let metadataLoadTimeout = null;
+  let lastFetchedImage = '';
+  
+  if (customTemplateInput) {
+    customTemplateInput.addEventListener('blur', async function() {
+      const imageRef = this.value.trim();
+      
+      // Skip if empty or already fetched
+      if (!imageRef || imageRef === lastFetchedImage) return;
+      
+      // Clear any pending timeout
+      if (metadataLoadTimeout) clearTimeout(metadataLoadTimeout);
+      
+      // Show loading indicator
+      const loadingMsg = document.createElement('small');
+      loadingMsg.id = 'metadata-loading';
+      loadingMsg.style.cssText = 'display: block; margin-top: 4px; color: #0d6efd;';
+      loadingMsg.innerHTML = '<i class="bi bi-hourglass-split"></i> Fetching image metadata...';
+      customTemplateInput.parentElement.appendChild(loadingMsg);
+      
+      try {
+        const response = await fetch(`/sites/<%=site.id%>/containers/metadata?image=${encodeURIComponent(imageRef)}`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch metadata');
+        }
+        
+        // Remove loading indicator
+        const loading = document.getElementById('metadata-loading');
+        if (loading) loading.remove();
+        
+        // Pre-populate form fields
+        populateMetadata(data);
+        
+        // Show success message
+        const successMsg = document.createElement('small');
+        successMsg.id = 'metadata-success';
+        successMsg.style.cssText = 'display: block; margin-top: 4px; color: #198754;';
+        successMsg.innerHTML = '<i class="bi bi-check-circle"></i> Metadata loaded successfully';
+        customTemplateInput.parentElement.appendChild(successMsg);
+        
+        // Auto-remove success message after 3 seconds
+        setTimeout(() => {
+          const msg = document.getElementById('metadata-success');
+          if (msg) msg.remove();
+        }, 3000);
+        
+        lastFetchedImage = imageRef;
+      } catch (err) {
+        console.error('Error fetching metadata:', err);
+        
+        // Remove loading indicator
+        const loading = document.getElementById('metadata-loading');
+        if (loading) loading.remove();
+        
+        // Show error message
+        const errorMsg = document.createElement('small');
+        errorMsg.id = 'metadata-error';
+        errorMsg.style.cssText = 'display: block; margin-top: 4px; color: #dc3545;';
+        errorMsg.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${err.message}`;
+        customTemplateInput.parentElement.appendChild(errorMsg);
+        
+        // Auto-remove error after 5 seconds
+        setTimeout(() => {
+          const msg = document.getElementById('metadata-error');
+          if (msg) msg.remove();
+        }, 5000);
+      }
+    });
+  }
+  
+  function populateMetadata(metadata) {
+    // Clear existing auto-populated rows (not manually added ones)
+    // We'll just append to existing for now to avoid data loss
+    
+    // Pre-populate Services
+    if (metadata.ports && Array.isArray(metadata.ports)) {
+      for (const portInfo of metadata.ports) {
+        const type = portInfo.protocol || 'tcp';
+        addServiceRow(type, portInfo.port);
+      }
+    }
+    
+    // Pre-populate Environment Variables
+    if (metadata.env && typeof metadata.env === 'object') {
+      for (const [key, value] of Object.entries(metadata.env)) {
+        addEnvVarRow(key, value);
+      }
+    }
+    
+    // Pre-populate Entrypoint
+    if (metadata.entrypoint) {
+      const entrypointField = document.getElementById('entrypoint');
+      if (entrypointField && !entrypointField.value) {
+        entrypointField.value = metadata.entrypoint;
+      }
+    }
+  }
+
   function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '') {
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
