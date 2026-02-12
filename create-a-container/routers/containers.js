@@ -510,17 +510,97 @@ router.put('/:id', requireAuth, async (req, res) => {
   
   if (isApiRequest(req)) {
     try {
-      const container = await Container.findByPk(containerId);
-      if (!container) return res.status(404).json({ error: 'Not found' });
-      await container.update({
-        ipv4Address: req.body.ipv4Address ?? container.ipv4Address,
-        macAddress: req.body.macAddress ?? container.macAddress,
-        osRelease: req.body.osRelease ?? container.osRelease
+      const container = await Container.findByPk(containerId, {
+        include: [{ model: Node, as: 'node', where: { siteId } }]
       });
+      if (!container) return res.status(404).json({ error: 'Not found' });
+
+      const {
+        ipv4Address, macAddress, osRelease,
+        // Deployment fields from the action
+        repository, branch, install_command, start_command,
+        build_command, runtime_language, project_root,
+        root_start_command, env_vars, deploy_on_start,
+        environmentVars, entrypoint
+      } = req.body;
+
+      // Simple field updates (from create-container.js / internal tooling)
+      const updates = {};
+      if (ipv4Address !== undefined) updates.ipv4Address = ipv4Address;
+      if (macAddress !== undefined) updates.macAddress = macAddress;
+      if (osRelease !== undefined) updates.osRelease = osRelease;
+
+      // Deployment config: build environmentVars and entrypoint from action fields
+      const isDeployRequest = repository || install_command || start_command || 
+                              build_command || deploy_on_start;
+
+      if (isDeployRequest) {
+        // Build environment variables JSON from action fields + any explicit env_vars
+        const envObj = {};
+
+        // Merge explicit env vars (from container_env_vars input)
+        if (env_vars && typeof env_vars === 'object') {
+          Object.assign(envObj, env_vars);
+        }
+
+        // Inject deployment-specific env vars so the entrypoint/reconfigure scripts can use them
+        if (repository) envObj.BUILD_REPOSITORY = repository;
+        if (branch) envObj.BUILD_BRANCH = branch;
+        if (project_root) envObj.PROJECT_ROOT = project_root;
+        if (install_command) envObj.INSTALL_COMMAND = install_command;
+        if (build_command) envObj.BUILD_COMMAND = build_command;
+        if (start_command) envObj.START_COMMAND = start_command;
+        if (runtime_language) envObj.RUNTIME_LANGUAGE = runtime_language;
+        if (root_start_command) envObj.ROOT_START_COMMAND = root_start_command;
+
+        if (Object.keys(envObj).length > 0) {
+          updates.environmentVars = JSON.stringify(envObj);
+        }
+
+        // Build entrypoint from start_command if provided
+        if (start_command) {
+          updates.entrypoint = start_command;
+        }
+
+        updates.status = container.containerId ? 'restarting' : container.status;
+      }
+
+      // Handle raw environmentVars / entrypoint (from form-style API calls)
+      if (!isDeployRequest) {
+        if (environmentVars && Array.isArray(environmentVars)) {
+          const envObj = {};
+          for (const env of environmentVars) {
+            if (env.key && env.key.trim()) envObj[env.key.trim()] = env.value || '';
+          }
+          if (Object.keys(envObj).length > 0) {
+            updates.environmentVars = JSON.stringify(envObj);
+          }
+        }
+        if (entrypoint !== undefined) {
+          updates.entrypoint = entrypoint && entrypoint.trim() ? entrypoint.trim() : null;
+        }
+      }
+
+      // Apply updates
+      if (Object.keys(updates).length > 0) {
+        await container.update(updates);
+      }
+
+      // If this is a deploy request and the container is provisioned, trigger a reconfigure job
+      if (isDeployRequest && container.containerId) {
+        const currentUser = req.session?.user || req.user?.username || 'api-user';
+        const job = await Job.create({
+          command: `node bin/reconfigure-container.js --container-id=${container.id}`,
+          createdBy: currentUser,
+          status: 'pending'
+        });
+        return res.status(200).json({ message: 'Updated', jobId: job.id });
+      }
+
       return res.status(200).json({ message: 'Updated' });
     } catch (err) {
       console.error('API PUT Error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error', details: err.message });
     }
   }
   
