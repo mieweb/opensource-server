@@ -530,7 +530,11 @@ router.put('/:id', requireAuth, async (req, res) => {
       if (macAddress !== undefined) updates.macAddress = macAddress;
       if (osRelease !== undefined) updates.osRelease = osRelease;
 
-      // Deployment config: build environmentVars and entrypoint from action fields
+      // Deployment config: store deployment metadata as environment variables.
+      // NOTE: For LXC system containers (cloned from templates), deployment
+      // commands must be executed INSIDE the running container — they must NOT
+      // be set as the LXC entrypoint (which replaces /sbin/init and crashes
+      // the container). We store the config for reference only.
       const isDeployRequest = repository || install_command || start_command || 
                               build_command || deploy_on_start;
 
@@ -543,7 +547,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           Object.assign(envObj, env_vars);
         }
 
-        // Inject deployment-specific env vars so the entrypoint/reconfigure scripts can use them
+        // Store deployment metadata as env vars for reference/future use
         if (repository) envObj.BUILD_REPOSITORY = repository;
         if (branch) envObj.BUILD_BRANCH = branch;
         if (project_root) envObj.PROJECT_ROOT = project_root;
@@ -557,12 +561,9 @@ router.put('/:id', requireAuth, async (req, res) => {
           updates.environmentVars = JSON.stringify(envObj);
         }
 
-        // Build entrypoint from start_command if provided
-        if (start_command) {
-          updates.entrypoint = start_command;
-        }
-
-        updates.status = container.containerId ? 'restarting' : container.status;
+        // Do NOT set entrypoint from start_command — for LXC system containers
+        // the entrypoint is /sbin/init. Setting it to a user command replaces
+        // the init system and the container cannot boot.
       }
 
       // Handle raw environmentVars / entrypoint (from form-style API calls)
@@ -586,17 +587,10 @@ router.put('/:id', requireAuth, async (req, res) => {
         await container.update(updates);
       }
 
-      // If this is a deploy request and the container is provisioned, trigger a reconfigure job
-      if (isDeployRequest && container.containerId) {
-        const currentUser = req.session?.user || req.user?.username || 'api-user';
-        const job = await Job.create({
-          command: `node bin/reconfigure-container.js --container-id=${container.id}`,
-          createdBy: currentUser,
-          status: 'pending'
-        });
-        return res.status(200).json({ message: 'Updated', jobId: job.id });
-      }
-
+      // For deploy requests, we only store the configuration.
+      // Actual deployment (clone repo, install, build, start) requires
+      // executing commands inside the running container, which is a
+      // separate mechanism (SSH, pct exec, etc.) — not a container restart.
       return res.status(200).json({ message: 'Updated' });
     } catch (err) {
       console.error('API PUT Error:', err);
