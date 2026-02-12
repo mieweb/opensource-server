@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Job, JobStatus, Container, Node, sequelize } = require('../models');
+const { Job, JobStatus, Container, Node, Service, HTTPService, TransportService, ExternalDomain, sequelize } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 
 // All job endpoints require authentication
@@ -83,14 +83,54 @@ router.get('/:id', async (req, res) => {
     }
 
     // JSON response for API clients
-    return res.json({ 
+    // Include associated container details so callers can poll the job
+    // and get container info (IP, ports, status) once the job completes.
+    const container = await Container.findOne({
+      where: { creationJobId: id },
+      include: [
+        { model: Node, as: 'node', attributes: ['id', 'name'] },
+        {
+          model: Service, as: 'services',
+          include: [
+            { model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] },
+            { model: TransportService, as: 'transportService' }
+          ]
+        }
+      ]
+    });
+
+    const response = { 
       id: job.id, 
       command: job.command, 
       status: job.status, 
       createdAt: job.createdAt, 
       updatedAt: job.updatedAt, 
       createdBy: job.createdBy 
-    });
+    };
+
+    if (container) {
+      const services = container.services || [];
+      const ssh = services.find(s => s.type === 'transport' && s.transportService?.protocol === 'tcp' && Number(s.internalPort) === 22);
+      const http = services.find(s => s.type === 'http');
+
+      response.container = {
+        id: container.id,
+        hostname: container.hostname,
+        ipv4Address: container.ipv4Address,
+        macAddress: container.macAddress,
+        status: container.status,
+        containerId: container.containerId,
+        sshPort: ssh?.transportService?.externalPort || null,
+        httpPort: http ? http.internalPort : null,
+        httpDomain: http?.httpService?.externalDomain
+          ? `${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
+          : null,
+        nodeName: container.node ? container.node.name : null,
+        createdAt: container.createdAt
+      };
+    }
+
+    return res.json(response);
   } catch (err) {
     console.error('Failed to fetch job:', err);
     if (req.accepts('html')) {
