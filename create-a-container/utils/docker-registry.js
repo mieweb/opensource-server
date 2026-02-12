@@ -46,10 +46,10 @@ function httpGet(url, headers = {}, redirectCount = 0) {
     req.on('error', (err) => {
       if (!timedOut) reject(err);
     });
-    req.setTimeout(30000, () => {
+    req.setTimeout(120000, () => {
       timedOut = true;
       req.destroy();
-      reject(new Error('Request timeout after 30 seconds'));
+      reject(new Error('Request timeout after 120 seconds'));
     });
   });
 }
