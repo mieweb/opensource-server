@@ -1,0 +1,83 @@
+{
+
+# working
+
+  "hostname": "cmyers-mieweb-whoami-master",
+  "template_name": "opensource-cmyers,101",
+  "services": "",
+  "env_vars": {
+    "WHOAMI_NAME": "LaunchPad-Apache-Proxy"
+  }
+
+
+# not working
+
+  "public_key": "",
+  "repository": "https://github.com/cmyers-mieweb/whoami",
+  "branch": "master",
+  "project_root": "",
+  "install_command": "apt-get update && apt-get install -y golang apache2",
+  "start_command": "# --- A. Apache Config ---\na2enmod proxy proxy_http\necho '<VirtualHost *:80>\n    ProxyPreserveHost On\n    ProxyPass / http://127.0.0.1:8080/\n    ProxyPassReverse / http://127.0.0.1:8080/\n</VirtualHost>' > /etc/apache2/sites-available/000-default.conf\n\n# --- B. Systemd Service Config ---\n# We use $(pwd) to ensure it points to where the repo was cloned\ncat <<EOF > /etc/systemd/system/whoami.service\n[Unit]\nDescription=WhoAmI Go App\nAfter=network.target\n\n[Service]\nType=simple\nUser=root\nWorkingDirectory=$(pwd)\nExecStart=$(pwd)/whoami --port 8080\nRestart=always\n\n[Install]\nWantedBy=multi-user.target\nEOF\n\n# --- C. Start Services ---\nsystemctl daemon-reload\nsystemctl enable whoami\nsystemctl restart whoami\nservice apache2 restart\n",
+  "build_command": "go build -o whoami .",
+  "runtime_language": "go",
+  "root_start_command": "",
+  "deploy_on_start": true,
+  "custom_services": "",
+}
+
+1. Builds a docker contianer
+```
+FROM ghcr.io/mieweb/opensource-server/base:latest
+RUN git clone repo
+RUN build app
+```
+2. Push as ghcr.io/mieweb/timeharbor
+
+{
+    "hostname": hostname,
+    "template": "ghcr.io/mieweb/timeharbor:latest",
+    "services": [ {
+        "type": "http",
+        "internalPort": 3000,
+        "externalHostname": hostname,
+        "externalDomainName": "os.mieweb.org"
+    }, {
+        "type": "tcp",
+        "internalPort": 22,
+        "externalPort": 2020
+    } ],
+    "environment": {
+        "WHOAMI_NAME": hostname
+    }
+}
+
+
+Now available at <hostname>.<container_domain_name>
+
+{% for each service %}
+Now available at <externalHostname>.<externalDomainName>
+container:22 -> externalDomainName:2020
+
+
+
+
+inputs:
+  api_key:
+    description: "API Key for authentication"
+    required: true
+  api_url:
+    description: "Base URL for the Container API"
+    required: true
+  template_name:
+    description: "LXC Template Name (replaces linux_distribution)"
+    required: false
+  container_env_vars:
+    description: "Environment variables to set inside the container (JSON string)"
+    required: false
+  services:
+    description: "Services configuration object"
+    required: false
+  site_id:
+    description: "Site ID for the container management system"
+    required: false
+    default: "1"
