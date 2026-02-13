@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "argon2": "^0.44.0",
-    "axios": "^1.12.2",
+    "axios": "^1.13.5",
     "connect-flash": "^0.1.1",
     "dotenv": "^17.2.3",
     "dotenv-stringify": "^3.0.1",
