@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Database Schema
 
-The cluster management system uses a relational database to store all configuration, state, and user information. This document describes the database schema and relationships between tables.
+The cluster management system uses Sequelize ORM for database abstraction, supporting SQLite (default), PostgreSQL, and MySQL.
 
 ## Entity Relationship Diagram
 
@@ -167,338 +167,60 @@ erDiagram
 ## Core Models
 
 ### Site
-
-The **Site** model represents a top-level organizational unit, typically corresponding to a physical or logical Proxmox cluster location.
-
-**Key Fields:**
-- `name`: Display name for the site
-- `internalDomain`: Internal DNS domain (e.g., `cluster.internal`)
-- `dhcpRange`: IP range for container assignment (e.g., `192.168.1.100-192.168.1.200`)
-- `subnetMask`: Network subnet mask
-- `gateway`: Default gateway IP
-- `dnsForwarders`: Upstream DNS servers (comma-separated)
-
-**Relationships:**
-- Has many Nodes
-- Has many ExternalDomains
+Top-level organizational unit. Has many Nodes and ExternalDomains.
 
 ### Node
-
-The **Node** model represents a Proxmox VE server within a site.
-
-**Key Fields:**
-- `name`: Node name (must match Proxmox hostname)
-- `ipv4Address`: Node's IP address for DNS
-- `apiUrl`: Proxmox API endpoint
-- `apiTokenIdOrUsername`: Authentication credential (username or token ID)
-- `apiTokenSecretOrPassword`: Authentication secret
-- `disableTlsVerification`: Skip TLS certificate validation
-- `imageStorage`: Proxmox storage name for pulled Docker/OCI images (default: 'local')
-
-**Relationships:**
-- Belongs to Site
-- Has many Containers
-
-**Constraints:**
-- `name` is unique across all nodes
+Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'`. Belongs to Site, has many Containers.
 
 ### Container
+LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. Belongs to Node and optionally to a Job.
 
-The **Container** model represents an LXC container running on a Proxmox node.
+### Service (STI)
+Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.
 
-**Key Fields:**
-- `hostname`: Container hostname (unique)
-- `username`: Owner of the container (who created it)
-- `status`: Container creation state ('pending', 'creating', 'running', 'failed')
-- `template`: Name of the Proxmox template or Docker image reference (e.g., `docker.io/library/nginx:latest`)
-- `creationJobId`: Foreign key to the Job that created this container (nullable)
-- `containerId`: Proxmox container ID (CTID)
-- `macAddress`: Unique MAC address (nullable for pending containers)
-- `ipv4Address`: Assigned IP address (nullable for pending containers)
-- `aiContainer`: AI container flag (default: 'N')
-
-**Relationships:**
-- Belongs to Node
-- Has many Services
-- Belongs to Job (optional, via creationJobId)
-
-**Constraints:**
-- Unique composite index on `(nodeId, containerId)`
-- `hostname`, `macAddress`, and `ipv4Address` are globally unique
-
-### Service (Base Model)
-
-The **Service** model uses Single Table Inheritance (STI) to represent different types of services exposed by containers.
-
-**Key Fields:**
-- `containerId`: Container exposing this service
-- `type`: Service type ('http', 'transport', or 'dns')
-- `containerPort`: Port number inside the container
-
-**Relationships:**
-- Belongs to Container
-- Has one HTTPService, TransportService, or DnsService (based on type)
-
-### HTTPService
-
-Represents HTTP/HTTPS services with automatic SSL certificate management.
-
-**Key Fields:**
-- `externalHostname`: Subdomain for the service (e.g., 'app' for 'app.example.com')
-- `externalDomainId`: External domain to use
-
-**Relationships:**
-- Belongs to Service (one-to-one)
-- Belongs to ExternalDomain
-
-**Constraints:**
-- Unique composite index on `(externalHostname, externalDomainId)`
-
-### TransportService
-
-Represents TCP/UDP services exposed via port mapping.
-
-**Key Fields:**
-- `protocol`: 'tcp' or 'udp'
-- `externalPort`: Public port number
-- `useTls`: Whether to use TLS for TCP connections
-
-**Relationships:**
-- Belongs to Service (one-to-one)
-
-**Constraints:**
-- Unique composite index on `(protocol, externalPort)`
-
-**Static Methods:**
-- `findNextAvailablePort()`: Finds the next available external port
-
-### DnsService
-
-Represents services registered in DNS (typically SRV records).
-
-**Key Fields:**
-- `recordType`: DNS record type (currently only 'SRV' supported)
-- `serviceName`: Service name for DNS record
-
-**Relationships:**
-- Belongs to Service (one-to-one)
+- **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain.
+- **TransportService**: `(protocol, externalPort)` unique. `findNextAvailablePort()` static method.
+- **DnsService**: SRV records with `serviceName`.
 
 ### ExternalDomain
-
-The **ExternalDomain** model manages public domains for HTTP service exposure.
-
-**Key Fields:**
-- `domain`: Domain name (e.g., 'example.com')
-- `acmeEmail`: Email for certificate notifications
-- `acmeDirectory`: ACME CA endpoint URL
-- `cloudflareApiEmail`: Cloudflare account email
-- `cloudflareApiKey`: Cloudflare API key for DNS challenges
-
-**Relationships:**
-- Belongs to Site
-- Has many HTTPServices
+Manages public domains for HTTP service exposure. Belongs to Site, has many HTTPServices.
 
 ## User Management Models
 
 ### User
-
-The **User** model stores user accounts with LDAP-compatible attributes.
-
-**Key Fields:**
-- `uidNumber`: Unique user ID (starting at 2000)
-- `username`: Login username
-- `cn`: Common name (full name)
-- `sn`: Surname (last name)
-- `givenName`: First name
-- `mail`: Email address
-- `sshPublicKey`: SSH public key for container access
-- `userPassword`: Hashed password (argon2)
-- `status`: Account status ('pending', 'active', 'suspended')
-
-**Relationships:**
-- Belongs to many Groups (through UserGroups)
-
-**Security:**
-- Passwords are hashed with argon2 before storage
-- Only 'active' users can authenticate
-- First registered user is automatically added to 'sysadmins' group
-
-**Static Methods:**
-- `getNextUid()`: Returns next available UID starting at 2000
-
-**Instance Methods:**
-- `validatePassword(password)`: Verifies password against hash
+LDAP-compatible user accounts. Passwords hashed with argon2. UIDs start at 2000 (`getNextUid()`). Only `active` users can authenticate. First registered user auto-added to `sysadmins`.
 
 ### Group
-
-The **Group** model represents user groups with LDAP-compatible attributes.
-
-**Key Fields:**
-- `gidNumber`: Unique group ID
-- `cn`: Group name (common name)
-- `isAdministrator`: Whether group members have admin privileges
-
-**Relationships:**
-- Has many Users (through UserGroups)
-
-**Default Groups:**
-- `ldapusers` (gid: 2000): Standard container access
-- `sysadmins` (gid: 2001): Full cluster administration
+LDAP-compatible groups. Default groups: `ldapusers` (gid: 2000), `sysadmins` (gid: 2001).
 
 ### UserGroup
-
-The **UserGroup** model is a join table for the many-to-many User-Group relationship.
-
-**Key Fields:**
-- `uidNumber`: Foreign key to Users
-- `gidNumber`: Foreign key to Groups
-
-**Constraints:**
-- Composite primary key on `(uidNumber, gidNumber)`
+Join table. Composite primary key on `(uidNumber, gidNumber)`.
 
 ### PasswordResetToken
-
-The **PasswordResetToken** model stores password reset tokens for users.
-
-**Key Fields:**
-- `id`: UUID primary key
-- `uidNumber`: Foreign key to Users
-- `token`: Unique 64-character hex token
-- `expiresAt`: Token expiration timestamp
-- `used`: Whether the token has been used
-
-**Relationships:**
-- Belongs to User
-
-**Static Methods:**
-- `generateToken(uidNumber, expirationHours)`: Creates a new token (default 1 hour expiry)
-- `validateToken(token)`: Validates and returns token if valid and unused
-- `cleanup()`: Removes expired and used tokens
-
-**Instance Methods:**
-- `markAsUsed()`: Marks the token as used
+UUID-based tokens with 1-hour default expiry. Methods: `generateToken()`, `validateToken()`, `cleanup()`.
 
 ### InviteToken
+UUID-based invite tokens with 24-hour default expiry. Email tied to token and locked during registration. Methods: `generateToken()`, `validateToken()`, `cleanup()`.
 
-The **InviteToken** model stores user invitation tokens sent by administrators.
-
-**Key Fields:**
-- `id`: UUID primary key
-- `email`: Email address the invitation was sent to
-- `token`: Unique 64-character hex token
-- `expiresAt`: Token expiration timestamp (default 24 hours)
-- `used`: Whether the token has been used
-
-**Static Methods:**
-- `generateToken(email, expirationHours)`: Creates a new invite token (default 24 hour expiry)
-- `validateToken(token)`: Validates and returns token if valid, unused, and not expired
-- `cleanup()`: Removes expired and used tokens
-
-**Instance Methods:**
-- `markAsUsed()`: Marks the token as used after successful registration
-
-**Usage:**
-- Created when an admin invites a user via email
-- Validated during registration to auto-activate the user's account
-- Email is tied to the token and cannot be changed during registration
-
-## Job Management Models
+## Job Management
 
 ### Job
-
-The **Job** model tracks asynchronous operations.
-
-**Key Fields:**
-- `name`: Job description
-- `associatedResource`: Reference to related resource
-- `status`: Job state ('pending', 'running', 'success', 'failure', 'cancelled')
-
-**Relationships:**
-- Has many JobStatuses
+Tracks async operations (container creation, etc.). Statuses: `pending`, `running`, `success`, `failure`, `cancelled`.
 
 ### JobStatus
+Progress messages for a Job.
 
-The **JobStatus** model stores job execution history and progress messages.
+## System
 
-**Key Fields:**
-- `jobId`: Foreign key to Jobs
-- `message`: Status update message
-
-**Relationships:**
-- Belongs to Job
-
-## Session Management
-
-### SessionSecret
-
-The **SessionSecret** model stores express-session secrets.
-
-**Key Fields:**
-- `secret`: 32-64 character secret string
-
-**Constraints:**
-- `secret` is unique
-
-## System Settings
-
-### Setting
-
-The **Setting** model stores system-wide configuration key-value pairs.
-
-**Key Fields:**
-- `key`: Setting identifier (primary key)
-- `value`: Setting value (string)
-
-**Constraints:**
-- `key` is unique and serves as primary key
-
-**Current Settings:**
-- `push_notification_url`: URL for push notification service (empty by default)
-- `push_notification_enabled`: Whether push notification 2FA is enabled ('true' or 'false')
-
-**Static Methods:**
-- `get(key)`: Retrieve a setting value by key
-- `set(key, value)`: Create or update a setting
-- `getMultiple(keys)`: Retrieve multiple settings as an object
+- **SessionSecret**: Stores express-session secrets
+- **Setting**: Key-value pairs for system config. Methods: `get()`, `set()`, `getMultiple()`
 
 ## Database Abstraction
 
-The schema is implemented using **Sequelize ORM**, providing:
-
-- **Database Portability**: Supports SQLite (default), PostgreSQL, and MySQL
-- **Migrations**: Schema versioning and updates via `sequelize-cli`
-- **Validation**: Field-level validation rules
-- **Hooks**: Automatic password hashing, UID/GID assignment
-- **Associations**: Declarative relationship definitions
+Implemented with **Sequelize ORM**: supports SQLite (default), PostgreSQL, MySQL. Includes migrations, field validation, hooks (password hashing, UID assignment), and declarative associations.
 
 ## Key Design Patterns
 
-### Single Table Inheritance (STI)
-
-The Service model uses STI to handle different service types:
-- Base `Services` table with `type` discriminator
-- Child tables (`HTTPServices`, `TransportServices`, `DnsServices`) extend via one-to-one relationships
-- Allows polymorphic service handling while maintaining type-specific fields
-
-### LDAP Schema Compatibility
-
-User and Group models follow LDAP naming conventions:
-- `uidNumber` / `gidNumber` for numeric IDs
-- `cn` (common name) for names
-- `sn` (surname), `givenName` for user names
-- Enables seamless integration with LDAP authentication
-
-### Hierarchical Organization
-
-Resources are organized hierarchically:
-```
-Site → Nodes → Containers → Services
-```
-
-This mirrors the physical infrastructure topology and simplifies queries.
-
-## Next Steps
-
-- [System Architecture](system-architecture): Understand how the database integrates with other components
-- [Development Workflow](development-workflow): Learn how to create migrations
-- [Core Technologies](core-technologies): Sequelize ORM documentation
+- **Service STI**: Base `Services` table with `type` discriminator; child tables (`HTTPServices`, `TransportServices`, `DnsServices`) extend via one-to-one relationships
+- **LDAP compatibility**: User/Group models use LDAP naming (`uidNumber`, `gidNumber`, `cn`, `sn`, `givenName`)
+- **Hierarchy**: Site → Nodes → Containers → Services (mirrors physical topology)

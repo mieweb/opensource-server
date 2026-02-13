@@ -4,6 +4,10 @@ sidebar_position: 1
 
 # What is Proxmox Launchpad?
 
+:::caution Outdated Documentation
+This section predates the last major rewrite and may not be accurate. Check back weekly for updates.
+:::
+
 Proxmox Launchpad is a powerful GitHub Action that automatically provisions and manages LXC containers on MIE's open source Proxmox cluster. It streamlines the development workflow by creating dedicated containers for each branch of your repository and keeping them synchronized with your code changes.
 
 ![Proxmox Launchpad Marketplace Image](./img/proxmox-launchpad-page.png)

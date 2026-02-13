@@ -168,8 +168,9 @@ router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
       ${qi.quoteIdentifier('uid')} AS username,
       ${qi.quoteIdentifier('uidNumber')} AS uid_number,
       ${qi.quoteIdentifier('gidNumber')} AS gid_number,
+      ${qi.quoteIdentifier('givenName')} AS first_name,
       ${qi.quoteIdentifier('cn')} AS full_name,
-      ${qi.quoteIdentifier('sn')} AS surname,
+      ${qi.quoteIdentifier('sn')} AS last_name,
       ${qi.quoteIdentifier('mail')},
       ${qi.quoteIdentifier('homeDirectory')} AS home_directory,
       ${qi.quoteIdentifier('userPassword')} AS password

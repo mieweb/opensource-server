@@ -11,5 +11,11 @@ services:
     ports:
       - 5432:5432
 
+  ldap:
+    image: ghcr.io/mieweb/ldap-gateway:latest
+    env_file: compose.ldap.env
+    environment:
+      SQL_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DATABASE}
+
 volumes:
   postgres-data:

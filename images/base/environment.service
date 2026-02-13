@@ -1,0 +1,14 @@
+[Unit]
+Description=Sync Container Environment and /etc/environment
+# Run before standard system initialization
+DefaultDependencies=no
+Before=sysinit.target
+# But after the rootfs is writable
+After=systemd-remount-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/environment.sh
+
+[Install]
+WantedBy=sysinit.target

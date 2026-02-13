@@ -4,6 +4,10 @@ sidebar_position: 2
 
 # Using a Supplied Runner (Path 1)
 
+:::caution Outdated Documentation
+This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
+:::
+
 This guide covers **Path 1** of Proxmox Launchpad: using your own GitHub self-hosted runners or external runners to manage containers. This is the **recommended approach** for most users.
 
 :::tip Why Path 1 is Recommended
@@ -179,62 +183,40 @@ For applications with multiple services (frontend + backend, microservices, etc.
     root_start_command: "docker-compose up -d"
 ```
 
-#### Multi-Component Structure
-
-Each component path is relative to your project root:
-
-```
-your-repo/
-├── frontend/          # Component path: "frontend/"
-│   ├── package.json
-│   └── src/
-├── backend/           # Component path: "backend/"
-│   ├── requirements.txt
-│   └── app.py
-└── docker-compose.yml # Root commands run here
-```
-
 ### Automatic Deployment Properties
 
-| Propety | Required? | Description | Single Component | Multi-Component |
+| Property | Required? | Description | Single Component | Multi-Component |
 | --------- | ----- |  ------------------------------------ | ---- | --- |
-|  `multi_component` | Conditional | A `y` flag that specifies if your application is multi-component. This only needs to be set if your application is multi-component. | N/A | A string of `y`.
-|  `container_env_vars` | No. | Key-Value Environment variable pairs. | Dictionary in the form of: `{ "api_key": "123", "password": "abc"}` | Dictionary in the form of: `'{"/frontend": { "api_key": "123"}, "/backend": { "password": "abc123" }}'`.
-|  `install_command` | Yes* | Commands to install all project dependencies | String of the installation command, i.e. `npm install`. | Dictionary in the form of: `'{"/frontend": "npm install", "/backend": "pip install -r ../requirements.txt"}'`.
-|  `build_command` | No | Commands to build project components | String of the build command, i.e. `npm build`. | Dictionary in the form of: `'{"/frontend": "npm build", "/backend": "python3 build.py"}'`.
-|  `start_command` | Yes* | Commands to start project components. | String of the start command, i.e. `npm run`. | Dictionary in the form of: `'{"/frontend": "npm run", "/backend": "flask run"}'`.
-|  `runtime_language` | Yes* | Runtime language of each project component, which can either be `nodejs` or `python`. | String of runtime environment, i.e. `nodejs` | Dictionary in the form of: `'{"/frontend": "nodejs", "/backend": "python"}'`.
-|  `root_start_command` | No | Command to run at the project directory root for **multi-component applications**. | N/A | String of the command, i.e. `Docker-compose up ...`
+|  `multi_component` | Conditional | Set to `y` for multi-component apps. | N/A | `y` |
+|  `container_env_vars` | No | Key-Value environment variable pairs. | `{ "api_key": "123", "password": "abc"}` | `'{"/frontend": { "api_key": "123"}, "/backend": { "password": "abc123" }}'` |
+|  `install_command` | Yes* | Dependency install commands. | `npm install` | `'{"/frontend": "npm install", "/backend": "pip install -r ../requirements.txt"}'` |
+|  `build_command` | No | Build commands. | `npm build` | `'{"/frontend": "npm build", "/backend": "python3 build.py"}'` |
+|  `start_command` | Yes* | Start commands. | `npm run` | `'{"/frontend": "npm run", "/backend": "flask run"}'` |
+|  `runtime_language` | Yes* | Runtime: `nodejs` or `python`. | `nodejs` | `'{"/frontend": "nodejs", "/backend": "python"}'` |
+|  `root_start_command` | No | Root directory command for multi-component apps. | N/A | `Docker-compose up ...` |
 
-> * (*) These options are only required if `root_start_command` is not provided, as that command may be a docker build and/or a docker compose command that builds the entire application.
+> \* Only required if `root_start_command` is not provided.
 
 ### Services Configuration
 
 Add pre-configured services to your container:
 
 ```yaml
-# Available services
 services: '["mongodb", "postgresql", "redis", "docker", "nginx", "apache"]'
 ```
 
-#### Available Services
-
-| Service | Description | Use Case |
-|---------|-------------|----------|
-| `mongodb` | MongoDB database | Document storage, NoSQL applications |
-| `postgresql` | PostgreSQL database | Relational database, SQL applications |
-| `redis` | Redis cache | Caching, session storage |
-| `docker` | Docker runtime | Containerized applications |
-| `nginx` | NGINX web server | Reverse proxy, static file serving |
-| `apache` | Apache web server | Web hosting, PHP applications |
-| `rabbitmq` | RabbitMQ message broker | Message queuing, microservices |
-| `memcached` | Memcached caching | Distributed caching |
-| `mariadb` | MariaDB database | MySQL-compatible database |
-| `meteor` | Meteor framework | Full-stack JavaScript applications |
-
-:::note Service Dependencies
-Some services like `meteor` include other services (MongoDB). You don't need to install dependencies separately.
-:::
+| Service | Description |
+|---------|-------------|
+| `mongodb` | MongoDB database |
+| `postgresql` | PostgreSQL database |
+| `redis` | Redis cache |
+| `docker` | Docker runtime |
+| `nginx` | NGINX web server |
+| `apache` | Apache web server |
+| `rabbitmq` | RabbitMQ message broker |
+| `memcached` | Memcached caching |
+| `mariadb` | MariaDB database |
+| `meteor` | Meteor framework (includes MongoDB) |
 
 ### Custom Services
 
@@ -248,11 +230,7 @@ custom_services: |
   ]
 ```
 
-Each array represents the installation commands for one custom service.
-
-:::important Important
-Make sure you enable and start your service using the systemctl service manager CLI.
-:::
+Each array represents the installation commands for one custom service. Make sure you enable and start your service using `systemctl`.
 
 ## Complete Workflow Examples
 

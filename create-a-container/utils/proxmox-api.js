@@ -81,7 +81,7 @@ class ProxmoxApi {
    * @param {string} path 
    * @param {string} roles 
    * @param {string|null} groups 
-   * @param {boolean} propogate 
+   * @param {boolean} propagate 
    * @param {string|null} tokens 
    * @param {string|null} users 
    * @returns {Promise<void>}
@@ -92,6 +92,20 @@ class ProxmoxApi {
       { path, roles, groups, propagate: propagate ? 1 : 0, tokens, users },
       this.options
     );
+  }
+
+  /**
+   * Sync LDAP realm to update user list from LDAP server
+   * @param {string} realm - The realm name (e.g., 'ldap')
+   * @returns {Promise<void>}
+   */
+  async syncLdapRealm(realm = 'ldap') {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/access/domains/${realm}/sync`,
+      {},
+      this.options
+    );
+    return response.data.data;
   }
 
   /**

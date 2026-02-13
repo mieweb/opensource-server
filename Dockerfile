@@ -52,20 +52,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 # and management.
 RUN apt update && apt -y install git make nodejs sudo
 
-# Install the ldap-gateway package
-ARG LDAP_GATEWAY_BRANCH=main
-RUN git clone \
-        --branch=${LDAP_GATEWAY_BRANCH} \
-        https://github.com/mieweb/LDAPServer.git \
-        /opt/ldap-gateway \
-    && cd /opt/ldap-gateway \
-    && npm install \
-    && npm run build \
-    && adduser --system --group --disabled-login --no-create-home --home /nonexistent ldap-gateway \
-    && chown -R ldap-gateway:ldap-gateway /opt/ldap-gateway \
-    && cp /opt/ldap-gateway/nfpm/systemd/ldap-gateway.service /etc/systemd/system/ldap-gateway.service \
-    && systemctl enable ldap-gateway
-
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
 COPY . /opt/opensource-server

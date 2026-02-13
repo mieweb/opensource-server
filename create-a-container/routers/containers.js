@@ -7,6 +7,7 @@ const { requireAuth } = require('../middlewares');
 const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
+const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -54,6 +55,48 @@ function normalizeDockerRef(ref) {
   return `${host}/${org}/${image}:${tag}`;
 }
 
+// GET /sites/:siteId/containers/metadata - Fetch Docker image metadata
+router.get('/metadata', requireAuth, async (req, res) => {
+  try {
+    const { image } = req.query;
+    
+    if (!image || !image.trim()) {
+      return res.status(400).json({ error: 'Image parameter is required' });
+    }
+    
+    // Normalize the image reference
+    const normalizedImage = normalizeDockerRef(image.trim());
+    
+    // Parse into components
+    const parsed = parseDockerRef(normalizedImage);
+    const repo = `${parsed.namespace}/${parsed.image}`;
+    
+    // Fetch image config from registry
+    const config = await getImageConfig(parsed.registry, repo, parsed.tag);
+    
+    // Extract metadata
+    const metadata = extractImageMetadata(config);
+    
+    return res.json(metadata);
+  } catch (err) {
+    console.error('Error fetching image metadata:', err);
+    
+    let errorMessage = 'Failed to fetch image metadata';
+    if (err.message.includes('HTTP 404')) {
+      errorMessage = 'Image not found in registry';
+    } else if (err.message.includes('timeout')) {
+      errorMessage = 'Request timed out. Registry may be unavailable.';
+    } else if (err.message.includes('auth')) {
+      errorMessage = 'Authentication failed. Image may be private.';
+    }
+    
+    return res.status(500).json({ 
+      error: errorMessage,
+      details: err.message 
+    });
+  }
+});
+
 // GET /sites/:siteId/containers/new - List available templates via API or HTML form
 router.get('/new', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
@@ -67,38 +110,6 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get valid container templates from all nodes in this site
-  const templates = [];
-  const nodes = await Node.findAll({
-    where: {
-      [Sequelize.Op.and]: {
-        siteId,
-        apiUrl: { [Sequelize.Op.ne]: null },
-        tokenId: { [Sequelize.Op.ne]: null },
-        secret: { [Sequelize.Op.ne]: null }
-      }
-    },
-  });
-
-  for (const node of nodes) {
-    try {
-      const client = await node.api();
-      const lxcTemplates = await client.getLxcTemplates(node.name);
-      
-      for (const lxc of lxcTemplates) {
-        templates.push({
-          // Proxmox usually returns 'name' (filename) or 'volid'
-          name: lxc.name || lxc.volid, 
-          vmid: lxc.vmid,
-          size: lxc.size,
-          node: node.name
-        });
-      }
-    } catch (err) {
-      console.error(`Error fetching templates from node ${node.name}:`, err.message);
-    }
-  }
-
   // Get external domains for this site
   const externalDomains = await ExternalDomain.findAll({
     where: { siteId },
@@ -108,7 +119,6 @@ router.get('/new', requireAuth, async (req, res) => {
   if (isApi) {
     return res.json({
       site_id: site.id,
-      templates: templates, 
       domains: externalDomains
     });
   }
@@ -116,7 +126,6 @@ router.get('/new', requireAuth, async (req, res) => {
 
   return res.render('containers/form', { 
     site,
-    templates,
     externalDomains,
     container: undefined, 
     req 

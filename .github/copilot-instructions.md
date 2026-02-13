@@ -59,6 +59,14 @@
 
 ## Documentation Preferences
 
+### Writing Style
+- **Terse and practical**: Every sentence must convey actionable or necessary information. Remove filler, marketing language, and motivational text.
+- **No fluff sections**: Do not include "What is X?", "Why use X?", "Benefits of X", "Key Features", or "Next Steps" sections. Readers already chose the tool — tell them how to use it.
+- **No troubleshooting sections**: Do not add generic troubleshooting or "Common Issues" sections to docs pages.
+- **Minimal repetition**: State a fact once. Cross-reference instead of restating. If two pages cover overlapping topics, consolidate into one and link.
+- **Lead with commands, config, and examples**: Tables, code blocks, CLI commands, and configuration snippets are preferred over prose explanations.
+- **Short introductions**: A page introduction should be one or two sentences stating what the page covers, then immediately begin the content.
+
 ### Diagrams and Visual Documentation
 - **Always use Mermaid diagrams** instead of ASCII art for workflow diagrams, architecture diagrams, and flowcharts
 - Use appropriate Mermaid diagram types:
@@ -67,10 +75,9 @@
   - `sequenceDiagram` for API interactions
   - `gitgraph` for branch/release strategies
 - Include styling with `classDef` for better visual hierarchy
-- Add descriptive comments and emojis sparingly for clarity
 
 ### Documentation Standards
-- Keep documentation DRY (Don't Repeat Yourself) - reference other docs instead of duplicating
+- Keep documentation DRY — reference other docs instead of duplicating content
 - Use clear cross-references between related documentation files
 - Update the main architecture document when workflow structure changes
 

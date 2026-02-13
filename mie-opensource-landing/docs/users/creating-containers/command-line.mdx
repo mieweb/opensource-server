@@ -6,57 +6,31 @@ import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceU
 
 # Using the API with curl
 
-:::note Note
-This walkthrough assumes that you already have a registered account in the cluster. If not, see [Introduction](/docs/intro).
+:::caution Outdated Documentation
+This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
 :::
 
-This guide shows you how to create a basic LXC container on the MIE Opensource Proxmox Cluster using the REST API with curl commands.
+API endpoint: <ContainerCreationUrl />
 
-The API endpoint is: <ContainerCreationUrl />
+**Prerequisites:**
 
-## Prerequisites
-
-- Active user account with appropriate permissions
-- An API key (see [API Keys](./api-keys.mdx) for how to create one)
-- Access to a terminal with `curl` installed
-- Knowledge of your site ID (available from the web interface)
-
-## Authentication
-
-The API uses API key authentication. Include your API key in the `Authorization` header for all requests:
-
-```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://create-a-container.opensource.mieweb.org/api/containers
-```
-
-For details on creating and managing API keys, see the [API Keys documentation](./api-keys.mdx).
+* Active account, an [API key](./api-keys.mdx), `curl`, and your site ID (from the web interface).
 
 ## 1. List Available Templates
-
-Before creating a container, you need to know what templates are available:
 
 ```bash
 curl -X GET 'https://create-a-container.opensource.mieweb.org/api/templates' \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-This returns a JSON array of available templates with their node and VMID information.
-
 ## 2. Get External Domain IDs
-
-To configure HTTP services, you need the external domain ID:
 
 ```bash
 curl -X GET 'https://create-a-container.opensource.mieweb.org/api/external-domains' \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-This returns a JSON array of available external domains with their IDs.
-
 ## 3. Create a Container
-
-Create a new container by POSTing to the containers endpoint:
 
 ```bash
 curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
@@ -72,63 +46,24 @@ curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/container
   --data-urlencode 'services[1][externalDomainId]=1'
 ```
 
-**Required Parameters:**
-- `hostname` - Container hostname (letters, numbers, hyphens only)
-- `template` - Template to clone, format: `nodeName,templateVmid`
+**Required:** `hostname` (letters/numbers/hyphens), `template` (`nodeName,templateVmid`).
 
-**Service Configuration:**
+### Service Types
 
-Services are configured using a zero-indexed array. Each service needs an index starting from 0:
+Services use a zero-indexed array (`services[0]`, `services[1]`, etc.):
 
-**SSH Service (TCP) - Index 0:**
-```bash
---data-urlencode 'services[0][type]=tcp' \
---data-urlencode 'services[0][internalPort]=22'
-```
-- `type` - Must be `tcp` for SSH
-- `internalPort` - Internal SSH port (typically 22)
-- External port is automatically assigned
-
-**HTTP Service - Index 1:**
-```bash
---data-urlencode 'services[1][type]=http' \
---data-urlencode 'services[1][internalPort]=3000' \
---data-urlencode 'services[1][externalHostname]=my-app' \
---data-urlencode 'services[1][externalDomainId]=1'
-```
-- `type` - Must be `http`
-- `internalPort` - Port your app listens on (80, 3000, 8080, etc.)
-- `externalHostname` - Subdomain for your service
-- `externalDomainId` - ID of the external domain to use
-
-**Additional TCP/UDP Services - Index 2, 3, etc.:**
-```bash
---data-urlencode 'services[2][type]=tcp' \
---data-urlencode 'services[2][internalPort]=5432'
-```
-- `type` - Either `tcp` or `udp`
-- `internalPort` - Internal port number
-- External port is automatically assigned in range 2000-65565
-
-**DNS (SRV) Services:**
-```bash
---data-urlencode 'services[3][type]=srv' \
---data-urlencode 'services[3][internalPort]=389' \
---data-urlencode 'services[3][dnsName]=_ldap._tcp'
-```
-- `type` - Must be `srv`
-- `internalPort` - Service port
-- `dnsName` - SRV record name (e.g., `_ldap._tcp`)
+| Type | Required Fields | Notes |
+|------|----------------|-------|
+| `tcp` | `internalPort` | External port auto-assigned |
+| `udp` | `internalPort` | External port auto-assigned (range 2000–65565) |
+| `http` | `internalPort`, `externalHostname`, `externalDomainId` | Subdomain + domain |
+| `srv` | `internalPort`, `dnsName` | e.g., `_ldap._tcp` |
 
 ## 4. Complete Example
 
-Here's a complete example creating a container with SSH, HTTP, and a custom TCP service:
-
 ```bash
-# Set your API key
 API_KEY="your_api_key_here"
 
-# Create container with multiple services
 curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
   -H "Authorization: Bearer $API_KEY" \
   -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -144,83 +79,26 @@ curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/container
   --data-urlencode 'services[2][internalPort]=5432'
 ```
 
-**Response:**
-- On success: Redirects to the containers list page (302)
-- On failure: Returns error message with details
+Returns 302 redirect on success, error message on failure.
 
-## 5. Understanding Container Creation
-
-The API performs these steps automatically:
-
-1. **Clone Template** - Clones the specified LXC template
-2. **Configure Resources** - Sets CPU (4 cores), memory (4GB), networking
-3. **Start Container** - Boots the container and waits for it to start
-4. **DNS Registration** - Waits for DHCP lease and DNS propagation
-5. **Service Registration** - Creates service records and configures reverse proxy
-6. **Network Configuration** - Sets up port forwarding and firewall rules
-
-This process typically takes 2-5 minutes. The container will be accessible once DNS propagates and services are configured.
-
-## 6. Listing Your Containers
-
-To view your containers:
+## 5. List Your Containers
 
 ```bash
 curl -X GET 'https://create-a-container.opensource.mieweb.org/api/containers' \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-This returns a JSON array of all your containers with their details, including hostnames, IP addresses, and port assignments.
+## 6. Access Your Container
 
-## 7. Accessing Your Container
+**SSH:** `ssh -p <assigned-port> <username>@<hostname>.<domain>`
 
-Once created, you can access your container via SSH:
+**HTTP:** `https://<externalHostname>.<externalDomain>`
 
-```bash
-ssh -p <assigned-ssh-port> <username>@<hostname>.<internal-domain>
-```
-
-The SSH port is automatically assigned and displayed in the containers list. HTTP services are accessible via:
-
-```
-https://<externalHostname>.<externalDomain>
-```
-
-## 8. Viewing on Proxmox
-
-To see your container in the Proxmox GUI, navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>. Your container will be listed with your username in the tags field.
+**Proxmox:** Navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl> — your container is listed with your username in the tags field.
 
 ![Hostname](img/proxmox-lxc.jpg)
 
-:::note Note
-You can start, stop, and reboot your container through the Proxmox interface. To delete a container, contact a cluster administrator.
+:::note
+You can start, stop, and reboot through Proxmox. To delete, contact an administrator.
 :::
 
-## Troubleshooting
-
-**Invalid or missing API key:**
-- Verify you're including the `Authorization` header with the correct format
-- Ensure your API key hasn't been deleted
-- Check that you copied the entire key
-
-**Unauthorized error:**
-- Verify your account has the necessary permissions
-- Ensure your account status is active
-
-**Template Not Found:**
-- Verify the template exists on the specified node
-- Check that your site ID is correct
-- Ensure the node has templates configured
-
-**Hostname Already Exists:**
-- Choose a different hostname
-- Check the containers list for existing containers
-
-**Service Configuration Errors:**
-- HTTP services require both externalHostname and externalDomainId
-- DNS services require a dnsName
-- Port numbers must be valid integers
-
----
-
-**Need Help?**: For questions about API usage or automation, contact the MIE team.

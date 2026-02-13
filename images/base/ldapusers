@@ -1,0 +1,2 @@
+# enable passwordless sudo for all local ldap users
+%ldapusers ALL=(ALL) NOPASSWD: ALL

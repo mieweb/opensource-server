@@ -197,9 +197,6 @@ function ManagingContainers({GrAdd, GrView, Snippet, Button, Icon, FaCode, FaTer
                             SSH Command
                         </h4>
                         <p>Connect securely to your running containers via SSH. Each container gets a unique URL that you can use to access your applications remotely.</p>
-                        <SyntaxHighlighter className={styles.codeSnippet} language="bash" style={github} wrapLongLines>
-                            {"ssh -p <port> <username>@opensource.mieweb.org"}
-                        </SyntaxHighlighter>
                     </div>
                     <div className={styles.mcInnerDiv}>
                         <h4>
@@ -319,7 +316,7 @@ function ProxmoxLaunchpad({Button, Icon, FaGithub, FaRocket, FaCheckCircle, FaCo
                                     <Icon icon="vaadin:arrow-right" slot={'suffix'} />
                                 </Button>
                             </Link>
-                            <Link to="https://github.com/marketplace/actions/proxmox-launchpad" style={{ textDecoration: 'none' }}>
+                            <Link to="https://github.com/marketplace/actions/mieweb-launchpad" style={{ textDecoration: 'none' }}>
                                 <Button theme="tertiary" className={styles.Button}>
                                     View on GitHub
                                     <Icon icon="vaadin:external-link" slot={'suffix'} />

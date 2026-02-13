@@ -61,15 +61,18 @@ router.post('/', async (req, res) => {
     status = 'pending'; // Regular registrations are pending
   }
   
+  const givenName = req.body.givenName.trim();
+  const sn = req.body.sn.trim();
+  
   const userParams = {
     uidNumber: await User.nextUidNumber(),
     uid: req.body.uid,
-    sn: req.body.sn,
-    givenName: req.body.givenName,
+    sn,
+    givenName,
     mail: req.body.mail,
     userPassword: req.body.userPassword,
     status,
-    cn: `${req.body.givenName} ${req.body.sn}`,
+    cn: `${givenName} ${sn}`,
     homeDirectory: `/home/${req.body.uid}`,
   };
 
