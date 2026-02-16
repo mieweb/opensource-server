@@ -25,7 +25,6 @@
  */
 
 const path = require('path');
-const https = require('https');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
@@ -33,183 +32,7 @@ const { Container, Node, Site } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
-
-/**
- * Low-level HTTP GET that returns status, headers, and body without throwing on 4xx
- * @param {string} url - The URL to fetch
- * @param {object} headers - Optional request headers
- * @returns {Promise<{statusCode: number, headers: object, body: string}>}
- */
-function httpGet(url, headers = {}) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        resolve({ statusCode: res.statusCode, headers: res.headers, body: data });
-      });
-    });
-    req.on('error', reject);
-  });
-}
-
-/**
- * Fetch JSON from a URL with optional headers (throws on non-2xx)
- * @param {string} url - The URL to fetch
- * @param {object} headers - Optional headers
- * @returns {Promise<object>} Parsed JSON response
- */
-async function fetchJson(url, headers = {}) {
-  const res = await httpGet(url, headers);
-  if (res.statusCode >= 400) {
-    throw new Error(`HTTP ${res.statusCode}: ${res.body}`);
-  }
-  return JSON.parse(res.body);
-}
-
-/**
- * Parse a WWW-Authenticate Bearer challenge header
- * Example: Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"
- * @param {string} header - The WWW-Authenticate header value
- * @returns {object|null} Parsed fields { realm, service, scope } or null if not Bearer
- */
-function parseWwwAuthenticate(header) {
-  if (!header || !header.startsWith('Bearer ')) return null;
-  const params = {};
-  const regex = /(\w+)="([^"]*)"/g;
-  let match;
-  while ((match = regex.exec(header)) !== null) {
-    params[match[1]] = match[2];
-  }
-  return params;
-}
-
-/**
- * Fetch JSON from a registry URL with automatic token authentication
- * Implements the Docker Registry Token Authentication spec:
- *   1. Attempt the request
- *   2. If 401, parse WWW-Authenticate for Bearer challenge
- *   3. Request a token from the auth service
- *   4. Retry with the Bearer token
- * @param {string} url - The registry URL to fetch
- * @param {object} headers - Optional request headers
- * @returns {Promise<object>} Parsed JSON response
- */
-async function authenticatedFetchJson(url, headers = {}) {
-  const res = await httpGet(url, headers);
-
-  if (res.statusCode === 200) {
-    return JSON.parse(res.body);
-  }
-
-  if (res.statusCode !== 401) {
-    throw new Error(`HTTP ${res.statusCode}: ${res.body}`);
-  }
-
-  // Parse the Bearer challenge from WWW-Authenticate header
-  const challenge = parseWwwAuthenticate(res.headers['www-authenticate']);
-  if (!challenge || !challenge.realm) {
-    throw new Error(`Registry returned 401 but no Bearer challenge in WWW-Authenticate header`);
-  }
-
-  // Build token request URL with query parameters from the challenge
-  const tokenUrl = new URL(challenge.realm);
-  if (challenge.service) tokenUrl.searchParams.set('service', challenge.service);
-  if (challenge.scope) tokenUrl.searchParams.set('scope', challenge.scope);
-
-  const tokenData = await fetchJson(tokenUrl.toString());
-  if (!tokenData.token) {
-    throw new Error('Auth service did not return a token');
-  }
-
-  // Retry the original request with the Bearer token
-  headers['Authorization'] = `Bearer ${tokenData.token}`;
-  const retryRes = await httpGet(url, headers);
-  if (retryRes.statusCode >= 400) {
-    throw new Error(`HTTP ${retryRes.statusCode} after auth: ${retryRes.body}`);
-  }
-  return JSON.parse(retryRes.body);
-}
-
-/**
- * Get the digest (sha256 hash) of a Docker/OCI image from the registry
- * Handles both single-arch and multi-arch (manifest list) images
- * @param {string} registry - Registry hostname (e.g., 'docker.io')
- * @param {string} repo - Repository (e.g., 'library/nginx')
- * @param {string} tag - Tag (e.g., 'latest')
- * @returns {Promise<string>} Short digest (first 12 chars of sha256)
- */
-async function getImageDigest(registry, repo, tag) {
-  const registryHost = registry === 'docker.io' ? 'registry-1.docker.io' : registry;
-  
-  // Fetch manifest with automatic registry auth challenge-response
-  const acceptHeaders = {
-    'Accept': [
-      'application/vnd.docker.distribution.manifest.v2+json',
-      'application/vnd.oci.image.manifest.v1+json',
-      'application/vnd.docker.distribution.manifest.list.v2+json',
-      'application/vnd.oci.image.index.v1+json'
-    ].join(', ')
-  };
-  
-  const manifestUrl = `https://${registryHost}/v2/${repo}/manifests/${tag}`;
-  let manifest = await authenticatedFetchJson(manifestUrl, { ...acceptHeaders });
-  
-  // Handle manifest list (multi-arch) - select amd64/linux
-  if (manifest.manifests && Array.isArray(manifest.manifests)) {
-    const amd64Manifest = manifest.manifests.find(m => 
-      m.platform?.architecture === 'amd64' && m.platform?.os === 'linux'
-    );
-    if (!amd64Manifest) {
-      throw new Error('No amd64/linux manifest found in manifest list');
-    }
-    
-    // Fetch the actual manifest for amd64 (reuse same auth flow)
-    const archHeaders = {
-      'Accept': 'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'
-    };
-    const archManifestUrl = `https://${registryHost}/v2/${repo}/manifests/${amd64Manifest.digest}`;
-    manifest = await authenticatedFetchJson(archManifestUrl, { ...archHeaders });
-  }
-  
-  // Get config digest from manifest
-  const configDigest = manifest.config?.digest;
-  if (!configDigest) {
-    throw new Error('No config digest in manifest');
-  }
-  
-  // Return short hash (sha256:abc123... -> abc123...)
-  const hash = configDigest.replace('sha256:', '');
-  return hash.substring(0, 12);
-}
-
-/**
- * Check if a template is a Docker image reference (contains '/')
- * @param {string} template - The template string
- * @returns {boolean} True if Docker image, false if Proxmox template
- */
-function isDockerImage(template) {
-  return template.includes('/');
-}
-
-/**
- * Parse a normalized Docker image reference into components
- * Format: host/org/image:tag
- * @param {string} ref - The normalized Docker reference
- * @returns {object} Parsed components: { registry, namespace, image, tag }
- */
-function parseDockerRef(ref) {
-  // Split off tag
-  const [imagePart, tag] = ref.split(':');
-  const parts = imagePart.split('/');
-  
-  // Format is always host/org/image after normalization
-  const registry = parts[0];
-  const image = parts[parts.length - 1];
-  const namespace = parts.slice(1, -1).join('/');
-  
-  return { registry, namespace, image, tag };
-}
+const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -223,6 +46,62 @@ function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
+}
+
+/**
+ * Setup ACL for container owner
+ * Grants PVEVMUser role to username@ldap on /vms/{vmid}
+ * Non-blocking: logs errors but continues on failure
+ * @param {ProxmoxApi} client - Proxmox API client
+ * @param {string} nodeName - Node name for logging
+ * @param {number} vmid - Container VMID
+ * @param {string} username - Container owner username
+ * @returns {Promise<boolean>} True if ACL created successfully, false otherwise
+ */
+async function setupContainerAcl(client, nodeName, vmid, username) {
+  const userWithRealm = `${username}@ldap`;
+  const aclPath = `/vms/${vmid}`;
+  
+  console.log(`Setting up ACL for ${userWithRealm} on ${aclPath}...`);
+  
+  try {
+    // Attempt to create ACL
+    await client.updateAcl(aclPath, 'PVEVMUser', null, true, null, userWithRealm);
+    console.log(`ACL created successfully: ${userWithRealm} -> PVEVMUser on ${aclPath}`);
+    return true;
+  } catch (firstError) {
+    console.log(`ACL creation failed: ${firstError.message}`);
+    
+    // Check if error is due to user not existing
+    const errorMsg = firstError.response?.data?.errors || firstError.message || '';
+    const isUserNotFound = errorMsg.toLowerCase().includes('user') && 
+                          (errorMsg.toLowerCase().includes('not found') || 
+                           errorMsg.toLowerCase().includes('does not exist'));
+    
+    if (isUserNotFound) {
+      console.log('User not found in Proxmox LDAP realm, attempting LDAP sync...');
+      
+      try {
+        // Sync LDAP realm
+        await client.syncLdapRealm('ldap');
+        console.log('LDAP realm sync completed successfully');
+        
+        // Retry ACL creation
+        console.log('Retrying ACL creation...');
+        await client.updateAcl(aclPath, 'PVEVMUser', null, true, null, userWithRealm);
+        console.log(`ACL created successfully after sync: ${userWithRealm} -> PVEVMUser on ${aclPath}`);
+        return true;
+      } catch (syncError) {
+        console.log(`LDAP sync or retry failed: ${syncError.message}`);
+        console.log('Continuing without ACL - container owner will need manual access grant');
+        return false;
+      }
+    } else {
+      console.log('ACL creation failed for non-user-related reason');
+      console.log('Continuing without ACL - container owner will need manual access grant');
+      return false;
+    }
+  }
 }
 
 /**
@@ -445,6 +324,9 @@ async function main() {
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }
+    
+    // Setup ACL for container owner
+    await setupContainerAcl(client, node.name, vmid, container.username);
     
     // Store the VMID now that creation succeeded
     await container.update({ containerId: vmid });

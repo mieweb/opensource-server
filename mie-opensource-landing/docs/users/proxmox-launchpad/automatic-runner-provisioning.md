@@ -4,6 +4,10 @@ sidebar_position: 3
 
 # Automatic Runner Provisioning (Path 2)
 
+:::caution Outdated Documentation
+This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
+:::
+
 This guide covers **Path 2** of Proxmox Launchpad: automatic runner provisioning where our action creates and manages GitHub runners for you. Each branch gets its own dedicated runner and container with complete lifecycle management.
 
 :::warning Security Consideration
@@ -173,16 +177,13 @@ Entering a public key is highly recommended. To create a private/public key pair
 
 ## Automatic Deployment Configuration
 
-Enable automatic deployment to have your application deployed on every push:
+Deployment configuration is identical to Path 1 — see [Automatic Deployment Configuration](/docs/users/proxmox-launchpad/supplied-runners#automatic-deployment-configuration) for full details on:
+- Single and multi-component applications
+- Deployment properties reference table
+- Services configuration
+- Custom services
 
-:::important Important
-If you want Proxmox Launchpad to automatically deploy your application, consider the options below and add them to your workflow file.
-**If you do not want to deploy your application automatically, you do not need to include any of the options below and can simply disregard them.**
-:::
-
-### Single-Component Applications
-
-For applications with a single service (React app, Flask server, etc.):
+The only difference is that deployment properties go in the `manage-container` job:
 
 ```yaml
 manage-container:
@@ -195,126 +196,11 @@ manage-container:
         proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
         github_pat: ${{ secrets.GH_PAT }}
 
-        # Deployment configuration
-        project_root: ""  # Leave blank for repository root
+        # Add deployment properties here (same as Path 1)
         install_command: "npm install"
         start_command: "npm start"
         runtime_language: "nodejs"
-
-        # Optional: Build command
-        build_command: "npm run build"
-
-        # Optional: Environment variables
-        container_env_vars: '{"API_KEY": "your-api-key", "NODE_ENV": "production"}'
-
-        # Optional: Services
-        services: '["mongodb", "redis"]'
 ```
-
-### Multi-Component Applications
-
-For applications with multiple services (frontend + backend, microservices, etc.):
-
-```yaml
-manage-container:
-  runs-on: self-hosted
-  needs: setup-runner
-  steps:
-    - uses: maxklema/proxmox-launchpad@main
-      with:
-        proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
-        proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
-        github_pat: ${{ secrets.GH_PAT }}
-
-        # Multi-component configuration
-        install_command: '{"/frontend": "npm install", "/backend": "pip install -r requirements.txt"}'
-        start_command: '{"/frontend": "npm start", "/backend": "flask run --host=0.0.0.0"}'
-        runtime_language: '{"/frontend": "nodejs", "/backend": "python"}'
-
-        # Optional: Build commands per component
-        build_command: '{"/frontend": "npm run build", "/backend": "python setup.py build"}'
-
-        # Optional: Environment variables per component
-        container_env_vars: '{"/frontend": {"REACT_APP_API_URL": "http://localhost:5000"}, "/backend": {"FLASK_ENV": "production"}}'
-
-        # Optional: Root directory command (e.g., Docker Compose)
-        root_start_command: "docker-compose up -d"
-```
-
-#### Multi-Component Structure
-
-Each component path is relative to your project root:
-
-```
-your-repo/
-├── frontend/          # Component path: "/frontend"
-│   ├── package.json
-│   └── src/
-├── backend/           # Component path: "/backend"
-│   ├── requirements.txt
-│   └── app.py
-└── docker-compose.yml # Root commands run here
-```
-
-### Automatic Deployment Properties
-
-| Propety | Required? | Description | Single Component | Multi-Component |
-| --------- | ----- |  ------------------------------------ | ---- | --- |
-|  `multi_component` | Conditional | A `y` flag that specifies if your application is multi-component. This only needs to be set if your application is multi-component. | N/A | A string of `y`.
-|  `container_env_vars` | No. | Key-Value Environment variable pairs. | Dictionary in the form of: `{ "api_key": "123", "password": "abc"}` | Dictionary in the form of: `'{"/frontend": { "api_key": "123"}, "/backend": { "password": "abc123" }}'`.
-|  `install_command` | Yes* | Commands to install all project dependencies | String of the installation command, i.e. `npm install`. | Dictionary in the form of: `'{"/frontend": "npm install", "/backend": "pip install -r ../requirements.txt"}'`.
-|  `build_command` | No | Commands to build project components | String of the build command, i.e. `npm build`. | Dictionary in the form of: `'{"/frontend": "npm build", "/backend": "python3 build.py"}'`.
-|  `start_command` | Yes* | Commands to start project components. | String of the start command, i.e. `npm run`. | Dictionary in the form of: `'{"/frontend": "npm run", "/backend": "flask run"}'`.
-|  `runtime_language` | Yes* | Runtime language of each project component, which can either be `nodejs` or `python`. | String of runtime environment, i.e. `nodejs` | Dictionary in the form of: `'{"/frontend": "nodejs", "/backend": "python"}'`.
-|  `root_start_command` | No | Command to run at the project directory root for **multi-component applications**. | N/A | String of the command, i.e. `Docker-compose up ...`
-
-> * (*) These options are only required if `root_start_command` is not provided, as that command may be a docker build and/or a docker compose command that builds the entire application.
-
-### Services Configuration
-
-Add pre-configured services to your container:
-
-```yaml
-# Available services
-services: '["mongodb", "postgresql", "redis", "docker", "nginx", "apache"]'
-```
-
-#### Available Services
-
-| Service | Description | Use Case |
-|---------|-------------|----------|
-| `mongodb` | MongoDB database | Document storage, NoSQL applications |
-| `postgresql` | PostgreSQL database | Relational database, SQL applications |
-| `redis` | Redis cache | Caching, session storage |
-| `docker` | Docker runtime | Containerized applications |
-| `nginx` | NGINX web server | Reverse proxy, static file serving |
-| `apache` | Apache web server | Web hosting, PHP applications |
-| `rabbitmq` | RabbitMQ message broker | Message queuing, microservices |
-| `memcached` | Memcached caching | Distributed caching |
-| `mariadb` | MariaDB database | MySQL-compatible database |
-| `meteor` | Meteor framework | Full-stack JavaScript applications |
-
-:::note Service Dependencies
-Some services like `meteor` include other services (MongoDB). You don't need to install dependencies separately.
-:::
-
-### Custom Services
-
-Install services not in the standard list:
-
-```yaml
-custom_services: |
-  [
-    ["sudo apt-get update", "sudo apt-get install -y nginx", "sudo systemctl enable nginx", "sudo systemctl start nginx"],
-    ["curl -fsSL https://get.docker.com | sh", "sudo systemctl enable docker", "sudo systemctl start docker"]
-  ]
-```
-
-Each array represents the installation commands for one custom service.
-
-:::important Important
-Make sure you enable and start your service using the systemctl service manager CLI.
-:::
 
 ## Pull Request Integration
 
@@ -468,61 +354,7 @@ jobs:
 
 ## Important Deployment Notes
 
-### Application Binding
-
-:::warning Critical for Multi-Component Apps
-Ensure your backend services bind to `0.0.0.0` (all interfaces) instead of `127.0.0.1` (localhost only) for proper communication between components.
-:::
-
-**Examples:**
-```python
-# Flask - Correct
-app.run(host='0.0.0.0', port=5000)
-
-# Flask - Incorrect
-app.run(host='127.0.0.1', port=5000)
-```
-
-```javascript
-// Express - Correct
-app.listen(5000, '0.0.0.0');
-
-// Express - Incorrect
-app.listen(5000, 'localhost');
-```
-
-### Special Framework Notes
-
-#### Meteor Applications
-```yaml
-start_command: "meteor --allow-superuser --port 0.0.0.0:3000"
-```
-
-:::note Meteor Installation
-Meteor is a large package and may take additional time to install and deploy.
-:::
-
-#### Vite.js Applications
-
-If you are using vite.js as a frontend service, you need to add the domain name of your container in the allowHosts array in your `vite.config.js` file.
-
-```yml
-server: {
-    host: '0.0.0.0',
-    port: 32000,
-    proxy: {
-      '/api': 'http://localhost:5000',
-    },
-    allowedHosts: ['maxklema-polyglot-test-main.opensource.mieweb.org']
-  },
-```
-
-### Environment Variables
-
-Environment variables are automatically written to `.env` files in the appropriate component directories:
-
-- **Single-component**: `.env` in project root
-- **Multi-component**: `.env` in each component directory
+See [Deployment Notes in Path 1](/docs/users/proxmox-launchpad/supplied-runners#important-deployment-notes) for application binding requirements, framework-specific notes (Meteor, Vite.js), and environment variable details.
 
 ## Runner Lifecycle Management
 
@@ -588,54 +420,19 @@ Even after the GitHub Action completes, background scripts may still be running.
 
 ## Troubleshooting
 
-### Common Issues
+### Path 2-Specific Issues
 
 **Setup-runner job fails:**
 - Check that `GH_PAT` secret is set correctly
 - Verify PAT has `manage_runners:org` permission
 - Ensure PAT hasn't expired
 
-**Container not accessible:**
-- Wait 2-5 minutes for background scripts to complete
-- Check that your start commands are correct
-- Verify your application binds to `0.0.0.0` not `localhost`
-
-**Dependencies fail to install:**
-- Ensure dependency files (`package.json`, `requirements.txt`) are in the correct directories
-- Check that files are committed to your repository
-- Verify paths are relative to component directories
-
-**Services not communicating:**
-- Ensure backend services bind to `0.0.0.0`
-- Check frontend API URLs point to correct backend ports
-- Verify environment variables are set correctly
-
-**GitHub Action fails:**
-- Check repository secrets are set correctly
-- Ensure PAT has proper permissions
-- Verify all required properties are provided
-
-### Debug Container Issues
-
-SSH into your container and check:
-
+**Runner status check:**
 ```bash
-# Check running processes
-ps aux | grep node
-ps aux | grep python
-
-# Check listening ports
-ss -tlnp | grep LISTEN
-
-# Check environment variables
-cat /path/to/component/.env
-
-# Check application logs (if using tmux)
-tmux attach -t 0
-
-# Check runner status
 sudo systemctl status actions.runner.*
 ```
+
+For general container issues (not accessible, dependencies failing, services not communicating), see [Troubleshooting in Path 1](/docs/users/proxmox-launchpad/supplied-runners#troubleshooting).
 
 ## Security Considerations
 

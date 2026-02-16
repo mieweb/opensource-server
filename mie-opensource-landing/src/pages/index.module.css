@@ -242,7 +242,6 @@
 
 .docLink {
     display: inline-block;
-    margin-top: 1.5rem;
     color: var(--ifm-color-primary);
     font-weight: 500;
     text-decoration: none;

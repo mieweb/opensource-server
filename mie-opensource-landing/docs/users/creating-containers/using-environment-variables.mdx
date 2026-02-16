@@ -1,0 +1,107 @@
+---
+sidebar_position: 3
+---
+
+# Building Custom Templates
+
+Create custom Docker images based on the standard images (Debian 13 or NodeJS 24) that use environment variables set at container creation time.
+
+## How It Works
+
+The standard images run **systemd as PID 1** (system containers). This means is you need a [systemd service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html) to run your application. A custom oneshot service is present in the provided base images that writes container environment variables to `/etc/environment` and your service will need to explicitly read variables from that file. Below is a complete example on how to use this.
+
+## Example: Python Flask App
+
+**Directory structure:**
+```
+my-flask-app/
+├── Dockerfile
+├── app.py
+└── myapp.service
+```
+
+**app.py:**
+```python
+#!/usr/bin/env python3
+import os
+from flask import Flask
+
+app = Flask(__name__)
+PORT = int(os.getenv('PORT', '8080'))
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///default.db')
+
+@app.route('/')
+def hello():
+    return f"<h1>Hello from Flask!</h1><p>Port: {PORT}</p>"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=PORT)
+```
+
+**myapp.service:**
+```ini
+[Unit]
+Description=My Flask Application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/myapp
+EnvironmentFile=/etc/environment
+ExecStart=/usr/bin/python3 /opt/myapp/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Dockerfile:**
+```dockerfile
+FROM ghcr.io/mieweb/opensource-server/base:latest
+
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip python3-flask && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/myapp && chown www-data:www-data /opt/myapp
+COPY app.py /opt/myapp/app.py
+RUN chmod +x /opt/myapp/app.py
+
+COPY myapp.service /etc/systemd/system/myapp.service
+RUN systemctl enable myapp.service
+
+EXPOSE 8080
+LABEL org.mieweb.opensource-server.services.http.default-port="8080"
+```
+
+Build, push, then in the web UI select "Custom Docker Image" and enter your registry path. Add environment variables (`PORT`, `DATABASE_URL`, etc.) — they'll be written to `/etc/environment` and loaded by your service.
+
+The same pattern applies to **Node.js** (use `ghcr.io/mieweb/opensource-server/nodejs:latest` base, `ExecStart=/usr/bin/node`) and **Go** (copy a static binary, use `ghcr.io/mieweb/opensource-server/base:latest`). The key elements are always:
+
+1. `EnvironmentFile=/etc/environment` in your `.service` file
+2. `systemctl enable` in your Dockerfile
+
+:::note
+Adding the label `org.mieweb.opensource-server.services.http.default-port` with a number between 1 and 65535 will automattically create an HTTP service on new containers with the value as the internal port number and an external hostname matching the container name. See ghcr.io/mieweb/opensource-server/nodejs:latest for an example.
+:::
+
+## Testing
+
+```bash
+# Local
+docker run -it -e PORT=8080 -e API_KEY=test ghcr.io/myorg/my-app:latest
+docker exec <id> systemctl status myapp.service
+docker exec <id> journalctl -u myapp.service -f
+
+# In production (SSH into container)
+cat /etc/environment
+systemctl status myapp.service
+journalctl -u myapp.service -n 100
+```
+
+## Updating Variables
+
+**Temporary:** SSH in, edit `/etc/environment`, run `systemctl restart myapp.service`. Lost on recreate.
+
+**Permanent:** Edit container in the web UI and save — container is recreated with new variables.

@@ -132,7 +132,10 @@ router.get('/:id/edit', async (req, res) => {
 // POST /users - Create a new user
 router.post('/', async (req, res) => {
   try {
-    const { uid, givenName, sn, mail, userPassword, status, groupIds } = req.body;
+    const { uid, givenName: rawGivenName, sn: rawSn, mail, userPassword, status, groupIds } = req.body;
+    
+    const givenName = rawGivenName.trim();
+    const sn = rawSn.trim();
     
     const user = await User.create({
       uidNumber: await User.nextUidNumber(),
@@ -178,7 +181,10 @@ router.put('/:id', async (req, res) => {
       return res.redirect('/users');
     }
 
-    const { uid, givenName, sn, mail, userPassword, status, groupIds } = req.body;
+    const { uid, givenName: rawGivenName, sn: rawSn, mail, userPassword, status, groupIds } = req.body;
+    
+    const givenName = rawGivenName.trim();
+    const sn = rawSn.trim();
     
     // Update user fields
     user.uid = uid;
