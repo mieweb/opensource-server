@@ -29,6 +29,9 @@ http {
   include /etc/nginx/conf.d/*.conf;
 
   server_names_hash_bucket_size 128;
+
+  modsecurity on;
+  modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
   
   server {
     listen 80;

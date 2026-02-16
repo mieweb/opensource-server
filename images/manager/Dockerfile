@@ -1,10 +1,15 @@
 FROM nodejs
 
-# Install nginx mainline for the most up-to-date features
+# Install nginx stable for ModSecurity support
 RUN apt-get update && \
-    apt-get install -y libnginx-mod-stream ssl-cert curl && \
+    apt-get install -y libnginx-mod-stream libnginx-mod-http-modsecurity ssl-cert curl && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    sed -i \
+        -e 's!^#\(include /usr/share/modsecurity-crs/owasp-crs.load\)$!\1!' \
+        /etc/nginx/modsecurity_includes.conf \
+    && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
+    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine On/' /etc/nginx/modsecurity.conf
 
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN apt update && apt -y install dnsmasq && systemctl enable dnsmasq
