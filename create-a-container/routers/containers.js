@@ -4,7 +4,6 @@ const https = require('https');
 const dns = require('dns').promises;
 const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Job, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
-const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
@@ -269,29 +268,15 @@ router.post('/', async (req, res) => {
 
     // --- API Payload Mapping ---
     if (isApi) {
+      if (template_name && !template) {
+        template = template_name;
+      }
+
       if (repository) {
-        // Source Build Scenario:
-        // We do NOT set template='custom'. We must use the base template_name provided.
-        // The repository is passed ONLY via environment variables.
-
-        if (template_name) {
-             template = template_name;
-             // We deliberately leave 'customTemplate' undefined so it triggers the standard LXC lookup logic below.
-        } else {
-             throw new Error('When providing a repository, you must also provide a template_name (e.g., "debian-template") for the base container.');
-        }
-
-        // Inject repo/branch into env vars
         if (!environmentVars) environmentVars = [];
-        // Ensure environmentVars is an array if it came in as something else
         if (!Array.isArray(environmentVars)) environmentVars = [];
-        
         environmentVars.push({ key: 'BUILD_REPOSITORY', value: repository });
         environmentVars.push({ key: 'BUILD_BRANCH', value: branch || 'master' });
-        
-      } else if (template_name && !template) {
-        // Fallback: if only template_name provided (no repo), assume it's the template
-        template = template_name;
       }
     }
     // ---------------------------
@@ -311,89 +296,23 @@ router.post('/', async (req, res) => {
       }
     }
     
-    let nodeName, templateName, node;
-    
-    // LOGIC: Custom (Docker) vs Standard (LXC)
-    if (template === 'custom' || (!template && customTemplate)) {
-      // Custom Docker image
-      if (!customTemplate || customTemplate.trim() === '') {
-        throw new Error('Custom template image is required');
-      }
-      
-      templateName = normalizeDockerRef(customTemplate.trim());
-      
-      node = await Node.findOne({ 
-        where: { 
-          siteId,
-          apiUrl: { [Sequelize.Op.ne]: null },
-          tokenId: { [Sequelize.Op.ne]: null },
-          secret: { [Sequelize.Op.ne]: null }
-        } 
-      });
-      
-      if (!node) {
-        throw new Error('No nodes with API access available in this site');
-      }
-    } else {
-      // Standard Proxmox template (LXC)
-      let templateVmid;
+    // Resolve Docker image ref from either the dropdown or the custom input
+    const imageRef = (template === 'custom') ? customTemplate?.trim() : template;
+    if (!imageRef) {
+      throw new Error('A container template is required');
+    }
+    const templateName = normalizeDockerRef(imageRef);
 
-      if (template && template.includes(',')) {
-        // Form submitted "nodeName,vmid"
-        const [ nodeNamePart, vmidPart ] = template.split(',');
-        nodeName = nodeNamePart;
-        templateVmid = vmidPart;
-      } else {
-         // API submitted just the name "debian-template"
-         // Find a node that has this template
-         const allNodes = await Node.findAll({ 
-           where: { siteId },
-           // Filter for nodes that are actually online/configured
-           attributes: ['id', 'name', 'apiUrl', 'tokenId', 'secret'] 
-         });
-         
-         let foundTemplate = null;
-         
-         for (const n of allNodes) {
-             // Skip nodes without config
-             if (!n.apiUrl || !n.tokenId) continue;
-             
-             try {
-               const api = await n.api();
-               const tpls = await api.getLxcTemplates(n.name);
-               // Match by name or stringified vmid
-               const found = tpls.find(t => t.name === template || t.vmid.toString() === template);
-               if (found) {
-                   node = n;
-                   nodeName = n.name;
-                   templateVmid = found.vmid;
-                   foundTemplate = found;
-                   break;
-               }
-             } catch (e) {
-               console.warn(`Failed to query templates from node ${n.name}:`, e.message);
-               continue;
-             }
-         }
-         
-         if (!node) throw new Error(`Template "${template}" not found on any node in this site`);
-         templateName = foundTemplate.name; // Use the real name from Proxmox
-      }
-
-      // If we found the node via "nodeName,vmid" logic but haven't fetched details yet
-      if (!templateName) {
-          node = await Node.findOne({ where: { name: nodeName, siteId } });
-          if (!node) throw new Error(`Node "${nodeName}" not found`);
-          
-          const client = await node.api();
-          const templates = await client.getLxcTemplates(node.name);
-          const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
-          
-          if (!templateContainer) {
-            throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
-          }
-          templateName = templateContainer.name;
-      }
+    const node = await Node.findOne({ 
+      where: { 
+        siteId,
+        apiUrl: { [Sequelize.Op.ne]: null },
+        tokenId: { [Sequelize.Op.ne]: null },
+        secret: { [Sequelize.Op.ne]: null }
+      } 
+    });
+    if (!node) {
+      throw new Error('No nodes with API access available in this site');
     }
     
     // Create container record
@@ -401,7 +320,7 @@ router.post('/', async (req, res) => {
       hostname,
       username: currentUser,
       status: 'pending',
-      template: templateName, // Should now be "debian-12-standard..." or similar
+      template: templateName,
       nodeId: node.id,
       containerId: null,
       macAddress: null,
