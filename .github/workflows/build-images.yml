@@ -60,6 +60,18 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
+      - name: Docker Meta (Agent)
+        id: meta-agent
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/agent
+          bake-target: agent
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
       - name: Docker Meta (Manager)
         id: meta-manager
         uses: docker/metadata-action@v5
@@ -81,6 +93,7 @@ jobs:
             ./docker-bake.hcl
             ${{ steps.meta-base.outputs.bake-file }}
             ${{ steps.meta-nodejs.outputs.bake-file }}
+            ${{ steps.meta-agent.outputs.bake-file }}
             ${{ steps.meta-manager.outputs.bake-file }}
           set: |
             base.cache-from=type=gha,scope=base-${{ github.ref_name }}
