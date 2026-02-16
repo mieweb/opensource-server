@@ -23,7 +23,8 @@ RUN apt update && apt -y install curl gnupg2 ca-certificates lsb-release debian-
     && cat /etc/apt/preferences.d/99nginx \
     && apt update \
     && apt install -y nginx ssl-cert \
-    && echo 'disable nginx-debug.service' >/etc/systemd/system-preset/00-nginx.preset
+    && echo 'disable nginx-debug.service' >/etc/systemd/system-preset/00-nginx.preset \
+    && rm /etc/nginx/conf.d/default.conf
 
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN apt update && apt -y install dnsmasq && systemctl enable dnsmasq
