@@ -32,6 +32,7 @@ http {
 
   modsecurity on;
   modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
+  modsecurity_transaction_id "$request_id";
   
   server {
     listen 80;
@@ -70,6 +71,14 @@ http {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
+
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
 
     <%_ if (httpServices.length === 0) { _%>
     error_page 502 @502;
@@ -151,6 +160,14 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
     error_page 502 @502;
 
     location @502 {
@@ -223,6 +240,14 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
     error_page 404 @404;
 
     location @404 {
@@ -266,6 +291,14 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
     error_page 502 @502;
 
     location @502 {
