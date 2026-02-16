@@ -256,7 +256,7 @@ async function main() {
         onboot: 1,
         tags: container.username,
         unprivileged: 1,
-        storage: rootfsStorage
+        rootfs: `${rootfsStorage}:50`
       });
       console.log(`Create task started: ${createUpid}`);
       
