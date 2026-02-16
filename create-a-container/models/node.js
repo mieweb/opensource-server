@@ -86,6 +86,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false,
       defaultValue: 'local'
+    },
+    volumeStorage: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      defaultValue: 'local-lvm'
     }
   }, {
     sequelize,

@@ -45,6 +45,7 @@ erDiagram
         string apiTokenSecretOrPassword
         boolean disableTlsVerification
         string imageStorage "default: local"
+        string volumeStorage "default: local-lvm"
         int siteId FK
     }
 
@@ -170,7 +171,7 @@ erDiagram
 Top-level organizational unit. Has many Nodes and ExternalDomains.
 
 ### Node
-Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'`. Belongs to Site, has many Containers.
+Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). Belongs to Site, has many Containers.
 
 ### Container
 LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. Belongs to Node and optionally to a Job.

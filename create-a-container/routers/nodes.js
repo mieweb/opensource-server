@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage } = req.body;
     
     await Node.create({
       name,
@@ -127,6 +127,7 @@ router.post('/', async (req, res) => {
       secret: secret || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
       imageStorage: imageStorage || 'local',
+      volumeStorage: volumeStorage || 'local-lvm',
       siteId
     });
 
@@ -170,6 +171,7 @@ router.post('/import', async (req, res) => {
     const nodesWithIp = await Promise.all(nodes.map(async (n) => {
       let ipv4Address = null;
       let imageStorage = 'local';
+      let volumeStorage = 'local-lvm';
 
       try {
         const networkInterfaces = await client.nodeNetwork(n.node);
@@ -193,6 +195,17 @@ router.post('/import', async (req, res) => {
         console.error(`Failed to fetch storages for node ${n.node}:`, err.message);
       }
 
+      // Find largest storage supporting CT volumes (rootdir)
+      try {
+        const storages = await client.datastores(n.node, 'rootdir', true);
+        if (storages.length > 0) {
+          const largest = storages.reduce((max, s) => (s.total > max.total ? s : max), storages[0]);
+          volumeStorage = largest.storage;
+        }
+      } catch (err) {
+        console.error(`Failed to fetch volume storages for node ${n.node}:`, err.message);
+      }
+
       return {
         name: n.node,
         ipv4Address,
@@ -201,6 +214,7 @@ router.post('/import', async (req, res) => {
         secret,
         tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
         imageStorage,
+        volumeStorage,
         siteId
       };
     }));
@@ -249,7 +263,7 @@ router.put('/:id', async (req, res) => {
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage } = req.body;
     
     const updateData = {
       name,
@@ -257,7 +271,8 @@ router.put('/:id', async (req, res) => {
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
-      imageStorage: imageStorage || 'local'
+      imageStorage: imageStorage || 'local',
+      volumeStorage: volumeStorage || 'local-lvm'
     };
 
     // Only update secret if a new value was provided
