@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — No Service Configured</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      max-width: 620px;
+      width: 90%;
+      padding: 3rem 2.5rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      text-align: center;
+    }
+
+    .status-code {
+      font-size: 5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #00bfff, #8a2be2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+      margin: 0.5rem 0 1.5rem;
+    }
+
+    p {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #b0b0b0;
+      margin-bottom: 1rem;
+    }
+
+    .note {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: rgba(27, 170, 39, 0.1);
+      border: 1px solid rgba(27, 170, 39, 0.3);
+      border-radius: 10px;
+      font-size: 0.9rem;
+      color: #c0c0c0;
+      text-align: left;
+    }
+
+    .note strong {
+      color: #1baa27;
+    }
+
+    .hostname {
+      display: inline-block;
+      margin-top: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #00bfff;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="status-code">404</div>
+    <h1>No Service Configured</h1>
+    <p>
+      There is no service registered for this hostname.
+    </p>
+    <div class="hostname" id="hostname"></div>
+    <div class="note">
+      <strong>Recently configured a service?</strong>
+      Configuration changes may take a few minutes to propagate.
+      Try refreshing this page shortly.
+    </div>
+  </div>
+  <script>
+    document.getElementById('hostname').textContent = window.location.hostname;
+  </script>
+</body>
+</html>

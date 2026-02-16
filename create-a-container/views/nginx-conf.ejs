@@ -68,6 +68,13 @@ http {
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
 
     <%_ if (httpServices.length === 0) { _%>
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     location / {
       proxy_pass http://localhost:3000;
       proxy_http_version 1.1;
@@ -97,6 +104,13 @@ http {
       client_max_body_size 2G;
     }
     <%_ } else { _%>
+    error_page 404 @404;
+
+    location @404 {
+      root /opt/opensource-server/error-pages;
+      try_files /404.html =404;
+    }
+
     return 404;
     <%_ } _%>
   }
@@ -133,6 +147,13 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     # Proxy settings
     location / {
       proxy_pass http://<%= service.Container.ipv4Address %>:<%= service.internalPort %>;
@@ -198,6 +219,13 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 404 @404;
+
+    location @404 {
+      root /opt/opensource-server/error-pages;
+      try_files /404.html =404;
+    }
+
     # Return 404 for all requests
     return 404;
   }
@@ -234,6 +262,13 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     # Proxy to documentation site
     location / {
       proxy_pass http://localhost:2998;
