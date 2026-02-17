@@ -14,7 +14,12 @@ RUN apt update && apt -y install postgresql-common \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && echo 'hostssl all all 0.0.0.0/0 scram-sha-256' >>/etc/postgresql/18/main/pg_hba.conf \
-    && echo "listen_addresses = '*'" >>/etc/postgresql/18/main/conf.d/opensource-server.conf
+    && echo "listen_addresses = '*'" >>/etc/postgresql/18/main/conf.d/opensource-server.conf \
+    && mkdir -p /etc/systemd/system/postgresql@.service.d
+
+# Proxmox injects a service which regenerates the snakeoil cert. This systemd
+# override prevents a race condition at boot.
+COPY images/manager/wait-proxmox-regenerate-snakeoil.conf /etc/systemd/system/postgresql@.service.d/
 
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
