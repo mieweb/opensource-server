@@ -5,6 +5,7 @@ ConditionPathExists=!/opt/opensource-server/create-a-container/.env
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 WorkingDirectory=/opt/opensource-server/create-a-container
 ExecStart=/bin/bash -c '\
   for i in {1..30}; do pg_isready -h localhost && break || sleep 1; done; \
