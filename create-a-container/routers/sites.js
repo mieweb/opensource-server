@@ -92,9 +92,17 @@ router.get('/:siteId/nginx.conf', requireLocalhostOrAdmin, async (req, res) => {
   // Filter by type
   const httpServices = allServices.filter(s => s.type === 'http');
   const streamServices = allServices.filter(s => s.type === 'transport');
+
+  // Collect domains used by HTTP services on this site + domains owned by this site
+  const usedDomainIds = new Set();
+  httpServices.forEach(s => {
+    if (s.httpService?.externalDomain?.id) usedDomainIds.add(s.httpService.externalDomain.id);
+  });
+  (site?.externalDomains || []).forEach(d => usedDomainIds.add(d.id));
+  const externalDomains = await ExternalDomain.findAll({ where: { id: [...usedDomainIds] } });
   
   res.set('Content-Type', 'text/plain');
-  return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
+  return res.render('nginx-conf', { httpServices, streamServices, externalDomains });
 });
 
 // Apply auth to all routes below this point
@@ -106,10 +114,8 @@ router.use('/:siteId', setCurrentSite);
 // Mount sub-routers
 const nodesRouter = require('./nodes');
 const containersRouter = require('./containers');
-const externalDomainsRouter = require('./external-domains');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
-router.use('/:siteId/external-domains', externalDomainsRouter);
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {
@@ -165,7 +171,7 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
 // POST /sites - Create a new site (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders, externalIp } = req.body;
     
     await Site.create({
       name,
@@ -173,7 +179,8 @@ router.post('/', requireAdmin, async (req, res) => {
       dhcpRange,
       subnetMask,
       gateway,
-      dnsForwarders
+      dnsForwarders,
+      externalIp: externalIp || null
     });
 
     await req.flash('success', `Site ${name} created successfully`);
@@ -195,7 +202,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders, externalIp } = req.body;
     
     await site.update({
       name,
@@ -203,7 +210,8 @@ router.put('/:id', requireAdmin, async (req, res) => {
       dhcpRange,
       subnetMask,
       gateway,
-      dnsForwarders
+      dnsForwarders,
+      externalIp: externalIp || null
     });
 
     await req.flash('success', `Site ${name} updated successfully`);

@@ -11,7 +11,7 @@ The cluster management system uses Sequelize ORM for database abstraction, suppo
 ```mermaid
 erDiagram
     Sites ||--o{ Nodes : contains
-    Sites ||--o{ ExternalDomains : has
+    Sites ||--o{ ExternalDomains : "default site"
     Nodes ||--o{ Containers : hosts
     Containers ||--o{ Services : exposes
     Containers }o--o| Jobs : "created by"
@@ -34,6 +34,7 @@ erDiagram
         string subnetMask
         string gateway
         string dnsForwarders
+        string externalIp "Public IP for DNS A records"
     }
 
     Nodes {
@@ -99,7 +100,7 @@ erDiagram
         string acmeDirectory
         string cloudflareApiEmail
         string cloudflareApiKey
-        int siteId FK
+        int siteId FK "nullable, default site"
     }
 
     Jobs {
@@ -168,7 +169,7 @@ erDiagram
 ## Core Models
 
 ### Site
-Top-level organizational unit. Has many Nodes and ExternalDomains.
+Top-level organizational unit. Has many Nodes. Has many ExternalDomains (as default site). `externalIp` is the public IP used as the target for Cloudflare DNS A records when cross-site HTTP services are created.
 
 ### Node
 Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). Belongs to Site, has many Containers.
@@ -184,7 +185,7 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 - **DnsService**: SRV records with `serviceName`.
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. Belongs to Site, has many HTTPServices.
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management.
 
 ## User Management Models
 

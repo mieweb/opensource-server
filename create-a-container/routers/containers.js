@@ -7,6 +7,7 @@ const { requireAuth } = require('../middlewares');
 const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
+const { manageDnsRecords } = require('../utils/cloudflare-dns');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -109,9 +110,8 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get external domains for this site
+  // Get all external domains (global)
   const externalDomains = await ExternalDomain.findAll({
-    where: { siteId },
     order: [['name', 'ASC']]
   });
 
@@ -234,7 +234,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
-  const externalDomains = await ExternalDomain.findAll({ where: { siteId }, order: [['name', 'ASC']] });
+  const externalDomains = await ExternalDomain.findAll({ order: [['name', 'ASC']] });
 
   return res.render('containers/form', { 
     site,
@@ -489,6 +489,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     const needsRestart = forceRestart || envChanged || entrypointChanged;
 
     let restartJob = null;
+    let dnsWarnings = [];
     await sequelize.transaction(async (t) => {
       if (envChanged || entrypointChanged) {
         await container.update({
@@ -509,17 +510,26 @@ router.put('/:id', requireAuth, async (req, res) => {
       }
       
       if (services && typeof services === 'object') {
-        // Delete services marked for deletion
+        // Delete services marked for deletion — collect cross-site HTTP services for DNS cleanup
+        const deletedHttpServices = [];
         for (const key in services) {
           const { id, deleted } = services[key];
           if (deleted === 'true' && id) {
+            const svc = await Service.findByPk(parseInt(id, 10), {
+              include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }],
+              transaction: t
+            });
+            if (svc?.httpService?.externalDomain) {
+              deletedHttpServices.push({ externalHostname: svc.httpService.externalHostname, ExternalDomain: svc.httpService.externalDomain });
+            }
             await Service.destroy({ 
               where: { id: parseInt(id, 10), containerId: container.id },
               transaction: t
             });
           }
         }
-        // Create new services
+        // Create new services — collect cross-site HTTP services for DNS creation
+        const newHttpServices = [];
         for (const key in services) {
           const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = services[key];
           if (deleted === 'true' || id || !type || !internalPort) continue;
@@ -535,6 +545,8 @@ router.put('/:id', requireAuth, async (req, res) => {
 
           if (serviceType === 'http') {
              await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId }, { transaction: t });
+             const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
+             if (domain) newHttpServices.push({ externalHostname, ExternalDomain: domain });
           } else if (serviceType === 'dns') {
              await DnsService.create({ serviceId: createdService.id, recordType: 'SRV', dnsName }, { transaction: t });
           } else {
@@ -542,14 +554,27 @@ router.put('/:id', requireAuth, async (req, res) => {
              await TransportService.create({ serviceId: createdService.id, protocol, externalPort }, { transaction: t });
           }
         }
+
+        // DNS management (non-blocking, after transaction body but before commit)
+        dnsWarnings = [];
+        if (deletedHttpServices.length > 0) {
+          dnsWarnings.push(...await manageDnsRecords(deletedHttpServices, site, 'delete'));
+        }
+        if (newHttpServices.length > 0) {
+          dnsWarnings.push(...await manageDnsRecords(newHttpServices, site, 'create'));
+        }
       }
     });
 
     if (restartJob) {
-      await req.flash('success', 'Container configuration updated. Restarting container...');
+      let msg = 'Container configuration updated. Restarting container...';
+      for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+      await req.flash('success', msg);
       return res.redirect(`/jobs/${restartJob.id}`);
     } else {
-      await req.flash('success', 'Container services updated successfully');
+      let msg = 'Container services updated successfully';
+      for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+      await req.flash('success', msg);
     }
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
@@ -581,7 +606,10 @@ router.delete('/:id', requireAuth, async (req, res) => {
   
   const container = await Container.findOne({
     where: { id: containerId, username: req.session.user },
-    include: [{ model: Node, as: 'node' }]
+    include: [
+      { model: Node, as: 'node' },
+      { model: Service, as: 'services', include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }] }
+    ]
   });
   
   if (!container || !container.node || container.node.siteId !== siteId) {
@@ -590,7 +618,16 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
   
   const node = container.node;
+  let dnsWarnings = [];
   try {
+    // Clean up DNS records for cross-site HTTP services
+    const httpServices = (container.services || [])
+      .filter(s => s.httpService?.externalDomain)
+      .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
+    if (httpServices.length > 0) {
+      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
+    }
+
     if (container.containerId && node.apiUrl && node.tokenId) {
       const api = await node.api();
       try {
@@ -611,7 +648,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
-  await req.flash('success', 'Container deleted successfully');
+  let msg = 'Container deleted successfully';
+  for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+  await req.flash('success', msg);
   return res.redirect(`/sites/${siteId}/containers`);
 });
 

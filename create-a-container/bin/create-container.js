@@ -28,11 +28,12 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
+const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -427,6 +428,19 @@ async function main() {
     console.log(`  MAC: ${macAddress}`);
     console.log(`  IP: ${ipv4Address}`);
     console.log(`  Status: running`);
+    
+    // Create Cloudflare DNS records for cross-site HTTP services
+    const services = await Service.findAll({
+      where: { containerId: container.id, type: 'http' },
+      include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }]
+    });
+    const httpServices = services
+      .filter(s => s.httpService?.externalDomain)
+      .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
+    if (httpServices.length > 0) {
+      const warnings = await manageDnsRecords(httpServices, site);
+      for (const w of warnings) console.warn(`[DNS WARNING] ${w}`);
+    }
     
     process.exit(0);
   } catch (err) {
