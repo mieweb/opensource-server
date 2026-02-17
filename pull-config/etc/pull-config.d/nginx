@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Nginx instance configuration for pull-config
 
-# Site ID for this configuration
-SITE_ID=1
+# Source environment variables (SITE_ID, MANAGER_URL, API_KEY)
+set -a; . /etc/environment; set +a
+
+if [[ -z "${SITE_ID:-}" ]] || [[ -z "${MANAGER_URL:-}" ]]; then
+  echo "ERROR: SITE_ID and MANAGER_URL must be set in /etc/environment" >&2
+  exit 1
+fi
 
 # Configuration file to manage
 export CONF_FILE=/etc/nginx/nginx.conf
 
 # URL to fetch configuration from
-export CONF_URL=http://localhost:3000/sites/${SITE_ID}/nginx.conf
+export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/nginx.conf
 
 # Command to test configuration validity before applying
 export TEST_COMMAND="nginx -t"

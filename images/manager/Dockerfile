@@ -1,5 +1,10 @@
 FROM agent
 
+# Default environment for pull-config. The manager runs the app on localhost
+# so it doesn't need an API key. Remote agents must set these explicitly.
+ENV SITE_ID=1
+ENV MANAGER_URL=http://localhost:3000
+
 # Install Postgres 18 from the PGDG repository and enable remote access only
 # for TLS encrypted connections. Debian creates a self-signed cert for this so
 # we don't have to make our own.
