@@ -322,6 +322,7 @@ router.post('/', async (req, res) => {
       status: 'pending',
       template: templateName,
       nodeId: node.id,
+      siteId,
       containerId: null,
       macAddress: null,
       ipv4Address: null,

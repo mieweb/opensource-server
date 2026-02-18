@@ -17,12 +17,16 @@ let pmxAuth = null; // {ticket, CSRF}
 
 const argv = process.argv.slice(2);
 if (argv.length < 1) {
-  console.error('Usage: json-to-sql.js <input.json> [--dry-run]');
+  console.error('Usage: json-to-sql.js <input.json> [--dry-run] [--node-id=N] [--site-id=N]');
   process.exit(2);
 }
 
 const inputPath = path.resolve(argv[0]);
 const dryRun = argv.includes('--dry-run');
+const nodeIdArg = argv.find(a => a.startsWith('--node-id='));
+const siteIdArg = argv.find(a => a.startsWith('--site-id='));
+const cliNodeId = nodeIdArg ? parseInt(nodeIdArg.split('=')[1], 10) : null;
+const cliSiteId = siteIdArg ? parseInt(siteIdArg.split('=')[1], 10) : null;
 
 async function pmxFetch(pathSuffix, opts = {}) {
   console.log('pmxFetch', pathSuffix);
@@ -210,6 +214,10 @@ async function run() {
       where: Sequelize.where(Sequelize.fn('lower', Sequelize.col('hostname')), hostname.toLowerCase())
     });
     if (!container) {
+      if (!cliNodeId || !cliSiteId) {
+        console.error(`ERROR: --node-id and --site-id are required when creating new containers (hostname: ${hostname})`);
+        process.exit(2);
+      }
       container = await Container.create({
         hostname,
         ipv4Address: obj.ip,
@@ -217,7 +225,9 @@ async function run() {
         status: 'running',
         template: obj.template || null,
         containerId: obj.ctid,
-        macAddress: obj.mac
+        macAddress: obj.mac,
+        nodeId: cliNodeId,
+        siteId: cliSiteId
       });
       console.log(`Created container ${hostname}`);
     } else {
