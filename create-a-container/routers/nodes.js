@@ -232,7 +232,7 @@ router.post('/import', async (req, res) => {
         containerId: c.vmid,
         macAddress: config.net0.match(/hwaddr=([0-9A-Fa-f:]+)/)[1],
         ipv4Address: config.net0.match(/ip=([^,]+)/)[1].split('/')[0],
-        status: 'active'
+        status: 'running'
       };
     }));
     await Container.bulkCreate(containers);
