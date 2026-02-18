@@ -19,7 +19,11 @@ pull-config/
 │   │   └── pull-config      # Single cron entry: run-parts /etc/pull-config.d
 │   └── pull-config.d/       # Executable instance scripts
 │       ├── nginx
-│       └── dnsmasq
+│       ├── dnsmasq-conf
+│       ├── dnsmasq-dhcp-hosts
+│       ├── dnsmasq-hosts
+│       ├── dnsmasq-dhcp-opts
+│       └── dnsmasq-servers
 └── install.sh               # Copies scripts to /etc/
 ```
 

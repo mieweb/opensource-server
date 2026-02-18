@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dnsmasq instance configuration for pull-config
+# Dnsmasq main configuration — requires full restart on change
 
 # Export well-formed KEY=VALUE lines from /etc/environment (safe for unquoted values)
 while IFS='=' read -r key value; do
@@ -12,23 +12,10 @@ if [[ -z "${SITE_ID:-}" ]] || [[ -z "${MANAGER_URL:-}" ]]; then
   exit 1
 fi
 
-# Configuration file to manage
 export CONF_FILE=/etc/dnsmasq.conf
-
-# URL to fetch configuration from
-export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/dnsmasq
-
-# Command to test configuration validity before applying
+export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/dnsmasq/conf
 export TEST_COMMAND="dnsmasq --test"
-
-# Command to reload the service (empty means use SERVICE_NAME fallback)
-# We manually restart dnsmasq becuase it implements a systemd reload handler
-# that doesn't actually pick up configuration changes.
 export RELOAD_COMMAND="systemctl restart dnsmasq"
-
-# Service name for systemctl reload-or-restart
 export SERVICE_NAME=""
 
-# Execute pull-config
 exec /opt/opensource-server/pull-config/bin/pull-config
-

@@ -92,7 +92,11 @@ cat /etc/dnsmasq.conf
 
 # Test manually
 /etc/pull-config.d/nginx
-/etc/pull-config.d/dnsmasq
+/etc/pull-config.d/dnsmasq-conf
+/etc/pull-config.d/dnsmasq-dhcp-hosts
+/etc/pull-config.d/dnsmasq-hosts
+/etc/pull-config.d/dnsmasq-dhcp-opts
+/etc/pull-config.d/dnsmasq-servers
 ```
 
 ## 5. Forward Network Traffic
@@ -131,4 +135,6 @@ sequenceDiagram
     end
 ```
 
-Each service (nginx, dnsmasq) has its own instance script in `/etc/pull-config.d/` that runs independently. ETag caching ensures configs are only downloaded when they change.
+Each service (nginx, dnsmasq) has its own instance script(s) in `/etc/pull-config.d/` that run independently. ETag caching ensures configs are only downloaded when they change.
+
+Dnsmasq is split into 5 pull-config instances: the main config (`dnsmasq-conf`) triggers a full restart, while the auxiliary files (`dnsmasq-dhcp-hosts`, `dnsmasq-hosts`, `dnsmasq-dhcp-opts`, `dnsmasq-servers`) trigger a SIGHUP reload. This avoids restarting dnsmasq when only DHCP leases or host records change.

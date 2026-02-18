@@ -1,14 +1,12 @@
 const express = require('express');
-const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite } = require('../middlewares');
 
 const router = express.Router();
 
-// GET /sites/:siteId/dnsmasq - Endpoint for dnsmasq configuration
-router.get('/:siteId/dnsmasq', requireLocalhostOrAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-  
-  const site = await Site.findByPk(siteId, {
+// Shared query for dnsmasq endpoints — site with nodes and running containers
+async function loadDnsmasqSite(siteId) {
+  return Site.findByPk(siteId, {
     include: [{
       model: Node,
       as: 'nodes',
@@ -17,25 +15,21 @@ router.get('/:siteId/dnsmasq', requireLocalhostOrAdmin, async (req, res) => {
         as: 'containers',
         where: { status: 'running' },
         required: false,
-        attributes: ['macAddress', 'ipv4Address', 'hostname'],
-        include: [{
-          model: Service,
-          as: 'services',
-          include: [{
-            model: DnsService,
-            as: 'dnsService'
-          }]
-        }]
+        attributes: ['macAddress', 'ipv4Address', 'hostname']
       }]
     }]
   });
-  
-  if (!site) {
-    return res.status(404).send('Site not found');
-  }
-  
+}
+
+// GET /sites/:siteId/dnsmasq/:file - Dnsmasq configuration files
+const DNSMASQ_TEMPLATES = ['conf', 'dhcp-hosts', 'hosts', 'dhcp-opts', 'servers'];
+router.get('/:siteId/dnsmasq/:file', requireLocalhostOrAdmin, async (req, res) => {
+  const { file } = req.params;
+  if (!DNSMASQ_TEMPLATES.includes(file)) return res.status(404).send('Not found');
+  const site = await loadDnsmasqSite(parseInt(req.params.siteId, 10));
+  if (!site) return res.status(404).send('Site not found');
   res.set('Content-Type', 'text/plain');
-  return res.render('dnsmasq-conf', { site });
+  return res.render(`dnsmasq/${file}`, { site });
 });
 
 // GET /sites/:siteId/nginx - Endpoint for nginx configuration
