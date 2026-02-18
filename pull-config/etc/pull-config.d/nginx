@@ -16,7 +16,7 @@ fi
 export CONF_FILE=/etc/nginx/nginx.conf
 
 # URL to fetch configuration from
-export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/nginx.conf
+export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/nginx
 
 # Command to test configuration validity before applying
 export TEST_COMMAND="nginx -t"

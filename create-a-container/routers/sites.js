@@ -4,8 +4,8 @@ const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite } = r
 
 const router = express.Router();
 
-// GET /sites/:siteId/dnsmasq.conf - Endpoint for dnsmasq configuration
-router.get('/:siteId/dnsmasq.conf', requireLocalhostOrAdmin, async (req, res) => {
+// GET /sites/:siteId/dnsmasq - Endpoint for dnsmasq configuration
+router.get('/:siteId/dnsmasq', requireLocalhostOrAdmin, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
   const site = await Site.findByPk(siteId, {
@@ -38,8 +38,8 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhostOrAdmin, async (req, res) =>
   return res.render('dnsmasq-conf', { site });
 });
 
-// GET /sites/:siteId/nginx.conf - Endpoint for nginx configuration
-router.get('/:siteId/nginx.conf', requireLocalhostOrAdmin, async (req, res) => {
+// GET /sites/:siteId/nginx - Endpoint for nginx configuration
+router.get('/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
   // fetch services for the specific site (only from running containers)

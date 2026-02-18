@@ -121,7 +121,7 @@ sequenceDiagram
     participant Manager
 
     Cron->>pull-config: run-parts /etc/pull-config.d
-    pull-config->>Manager: GET /sites/{SITE_ID}/nginx.conf<br/>Authorization: Bearer {API_KEY}<br/>If-None-Match: {etag}
+    pull-config->>Manager: GET /sites/{SITE_ID}/nginx<br/>Authorization: Bearer {API_KEY}<br/>If-None-Match: {etag}
     alt Config changed
         Manager-->>pull-config: 200 OK + new config
         pull-config->>pull-config: Validate (nginx -t)

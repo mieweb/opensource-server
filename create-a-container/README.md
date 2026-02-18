@@ -409,7 +409,7 @@ SELECT id, status FROM Jobs WHERE id = <ID>;
 
 ### Configuration Routes
 
-#### `GET /nginx.conf`
+#### `GET /sites/:siteId/nginx`
 Generate nginx configuration for all registered services
 - **Returns**: `text/plain` - Complete nginx configuration with all server blocks
 
@@ -611,7 +611,7 @@ create-a-container/
 This application generates nginx configurations consumed by the `nginx-reverse-proxy` component:
 
 1. Containers register their services in the database
-2. The `/nginx.conf` endpoint generates complete nginx configs
+2. The `/sites/:siteId/nginx` endpoint generates complete nginx configs
 3. The reverse proxy polls this endpoint via cron
 4. Nginx automatically reloads with updated configurations
 

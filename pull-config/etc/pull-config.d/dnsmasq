@@ -16,7 +16,7 @@ fi
 export CONF_FILE=/etc/dnsmasq.conf
 
 # URL to fetch configuration from
-export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/dnsmasq.conf
+export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/dnsmasq
 
 # Command to test configuration validity before applying
 export TEST_COMMAND="dnsmasq --test"
