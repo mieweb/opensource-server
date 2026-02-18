@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Database Schema
 
-The cluster management system uses Sequelize ORM for database abstraction, supporting SQLite (default), PostgreSQL, and MySQL.
+The cluster management system uses Sequelize ORM with PostgreSQL. While Sequelize supports other databases, only PostgreSQL is officially supported.
 
 ## Entity Relationship Diagram
 
@@ -219,7 +219,7 @@ Progress messages for a Job.
 
 ## Database Abstraction
 
-Implemented with **Sequelize ORM**: supports SQLite (default), PostgreSQL, MySQL. Includes migrations, field validation, hooks (password hashing, UID assignment), and declarative associations.
+Implemented with **Sequelize ORM** backed by **PostgreSQL**. Includes migrations, field validation, hooks (password hashing, UID assignment), and declarative associations.
 
 ## Key Design Patterns
 

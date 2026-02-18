@@ -69,7 +69,7 @@ erDiagram
 
 ### System Requirements
 - **Node.js** 18.x or higher
-- **MariaDB/MySQL** 5.7 or higher
+- **PostgreSQL** 16 or higher
 - **Proxmox VE** cluster with API access
 - **SMTP server** for email notifications (optional)
 
@@ -79,9 +79,8 @@ erDiagram
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# Install MariaDB
-sudo apt-get install mariadb-server -y
-sudo mysql_secure_installation
+# Install PostgreSQL
+sudo apt-get install postgresql -y
 ```
 
 ## Installation
@@ -123,11 +122,11 @@ Create a `.env` file in the `create-a-container` directory:
 
 ```bash
 # Database Configuration
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=container_manager
-MYSQL_PASSWORD=secure_password_here
-MYSQL_DATABASE=opensource_containers
+POSTGRES_HOST=localhost
+POSTGRES_USER=cluster_manager
+POSTGRES_PASSWORD=secure_password_here
+POSTGRES_DATABASE=cluster_manager
+DATABASE_DIALECT=postgres
 
 # Session Configuration
 SESSION_SECRET=generate_random_secret_here
@@ -320,7 +319,7 @@ sudo systemctl status job-runner.service
 #### Configuration
 
 **Database** (via `.env`)
-- `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+- `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`, `DATABASE_DIALECT`
 
 **Runner Behavior** (environment variables)
 - `JOB_RUNNER_POLL_MS` (default 2000) - Polling interval in milliseconds
@@ -330,11 +329,11 @@ sudo systemctl status job-runner.service
 **Systemd Setup** (recommended for production)
 Create `/etc/default/container-creator` with DB credentials:
 ```bash
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=container_manager
-MYSQL_PASSWORD=secure_password_here
-MYSQL_DATABASE=opensource_containers
+POSTGRES_HOST=localhost
+POSTGRES_USER=cluster_manager
+POSTGRES_PASSWORD=secure_password_here
+POSTGRES_DATABASE=cluster_manager
+DATABASE_DIALECT=postgres
 ```
 
 Update `job-runner.service` to include:
@@ -374,14 +373,14 @@ sudo systemctl stop job-runner.service
 ```
 2. Insert job
 ```bash
-mysql ... -e "INSERT INTO Jobs (command, status, createdAt, updatedAt) VALUES ('for i in \$(seq 1 300); do echo \"line \$i\"; sleep 1; done', 'pending', NOW(), NOW()); SELECT LAST_INSERT_ID();"
+psql -c "INSERT INTO \"Jobs\" (command, status, \"createdAt\", \"updatedAt\") VALUES ('for i in \$(seq 1 300); do echo \"line \$i\"; sleep 1; done', 'pending', NOW(), NOW()) RETURNING id;"
 ```
 3. Start runner and monitor
 ```bash
 node job-runner.js
 # In another terminal:
 while sleep 15; do
-  mysql ... -e "SELECT id, output FROM JobStatuses WHERE jobId=<ID> ORDER BY id ASC;" 
+  psql -c "SELECT id, output FROM \"JobStatuses\" WHERE \"jobId\"=<ID> ORDER BY id ASC;" 
 done
 ```
 4. Check final status
@@ -490,11 +489,10 @@ Database migration files for schema management
 ## Environment Variables
 
 ### Required
-- `MYSQL_HOST` - Database host (default: localhost)
-- `MYSQL_PORT` - Database port (default: 3306)
-- `MYSQL_USER` - Database username
-- `MYSQL_PASSWORD` - Database password
-- `MYSQL_DATABASE` - Database name
+- `POSTGRES_HOST` - Database host (default: localhost)
+- `POSTGRES_USER` - Database username
+- `POSTGRES_PASSWORD` - Database password
+- `POSTGRES_DATABASE` - Database name
 - `SESSION_SECRET` - Express session secret (cryptographically random string)
 
 ### Optional
@@ -526,13 +524,13 @@ Database migration files for schema management
 ### Database Connection Issues
 ```bash
 # Test database connection
-mysql -h localhost -u container_manager -p opensource_containers
+psql -h localhost -U cluster_manager -d cluster_manager
 
 # Check if migrations ran
 npm run db:migrate
 
 # Verify tables exist
-mysql -u container_manager -p -e "USE opensource_containers; SHOW TABLES;"
+psql -h localhost -U cluster_manager -d cluster_manager -c "\dt"
 ```
 
 ### Application Won't Start

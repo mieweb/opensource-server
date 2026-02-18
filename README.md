@@ -83,7 +83,7 @@ The system provides automated container hosting through three main components:
 ```mermaid
 graph TD
     User[User] --> WebUI[create-a-container Web UI]
-    WebUI --> DB[(SQLite Database)]
+    WebUI --> DB[(PostgreSQL)]
     WebUI --> PVE[Proxmox VE API]
     PVE --> LXC[LXC Container]
     
