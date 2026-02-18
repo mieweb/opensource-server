@@ -1,5 +1,5 @@
 group "default" {
-    targets = ["base", "nodejs"]
+    targets = ["base", "nodejs", "mie-opensource-landing"]
 }
 
 target "base" {
@@ -10,5 +10,13 @@ target "nodejs" {
     context = "./nodejs"
     contexts = {
         base = "target:base"
+    }
+}
+
+target "mie-opensource-landing" {
+    context = "../"
+    dockerfile = "mie-opensource-landing/Dockerfile"
+    contexts = {
+        nodejs = "target:nodejs"
     }
 }

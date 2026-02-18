@@ -1,25 +1,15 @@
-name: Build and Push Images
+name: PR Preview
 
 on:
-  push:
-    branches:
-      - '**'
-    tags:
-      - '**'
-    paths:
-      - 'images/**'
-      - 'mie-opensource-landing/**'
-      - 'Makefile'
-  schedule:
-    # Run weekly on Sunday at 11:00 PM UTC (Sunday-Monday night depending on timezone)
-    - cron: '0 23 * * 0'
-  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
-  build-and-push:
+  build-and-deploy:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,6 +17,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,10 +37,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/base
           bake-target: base
           tags: |
-            type=sha
-            type=ref,event=branch
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=pr
 
       - name: Docker Meta (NodeJS)
         id: meta-nodejs
@@ -57,10 +46,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/nodejs
           bake-target: nodejs
           tags: |
-            type=sha
-            type=ref,event=branch
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=pr
 
       - name: Docker Meta (mie-opensource-landing)
         id: meta-mie-opensource-landing
@@ -69,10 +55,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/mie-opensource-landing
           bake-target: mie-opensource-landing
           tags: |
-            type=sha
-            type=ref,event=branch
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=pr
 
       - name: Build and push
         uses: docker/bake-action@v5
@@ -85,9 +68,29 @@ jobs:
             ${{ steps.meta-nodejs.outputs.bake-file }}
             ${{ steps.meta-mie-opensource-landing.outputs.bake-file }}
           set: |
-            base.cache-from=type=gha,scope=base-${{ github.ref_name }}
-            base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}
-            nodejs.cache-from=type=gha,scope=nodejs-${{ github.ref_name }}
-            nodejs.cache-to=type=gha,mode=max,scope=nodejs-${{ github.ref_name }}
-            mie-opensource-landing.cache-from=type=gha,scope=mie-opensource-landing-${{ github.ref_name }}
-            mie-opensource-landing.cache-to=type=gha,mode=max,scope=mie-opensource-landing-${{ github.ref_name }}
+            base.cache-from=type=gha,scope=base-pr-${{ github.event.pull_request.number }}
+            base.cache-to=type=gha,mode=max,scope=base-pr-${{ github.event.pull_request.number }}
+            nodejs.cache-from=type=gha,scope=nodejs-pr-${{ github.event.pull_request.number }}
+            nodejs.cache-to=type=gha,mode=max,scope=nodejs-pr-${{ github.event.pull_request.number }}
+            mie-opensource-landing.cache-from=type=gha,scope=mie-opensource-landing-pr-${{ github.event.pull_request.number }}
+            mie-opensource-landing.cache-to=type=gha,mode=max,scope=mie-opensource-landing-pr-${{ github.event.pull_request.number }}
+
+      - name: Deploy preview container
+        uses: mieweb/launchpad@main
+        with:
+          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
+          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
+          template_name: ${{ env.REGISTRY }}/${{ github.repository }}/mie-opensource-landing:pr-${{ github.event.pull_request.number }}
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Remove preview container
+        uses: mieweb/launchpad@main
+        with:
+          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
+          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
