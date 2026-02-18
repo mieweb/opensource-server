@@ -20,7 +20,7 @@
   "dependencies": {
     "@docusaurus/core": "3.8.1",
     "@docusaurus/preset-classic": "3.8.1",
-    "@docusaurus/theme-mermaid": "^3.8.1",
+    "@docusaurus/theme-mermaid": "^3.9.2",
     "@heroui/react": "^2.8.2",
     "@heroui/snippet": "^2.2.25",
     "@heroui/system": "^2.4.20",
