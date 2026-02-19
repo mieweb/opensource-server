@@ -9,3 +9,4 @@ COPY . /opt/opensource-server
 RUN cd /opt/opensource-server && make install-docs
 
 EXPOSE 2998
+LABEL org.mieweb.opensource-server.services.http.default-port=2998

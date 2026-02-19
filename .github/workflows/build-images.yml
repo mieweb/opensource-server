@@ -10,6 +10,12 @@ on:
       - 'images/**'
       - 'mie-opensource-landing/**'
       - 'Makefile'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - 'images/**'
+      - 'mie-opensource-landing/**'
+      - 'Makefile'
   schedule:
     # Run weekly on Sunday at 11:00 PM UTC (Sunday-Monday night depending on timezone)
     - cron: '0 23 * * 0'
@@ -20,6 +26,7 @@ env:
 
 jobs:
   build-and-push:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,6 +54,7 @@ jobs:
           tags: |
             type=sha
             type=ref,event=branch
+            type=ref,event=pr
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
@@ -59,18 +67,20 @@ jobs:
           tags: |
             type=sha
             type=ref,event=branch
+            type=ref,event=pr
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Docker Meta (mie-opensource-landing)
-        id: meta-mie-opensource-landing
+      - name: Docker Meta (Docs)
+        id: meta-docs
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/mie-opensource-landing
-          bake-target: mie-opensource-landing
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/docs
+          bake-target: docs
           tags: |
             type=sha
             type=ref,event=branch
+            type=ref,event=pr
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
@@ -83,11 +93,39 @@ jobs:
             ./docker-bake.hcl
             ${{ steps.meta-base.outputs.bake-file }}
             ${{ steps.meta-nodejs.outputs.bake-file }}
-            ${{ steps.meta-mie-opensource-landing.outputs.bake-file }}
+            ${{ steps.meta-docs.outputs.bake-file }}
           set: |
             base.cache-from=type=gha,scope=base-${{ github.ref_name }}
             base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}
             nodejs.cache-from=type=gha,scope=nodejs-${{ github.ref_name }}
             nodejs.cache-to=type=gha,mode=max,scope=nodejs-${{ github.ref_name }}
-            mie-opensource-landing.cache-from=type=gha,scope=mie-opensource-landing-${{ github.ref_name }}
-            mie-opensource-landing.cache-to=type=gha,mode=max,scope=mie-opensource-landing-${{ github.ref_name }}
+            docs.cache-from=type=gha,scope=docs-${{ github.ref_name }}
+            docs.cache-to=type=gha,mode=max,scope=docs-${{ github.ref_name }}
+
+  deploy-preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy preview container
+        uses: mieweb/launchpad@main
+        with:
+          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
+          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
+          template_name: ${{ env.REGISTRY }}/${{ github.repository }}/docs:pr-${{ github.event.pull_request.number }}
+
+  cleanup-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Remove preview container
+        uses: mieweb/launchpad@main
+        with:
+          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
+          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
