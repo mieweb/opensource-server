@@ -65,9 +65,29 @@
                 </td>
                 <td><%= r.ipv4Address || '-' %></td>
                 <td><%= r.template || '-' %></td>
-                <td><%= r.nodeName %></td>
-                <td><%= r.sshPort || '-' %></td>
-                <td><%= r.httpPort || '-' %></td>
+                <td>
+                  <% if (r.nodeApiUrl && r.containerId) { %>
+                    <a href="<%= r.nodeApiUrl %>#v1:0:=lxc%2F<%= r.containerId %>:4::::::=consolejs:" target="_blank" rel="noopener noreferrer" aria-label="Open <%= r.nodeName %> console for container <%= r.hostname %>"><%= r.nodeName %> <i class="bi bi-box-arrow-up-right"></i></a>
+                  <% } else { %>
+                    <%= r.nodeName %>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (r.sshPort && site.externalIp) { %>
+                    <%= r.sshPort %>
+                    <a href="vscode://vscode-remote/ssh-remote+<%= req.session.user %>@<%= site.externalIp %>:<%= r.sshPort %>/" target="_blank" rel="noopener noreferrer" title="Open in VS Code" aria-label="Open SSH in VS Code for container <%= r.hostname %>" class="ms-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256" aria-hidden="true" style="vertical-align: -0.125em;"><path fill="#0065A9" d="M246.94 27.64l-52.75-25.4c-6.1-2.94-13.4-1.7-18.2 3.1L3.33 162.77c-4.64 4.24-4.64 11.55.01 15.78l14.1 12.82c3.8 3.46 9.53 3.71 13.62.61L239 34.23c6.98-5.3 17-.32 17 8.44v-.61c0-6.15-3.52-11.75-9.06-14.42z"/><path fill="#007ACC" d="M246.94 228.36l-52.75 25.4c-6.1 2.94-13.4 1.7-18.2-3.09L3.33 93.23c-4.64-4.24-4.64-11.55.01-15.78l14.1-12.82c3.8-3.46 9.53-3.71 13.62-.61L239 221.77c6.98 5.3 17 .32 17-8.44v.61c0 6.15-3.52 11.75-9.06 14.42z"/><path fill="#1F9CF0" d="M194.2 253.76c-6.11 2.94-13.4 1.7-18.2-3.1 5.9 5.91 16 1.73 16-6.62V11.96c0-8.35-10.1-12.53-16-6.63 4.8-4.79 12.09-6.03 18.2-3.1l52.74 25.36c5.54 2.67 9.07 8.27 9.07 14.42v197.33c0 6.15-3.53 11.75-9.07 14.42z"/></svg></a>
+                    <a href="ssh://<%= req.session.user %>@<%= site.externalIp %>:<%= r.sshPort %>" target="_blank" rel="noopener noreferrer" title="Open SSH in terminal" aria-label="Open SSH terminal for container <%= r.hostname %>" class="ms-2"><i class="bi bi-terminal"></i></a>
+                  <% } else { %>
+                    <%= r.sshPort || '-' %>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (r.httpExternalUrl) { %>
+                    <a href="<%= r.httpExternalUrl %>" target="_blank" rel="noopener noreferrer" aria-label="Open external URL for container <%= r.hostname %>"><%= r.httpPort %> <i class="bi bi-box-arrow-up-right"></i></a>
+                  <% } else { %>
+                    <%= r.httpPort || '-' %>
+                  <% } %>
+                </td>
                 <td>
                   <% if (r.status === 'running' || r.status === 'failed') { %>
                     <a href="/sites/<%= site.id %>/containers/<%= r.id %>/edit" class="btn btn-primary btn-sm" aria-label="Edit services for container <%= r.hostname %>">Edit</a>

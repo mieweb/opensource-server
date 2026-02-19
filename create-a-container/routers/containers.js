@@ -163,11 +163,11 @@ router.get('/', requireAuth, async (req, res) => {
       { 
         association: 'services',
         include: [
-          { association: 'httpService' },
+          { association: 'httpService', include: [{ association: 'externalDomain' }] },
           { association: 'transportService' }
         ]
       },
-      { association: 'node', attributes: ['id', 'name'] }
+      { association: 'node', attributes: ['id', 'name', 'apiUrl'] }
     ]
   });
 
@@ -177,10 +177,14 @@ router.get('/', requireAuth, async (req, res) => {
     const sshPort = ssh?.transportService?.externalPort || null;
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
+    const httpExternalUrl = http?.httpService?.externalHostname && http?.httpService?.externalDomain?.name
+      ? `https://${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
+      : null;
     
     // Common object structure for both API and View
     return {
       id: c.id,
+      containerId: c.containerId,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
       // API might want raw MacAddress, View might not need it, but including it doesn't hurt
@@ -190,7 +194,9 @@ router.get('/', requireAuth, async (req, res) => {
       creationJobId: c.creationJobId,
       sshPort,
       httpPort,
+      httpExternalUrl,
       nodeName: c.node ? c.node.name : '-',
+      nodeApiUrl: c.node ? c.node.apiUrl : null,
       createdAt: c.createdAt
     };
   });
