@@ -1,11 +1,12 @@
 [Unit]
 Description=Opensource Documentation Server
-After=network.target
+After=network.target environment.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/opensource-server/mie-opensource-landing
+EnvironmentFile=/etc/environment
 ExecStart=/usr/bin/npm run serve
 Restart=on-failure
 RestartSec=10s

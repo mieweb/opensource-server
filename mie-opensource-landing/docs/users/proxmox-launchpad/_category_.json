@@ -1,8 +1,8 @@
 {
-  "label": "Proxmox Launchpad",
+  "label": "Launchpad",
   "position": 4,
   "link": {
     "type": "generated-index",
-    "description": "Ready to automate your deployments even further? Learn how to integrate Proxmox Launchpad into your repository for a seamless CI/CD pipeline to our cluster."
+    "description": "Use the Launchpad GitHub Action to deploy Docker/OCI images as containers on MIE's Proxmox cluster."
   }
 }

@@ -71,8 +71,8 @@ const config: Config = {
                     position: "left",
                 },
                 {
-                    to: "https://github.com/marketplace/actions/proxmox-launchpad",
-                    label: "Proxmox Launchpad",
+                    to: "https://github.com/marketplace/actions/mieweb-launchpad",
+                    label: "Launchpad",
                     position: "left",
                 },
                 {
@@ -103,7 +103,7 @@ const config: Config = {
                             to: "/docs/users/creating-containers/web-gui",
                         },
                         {
-                            label: "Proxmox Launchpad",
+                            label: "Launchpad",
                             to: "/docs/users/proxmox-launchpad/what-is-proxmox-launchpad",
                         },
                         {
