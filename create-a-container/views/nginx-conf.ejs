@@ -139,9 +139,9 @@ http {
     
     server_name <%= service.httpService.externalHostname %>.<%= service.httpService.externalDomain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= service.httpService.externalDomain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= service.httpService.externalDomain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -219,9 +219,9 @@ http {
     
     server_name *.<%= domain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -270,9 +270,9 @@ http {
     
     server_name <%= domain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;

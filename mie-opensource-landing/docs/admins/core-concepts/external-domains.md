@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # External Domains
 
-External domains expose container HTTP services to the internet with automatic SSL/TLS certificate management via ACME (Let's Encrypt). Domains are global resources available to all sites.
+External domains expose container HTTP services to the internet. Domains are global resources available to all sites.
 
 ## Prerequisites
 
@@ -25,10 +25,6 @@ External domains expose container HTTP services to the internet with automatic S
 Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
 :::
 
-:::warning
-If you don't configure ACME, you'll need to manage SSL certificates manually. Instructions for doing so are out-of-scope for this documentation.
-:::
-
 ## Setup
 
 1. Add your domain to Cloudflare and update nameservers
@@ -38,6 +34,46 @@ If you don't configure ACME, you'll need to manage SSL certificates manually. In
 5. Save — the system validates Cloudflare API access automatically
 
 The creating site is set as the domain's **default site**. Wildcard DNS (`*.example.com`) is assumed to point to the default site's IP.
+
+## SSL Certificate Provisioning
+
+SSL certificates are managed manually using [acme.sh](https://github.com/acmesh-official/acme.sh), which is pre-installed on all agent and manager containers. NGINX reads certificates from standard locations:
+
+| File | Path |
+|------|------|
+| Certificate (fullchain) | `/etc/ssl/certs/<domain>.crt` |
+| Private key | `/etc/ssl/private/<domain>.key` |
+
+### Issue a Certificate
+
+Run on each agent and manager container that serves traffic for the domain:
+
+```bash
+export CF_Token="your_cloudflare_api_token"
+export CF_Account_ID="your_cloudflare_account_id"
+
+acme.sh --issue --dns dns_cf -d example.com -d '*.example.com'
+```
+
+### Install the Certificate
+
+After issuing, install the certificate to the standard locations and configure automatic NGINX reload on renewal:
+
+```bash
+acme.sh --install-cert -d example.com \
+  --fullchain-file /etc/ssl/certs/example.com.crt \
+  --key-file /etc/ssl/private/example.com.key \
+  --reloadcmd "nginx -s reload"
+```
+
+acme.sh stores this configuration and automatically renews the certificate and runs the reload command on renewal.
+
+### Verify
+
+```bash
+nginx -t && nginx -s reload
+curl -vI https://example.com 2>&1 | grep 'subject:'
+```
 
 ## Cross-Site DNS
 
@@ -60,11 +96,8 @@ DNS operations are **optimistic and non-fatal**. If Cloudflare API calls fail du
 
 When a container exposes an HTTP service on an external domain:
 
-1. DNS-01 challenge created via Cloudflare API
-2. Certificate issued and auto-installed
-3. Certificates auto-renew before expiration (~every 60 days)
-4. DNS records and reverse proxy routing configured automatically
-5. Cross-site A records created if the service's site ≠ domain's default site
+1. DNS records and reverse proxy routing configured automatically
+2. Cross-site A records created if the service's site ≠ domain's default site
 
 On container or service deletion, cross-site A records are cleaned up automatically.
 

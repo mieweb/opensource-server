@@ -25,12 +25,9 @@ RUN sed -i \
     -e 's/^#IGNORE_RESOLVCONF=\(.*\)$/IGNORE_RESOLVCONF=\1/' \
     /etc/default/dnsmasq
 
-# Install lego for ACME certificate management. We install the build directly from
-# the lego GitHub releases since the Debian package is out of date and doesn't
-# support Cloudflare DNS validation, which we use.
-ARG LEGO_VERSION=v4.28.1
-RUN curl -fsSL "https://github.com/go-acme/lego/releases/download/${LEGO_VERSION}/lego_${LEGO_VERSION}_linux_amd64.tar.gz" \
-    | tar -xz -C /usr/local/bin lego
+# Install acme.sh for ACME certificate management
+RUN curl -fsSL https://get.acme.sh | sh \
+    && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
 
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.

@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Deploying Agents
 
-An agent container runs nginx, dnsmasq, and ACME certificate management for a site. Deploy one agent per Proxmox node to handle networking for containers on that node.
+An agent container runs nginx, dnsmasq, and [acme.sh](https://github.com/acmesh-official/acme.sh) for a site. Deploy one agent per Proxmox node to handle networking for containers on that node.
 
 Agents are deployed **manually in Proxmox** (not through the manager UI) and should be set up **after** configuring the site in the manager but **before** importing the node. This ensures DNS and reverse proxy services are running when the node comes online.
 

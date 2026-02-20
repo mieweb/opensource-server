@@ -2,9 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { ExternalDomain, Site } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
-const path = require('path');
-const { run } = require('../utils');
-const axios = require('axios');
 
 // All routes require authentication + admin
 router.use(requireAuth);
@@ -64,7 +61,7 @@ router.post('/', async (req, res) => {
   try {
     const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId } = req.body;
 
-    const externalDomain = await ExternalDomain.create({
+    await ExternalDomain.create({
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
@@ -73,66 +70,7 @@ router.post('/', async (req, res) => {
       siteId: siteId || null
     });
 
-    // TODO: do this async in a Job queue
-    // Provision SSL certificates via lego if all required fields are present
-    if (externalDomain.name && externalDomain.acmeEmail && externalDomain.cloudflareApiEmail && externalDomain.cloudflareApiKey) {
-      try {
-        const certsPath = path.join(__dirname, '..', 'certs');
-        const legoArgs = [
-          '-d', externalDomain.name,
-          '-d', `*.${externalDomain.name}`,
-          '-a',
-          '-m', externalDomain.acmeEmail,
-          '--dns', 'cloudflare',
-          '--path', certsPath,
-          'run'
-        ];
-
-        // Add server URL if provided
-        if (externalDomain.acmeDirectoryUrl) {
-          legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
-
-          // If using ZeroSSL, retrieve EAB credentials automatically
-          if (externalDomain.acmeDirectoryUrl == 'https://acme.zerossl.com/v2/DV90') {
-            try {
-              console.log(`Retrieving ZeroSSL EAB credentials for ${externalDomain.acmeEmail}...`);
-              const eabResponse = await axios.post('https://api.zerossl.com/acme/eab-credentials-email', 
-                new URLSearchParams({ email: externalDomain.acmeEmail }),
-                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-              );
-              
-              if (eabResponse.data.success && eabResponse.data.eab_kid && eabResponse.data.eab_hmac_key) {
-                legoArgs.unshift('--eab');
-                legoArgs.unshift('--kid', eabResponse.data.eab_kid);
-                legoArgs.unshift('--hmac', eabResponse.data.eab_hmac_key);
-                console.log('ZeroSSL EAB credentials retrieved successfully');
-              } else {
-                throw new Error('Failed to retrieve EAB credentials from ZeroSSL');
-              }
-            } catch (eabError) {
-              console.error('ZeroSSL EAB retrieval error:', eabError.response?.data || eabError.message);
-              throw new Error(`Failed to retrieve ZeroSSL EAB credentials: ${eabError.response?.data?.error?.type || eabError.message}`);
-            }
-          }
-        }
-
-        const env = {
-          ...process.env,
-          CF_API_EMAIL: externalDomain.cloudflareApiEmail,
-          CF_DNS_API_TOKEN: externalDomain.cloudflareApiKey
-        };
-
-        const { stdout, stderr } = await run('lego', legoArgs, { env });
-        console.log(`Certificate provisioned for ${externalDomain.name}`);
-        
-        await req.flash('success', `External domain ${name} created and certificate provisioned successfully`);
-      } catch (certError) {
-        console.error('Certificate provisioning error:', certError);
-        await req.flash('warning', `External domain ${name} created, but certificate provisioning failed: ${certError.message}`);
-      }
-    } else {
-      await req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
-    }
+    await req.flash('success', `External domain ${name} created successfully`);
 
     return res.redirect('/external-domains');
   } catch (error) {
