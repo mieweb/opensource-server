@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Dnsmasq host records (addn-hosts) — reloadable via SIGHUP
+
+# Export well-formed KEY=VALUE lines from /etc/environment (safe for unquoted values)
+while IFS='=' read -r key value; do
+  [[ -z "$key" || "$key" =~ ^# ]] && continue
+  export "$key=$value"
+done < /etc/environment
+
+if [[ -z "${SITE_ID:-}" ]] || [[ -z "${MANAGER_URL:-}" ]]; then
+  echo "ERROR: SITE_ID and MANAGER_URL must be set in /etc/environment" >&2
+  exit 1
+fi
+
+mkdir -p /var/lib/dnsmasq
+
+export CONF_FILE=/var/lib/dnsmasq/hosts
+export CONF_URL=${MANAGER_URL}/sites/${SITE_ID}/dnsmasq/hosts
+export TEST_COMMAND=""
+export RELOAD_COMMAND="systemctl reload dnsmasq"
+export SERVICE_NAME=""
+
+exec /opt/opensource-server/pull-config/bin/pull-config

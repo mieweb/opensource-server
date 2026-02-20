@@ -98,6 +98,19 @@
         <div class="form-text">Comma-separated list of DNS server IPs</div>
       </div>
 
+      <div class="mb-3">
+        <label for="externalIp" class="form-label">External IP</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="externalIp" 
+          name="externalIp" 
+          value="<%= site ? site.externalIp : '' %>" 
+          placeholder="e.g., 203.0.113.10"
+        >
+        <div class="form-text">Public IP address used as the target for Cloudflare DNS A records</div>
+      </div>
+
       <div class="d-flex justify-content-between align-items-center mt-4">
         <a href="/sites" class="btn btn-secondary">Cancel</a>
         <button type="submit" class="btn btn-primary">

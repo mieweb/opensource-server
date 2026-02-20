@@ -1,0 +1,18 @@
+# standard configuration
+no-resolv
+no-hosts
+dhcp-authoritative
+domain-needed
+bogus-priv
+
+# internal domain for the site
+domain=<%= site.internalDomain %>
+
+# DHCP configuration
+dhcp-range=<%= site.dhcpRange %>,<%= site.subnetMask %>,12h
+
+# auxiliary files reloadable via SIGHUP
+dhcp-hostsfile=/var/lib/dnsmasq/dhcp-hosts
+addn-hosts=/var/lib/dnsmasq/hosts
+dhcp-optsfile=/var/lib/dnsmasq/dhcp-opts
+servers-file=/var/lib/dnsmasq/servers

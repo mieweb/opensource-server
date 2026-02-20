@@ -25,12 +25,13 @@ The LDAP servers use [`ghcr.io/mieweb/ldap-gateway`](https://github.com/mieweb/L
 | `LDAP_BASE_DN` | Derived from the site's internal domain (e.g., `example.com` → `dc=example,dc=com`) |
 | `AUTH_BACKENDS` | `sql` or `sql,notification` (if push notifications are enabled) |
 | `NOTIFICATION_URL` | Push notification endpoint (only present if push notifications are enabled) |
-| `SQL_URI` | `postgres://username:password@hostname:port/database` — must point to the same database used by the manager |
+| `SQL_URI` | `postgres://username:password@hostname:port/database/ssl=true` — must point to the same database used by the manager |
 | `SQL_QUERY_ALL_USERS` | See [rendered queries](#sql-queries) below |
 | `SQL_QUERY_ONE_USER` | See [rendered queries](#sql-queries) below |
 | `SQL_QUERY_ALL_GROUPS` | See [rendered queries](#sql-queries) below |
 | `SQL_QUERY_GROUPS_BY_MEMBER` | See [rendered queries](#sql-queries) below |
 | `REQUIRE_AUTH_FOR_SEARCH` | `false` — allows unauthenticated LDAP searches |
+| `NODE_TLS_REJECT_UNAUTHORIZED` | `0` |
 
 ### SQL Queries
 

@@ -1,26 +1,16 @@
 const express = require('express');
-const router = express.Router({ mergeParams: true }); // Enable access to :siteId param
-const { ExternalDomain, Site, Sequelize } = require('../models');
+const router = express.Router();
+const { ExternalDomain, Site } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
-const path = require('path');
-const { run } = require('../utils');
-const axios = require('axios');
 
-// All routes require authentication
+// All routes require authentication + admin
 router.use(requireAuth);
+router.use(requireAdmin);
 
-// GET /sites/:siteId/external-domains - List all external domains for this site
+// GET /external-domains
 router.get('/', async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-  
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
   const externalDomains = await ExternalDomain.findAll({
-    where: { siteId },
+    include: [{ model: Site, as: 'site', attributes: ['id', 'name'], required: false }],
     order: [['name', 'ASC']]
   });
 
@@ -29,181 +19,87 @@ router.get('/', async (req, res) => {
     name: d.name,
     acmeEmail: d.acmeEmail,
     acmeDirectoryUrl: d.acmeDirectoryUrl,
-    cloudflareApiEmail: d.cloudflareApiEmail
+    cloudflareApiEmail: d.cloudflareApiEmail,
+    defaultSite: d.site ? d.site.name : null
   }));
 
-  return res.render('external-domains/index', {
-    rows,
-    site,
-    req
-  });
+  return res.render('external-domains/index', { rows, req });
 });
 
-// GET /sites/:siteId/external-domains/new - Display form for creating a new external domain (admin only)
-router.get('/new', requireAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-  
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
+// GET /external-domains/new
+router.get('/new', async (req, res) => {
+  const sites = await Site.findAll({ order: [['name', 'ASC']] });
   return res.render('external-domains/form', {
     externalDomain: null,
-    site,
+    sites,
     isEdit: false,
     req
   });
 });
 
-// GET /sites/:siteId/external-domains/:id/edit - Display form for editing an external domain (admin only)
-router.get('/:id/edit', requireAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
+// GET /external-domains/:id/edit
+router.get('/:id/edit', async (req, res) => {
   const domainId = parseInt(req.params.id, 10);
 
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
-  const externalDomain = await ExternalDomain.findOne({
-    where: { id: domainId, siteId }
-  });
-
+  const externalDomain = await ExternalDomain.findByPk(domainId);
   if (!externalDomain) {
     await req.flash('error', 'External domain not found');
-    return res.redirect(`/sites/${siteId}/external-domains`);
+    return res.redirect('/external-domains');
   }
 
+  const sites = await Site.findAll({ order: [['name', 'ASC']] });
   return res.render('external-domains/form', {
     externalDomain,
-    site,
+    sites,
     isEdit: true,
     req
   });
 });
 
-// POST /sites/:siteId/external-domains - Create a new external domain (admin only)
-router.post('/', requireAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
+// POST /external-domains
+router.post('/', async (req, res) => {
   try {
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId } = req.body;
 
-    const externalDomain = await ExternalDomain.create({
+    await ExternalDomain.create({
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
       cloudflareApiEmail: cloudflareApiEmail || null,
       cloudflareApiKey: cloudflareApiKey || null,
-      siteId
+      siteId: siteId || null
     });
 
-    // TODO: do this async in a Job queue
-    // Provision SSL certificates via lego if all required fields are present
-    if (externalDomain.name && externalDomain.acmeEmail && externalDomain.cloudflareApiEmail && externalDomain.cloudflareApiKey) {
-      try {
-        const certsPath = path.join(__dirname, '..', 'certs');
-        const legoArgs = [
-          '-d', externalDomain.name,
-          '-d', `*.${externalDomain.name}`,
-          '-a',
-          '-m', externalDomain.acmeEmail,
-          '--dns', 'cloudflare',
-          '--path', certsPath,
-          'run'
-        ];
+    await req.flash('success', `External domain ${name} created successfully`);
 
-        // Add server URL if provided
-        if (externalDomain.acmeDirectoryUrl) {
-          legoArgs.unshift('-s', externalDomain.acmeDirectoryUrl);
-
-          // If using ZeroSSL, retrieve EAB credentials automatically
-          if (externalDomain.acmeDirectoryUrl == 'https://acme.zerossl.com/v2/DV90') {
-            try {
-              console.log(`Retrieving ZeroSSL EAB credentials for ${externalDomain.acmeEmail}...`);
-              const eabResponse = await axios.post('https://api.zerossl.com/acme/eab-credentials-email', 
-                new URLSearchParams({ email: externalDomain.acmeEmail }),
-                { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-              );
-              
-              if (eabResponse.data.success && eabResponse.data.eab_kid && eabResponse.data.eab_hmac_key) {
-                legoArgs.unshift('--eab');
-                legoArgs.unshift('--kid', eabResponse.data.eab_kid);
-                legoArgs.unshift('--hmac', eabResponse.data.eab_hmac_key);
-                console.log('ZeroSSL EAB credentials retrieved successfully');
-              } else {
-                throw new Error('Failed to retrieve EAB credentials from ZeroSSL');
-              }
-            } catch (eabError) {
-              console.error('ZeroSSL EAB retrieval error:', eabError.response?.data || eabError.message);
-              throw new Error(`Failed to retrieve ZeroSSL EAB credentials: ${eabError.response?.data?.error?.type || eabError.message}`);
-            }
-          }
-        }
-
-        const env = {
-          ...process.env,
-          CF_API_EMAIL: externalDomain.cloudflareApiEmail,
-          CF_DNS_API_TOKEN: externalDomain.cloudflareApiKey
-        };
-
-        const { stdout, stderr } = await run('lego', legoArgs, { env });
-        console.log(`Certificate provisioned for ${externalDomain.name}`);
-        
-        await req.flash('success', `External domain ${name} created and certificate provisioned successfully`);
-      } catch (certError) {
-        console.error('Certificate provisioning error:', certError);
-        await req.flash('warning', `External domain ${name} created, but certificate provisioning failed: ${certError.message}`);
-      }
-    } else {
-      await req.flash('success', `External domain ${name} created successfully (certificate provisioning skipped - missing required fields)`);
-    }
-
-    return res.redirect(`/sites/${siteId}/external-domains`);
+    return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error creating external domain:', error);
     await req.flash('error', 'Failed to create external domain: ' + error.message);
-    return res.redirect(`/sites/${siteId}/external-domains/new`);
+    return res.redirect('/external-domains/new');
   }
 });
 
-// PUT /sites/:siteId/external-domains/:id - Update an external domain (admin only)
-router.put('/:id', requireAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
+// PUT /external-domains/:id
+router.put('/:id', async (req, res) => {
   const domainId = parseInt(req.params.id, 10);
 
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
   try {
-    const externalDomain = await ExternalDomain.findOne({
-      where: { id: domainId, siteId }
-    });
+    const externalDomain = await ExternalDomain.findByPk(domainId);
 
     if (!externalDomain) {
       await req.flash('error', 'External domain not found');
-      return res.redirect(`/sites/${siteId}/external-domains`);
+      return res.redirect('/external-domains');
     }
 
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId } = req.body;
 
     const updateData = {
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
-      cloudflareApiEmail: cloudflareApiEmail || null
+      cloudflareApiEmail: cloudflareApiEmail || null,
+      siteId: siteId || null
     };
     
     // Only update cloudflareApiKey if a new value was provided
@@ -214,44 +110,35 @@ router.put('/:id', requireAdmin, async (req, res) => {
     await externalDomain.update(updateData);
 
     await req.flash('success', `External domain ${name} updated successfully`);
-    return res.redirect(`/sites/${siteId}/external-domains`);
+    return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error updating external domain:', error);
     await req.flash('error', 'Failed to update external domain: ' + error.message);
-    return res.redirect(`/sites/${siteId}/external-domains/${domainId}/edit`);
+    return res.redirect(`/external-domains/${domainId}/edit`);
   }
 });
 
-// DELETE /sites/:siteId/external-domains/:id - Delete an external domain (admin only)
-router.delete('/:id', requireAdmin, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
+// DELETE /external-domains/:id
+router.delete('/:id', async (req, res) => {
   const domainId = parseInt(req.params.id, 10);
 
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    await req.flash('error', 'Site not found');
-    return res.redirect('/sites');
-  }
-
   try {
-    const externalDomain = await ExternalDomain.findOne({
-      where: { id: domainId, siteId }
-    });
+    const externalDomain = await ExternalDomain.findByPk(domainId);
 
     if (!externalDomain) {
       await req.flash('error', 'External domain not found');
-      return res.redirect(`/sites/${siteId}/external-domains`);
+      return res.redirect('/external-domains');
     }
 
     const domainName = externalDomain.name;
     await externalDomain.destroy();
 
     await req.flash('success', `External domain ${domainName} deleted successfully`);
-    return res.redirect(`/sites/${siteId}/external-domains`);
+    return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error deleting external domain:', error);
     await req.flash('error', 'Failed to delete external domain: ' + error.message);
-    return res.redirect(`/sites/${siteId}/external-domains`);
+    return res.redirect('/external-domains');
   }
 });
 

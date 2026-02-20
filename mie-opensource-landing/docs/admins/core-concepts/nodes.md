@@ -13,6 +13,8 @@ Nodes are Proxmox VE servers within a site that host containers.
 - **API URL**: e.g., `https://192.168.1.10:8006/api2/json`
 - **Authentication**: Username/password or API token
 - **TLS Verification**: Enable/disable certificate validation
+- **Template Storage**: Proxmox storage for CT template images (`vztmpl` content)
+- **Volume Storage**: Proxmox storage for container root filesystems (`rootdir` content)
 
 ## Adding Nodes
 
@@ -56,4 +58,17 @@ Proxmox uses self-signed certificates by default. Either disable TLS verificatio
 - **Edit**: Update credentials or settings from the node detail page
 - **Delete**: Remove a node (must have no active containers first)
 - **Multi-node**: Proxmox supports HA features — see [Proxmox HA docs](https://pve.proxmox.com/wiki/High_Availability)
+
+## Storage Configuration
+
+Nodes have two storage settings because most Proxmox storage types only support one content type.
+
+| Setting | Content Type | Default | Purpose |
+|---|---|---|---|
+| **Template Storage** | `vztmpl` | `local` | Stores pulled Docker/OCI images as CT templates |
+| **Volume Storage** | `rootdir` | `local-lvm` | Stores container root filesystems |
+
+If a configured storage does not support the required content type, the system falls back to the largest enabled storage on the node that does. If no storage supports the required content type, container creation fails.
+
+To verify storage content types in Proxmox, navigate to **Datacenter → Storage** and check the **Content** column.
 

@@ -1,8 +1,9 @@
-user  nginx;
-worker_processes  auto;
-
-error_log  /var/log/nginx/error.log notice;
-pid        /run/nginx.pid;
+user www-data;
+worker_processes auto;
+worker_cpu_affinity auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log notice;
+include /etc/nginx/modules-enabled/*.conf;
 
 events {
   worker_connections  1024;
@@ -28,6 +29,10 @@ http {
   include /etc/nginx/conf.d/*.conf;
 
   server_names_hash_bucket_size 128;
+
+  modsecurity on;
+  modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
+  modsecurity_transaction_id "$request_id";
   
   server {
     listen 80;
@@ -67,7 +72,22 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
 
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
     <%_ if (httpServices.length === 0) { _%>
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     location / {
       proxy_pass http://localhost:3000;
       proxy_http_version 1.1;
@@ -97,6 +117,13 @@ http {
       client_max_body_size 2G;
     }
     <%_ } else { _%>
+    error_page 404 @404;
+
+    location @404 {
+      root /opt/opensource-server/error-pages;
+      try_files /404.html =404;
+    }
+
     return 404;
     <%_ } _%>
   }
@@ -112,9 +139,9 @@ http {
     
     server_name <%= service.httpService.externalHostname %>.<%= service.httpService.externalDomain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= service.httpService.externalDomain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= service.httpService.externalDomain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= service.httpService.externalDomain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -133,6 +160,21 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     # Proxy settings
     location / {
       proxy_pass http://<%= service.Container.ipv4Address %>:<%= service.internalPort %>;
@@ -177,9 +219,9 @@ http {
     
     server_name *.<%= domain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -198,6 +240,21 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
+    error_page 404 @404;
+
+    location @404 {
+      root /opt/opensource-server/error-pages;
+      try_files /404.html =404;
+    }
+
     # Return 404 for all requests
     return 404;
   }
@@ -213,9 +270,9 @@ http {
     
     server_name <%= domain.name %>;
   
-    # SSL certificates from lego
-    ssl_certificate /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.crt;
-    ssl_certificate_key /opt/opensource-server/create-a-container/certs/certificates/<%= domain.name %>.key;
+    # SSL certificates
+    ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
     
     # Modern TLS configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -234,6 +291,21 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    error_page 403 @403;
+
+    location @403 {
+      ssi on;
+      root /opt/opensource-server/error-pages;
+      try_files /403.html =403;
+    }
+
+    error_page 502 @502;
+
+    location @502 {
+      root /opt/opensource-server/error-pages;
+      try_files /502.html =502;
+    }
+
     # Proxy to documentation site
     location / {
       proxy_pass http://localhost:2998;

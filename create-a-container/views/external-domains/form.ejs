@@ -1,8 +1,7 @@
 <%- include('../layouts/header', { 
   title: (isEdit ? 'Edit External Domain' : 'New External Domain') + ' - MIE',
   breadcrumbs: [
-    { label: 'Sites', url: '/sites' },
-    { label: site.name, url: `/sites/${site.id}/external-domains` },
+    { label: 'External Domains', url: '/external-domains' },
     { label: isEdit ? 'Edit' : 'New', url: '#' }
   ],
   colWidth: 'col-lg-8',
@@ -13,7 +12,7 @@
   <div class="card-body">
     <h4 class="card-title mb-4"><%= isEdit ? 'Edit External Domain' : 'Create New External Domain' %></h4>
 
-    <form method="POST" action="<%= isEdit ? `/sites/${site.id}/external-domains/${externalDomain.id}` : `/sites/${site.id}/external-domains` %>">
+    <form method="POST" action="<%= isEdit ? `/external-domains/${externalDomain.id}` : '/external-domains' %>">
       <% if (isEdit) { %>
         <input type="hidden" name="_method" value="PUT">
       <% } %>
@@ -30,6 +29,17 @@
           placeholder="example.com"
         >
         <div class="form-text">The fully qualified domain name (e.g., example.com)</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="siteId" class="form-label">Default Site</label>
+        <select class="form-select" id="siteId" name="siteId" aria-label="Select default site">
+          <option value="">None</option>
+          <% sites.forEach(site => { %>
+            <option value="<%= site.id %>" <%= (externalDomain && externalDomain.siteId === site.id) ? 'selected' : '' %>><%= site.name %></option>
+          <% }) %>
+        </select>
+        <div class="form-text">The site whose DNS is assumed pre-configured (e.g., wildcard A record). Cross-site services on other sites will have Cloudflare A records created automatically.</div>
       </div>
 
       <div class="mb-3">
@@ -80,7 +90,7 @@
           value="<%= externalDomain ? externalDomain.cloudflareApiEmail : '' %>"
           placeholder="user@example.com"
         >
-        <div class="form-text">Cloudflare account email for DNS-01 challenge validation</div>
+        <div class="form-text">Cloudflare account email for DNS-01 challenge validation and cross-site DNS record management</div>
       </div>
 
       <div class="mb-3">
@@ -100,7 +110,7 @@
       </div>
 
       <div class="d-flex justify-content-between">
-        <a href="/sites/<%= site.id %>/external-domains" class="btn btn-secondary" aria-label="Cancel and return to external domains list">Cancel</a>
+        <a href="/external-domains" class="btn btn-secondary" aria-label="Cancel and return to external domains list">Cancel</a>
         <button type="submit" class="btn btn-primary">
           <%= isEdit ? 'Update External Domain' : 'Create External Domain' %>
         </button>

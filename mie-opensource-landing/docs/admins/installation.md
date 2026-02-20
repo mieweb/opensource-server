@@ -17,8 +17,8 @@ sidebar_position: 1
 ```bash
 apt update && apt install -y skopeo
 
-skopeo copy docker://ghcr.io/mieweb/opensource-server:latest \
-  oci-archive:/var/lib/vz/template/cache/opensource-server.tar
+skopeo copy docker://ghcr.io/mieweb/opensource-server/manager:latest \
+  oci-archive:/var/lib/vz/template/cache/manager_latest.tar
 ```
 
 ### 2. Create the Management Container
@@ -26,7 +26,7 @@ skopeo copy docker://ghcr.io/mieweb/opensource-server:latest \
 In the Proxmox web interface (`https://your-proxmox-host:8006`):
 
 1. **Create CT** on your node
-2. **Template**: Select `opensource-server:latest`
+2. **Template**: Select `manager_latest.tar`
 3. **Network**: Configure with a **static IP** in the same subnet as your Proxmox server(s)
 4. **Resources**: Allocate CPU, memory, and storage as needed
 

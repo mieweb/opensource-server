@@ -28,11 +28,12 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
+const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -46,6 +47,30 @@ function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
+}
+
+/**
+ * Resolve which Proxmox storage to use for a given content type.
+ * Returns the preferred storage if it supports the content type,
+ * otherwise falls back to the largest enabled storage that does.
+ * @param {object} client - ProxmoxApi instance
+ * @param {string} nodeName - Proxmox node name
+ * @param {string} preferred - Preferred storage name
+ * @param {string} contentType - Proxmox content type ('vztmpl' or 'rootdir')
+ * @returns {Promise<string>} Resolved storage name
+ * @throws {Error} If no enabled storage supports the content type
+ */
+async function resolveStorage(client, nodeName, preferred, contentType) {
+  const storages = await client.datastores(nodeName, contentType, true);
+  if (storages.length === 0) {
+    throw new Error(`No enabled storage on node ${nodeName} supports content type '${contentType}'`);
+  }
+  if (storages.some(s => s.storage === preferred)) {
+    return preferred;
+  }
+  const largest = storages.reduce((max, s) => (s.total > max.total ? s : max), storages[0]);
+  console.warn(`Storage '${preferred}' does not support '${contentType}' on node ${nodeName}, falling back to '${largest.storage}'`);
+  return largest.storage;
 }
 
 /**
@@ -180,8 +205,9 @@ async function main() {
       const parsed = parseDockerRef(container.template);
       console.log(`Docker image: ${parsed.registry}/${parsed.namespace}/${parsed.image}:${parsed.tag}`);
       
-      const storage = node.imageStorage || 'local';
-      console.log(`Using storage: ${storage}`);
+      const templateStorage = await resolveStorage(client, node.name, node.imageStorage || 'local', 'vztmpl');
+      const rootfsStorage = await resolveStorage(client, node.name, node.volumeStorage || 'local-lvm', 'rootdir');
+      console.log(`Using template storage: ${templateStorage}, rootfs storage: ${rootfsStorage}`);
       
       // Get image digest from registry to create unique filename
       const repo = parsed.namespace ? `${parsed.namespace}/${parsed.image}` : parsed.image;
@@ -193,8 +219,8 @@ async function main() {
       console.log(`Target filename: ${filename}`);
       
       // Check if image already exists in storage
-      const existingContents = await client.storageContents(node.name, storage, 'vztmpl');
-      const expectedVolid = `${storage}:vztmpl/${filename}.tar`;
+      const existingContents = await client.storageContents(node.name, templateStorage, 'vztmpl');
+      const expectedVolid = `${templateStorage}:vztmpl/${filename}.tar`;
       const imageExists = existingContents.some(item => item.volid === expectedVolid);
       
       if (imageExists) {
@@ -203,7 +229,7 @@ async function main() {
         // Pull the image from OCI registry
         const imageRef = container.template;
         console.log(`Pulling image ${imageRef}...`);
-        const pullUpid = await client.pullOciImage(node.name, storage, {
+        const pullUpid = await client.pullOciImage(node.name, templateStorage, {
           reference: imageRef,
           filename
         });
@@ -216,7 +242,7 @@ async function main() {
       
       // Create container from the pulled image (Proxmox adds .tar to the filename)
       console.log(`Creating container from ${filename}.tar...`);
-      const ostemplate = `${storage}:vztmpl/${filename}.tar`;
+      const ostemplate = `${templateStorage}:vztmpl/${filename}.tar`;
       const createUpid = await client.createLxc(node.name, {
         vmid,
         hostname: container.hostname,
@@ -231,7 +257,7 @@ async function main() {
         onboot: 1,
         tags: container.username,
         unprivileged: 1,
-        storage: 'local-lvm'
+        rootfs: `${rootfsStorage}:50`
       });
       console.log(`Create task started: ${createUpid}`);
       
@@ -252,12 +278,16 @@ async function main() {
       const templateVmid = templateContainer.vmid;
       console.log(`Found template VMID: ${templateVmid}`);
       
+      const rootfsStorage = await resolveStorage(client, node.name, node.volumeStorage || 'local-lvm', 'rootdir');
+      console.log(`Using rootfs storage: ${rootfsStorage}`);
+      
       // Clone the template
       console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
       const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
         hostname: container.hostname,
         description: `Cloned from template ${container.template}`,
-        full: 1
+        full: 1,
+        storage: rootfsStorage
       });
       console.log(`Clone task started: ${cloneUpid}`);
       
@@ -398,6 +428,19 @@ async function main() {
     console.log(`  MAC: ${macAddress}`);
     console.log(`  IP: ${ipv4Address}`);
     console.log(`  Status: running`);
+    
+    // Create Cloudflare DNS records for cross-site HTTP services
+    const services = await Service.findAll({
+      where: { containerId: container.id, type: 'http' },
+      include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }]
+    });
+    const httpServices = services
+      .filter(s => s.httpService?.externalDomain)
+      .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
+    if (httpServices.length > 0) {
+      const warnings = await manageDnsRecords(httpServices, site);
+      for (const w of warnings) console.warn(`[DNS WARNING] ${w}`);
+    }
     
     process.exit(0);
   } catch (err) {

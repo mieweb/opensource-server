@@ -1,18 +1,12 @@
-const dns = require('dns').promises;
-const os = require('os');
-const path = require('path')
 const express = require('express');
-const stringify = require('dotenv-stringify');
-const { Site, Node, Container, Service, HTTPService, TransportService, DnsService, ExternalDomain, sequelize } = require('../models');
-const { requireAuth, requireAdmin, requireLocalhost, setCurrentSite } = require('../middlewares');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
+const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite } = require('../middlewares');
 
 const router = express.Router();
 
-// GET /sites/:siteId/dnsmasq.conf - Public endpoint for dnsmasq configuration
-router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-  
-  const site = await Site.findByPk(siteId, {
+// Shared query for dnsmasq endpoints — site with nodes and running containers
+async function loadDnsmasqSite(siteId) {
+  return Site.findByPk(siteId, {
     include: [{
       model: Node,
       as: 'nodes',
@@ -21,29 +15,25 @@ router.get('/:siteId/dnsmasq.conf', requireLocalhost, async (req, res) => {
         as: 'containers',
         where: { status: 'running' },
         required: false,
-        attributes: ['macAddress', 'ipv4Address', 'hostname'],
-        include: [{
-          model: Service,
-          as: 'services',
-          include: [{
-            model: DnsService,
-            as: 'dnsService'
-          }]
-        }]
+        attributes: ['macAddress', 'ipv4Address', 'hostname']
       }]
     }]
   });
-  
-  if (!site) {
-    return res.status(404).send('Site not found');
-  }
-  
+}
+
+// GET /sites/:siteId/dnsmasq/:file - Dnsmasq configuration files
+const DNSMASQ_TEMPLATES = ['conf', 'dhcp-hosts', 'hosts', 'dhcp-opts', 'servers'];
+router.get('/:siteId/dnsmasq/:file', requireLocalhostOrAdmin, async (req, res) => {
+  const { file } = req.params;
+  if (!DNSMASQ_TEMPLATES.includes(file)) return res.status(404).send('Not found');
+  const site = await loadDnsmasqSite(parseInt(req.params.siteId, 10));
+  if (!site) return res.status(404).send('Site not found');
   res.set('Content-Type', 'text/plain');
-  return res.render('dnsmasq-conf', { site });
+  return res.render(`dnsmasq/${file}`, { site });
 });
 
-// GET /sites/:siteId/nginx.conf - Public endpoint for nginx configuration
-router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
+// GET /sites/:siteId/nginx - Endpoint for nginx configuration
+router.get('/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   
   // fetch services for the specific site (only from running containers)
@@ -96,108 +86,17 @@ router.get('/:siteId/nginx.conf', requireLocalhost, async (req, res) => {
   // Filter by type
   const httpServices = allServices.filter(s => s.type === 'http');
   const streamServices = allServices.filter(s => s.type === 'transport');
+
+  // Collect domains used by HTTP services on this site + domains owned by this site
+  const usedDomainIds = new Set();
+  httpServices.forEach(s => {
+    if (s.httpService?.externalDomain?.id) usedDomainIds.add(s.httpService.externalDomain.id);
+  });
+  (site?.externalDomains || []).forEach(d => usedDomainIds.add(d.id));
+  const externalDomains = await ExternalDomain.findAll({ where: { id: [...usedDomainIds] } });
   
   res.set('Content-Type', 'text/plain');
-  return res.render('nginx-conf', { httpServices, streamServices, externalDomains: site?.externalDomains || [] });
-});
-
-// GET /sites/:siteId/ldap.conf - Public endpoint for LDAP configuration
-router.get('/:siteId/ldap.conf', requireLocalhost, async (req, res) => {
-  const siteId = parseInt(req.params.siteId, 10);
-  
-  const site = await Site.findByPk(siteId);
-  if (!site) {
-    return res.status(404).send('Site not found');
-  }
-
-  // Get push notification settings
-  const { Setting } = require('../models');
-  const settings = await Setting.getMultiple(['push_notification_url', 'push_notification_enabled']);
-  const pushNotificationUrl = settings.push_notification_url || '';
-  const pushNotificationEnabled = settings.push_notification_enabled === 'true';
-
-  // define the environment object
-  const env = {
-    DIRECTORY_BACKEND: 'sql',
-    REQUIRE_AUTH_FOR_SEARCH: false,
-  };
-
-  // Configure AUTH_BACKENDS and NOTIFICATION_URL based on push notification settings
-  if (pushNotificationEnabled && pushNotificationUrl.trim() !== '') {
-    env.AUTH_BACKENDS = 'sql,notification';
-    env.NOTIFICATION_URL = `${pushNotificationUrl}/send-notification`;
-  } else {
-    env.AUTH_BACKENDS = 'sql';
-  }
-
-  // Get the real IP from the request or the x-forwarded-for header
-  // and do a reverse DNS lookup to get the hostname. If the clientIP is any
-  // localhost address, use the FQDN of the server instead.
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-  const isLocalhost = clientIp === '127.0.0.1' || 
-                      clientIp === '::1' || 
-                      clientIp === '::ffff:127.0.0.1' ||
-                      clientIp === 'localhost';
-  if (isLocalhost) {
-    env.LDAP_COMMON_NAME = os.hostname();
-  } else {
-    env.LDAP_COMMON_NAME = await dns.reverse(clientIp).then(names => names[0]).catch(() => clientIp);
-  }
-
-  // Parse site.internalDomain into DN format, i.e. dc=example,dc=com
-  env.LDAP_BASE_DN = site.internalDomain
-    .split('.')
-    .map(part => `dc=${part}`)
-    .join(',');
-
-  // Parse the DB config from the environment variables used in
-  // config/config.js and construct the SQL URL
-  const config = require('../config/config')[process.env.NODE_ENV || 'development'];   
-  const sqlUrlBuilder = new URL(`${config.dialect}://`);
-  sqlUrlBuilder.hostname = config.host || '';
-  sqlUrlBuilder.username = config.username || '';
-  sqlUrlBuilder.password = config.password || '';
-  sqlUrlBuilder.port = config.port || '';
-  sqlUrlBuilder.pathname = config.database || path.resolve(config.storage);
-  env.SQL_URI = sqlUrlBuilder.toString();
-
-  // Use sequelize to generate properly quoted queries for the current database dialect
-  const qi = sequelize.getQueryInterface();
-  env.SQL_QUERY_ALL_USERS = `
-    SELECT
-      ${qi.quoteIdentifier('uid')} AS username,
-      ${qi.quoteIdentifier('uidNumber')} AS uid_number,
-      ${qi.quoteIdentifier('gidNumber')} AS gid_number,
-      ${qi.quoteIdentifier('givenName')} AS first_name,
-      ${qi.quoteIdentifier('cn')} AS full_name,
-      ${qi.quoteIdentifier('sn')} AS last_name,
-      ${qi.quoteIdentifier('mail')},
-      ${qi.quoteIdentifier('homeDirectory')} AS home_directory,
-      ${qi.quoteIdentifier('userPassword')} AS password
-    FROM ${qi.quoteIdentifier('Users')}
-  `.replace(/\n/g, ' ');
-  env.SQL_QUERY_ONE_USER = `
-    ${env.SQL_QUERY_ALL_USERS}
-    WHERE ${qi.quoteIdentifier('uid')} = ?
-  `.replace(/\n/g, ' ');
-
-  env.SQL_QUERY_ALL_GROUPS = `
-    SELECT
-      g.${qi.quoteIdentifier('cn')} AS name,
-      g.${qi.quoteIdentifier('gidNumber')} AS gid_number
-    FROM ${qi.quoteIdentifier('Groups')} g
-  `.replace(/\n/g, ' ');
-  env.SQL_QUERY_GROUPS_BY_MEMBER = `
-    ${env.SQL_QUERY_ALL_GROUPS}
-    INNER JOIN ${qi.quoteIdentifier('UserGroups')} ug
-      ON g.${qi.quoteIdentifier('gidNumber')} = ug.${qi.quoteIdentifier('gidNumber')}
-    INNER JOIN ${qi.quoteIdentifier('Users')} u
-      ON ug.${qi.quoteIdentifier('uidNumber')} = u.${qi.quoteIdentifier('uidNumber')}
-    WHERE u.${qi.quoteIdentifier('uid')} = ?
-  `.replace(/\n/g, ' ');
-
-  res.set('Content-Type', 'text/plain');
-  return res.send(stringify(env));
+  return res.render('nginx-conf', { httpServices, streamServices, externalDomains });
 });
 
 // Apply auth to all routes below this point
@@ -209,10 +108,8 @@ router.use('/:siteId', setCurrentSite);
 // Mount sub-routers
 const nodesRouter = require('./nodes');
 const containersRouter = require('./containers');
-const externalDomainsRouter = require('./external-domains');
 router.use('/:siteId/nodes', nodesRouter);
 router.use('/:siteId/containers', containersRouter);
-router.use('/:siteId/external-domains', externalDomainsRouter);
 
 // GET /sites - List all sites (available to all authenticated users)
 router.get('/', async (req, res) => {
@@ -268,7 +165,7 @@ router.get('/:id/edit', requireAdmin, async (req, res) => {
 // POST /sites - Create a new site (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders, externalIp } = req.body;
     
     await Site.create({
       name,
@@ -276,7 +173,8 @@ router.post('/', requireAdmin, async (req, res) => {
       dhcpRange,
       subnetMask,
       gateway,
-      dnsForwarders
+      dnsForwarders,
+      externalIp: externalIp || null
     });
 
     await req.flash('success', `Site ${name} created successfully`);
@@ -298,7 +196,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders } = req.body;
+    const { name, internalDomain, dhcpRange, subnetMask, gateway, dnsForwarders, externalIp } = req.body;
     
     await site.update({
       name,
@@ -306,7 +204,8 @@ router.put('/:id', requireAdmin, async (req, res) => {
       dhcpRange,
       subnetMask,
       gateway,
-      dnsForwarders
+      dnsForwarders,
+      externalIp: externalIp || null
     });
 
     await req.flash('success', `Site ${name} updated successfully`);

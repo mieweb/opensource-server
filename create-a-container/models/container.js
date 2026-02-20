@@ -14,6 +14,8 @@ module.exports = (sequelize, DataTypes) => {
       Container.hasMany(models.Service, { foreignKey: 'containerId', as: 'services' });
       // a container belongs to a node
       Container.belongsTo(models.Node, { foreignKey: 'nodeId', as: 'node' });
+      // a container belongs to a site
+      Container.belongsTo(models.Site, { foreignKey: 'siteId', as: 'site' });
       // a container may have a creation job
       Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
     }
@@ -68,8 +70,7 @@ module.exports = (sequelize, DataTypes) => {
   Container.init({
     hostname: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
     username: {
       type: DataTypes.STRING(255),
@@ -100,19 +101,25 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       }
     },
+    siteId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Sites',
+        key: 'id'
+      }
+    },
     containerId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true
     },
     macAddress: {
       type: DataTypes.STRING(17),
-      allowNull: true,
-      unique: true
+      allowNull: true
     },
     ipv4Address: {
       type: DataTypes.STRING(45),
-      allowNull: true,
-      unique: true
+      allowNull: true
     },
     aiContainer: {
       type: DataTypes.STRING(50),
@@ -134,9 +141,24 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'Container',
     indexes: [
       {
-        name: 'containers_node_id_container_id_unique',
+        name: 'containers_node_container_id_unique',
         unique: true,
         fields: ['nodeId', 'containerId']
+      },
+      {
+        name: 'containers_site_hostname_unique',
+        unique: true,
+        fields: ['siteId', 'hostname']
+      },
+      {
+        name: 'containers_site_ipv4_unique',
+        unique: true,
+        fields: ['siteId', 'ipv4Address']
+      },
+      {
+        name: 'containers_site_mac_unique',
+        unique: true,
+        fields: ['siteId', 'macAddress']
       }
     ]
   });

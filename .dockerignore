@@ -1,5 +1,6 @@
 /create-a-container/data/database.sqlite
 /create-a-container/certs/*
-/create-a-container/.envcompose.override.yml
+!/create-a-container/certs/.gitignore
+/create-a-container/.env
 /mie-opensource-landing/build
 */node_modules
