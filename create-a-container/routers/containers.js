@@ -4,10 +4,10 @@ const https = require('https');
 const dns = require('dns').promises;
 const { Container, Service, HTTPService, TransportService, DnsService, Node, Site, ExternalDomain, Job, Sequelize, sequelize } = require('../models');
 const { requireAuth } = require('../middlewares');
-const ProxmoxApi = require('../utils/proxmox-api');
 const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
+const { manageDnsRecords } = require('../utils/cloudflare-dns');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -110,9 +110,8 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get external domains for this site
+  // Get all external domains (global)
   const externalDomains = await ExternalDomain.findAll({
-    where: { siteId },
     order: [['name', 'ASC']]
   });
 
@@ -164,11 +163,11 @@ router.get('/', requireAuth, async (req, res) => {
       { 
         association: 'services',
         include: [
-          { association: 'httpService' },
+          { association: 'httpService', include: [{ association: 'externalDomain' }] },
           { association: 'transportService' }
         ]
       },
-      { association: 'node', attributes: ['id', 'name'] }
+      { association: 'node', attributes: ['id', 'name', 'apiUrl'] }
     ]
   });
 
@@ -178,10 +177,14 @@ router.get('/', requireAuth, async (req, res) => {
     const sshPort = ssh?.transportService?.externalPort || null;
     const http = services.find(s => s.type === 'http');
     const httpPort = http ? http.internalPort : null;
+    const httpExternalUrl = http?.httpService?.externalHostname && http?.httpService?.externalDomain?.name
+      ? `https://${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
+      : null;
     
     // Common object structure for both API and View
     return {
       id: c.id,
+      containerId: c.containerId,
       hostname: c.hostname,
       ipv4Address: c.ipv4Address,
       // API might want raw MacAddress, View might not need it, but including it doesn't hurt
@@ -191,7 +194,9 @@ router.get('/', requireAuth, async (req, res) => {
       creationJobId: c.creationJobId,
       sshPort,
       httpPort,
+      httpExternalUrl,
       nodeName: c.node ? c.node.name : '-',
+      nodeApiUrl: c.node ? c.node.apiUrl : null,
       createdAt: c.createdAt
     };
   });
@@ -235,7 +240,7 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
-  const externalDomains = await ExternalDomain.findAll({ where: { siteId }, order: [['name', 'ASC']] });
+  const externalDomains = await ExternalDomain.findAll({ order: [['name', 'ASC']] });
 
   return res.render('containers/form', { 
     site,
@@ -269,29 +274,15 @@ router.post('/', async (req, res) => {
 
     // --- API Payload Mapping ---
     if (isApi) {
+      if (template_name && !template) {
+        template = template_name;
+      }
+
       if (repository) {
-        // Source Build Scenario:
-        // We do NOT set template='custom'. We must use the base template_name provided.
-        // The repository is passed ONLY via environment variables.
-
-        if (template_name) {
-             template = template_name;
-             // We deliberately leave 'customTemplate' undefined so it triggers the standard LXC lookup logic below.
-        } else {
-             throw new Error('When providing a repository, you must also provide a template_name (e.g., "debian-template") for the base container.');
-        }
-
-        // Inject repo/branch into env vars
         if (!environmentVars) environmentVars = [];
-        // Ensure environmentVars is an array if it came in as something else
         if (!Array.isArray(environmentVars)) environmentVars = [];
-        
         environmentVars.push({ key: 'BUILD_REPOSITORY', value: repository });
         environmentVars.push({ key: 'BUILD_BRANCH', value: branch || 'master' });
-        
-      } else if (template_name && !template) {
-        // Fallback: if only template_name provided (no repo), assume it's the template
-        template = template_name;
       }
     }
     // ---------------------------
@@ -311,89 +302,23 @@ router.post('/', async (req, res) => {
       }
     }
     
-    let nodeName, templateName, node;
-    
-    // LOGIC: Custom (Docker) vs Standard (LXC)
-    if (template === 'custom' || (!template && customTemplate)) {
-      // Custom Docker image
-      if (!customTemplate || customTemplate.trim() === '') {
-        throw new Error('Custom template image is required');
-      }
-      
-      templateName = normalizeDockerRef(customTemplate.trim());
-      
-      node = await Node.findOne({ 
-        where: { 
-          siteId,
-          apiUrl: { [Sequelize.Op.ne]: null },
-          tokenId: { [Sequelize.Op.ne]: null },
-          secret: { [Sequelize.Op.ne]: null }
-        } 
-      });
-      
-      if (!node) {
-        throw new Error('No nodes with API access available in this site');
-      }
-    } else {
-      // Standard Proxmox template (LXC)
-      let templateVmid;
+    // Resolve Docker image ref from either the dropdown or the custom input
+    const imageRef = (template === 'custom') ? customTemplate?.trim() : template;
+    if (!imageRef) {
+      throw new Error('A container template is required');
+    }
+    const templateName = normalizeDockerRef(imageRef);
 
-      if (template && template.includes(',')) {
-        // Form submitted "nodeName,vmid"
-        const [ nodeNamePart, vmidPart ] = template.split(',');
-        nodeName = nodeNamePart;
-        templateVmid = vmidPart;
-      } else {
-         // API submitted just the name "debian-template"
-         // Find a node that has this template
-         const allNodes = await Node.findAll({ 
-           where: { siteId },
-           // Filter for nodes that are actually online/configured
-           attributes: ['id', 'name', 'apiUrl', 'tokenId', 'secret'] 
-         });
-         
-         let foundTemplate = null;
-         
-         for (const n of allNodes) {
-             // Skip nodes without config
-             if (!n.apiUrl || !n.tokenId) continue;
-             
-             try {
-               const api = await n.api();
-               const tpls = await api.getLxcTemplates(n.name);
-               // Match by name or stringified vmid
-               const found = tpls.find(t => t.name === template || t.vmid.toString() === template);
-               if (found) {
-                   node = n;
-                   nodeName = n.name;
-                   templateVmid = found.vmid;
-                   foundTemplate = found;
-                   break;
-               }
-             } catch (e) {
-               console.warn(`Failed to query templates from node ${n.name}:`, e.message);
-               continue;
-             }
-         }
-         
-         if (!node) throw new Error(`Template "${template}" not found on any node in this site`);
-         templateName = foundTemplate.name; // Use the real name from Proxmox
-      }
-
-      // If we found the node via "nodeName,vmid" logic but haven't fetched details yet
-      if (!templateName) {
-          node = await Node.findOne({ where: { name: nodeName, siteId } });
-          if (!node) throw new Error(`Node "${nodeName}" not found`);
-          
-          const client = await node.api();
-          const templates = await client.getLxcTemplates(node.name);
-          const templateContainer = templates.find(t => t.vmid === parseInt(templateVmid, 10));
-          
-          if (!templateContainer) {
-            throw new Error(`Template with VMID ${templateVmid} not found on node ${nodeName}`);
-          }
-          templateName = templateContainer.name;
-      }
+    const node = await Node.findOne({ 
+      where: { 
+        siteId,
+        apiUrl: { [Sequelize.Op.ne]: null },
+        tokenId: { [Sequelize.Op.ne]: null },
+        secret: { [Sequelize.Op.ne]: null }
+      } 
+    });
+    if (!node) {
+      throw new Error('No nodes with API access available in this site');
     }
     
     // Create container record
@@ -401,8 +326,9 @@ router.post('/', async (req, res) => {
       hostname,
       username: currentUser,
       status: 'pending',
-      template: templateName, // Should now be "debian-12-standard..." or similar
+      template: templateName,
       nodeId: node.id,
+      siteId,
       containerId: null,
       macAddress: null,
       ipv4Address: null,
@@ -570,6 +496,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     const needsRestart = forceRestart || envChanged || entrypointChanged;
 
     let restartJob = null;
+    let dnsWarnings = [];
     await sequelize.transaction(async (t) => {
       if (envChanged || entrypointChanged) {
         await container.update({
@@ -590,17 +517,26 @@ router.put('/:id', requireAuth, async (req, res) => {
       }
       
       if (services && typeof services === 'object') {
-        // Delete services marked for deletion
+        // Delete services marked for deletion — collect cross-site HTTP services for DNS cleanup
+        const deletedHttpServices = [];
         for (const key in services) {
           const { id, deleted } = services[key];
           if (deleted === 'true' && id) {
+            const svc = await Service.findByPk(parseInt(id, 10), {
+              include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }],
+              transaction: t
+            });
+            if (svc?.httpService?.externalDomain) {
+              deletedHttpServices.push({ externalHostname: svc.httpService.externalHostname, ExternalDomain: svc.httpService.externalDomain });
+            }
             await Service.destroy({ 
               where: { id: parseInt(id, 10), containerId: container.id },
               transaction: t
             });
           }
         }
-        // Create new services
+        // Create new services — collect cross-site HTTP services for DNS creation
+        const newHttpServices = [];
         for (const key in services) {
           const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = services[key];
           if (deleted === 'true' || id || !type || !internalPort) continue;
@@ -616,6 +552,8 @@ router.put('/:id', requireAuth, async (req, res) => {
 
           if (serviceType === 'http') {
              await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId }, { transaction: t });
+             const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
+             if (domain) newHttpServices.push({ externalHostname, ExternalDomain: domain });
           } else if (serviceType === 'dns') {
              await DnsService.create({ serviceId: createdService.id, recordType: 'SRV', dnsName }, { transaction: t });
           } else {
@@ -623,14 +561,27 @@ router.put('/:id', requireAuth, async (req, res) => {
              await TransportService.create({ serviceId: createdService.id, protocol, externalPort }, { transaction: t });
           }
         }
+
+        // DNS management (non-blocking, after transaction body but before commit)
+        dnsWarnings = [];
+        if (deletedHttpServices.length > 0) {
+          dnsWarnings.push(...await manageDnsRecords(deletedHttpServices, site, 'delete'));
+        }
+        if (newHttpServices.length > 0) {
+          dnsWarnings.push(...await manageDnsRecords(newHttpServices, site, 'create'));
+        }
       }
     });
 
     if (restartJob) {
-      await req.flash('success', 'Container configuration updated. Restarting container...');
+      let msg = 'Container configuration updated. Restarting container...';
+      for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+      await req.flash('success', msg);
       return res.redirect(`/jobs/${restartJob.id}`);
     } else {
-      await req.flash('success', 'Container services updated successfully');
+      let msg = 'Container services updated successfully';
+      for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+      await req.flash('success', msg);
     }
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
@@ -662,7 +613,10 @@ router.delete('/:id', requireAuth, async (req, res) => {
   
   const container = await Container.findOne({
     where: { id: containerId, username: req.session.user },
-    include: [{ model: Node, as: 'node' }]
+    include: [
+      { model: Node, as: 'node' },
+      { model: Service, as: 'services', include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }] }
+    ]
   });
   
   if (!container || !container.node || container.node.siteId !== siteId) {
@@ -671,7 +625,16 @@ router.delete('/:id', requireAuth, async (req, res) => {
   }
   
   const node = container.node;
+  let dnsWarnings = [];
   try {
+    // Clean up DNS records for cross-site HTTP services
+    const httpServices = (container.services || [])
+      .filter(s => s.httpService?.externalDomain)
+      .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
+    if (httpServices.length > 0) {
+      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
+    }
+
     if (container.containerId && node.apiUrl && node.tokenId) {
       const api = await node.api();
       try {
@@ -692,7 +655,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
-  await req.flash('success', 'Container deleted successfully');
+  let msg = 'Container deleted successfully';
+  for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+  await req.flash('success', msg);
   return res.redirect(`/sites/${siteId}/containers`);
 });
 

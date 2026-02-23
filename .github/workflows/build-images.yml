@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -60,6 +62,30 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
+      - name: Docker Meta (Agent)
+        id: meta-agent
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/agent
+          bake-target: agent
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Docker Meta (Manager)
+        id: meta-manager
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/manager
+          bake-target: manager
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
       - name: Build and push
         uses: docker/bake-action@v5
         with:
@@ -69,6 +95,8 @@ jobs:
             ./docker-bake.hcl
             ${{ steps.meta-base.outputs.bake-file }}
             ${{ steps.meta-nodejs.outputs.bake-file }}
+            ${{ steps.meta-agent.outputs.bake-file }}
+            ${{ steps.meta-manager.outputs.bake-file }}
           set: |
             base.cache-from=type=gha,scope=base-${{ github.ref_name }}
             base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}

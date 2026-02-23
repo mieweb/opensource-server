@@ -6,9 +6,8 @@ sidebar_position: 3
 
 ## Prerequisites
 
-- **Node.js 18+**, **Git**, and optionally **Docker** for PostgreSQL
+- **Node.js 18+**, **Git**, and **Docker** for PostgreSQL
 - **Proxmox VE 13+** instance for testing
-- SQLite works out of the box; PostgreSQL/MySQL optional
 
 ## Local Setup
 
@@ -26,10 +25,12 @@ npm run dev
 
 ### Without Docker
 
+Requires a running PostgreSQL instance.
+
 ```bash
 git clone https://github.com/mieweb/opensource-server
 cd opensource-server/create-a-container
-cp example.env .env   # Edit settings (SQLite: no DB setup needed)
+cp example.env .env   # Edit with your PostgreSQL connection settings
 npm install
 npm run db:migrate
 npm run dev

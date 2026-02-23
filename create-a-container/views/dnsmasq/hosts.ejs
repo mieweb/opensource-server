@@ -1,0 +1,12 @@
+<%_ site.nodes.forEach((node) => { _%>
+<%_ if (node.ipv4Address) { _%>
+<%= node.ipv4Address %> <%= node.name %>.<%= site.internalDomain %>
+<%_ } _%>
+<%_ }) _%>
+<%_ site.nodes.forEach((node) => { _%>
+<%_ node.containers.forEach((container) => { _%>
+<%_ if (container.ipv4Address) { _%>
+<%= container.ipv4Address.split('/')[0] %> <%= container.hostname %>.<%= site.internalDomain %>
+<%_ } _%>
+<%_ }) _%>
+<%_ }) _%>

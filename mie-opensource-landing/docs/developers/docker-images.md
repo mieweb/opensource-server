@@ -24,6 +24,18 @@ Extends base with Node.js 24 from NodeSource. Inherits LDAP authentication.
 
 **Registry:** `ghcr.io/mieweb/opensource-server/nodejs` · **Source:** [`images/nodejs/`](https://github.com/mieweb/opensource-server/tree/main/images/nodejs)
 
+### Agent (`agent`)
+
+Extends nodejs with nginx (+ ModSecurity/OWASP CRS), dnsmasq, and [lego](https://github.com/go-acme/lego) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](/docs/admins/deploying-agents).
+
+**Registry:** `ghcr.io/mieweb/opensource-server/agent` · **Source:** [`images/agent/`](https://github.com/mieweb/opensource-server/tree/main/images/agent)
+
+### Manager (`manager`)
+
+Extends agent with PostgreSQL 18. Runs the full management application. See [Installation Guide](/docs/admins/installation).
+
+**Registry:** `ghcr.io/mieweb/opensource-server/manager` · **Source:** [`images/manager/`](https://github.com/mieweb/opensource-server/tree/main/images/manager)
+
 ## Build System
 
 Images use **Docker Bake** (`docker buildx bake`) with [`images/docker-bake.hcl`](https://github.com/mieweb/opensource-server/blob/main/images/docker-bake.hcl) defining build order and dependencies. The `contexts` attribute ensures proper ordering (e.g., nodejs depends on base).
@@ -35,8 +47,12 @@ images/
 │   ├── Dockerfile
 │   ├── sssd.conf
 │   └── ldapusers
-└── nodejs/
-    └── Dockerfile           # Extends base image
+├── nodejs/
+│   └── Dockerfile           # Extends base image
+├── agent/
+│   └── Dockerfile           # Extends nodejs (nginx, dnsmasq, lego)
+└── manager/
+    └── Dockerfile           # Extends agent (PostgreSQL, full app)
 ```
 
 ## CI Workflow

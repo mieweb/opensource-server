@@ -114,6 +114,22 @@
         <div class="form-text">Storage for CT Template images used when building containers</div>
       </div>
 
+      <div class="mb-3">
+        <label for="volumeStorage" class="form-label">Volume Storage</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="volumeStorage" 
+          name="volumeStorage" 
+          value="<%= node && node.volumeStorage ? node.volumeStorage : 'local-lvm' %>"
+          placeholder="e.g., local-lvm"
+          list="volumeStorageList"
+          autocomplete="off"
+        >
+        <datalist id="volumeStorageList"></datalist>
+        <div class="form-text">Storage for container root filesystems</div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
         <button type="submit" class="btn btn-primary">
@@ -135,11 +151,13 @@
   fetch('/sites/<%= site.id %>/nodes/<%= node.id %>/storages')
     .then(res => res.json())
     .then(storages => {
-      const datalist = document.getElementById('imageStorageList');
+      const imageDatalist = document.getElementById('imageStorageList');
+      const volumeDatalist = document.getElementById('volumeStorageList');
       storages.forEach(s => {
         const option = document.createElement('option');
         option.value = s.name;
-        datalist.appendChild(option);
+        imageDatalist.appendChild(option);
+        volumeDatalist.appendChild(option.cloneNode(true));
       });
     })
     .catch(() => {});

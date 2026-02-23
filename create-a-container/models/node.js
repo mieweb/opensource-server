@@ -59,8 +59,7 @@ module.exports = (sequelize, DataTypes) => {
   Node.init({
     name: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
     ipv4Address: {
       type: DataTypes.STRING(15),
@@ -86,6 +85,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false,
       defaultValue: 'local'
+    },
+    volumeStorage: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      defaultValue: 'local-lvm'
     }
   }, {
     sequelize,

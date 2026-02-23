@@ -1,0 +1,7 @@
+<%_ site.nodes.forEach((node) => { _%>
+<%_ node.containers.forEach((container) => { _%>
+<%_ if (container.macAddress && container.ipv4Address) { _%>
+<%= container.macAddress %>,<%= container.ipv4Address.split('/')[0] %>
+<%_ } _%>
+<%_ }) _%>
+<%_ }) _%>
