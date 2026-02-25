@@ -103,7 +103,7 @@ jobs:
             docs.cache-to=type=gha,mode=max,scope=docs-${{ github.ref_name }}
 
   deploy-preview:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    if: github.event.action != 'closed'
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
