@@ -19,6 +19,10 @@ RUN sed -i \
     && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
     && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine On/' /etc/nginx/modsecurity.conf
 
+# Logrotate overrides for NGINX and ModSecurity to work around a logrotate
+# repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
+COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
+
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN sed -i \
     -e 's/^CONFIG_DIR=\(.*\)$/#CONFIG_DIR=\1/' \
