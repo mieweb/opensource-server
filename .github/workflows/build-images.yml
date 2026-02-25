@@ -107,14 +107,12 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Deploy preview container
-        uses: mieweb/launchpad@cmyers_issue5
+      - uses: mieweb/launchpad@cmyers_issue5
         with:
-          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
-          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
+          api_key: ${{ secrets.API_KEY }}
+          api_url: ${{ secrets.API_URL }}
           template_name: ${{ env.REGISTRY }}/${{ github.repository }}/docs:pr-${{ github.event.pull_request.number }}
 
   cleanup-preview:
