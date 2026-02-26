@@ -113,7 +113,7 @@ jobs:
         with:
           api_key: ${{ secrets.API_KEY }}
           api_url: ${{ secrets.API_URL }}
-          template_name: ${{ env.REGISTRY }}/${{ github.repository }}/docs:pr-${{ github.event.pull_request.number }}
+          template_name: ${{ env.REGISTRY }}/${{ github.repository }}/docs:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
 
   cleanup-preview:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
