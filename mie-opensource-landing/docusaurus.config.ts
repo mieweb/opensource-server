@@ -64,7 +64,7 @@ const config: Config = {
             },
             items: [
                 {
-                    to: process.env.CONTAINER_CREATION_URL || "https://create-a-container.opensource.mieweb.org",
+                    to: process.env.CONTAINER_CREATION_URL || "https://manager.os.mieweb.org",
                     label: "Create a Container",
                     position: "left",
                 },
