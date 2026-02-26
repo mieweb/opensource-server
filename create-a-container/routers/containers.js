@@ -8,6 +8,7 @@ const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
 const { manageDnsRecords } = require('../utils/cloudflare-dns');
+const { isValidHostname } = require('../utils');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -287,6 +288,12 @@ router.post('/', async (req, res) => {
     }
     // ---------------------------
     
+    // Hostname must be lowercase before validation
+    if (hostname) hostname = hostname.trim().toLowerCase();
+    if (!isValidHostname(hostname)) {
+      throw new Error('Invalid hostname: must be 1–63 characters, only lowercase letters, digits, and hyphens, and must start and end with a letter or digit');
+    }
+
     const currentUser = req.session?.user || req.user?.username || 'api-user';
 
     let envVarsJson = null;
