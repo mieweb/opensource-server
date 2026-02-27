@@ -87,9 +87,14 @@ async function main() {
     next();
   });
   app.use(express.static('public'));
+
+  // We rate limit unsucessful (4xx/5xx statuses) to only 10 per 5 minutes, this
+  // should allow legitimate users a few tries to login or experiment without
+  // allowing bad-actors to abuse requests.
   app.use(RateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 5 * 60 * 1000,
+    max: 10,
+    skipSuccessfulRequests: true,
   }));
 
   // Set version info once at startup in app.locals

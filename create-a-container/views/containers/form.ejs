@@ -28,7 +28,10 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     <div style="display: flex; gap: 15px; margin-bottom: 15px;">
       <div style="flex: 1;">
         <label for="hostname">Container Hostname</label>
-        <input type="text" id="hostname" name="hostname" value="<%= isEdit ? container.hostname : '' %>" <%= isEdit ? 'readonly' : 'required' %> <%= isEdit ? 'style="background-color: #e9ecef;"' : '' %>>
+        <input type="text" id="hostname" name="hostname" value="<%= isEdit ? container.hostname : '' %>" <% if (isEdit) { %>readonly style="background-color: #e9ecef;"<% } else { %>required pattern="[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?" title="Lowercase letters, digits, and hyphens only. Must start and end with a letter or digit (max 63 chars)."<% } %>>
+        <% if (!isEdit) { %>
+          <small style="color: #666; display: block; margin-top: 4px;">Lowercase letters, digits, and hyphens. Must start and end with a letter or digit.</small>
+        <% } %>
       </div>
       
       <div style="flex: 1;">
@@ -648,6 +651,14 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   document.getElementById('addEnvBtn').addEventListener('click', () => {
     addEnvVarRow();
   });
+
+  // Auto-lowercase hostname input
+  const hostnameInput = document.getElementById('hostname');
+  if (!hostnameInput.readOnly) {
+    hostnameInput.addEventListener('input', () => {
+      hostnameInput.value = hostnameInput.value.toLowerCase();
+    });
+  }
 
   // Initialize existing environment variables
   if (existingEnvVars && typeof existingEnvVars === 'object') {

@@ -33,6 +33,26 @@ http {
   modsecurity on;
   modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
   modsecurity_transaction_id "$request_id";
+
+  # Internal error page server on a unix socket. Named locations proxy here
+  # with proxy_method GET so that NGINX's static file module will serve the
+  # HTML regardless of the original request method (POST, PUT, etc.).
+  # ModSecurity is disabled to prevent re-evaluation of the original request.
+  upstream error_pages {
+    server unix:/run/nginx-error-pages.sock;
+  }
+
+  server {
+    listen unix:/run/nginx-error-pages.sock;
+    modsecurity off;
+    ssi on;
+
+    root /opt/opensource-server/error-pages;
+
+    location /403.html { }
+    location /404.html { }
+    location /502.html { }
+  }
   
   server {
     listen 80;
@@ -75,17 +95,22 @@ http {
     error_page 403 @403;
 
     location @403 {
-      ssi on;
-      root /opt/opensource-server/error-pages;
-      try_files /403.html =403;
+      rewrite ^ /403.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     <%_ if (httpServices.length === 0) { _%>
     error_page 502 @502;
 
     location @502 {
-      root /opt/opensource-server/error-pages;
-      try_files /502.html =502;
+      rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     location / {
@@ -117,11 +142,32 @@ http {
       client_max_body_size 2G;
     }
     <%_ } else { _%>
+    error_page 403 @403;
     error_page 404 @404;
+    error_page 502 @502;
+
+    location @403 {
+      rewrite ^ /403.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
 
     location @404 {
-      root /opt/opensource-server/error-pages;
-      try_files /404.html =404;
+      rewrite ^ /404.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
+
+    location @502 {
+      rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     return 404;
@@ -163,16 +209,21 @@ http {
     error_page 403 @403;
 
     location @403 {
-      ssi on;
-      root /opt/opensource-server/error-pages;
-      try_files /403.html =403;
+      rewrite ^ /403.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     error_page 502 @502;
 
     location @502 {
-      root /opt/opensource-server/error-pages;
-      try_files /502.html =502;
+      rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     # Proxy settings
@@ -243,16 +294,21 @@ http {
     error_page 403 @403;
 
     location @403 {
-      ssi on;
-      root /opt/opensource-server/error-pages;
-      try_files /403.html =403;
+      rewrite ^ /403.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     error_page 404 @404;
 
     location @404 {
-      root /opt/opensource-server/error-pages;
-      try_files /404.html =404;
+      rewrite ^ /404.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     # Return 404 for all requests
@@ -294,16 +350,21 @@ http {
     error_page 403 @403;
 
     location @403 {
-      ssi on;
-      root /opt/opensource-server/error-pages;
-      try_files /403.html =403;
+      rewrite ^ /403.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     error_page 502 @502;
 
     location @502 {
-      root /opt/opensource-server/error-pages;
-      try_files /502.html =502;
+      rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
     }
 
     # Proxy to documentation site
