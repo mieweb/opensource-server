@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>502 — Service Unavailable</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      max-width: 620px;
+      width: 90%;
+      padding: 3rem 2.5rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      text-align: center;
+    }
+
+    .status-code {
+      font-size: 5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #00bfff, #8a2be2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+      margin: 0.5rem 0 1.5rem;
+    }
+
+    p {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #b0b0b0;
+      margin-bottom: 1rem;
+    }
+
+    .troubleshooting {
+      margin-top: 1.5rem;
+      padding: 1.25rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .troubleshooting h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    .troubleshooting ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .troubleshooting li {
+      position: relative;
+      padding: 0.4rem 0 0.4rem 1.5rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #b0b0b0;
+    }
+
+    .troubleshooting li::before {
+      content: '›';
+      position: absolute;
+      left: 0.25rem;
+      color: #1baa27;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .troubleshooting code {
+      padding: 0.15rem 0.4rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.8rem;
+      color: #00bfff;
+    }
+
+    .hostname {
+      display: inline-block;
+      margin-top: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #00bfff;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="status-code">502</div>
+    <h1>Service Unavailable</h1>
+    <p>
+      A service is configured for this hostname, but the upstream is not responding.
+    </p>
+    <div class="hostname" id="hostname"></div>
+    <div class="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <ul>
+        <li>Check that the service is running inside the container.</li>
+        <li>Verify the configured port matches the port your service is listening on.</li>
+        <li>Ensure the service binds to <code>0.0.0.0</code> (all interfaces), not <code>127.0.0.1</code> (localhost only).</li>
+        <li>Check that no firewall rules inside the container are blocking incoming connections.</li>
+      </ul>
+    </div>
+  </div>
+  <script>
+    document.getElementById('hostname').textContent = window.location.hostname;
+  </script>
+</body>
+</html>

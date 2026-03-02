@@ -11,7 +11,7 @@ graph TB
     subgraph "Management Layer"
         WebUI[Web UI<br/>EJS Templates]
         API[Node.js API Server]
-        DB[(Database<br/>SQLite/Postgres/MySQL)]
+        DB[(PostgreSQL)]
         LDAP[LDAP Gateway<br/>NodeJS]
     end
     
@@ -60,7 +60,7 @@ graph TB
 | **NGINX** | Reverse proxy — L7 (HTTP/HTTPS with auto TLS via ACME) and L4 (TCP port mapping). Config auto-generated from container services. |
 | **LDAP Gateway** | Node.js LDAP server ([source](https://github.com/mieweb/LDAPServer)). Reads users/groups from the DB; containers authenticate via PAM/SSSD. |
 | **Push Notification Service** | 2FA via push notifications ([source](https://github.com/mieweb/mieweb_auth_app)). Configured in [Settings](/docs/admins/settings). Used by LDAP gateway when `AUTH_BACKENDS` includes `notification`. |
-| **Database** | SQLite (default), PostgreSQL, or MySQL via Sequelize ORM. Stores users, groups, sites, nodes, containers, and service config. |
+| **Database** | PostgreSQL via Sequelize ORM. Stores users, groups, sites, nodes, containers, and service config. |
 
 ## Data Flow
 

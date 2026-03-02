@@ -46,6 +46,11 @@ download_config() {
     etag=$(cat "${ETAG_FILE}")
     curl_cmd+=(-H "If-None-Match: ${etag}")
   fi
+
+  # Add API key authentication if available
+  if [[ -n "${API_KEY:-}" ]]; then
+    curl_cmd+=(-H "Authorization: Bearer ${API_KEY}")
+  fi
   
   # Add URL
   curl_cmd+=("${url}")

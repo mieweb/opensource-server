@@ -87,9 +87,14 @@ async function main() {
     next();
   });
   app.use(express.static('public'));
+
+  // We rate limit unsucessful (4xx/5xx statuses) to only 10 per 5 minutes, this
+  // should allow legitimate users a few tries to login or experiment without
+  // allowing bad-actors to abuse requests.
   app.use(RateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 5 * 60 * 1000,
+    max: 10,
+    skipSuccessfulRequests: true,
   }));
 
   // Set version info once at startup in app.locals
@@ -124,6 +129,7 @@ async function main() {
   const usersRouter = require('./routers/users');
   const groupsRouter = require('./routers/groups');
   const sitesRouter = require('./routers/sites'); // Includes nested nodes and containers routers
+  const externalDomainsRouter = require('./routers/external-domains');
   const jobsRouter = require('./routers/jobs');
   const settingsRouter = require('./routers/settings');
   const apikeysRouter = require('./routers/apikeys');
@@ -135,6 +141,7 @@ async function main() {
   app.use('/users', usersRouter);
   app.use('/groups', groupsRouter);
   app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/containers routes nested here
+  app.use('/external-domains', externalDomainsRouter);
   app.use('/settings', settingsRouter);
   app.use('/apikeys', apikeysRouter);
   app.use('/reset-password', resetPasswordRouter);

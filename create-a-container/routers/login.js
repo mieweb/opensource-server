@@ -62,8 +62,10 @@ router.post('/', async (req, res) => {
 
       const result = await response.json();
 
-      // Check for no device found error
-      if (result.success === false && result.error?.includes('No device found with this Username')) {
+      // Check for user not registered errors
+      if (result.success === false &&
+          (result.error?.includes('No device found with this Username') ||
+           result.error?.includes('User not found'))) {
         const registrationUrl = pushNotificationUrl;
         await req.flash('error', `No device found with this username. Please register your device at: <a href="${registrationUrl}" target="_blank" rel="noopener noreferrer" style="color: #721c24; text-decoration: underline;">${registrationUrl}</a>`);
         return res.redirect('/login');

@@ -53,7 +53,7 @@ Responses:
 
 ### LDAP Integration
 
-When enabled, `AUTH_BACKENDS` is set to `sql,notification` and `NOTIFICATION_URL` is propagated to all sites' `ldap.conf` automatically.
+When enabled, `AUTH_BACKENDS` is set to `sql,notification` and `NOTIFICATION_URL` is propagated to the LDAP server environment variables automatically.
 
 ## Access Control
 

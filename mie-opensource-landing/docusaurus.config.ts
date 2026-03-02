@@ -24,7 +24,6 @@ const config: Config = {
     projectName: "mie-opensource-landing",
 
     onBrokenLinks: "throw",
-    onBrokenMarkdownLinks: "warn",
 
     i18n: {
         defaultLocale: "en",
@@ -52,6 +51,9 @@ const config: Config = {
     
     markdown: {
         mermaid: true,
+        hooks: {
+            onBrokenMarkdownLinks: "throw"
+        }
     },
 
     themeConfig: {

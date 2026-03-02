@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>403 — Request Blocked</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      max-width: 620px;
+      width: 90%;
+      padding: 3rem 2.5rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      text-align: center;
+    }
+
+    .status-code {
+      font-size: 5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #00bfff, #8a2be2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+      margin: 0.5rem 0 1.5rem;
+    }
+
+    p {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #b0b0b0;
+      margin-bottom: 1rem;
+    }
+
+    .request-id {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .request-id .label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #808080;
+      margin-bottom: 0.35rem;
+    }
+
+    .request-id code {
+      display: block;
+      padding: 0.4rem 0.6rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #00bfff;
+      word-break: break-all;
+    }
+
+    .info {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: rgba(27, 170, 39, 0.1);
+      border: 1px solid rgba(27, 170, 39, 0.3);
+      border-radius: 10px;
+      font-size: 0.9rem;
+      color: #c0c0c0;
+      text-align: left;
+    }
+
+    .info strong {
+      color: #1baa27;
+    }
+
+    .examples {
+      margin-top: 1rem;
+      padding: 1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .examples h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    .examples ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .examples li {
+      position: relative;
+      padding: 0.3rem 0 0.3rem 1.5rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #b0b0b0;
+    }
+
+    .examples li::before {
+      content: '›';
+      position: absolute;
+      left: 0.25rem;
+      color: #1baa27;
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="status-code">403</div>
+    <h1>Request Blocked</h1>
+    <p>
+      Your request was blocked by the web application firewall (WAF).
+      The request matched an OWASP Core Rule Set security rule.
+    </p>
+    <div class="request-id">
+      <div class="label">Request ID</div>
+      <code><!--#echo var="request_id" --></code>
+    </div>
+    <div class="info">
+      <strong>Think this is a mistake?</strong>
+      Provide the request ID above to your server administrator.
+      The specific rule that triggered the block can be found in the
+      server audit log using this ID.
+    </div>
+    <div class="examples">
+      <h2>Common triggers</h2>
+      <ul>
+        <li>SQL-like syntax in query parameters or form data</li>
+        <li>HTML or script tags in user input</li>
+        <li>Unusual HTTP headers or request methods</li>
+        <li>Path traversal patterns in the URL</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

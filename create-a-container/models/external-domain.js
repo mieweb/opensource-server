@@ -46,11 +46,12 @@ module.exports = (sequelize) => {
     },
     siteId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       references: {
         model: 'Sites',
         key: 'id'
-      }
+      },
+      comment: 'Optional default site — when null, domain has no default site'
     }
   }, {
     tableName: 'ExternalDomains',

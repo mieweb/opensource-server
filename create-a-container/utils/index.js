@@ -56,6 +56,16 @@ function getVersionInfo() {
 }
 
 /**
+ * Validate that a hostname is a legal DNS subdomain label (RFC 1123).
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+function isValidHostname(hostname) {
+  if (typeof hostname !== 'string') return false;
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(hostname);
+}
+
+/**
  * Helper to validate that a redirect URL is a safe relative path.
  * @param {string} url - the URL to validate
  * @returns {boolean}
@@ -74,6 +84,7 @@ function isSafeRelativeUrl(url) {
 module.exports = {
   ProxmoxApi,
   run,
+  isValidHostname,
   isSafeRelativeUrl,
   getVersionInfo
 };

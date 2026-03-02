@@ -29,7 +29,12 @@ module.exports = (sequelize, DataTypes) => {
     dhcpRange: DataTypes.STRING,
     subnetMask: DataTypes.STRING,
     gateway: DataTypes.STRING,
-    dnsForwarders: DataTypes.STRING
+    dnsForwarders: DataTypes.STRING,
+    externalIp: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Public IP address used as the target for Cloudflare DNS A records'
+    }
   }, {
     sequelize,
     modelName: 'Site',
