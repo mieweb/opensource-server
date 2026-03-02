@@ -1,5 +1,5 @@
 group "default" {
-    targets = ["base", "nodejs", "agent", "manager"]
+    targets = ["base", "nodejs", "docs", "agent", "manager"]
 }
 
 target "base" {
@@ -10,6 +10,14 @@ target "nodejs" {
     context = "./nodejs"
     contexts = {
         base = "target:base"
+    }
+}
+
+target "docs" {
+    context = "../"
+    dockerfile = "images/docs/Dockerfile"
+    contexts = {
+        nodejs = "target:nodejs"
     }
 }
 
