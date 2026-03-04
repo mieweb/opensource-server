@@ -26,6 +26,7 @@ COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
 # Apply custom ModSecurity configurations. See the blame on that file for
 # details on what's been changed from stock.
 COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
+COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN sed -i \
