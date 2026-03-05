@@ -17,7 +17,7 @@ RUN sed -i \
         -e 's!^#\(include /usr/share/modsecurity-crs/owasp-crs.load\)$!\1!' \
         /etc/nginx/modsecurity_includes.conf \
     && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
-    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine On/' /etc/nginx/modsecurity.conf
+    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine DetectionOnly/' /etc/nginx/modsecurity.conf
 
 # Logrotate overrides for NGINX and ModSecurity to work around a logrotate
 # repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
