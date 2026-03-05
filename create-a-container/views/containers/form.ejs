@@ -80,7 +80,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
                    data-bs-placement="top"
                    data-bs-html="true"
                    data-bs-title="External Field Guide"
-                   data-bs-content="<strong>HTTP:</strong> Enter a hostname and select an external domain.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
+                   data-bs-content="<strong>HTTP/HTTPS:</strong> Enter a hostname and select an external domain. HTTPS proxies to the backend over TLS.<br><br><strong>TCP/UDP:</strong> External port will be autoassigned after creation.<br><br><strong>SRV:</strong> Enter service name in <code>_service._proto</code> format (e.g., <code>_ldap._tcp</code>). The internal domain is automatically appended."
                    onclick="event.preventDefault();"
                    style="text-decoration: none; margin-left: 5px; color: #0d6efd; cursor: pointer;">
                   <i class="bi bi-question-circle"></i>
@@ -363,7 +363,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     typeSelect.disabled = isExisting;
     typeSelect.style.cssText = `width: 100%; padding: 4px; ${isExisting ? 'background-color: #e9ecef; cursor: not-allowed;' : ''}`;
     
-    ['http', 'tcp', 'udp', 'srv'].forEach(optionType => {
+    ['http', 'https', 'tcp', 'udp', 'srv'].forEach(optionType => {
       const option = document.createElement('option');
       option.value = optionType;
       option.textContent = optionType.toUpperCase();
@@ -429,7 +429,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       cell.removeChild(cell.firstChild);
     }
     
-    if (type === 'http') {
+    if (type === 'http' || type === 'https') {
       // Auto-select first domain if no domain is specified
       if (!domainId && externalDomains.length > 0) {
         domainId = externalDomains[0].id;
@@ -565,7 +565,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       let type, externalHostname = '', externalDomainId = '', externalPort = null, dnsName = '';
       
       if (service.type === 'http') {
-        type = 'http';
+        type = service.httpService?.backendProtocol === 'https' ? 'https' : 'http';
         externalHostname = service.httpService?.externalHostname || '';
         externalDomainId = service.httpService?.externalDomainId || '';
       } else if (service.type === 'dns') {

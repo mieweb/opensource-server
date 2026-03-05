@@ -42,7 +42,18 @@ Select a standard image or choose "Custom Docker Image..." for any registry imag
 
 ### Services (Optional)
 
-Expose container ports. Click **Add Service**, select type (HTTP/TCP/UDP), enter internal port. HTTP services also allow selecting an external domain name, defaulting to the hostname of the container. TCP and UDP services will be autoassigned an external port.
+Expose container ports. Click **Add Service**, select a type, and enter the internal port.
+
+| Type | Description |
+|------|-------------|
+| **HTTP** | Reverse-proxies to the container over plain HTTP. Use when the backend listens on an unencrypted port. |
+| **HTTPS** | Reverse-proxies to the container over HTTPS. Use when the backend terminates TLS itself. |
+| **TCP / UDP** | Maps an auto-assigned external port to the container's internal port. |
+| **SRV** | Creates a DNS SRV record for service discovery. |
+
+Both HTTP and HTTPS services are served to the public over HTTPS with automatic TLS certificates — the type controls the protocol used between the reverse proxy and your container.
+
+HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP services are auto-assigned an external port.
 
 :::note
 You'll need to add a TCP service with internal port 22 in order to expose the SSH connection to your container.

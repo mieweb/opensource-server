@@ -354,7 +354,7 @@ router.post('/', async (req, res) => {
         let serviceType;
         let protocol = null;
         
-        if (type === 'http') {
+        if (type === 'http' || type === 'https') {
           serviceType = 'http';
         } else if (type === 'srv') {
           serviceType = 'dns';
@@ -378,7 +378,8 @@ router.post('/', async (req, res) => {
           await HTTPService.create({
             serviceId: createdService.id,
             externalHostname,
-            externalDomainId: parseInt(externalDomainId, 10)
+            externalDomainId: parseInt(externalDomainId, 10),
+            backendProtocol: type === 'https' ? 'https' : 'http'
           }, { transaction: t });
         } else if (serviceType === 'dns') {
           if (!dnsName) throw new Error('DNS services must have a DNS name');
@@ -548,7 +549,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = services[key];
           if (deleted === 'true' || id || !type || !internalPort) continue;
           
-          let serviceType = type === 'srv' ? 'dns' : (type === 'http' ? 'http' : 'transport');
+          let serviceType = type === 'srv' ? 'dns' : ((type === 'http' || type === 'https') ? 'http' : 'transport');
           const protocol = (serviceType === 'transport') ? type : null;
 
           const createdService = await Service.create({
@@ -558,7 +559,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           }, { transaction: t });
 
           if (serviceType === 'http') {
-             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId }, { transaction: t });
+             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId, backendProtocol: type === 'https' ? 'https' : 'http' }, { transaction: t });
              const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
              if (domain) newHttpServices.push({ externalHostname, ExternalDomain: domain });
           } else if (serviceType === 'dns') {
