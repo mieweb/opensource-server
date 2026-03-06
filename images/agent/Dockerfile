@@ -17,7 +17,7 @@ RUN sed -i \
         -e 's!^#\(include /usr/share/modsecurity-crs/owasp-crs.load\)$!\1!' \
         /etc/nginx/modsecurity_includes.conf \
     && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
-    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine On/' /etc/nginx/modsecurity.conf
+    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine DetectionOnly/' /etc/nginx/modsecurity.conf
 
 # Logrotate overrides for NGINX and ModSecurity to work around a logrotate
 # repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
@@ -26,6 +26,7 @@ COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
 # Apply custom ModSecurity configurations. See the blame on that file for
 # details on what's been changed from stock.
 COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
+COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
 # Install DNSMasq and configure it to only get it's config from our pull-config
 RUN sed -i \
