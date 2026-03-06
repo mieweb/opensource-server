@@ -50,7 +50,7 @@ Each container provides:
 - **API-key authentication** — No Proxmox credentials needed in your workflow
 - **PR preview environments** — Automatically deploy previews on pull requests and clean up on close
 - **Container lifecycle management** — Create, update, and destroy containers via CI/CD
-- **Service registry** — HTTP, TCP/UDP, and DNS services are automatically configured
+- **Service registry** — HTTP, HTTPS, TCP/UDP, and DNS services are automatically configured
 
 ---
 
