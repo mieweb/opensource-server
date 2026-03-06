@@ -150,7 +150,8 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     internalPort: s.internalPort,
     httpService: s.httpService ? {
       externalHostname: s.httpService.externalHostname,
-      externalDomainId: s.httpService.externalDomainId
+      externalDomainId: s.httpService.externalDomainId,
+      backendProtocol: s.httpService.backendProtocol
     } : null,
     transportService: s.transportService ? {
       protocol: s.transportService.protocol,
