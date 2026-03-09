@@ -76,6 +76,7 @@ erDiagram
         int serviceId FK,UK
         string externalHostname
         int externalDomainId FK
+        enum backendProtocol "http | https (default: http)"
     }
 
     TransportServices {
@@ -180,7 +181,7 @@ LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId
 ### Service (STI)
 Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.
 
-- **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain.
+- **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain. `backendProtocol` controls `proxy_pass` scheme (`http` or `https`).
 - **TransportService**: `(protocol, externalPort)` unique. `findNextAvailablePort()` static method.
 - **DnsService**: SRV records with `serviceName`.
 

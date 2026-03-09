@@ -33,6 +33,11 @@ module.exports = (sequelize, DataTypes) => {
         model: 'ExternalDomains',
         key: 'id'
       }
+    },
+    backendProtocol: {
+      type: DataTypes.ENUM('http', 'https'),
+      allowNull: false,
+      defaultValue: 'http'
     }
   }, {
     sequelize,
