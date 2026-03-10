@@ -268,7 +268,8 @@ router.post('/', async (req, res) => {
   const t = await sequelize.transaction();
   
   try {
-    let { hostname, template, customTemplate, services, environmentVars, entrypoint, 
+    let { hostname, template, customTemplate, services, environmentVars, entrypoint,
+          oneShotCommands,
           // Extract specific API fields
           template_name, repository, branch 
         } = req.body;
@@ -309,6 +310,13 @@ router.post('/', async (req, res) => {
       }
     }
     
+    // Parse per-container one-shot commands (newline-separated or JSON array)
+    let oneShotCommandsJson = null;
+    if (oneShotCommands && typeof oneShotCommands === 'string' && oneShotCommands.trim()) {
+      const lines = oneShotCommands.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) oneShotCommandsJson = JSON.stringify(lines);
+    }
+
     // Resolve Docker image ref from either the dropdown or the custom input
     const imageRef = (template === 'custom') ? customTemplate?.trim() : template;
     if (!imageRef) {
@@ -340,7 +348,8 @@ router.post('/', async (req, res) => {
       macAddress: null,
       ipv4Address: null,
       environmentVars: envVarsJson,
-      entrypoint: entrypoint && entrypoint.trim() ? entrypoint.trim() : null
+      entrypoint: entrypoint && entrypoint.trim() ? entrypoint.trim() : null,
+      oneShotCommands: oneShotCommandsJson
     }, { transaction: t });
 
     // Services creation

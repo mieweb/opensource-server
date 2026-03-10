@@ -11,7 +11,7 @@ const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { sequelize, SessionSecret } = require('./models');
-const { requireAuth, loadSites } = require('./middlewares');
+const { requireAuth, loadSites, loadCustomTools } = require('./middlewares');
 
 
 // Function to get or create session secrets
@@ -102,10 +102,17 @@ async function main() {
   const { getVersionInfo } = require('./utils');
   app.locals.versionInfo = getVersionInfo();
 
-  // Middleware to load sites for authenticated users
+  // Middleware to load sites and custom tools for authenticated users
   app.use((req, res, next) => {
     if (req.session && req.session.user) {
       return loadSites(req, res, next);
+    }
+    next();
+  });
+
+  app.use((req, res, next) => {
+    if (req.session && req.session.user) {
+      return loadCustomTools(req, res, next);
     }
     next();
   });
@@ -134,6 +141,8 @@ async function main() {
   const settingsRouter = require('./routers/settings');
   const apikeysRouter = require('./routers/apikeys');
   const resetPasswordRouter = require('./routers/reset-password');
+  const customToolsRouter = require('./routers/custom-tools');
+  const globalOneShotCommandsRouter = require('./routers/global-oneshot-commands');
   
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
@@ -145,6 +154,8 @@ async function main() {
   app.use('/settings', settingsRouter);
   app.use('/apikeys', apikeysRouter);
   app.use('/reset-password', resetPasswordRouter);
+  app.use('/custom-tools', customToolsRouter);
+  app.use('/global-oneshot-commands', globalOneShotCommandsRouter);
 
   // --- Routes ---
   const PORT = 3000;

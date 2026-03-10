@@ -1,0 +1,147 @@
+<%- include('../layouts/header', {
+  title: 'Global One-Shot Commands - MIE',
+  breadcrumbs: [
+    { label: 'Settings', url: '/settings' },
+    { label: 'Global One-Shot Commands', url: '/global-oneshot-commands' }
+  ],
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h4 class="card-title mb-2">Global One-Shot Commands</h4>
+    <p class="text-muted mb-4">
+      These commands run inside every new container immediately after it starts, before the creation job completes.
+      Use this for global automation tasks such as registering containers with a Wazuh agent, joining a configuration management system, etc.
+      Commands are run in order of creation. Failures are logged but do not abort container creation.
+    </p>
+
+    <!-- Add new command form -->
+    <div class="card mb-4">
+      <div class="card-header">Add New Command</div>
+      <div class="card-body">
+        <form method="POST" action="/global-oneshot-commands" aria-label="Add global one-shot command form">
+          <div class="mb-3">
+            <label for="new_name" class="form-label">Command Name</label>
+            <input type="text" class="form-control" id="new_name" name="name"
+              placeholder="Register Wazuh Agent" required aria-required="true">
+            <div class="form-text">A descriptive label shown in the creation job log</div>
+          </div>
+          <div class="mb-3">
+            <label for="new_command" class="form-label">Command</label>
+            <textarea class="form-control font-monospace" id="new_command" name="command" rows="3"
+              placeholder="curl -so wazuh-agent.deb https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/... && dpkg -i wazuh-agent.deb && systemctl start wazuh-agent"
+              required aria-required="true"></textarea>
+            <div class="form-text">Bash command executed inside the container as root</div>
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="new_enabled" name="enabled" checked>
+              <label class="form-check-label" for="new_enabled">Enabled</label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" aria-label="Add global one-shot command">Add Command</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Existing commands table -->
+    <% if (commands.length === 0) { %>
+      <p class="text-muted">No global one-shot commands configured yet.</p>
+    <% } else { %>
+      <table class="table table-bordered table-hover" aria-label="Global one-shot commands list">
+        <thead class="table-dark">
+          <tr>
+            <th>Name</th>
+            <th>Command</th>
+            <th>Status</th>
+            <th style="width: 180px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% commands.forEach(cmd => { %>
+            <tr class="<%= cmd.enabled ? '' : 'table-secondary' %>">
+              <td><%= cmd.name %></td>
+              <td><code style="word-break: break-all;"><%= cmd.command %></code></td>
+              <td>
+                <span class="badge <%= cmd.enabled ? 'bg-success' : 'bg-secondary' %>">
+                  <%= cmd.enabled ? 'Enabled' : 'Disabled' %>
+                </span>
+              </td>
+              <td>
+                <button type="button" class="btn btn-sm btn-secondary me-1"
+                  data-bs-toggle="modal"
+                  data-bs-target="#editCmdModal"
+                  data-id="<%= cmd.id %>"
+                  data-name="<%= cmd.name %>"
+                  data-command="<%- cmd.command.replace(/"/g, '&quot;') %>"
+                  data-enabled="<%= cmd.enabled %>"
+                  aria-label="Edit <%= cmd.name %>">
+                  Edit
+                </button>
+                <form method="POST" action="/global-oneshot-commands/<%= cmd.id %>" class="d-inline" aria-label="Delete command form">
+                  <input type="hidden" name="_method" value="DELETE">
+                  <button type="submit" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete command \'<%= cmd.name %>\'?')"
+                    aria-label="Delete <%= cmd.name %>">
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</div>
+
+<!-- Edit Command Modal -->
+<div class="modal fade" id="editCmdModal" tabindex="-1" aria-labelledby="editCmdModalLabel" aria-modal="true" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="POST" id="editCmdForm" action="" aria-label="Edit global one-shot command form">
+        <input type="hidden" name="_method" value="PUT">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editCmdModalLabel">Edit Global One-Shot Command</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="edit_name" class="form-label">Command Name</label>
+            <input type="text" class="form-control" id="edit_name" name="name" required aria-required="true">
+          </div>
+          <div class="mb-3">
+            <label for="edit_command" class="form-label">Command</label>
+            <textarea class="form-control font-monospace" id="edit_command" name="command" rows="4" required aria-required="true"></textarea>
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="edit_enabled" name="enabled">
+              <label class="form-check-label" for="edit_enabled">Enabled</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const editModal = document.getElementById('editCmdModal');
+  if (editModal) {
+    editModal.addEventListener('show.bs.modal', (event) => {
+      const btn = event.relatedTarget;
+      document.getElementById('edit_name').value = btn.dataset.name;
+      document.getElementById('edit_command').value = btn.dataset.command;
+      document.getElementById('edit_enabled').checked = btn.dataset.enabled === 'true';
+      document.getElementById('editCmdForm').action = `/global-oneshot-commands/${btn.dataset.id}`;
+    });
+  }
+</script>
+
+<%- include('../layouts/footer') %>

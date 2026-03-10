@@ -102,12 +102,13 @@ function requireLocalhostOrAdmin(req, res, next) {
   });
 }
 
-const { setCurrentSite, loadSites } = require('./currentSite');
+const { setCurrentSite, loadSites, loadCustomTools } = require('./currentSite');
 
 module.exports = { 
   requireAuth, 
   requireAdmin, 
   requireLocalhostOrAdmin,
   setCurrentSite, 
-  loadSites 
+  loadSites,
+  loadCustomTools
 };

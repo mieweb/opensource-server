@@ -28,7 +28,7 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, GlobalOneShotCommand } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
@@ -421,6 +421,32 @@ async function main() {
       environmentVars: JSON.stringify(environmentVars),
       status: 'running'
     });
+
+    // Run one-shot commands (per-container + global enabled commands)
+    const perContainerCmds = container.oneShotCommands
+      ? JSON.parse(container.oneShotCommands)
+      : [];
+
+    const globalCmds = await GlobalOneShotCommand.findAll({ where: { enabled: true }, order: [['createdAt', 'ASC']] });
+    const allOneShotCmds = [
+      ...globalCmds.map(g => ({ name: g.name, command: g.command, source: 'global' })),
+      ...perContainerCmds.map((cmd, i) => ({ name: `custom-${i + 1}`, command: cmd, source: 'container' }))
+    ];
+
+    if (allOneShotCmds.length > 0) {
+      console.log(`Running ${allOneShotCmds.length} one-shot command(s) inside container...`);
+      for (const { name, command, source } of allOneShotCmds) {
+        console.log(`[one-shot][${source}] Running "${name}": ${command}`);
+        try {
+          const execUpid = await client.execInLxc(node.name, vmid, command);
+          await client.waitForTask(node.name, execUpid);
+          console.log(`[one-shot][${source}] "${name}" completed successfully`);
+        } catch (execErr) {
+          console.error(`[one-shot][${source}] "${name}" failed: ${execErr.message}`);
+          // Non-fatal: log and continue
+        }
+      }
+    }
     
     console.log('Container creation completed successfully!');
     console.log(`  Hostname: ${container.hostname}`);

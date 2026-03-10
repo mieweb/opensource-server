@@ -512,6 +512,24 @@ class ProxmoxApi {
     
     return { macAddress, ipv4Address };
   }
+
+  /**
+   * Execute a command inside a running LXC container via the Proxmox exec endpoint.
+   * The command is passed as a shell string: bash -c "<command>"
+   * This starts an async task; use waitForTask to wait for completion.
+   * @param {string} node - Node name
+   * @param {number} vmid - Container VMID
+   * @param {string} command - Shell command to execute inside the container
+   * @returns {Promise<string>} - UPID of the exec task
+   */
+  async execInLxc(node, vmid, command) {
+    const response = await axios.post(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/exec`,
+      { command: ['bash', '-c', command] },
+      this.options
+    );
+    return response.data.data;
+  }
 }
 
 module.exports = ProxmoxApi;

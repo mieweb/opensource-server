@@ -97,6 +97,7 @@ router.post('/', async (req, res) => {
   // Set session variables
   req.session.user = user.uid;
   req.session.isAdmin = user.groups?.some(group => group.isAdmin) || false;
+  req.session.userGroupIds = (user.groups || []).map(g => g.gidNumber);
 
   // Return redirect to original page or default to home
   let redirectUrl = req.body.redirect || '/';

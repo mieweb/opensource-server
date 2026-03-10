@@ -135,6 +135,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(2000),
       allowNull: true,
       defaultValue: null
+    },
+    oneShotCommands: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: null,
+      comment: 'JSON array of bash commands to run once inside the container after creation'
     }
   }, {
     sequelize,

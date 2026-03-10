@@ -1,0 +1,170 @@
+<%- include('../layouts/header', {
+  title: 'Custom Tools - MIE',
+  breadcrumbs: [
+    { label: 'Settings', url: '/settings' },
+    { label: 'Custom Tools', url: '/custom-tools' }
+  ],
+  req
+}) %>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="card-title mb-0">Custom Tools</h4>
+    </div>
+
+    <p class="text-muted">
+      Custom tools appear as links in the sidebar for users who belong to the configured groups.
+      Leave groups empty to hide the tool from all non-admin users (admins always see all tools via this page).
+    </p>
+
+    <!-- Add new tool form -->
+    <div class="card mb-4">
+      <div class="card-header">Add New Tool</div>
+      <div class="card-body">
+        <form method="POST" action="/custom-tools" aria-label="Add custom tool form">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label for="new_name" class="form-label">Tool Name</label>
+              <input type="text" class="form-control" id="new_name" name="name" placeholder="Wazuh Manager" required aria-required="true">
+            </div>
+            <div class="col-md-5">
+              <label for="new_url" class="form-label">URL</label>
+              <input type="url" class="form-control" id="new_url" name="url" placeholder="https://wazuh-manager.example.com/" required aria-required="true">
+            </div>
+            <div class="col-md-3">
+              <label for="new_groupIds" class="form-label">Visible To Groups</label>
+              <select class="form-select" id="new_groupIds" name="groupIds" multiple aria-label="Groups that can see this tool">
+                <% groups.forEach(g => { %>
+                  <option value="<%= g.gidNumber %>"><%= g.cn %></option>
+                <% }) %>
+              </select>
+              <div class="form-text">Hold Ctrl/Cmd to select multiple</div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <button type="submit" class="btn btn-primary" aria-label="Add custom tool">Add Tool</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Existing tools table -->
+    <% if (tools.length === 0) { %>
+      <p class="text-muted">No custom tools configured yet.</p>
+    <% } else { %>
+      <table class="table table-bordered table-hover" aria-label="Custom tools list">
+        <thead class="table-dark">
+          <tr>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Visible To Groups</th>
+            <th style="width: 180px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% tools.forEach(tool => { %>
+            <tr>
+              <td><%= tool.name %></td>
+              <td>
+                <a href="<%= tool.url %>" target="_blank" rel="noopener noreferrer" aria-label="Open <%= tool.name %> in new tab">
+                  <%= tool.url %>
+                </a>
+              </td>
+              <td>
+                <% if (tool.visibleToGroups && tool.visibleToGroups.length > 0) { %>
+                  <%= tool.visibleToGroups.map(g => g.cn).join(', ') %>
+                <% } else { %>
+                  <span class="text-muted">None (hidden from users)</span>
+                <% } %>
+              </td>
+              <td>
+                <!-- Edit button triggers modal -->
+                <button type="button" class="btn btn-sm btn-secondary me-1"
+                  data-bs-toggle="modal"
+                  data-bs-target="#editToolModal"
+                  data-id="<%= tool.id %>"
+                  data-name="<%= tool.name %>"
+                  data-url="<%= tool.url %>"
+                  data-groups='<%- JSON.stringify((tool.visibleToGroups || []).map(g => g.gidNumber)) %>'
+                  aria-label="Edit <%= tool.name %>">
+                  Edit
+                </button>
+                <form method="POST" action="/custom-tools/<%= tool.id %>" class="d-inline" aria-label="Delete tool form">
+                  <input type="hidden" name="_method" value="DELETE">
+                  <button type="submit" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete tool \'<%= tool.name %>\'?')"
+                    aria-label="Delete <%= tool.name %>">
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</div>
+
+<!-- Edit Tool Modal -->
+<div class="modal fade" id="editToolModal" tabindex="-1" aria-labelledby="editToolModalLabel" aria-modal="true" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="editToolForm" action="" aria-label="Edit custom tool form">
+        <input type="hidden" name="_method" value="PUT">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editToolModalLabel">Edit Custom Tool</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="edit_name" class="form-label">Tool Name</label>
+            <input type="text" class="form-control" id="edit_name" name="name" required aria-required="true">
+          </div>
+          <div class="mb-3">
+            <label for="edit_url" class="form-label">URL</label>
+            <input type="url" class="form-control" id="edit_url" name="url" required aria-required="true">
+          </div>
+          <div class="mb-3">
+            <label for="edit_groupIds" class="form-label">Visible To Groups</label>
+            <select class="form-select" id="edit_groupIds" name="groupIds" multiple aria-label="Groups that can see this tool">
+              <% groups.forEach(g => { %>
+                <option value="<%= g.gidNumber %>"><%= g.cn %></option>
+              <% }) %>
+            </select>
+            <div class="form-text">Hold Ctrl/Cmd to select multiple. Clear all to hide from users.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const editModal = document.getElementById('editToolModal');
+  if (editModal) {
+    editModal.addEventListener('show.bs.modal', (event) => {
+      const btn = event.relatedTarget;
+      const id = btn.dataset.id;
+      const name = btn.dataset.name;
+      const url = btn.dataset.url;
+      const selectedGroups = JSON.parse(btn.dataset.groups || '[]');
+
+      document.getElementById('edit_name').value = name;
+      document.getElementById('edit_url').value = url;
+      document.getElementById('editToolForm').action = `/custom-tools/${id}`;
+
+      const groupSelect = document.getElementById('edit_groupIds');
+      for (const option of groupSelect.options) {
+        option.selected = selectedGroups.includes(parseInt(option.value, 10));
+      }
+    });
+  }
+</script>
+
+<%- include('../layouts/footer') %>

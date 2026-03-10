@@ -1,4 +1,4 @@
-const { Site } = require('../models');
+const { Site, CustomTool, Group, CustomToolGroup } = require('../models');
 
 // Middleware to set req.session.currentSite based on the :siteId parameter
 function setCurrentSite(req, res, next) {
@@ -26,4 +26,40 @@ async function loadSites(req, res, next) {
   next();
 }
 
-module.exports = { setCurrentSite, loadSites };
+// Middleware to load custom tools visible to the current user's groups
+async function loadCustomTools(req, res, next) {
+  try {
+    if (!req.session || !req.session.user) {
+      res.locals.customTools = [];
+      return next();
+    }
+
+    const userGroupIds = req.session.userGroupIds || [];
+
+    if (userGroupIds.length === 0) {
+      res.locals.customTools = [];
+      return next();
+    }
+
+    // Find custom tools that have at least one of the user's groups
+    const tools = await CustomTool.findAll({
+      include: [{
+        model: Group,
+        as: 'visibleToGroups',
+        where: { gidNumber: userGroupIds },
+        required: true,
+        through: { model: CustomToolGroup, attributes: [] },
+        attributes: []
+      }],
+      order: [['name', 'ASC']]
+    });
+
+    res.locals.customTools = tools.map(t => ({ id: t.id, name: t.name, url: t.url }));
+  } catch (error) {
+    console.error('Error loading custom tools:', error);
+    res.locals.customTools = [];
+  }
+  next();
+}
+
+module.exports = { setCurrentSite, loadSites, loadCustomTools };

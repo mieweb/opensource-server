@@ -102,6 +102,26 @@
                   Settings
                 </a>
               </li>
+              <li class="nav-item">
+                <a class="nav-link <%= path.startsWith('/custom-tools') ? 'active' : '' %>" href="/custom-tools" aria-current="<%= path.startsWith('/custom-tools') ? 'page' : '' %>">
+                  Custom Tools
+                </a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link <%= path.startsWith('/global-oneshot-commands') ? 'active' : '' %>" href="/global-oneshot-commands" aria-current="<%= path.startsWith('/global-oneshot-commands') ? 'page' : '' %>">
+                  One-Shot Commands
+                </a>
+              </li>
+            <% } %>
+            <% if (typeof customTools !== 'undefined' && customTools && customTools.length > 0) { %>
+              <% customTools.forEach(tool => { %>
+                <li class="nav-item">
+                  <a class="nav-link" href="<%= tool.url %>" target="_blank" rel="noopener noreferrer" aria-label="Open <%= tool.name %> in new tab">
+                    <%= tool.name %>
+                    <i class="bi bi-box-arrow-up-right ms-1" style="font-size: 0.75em;" aria-hidden="true"></i>
+                  </a>
+                </li>
+              <% }) %>
             <% } %>
           </ul>
         </div>

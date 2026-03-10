@@ -17,6 +17,13 @@ module.exports = (sequelize, DataTypes) => {
         otherKey: 'uidNumber',
         as: 'users'
       });
+      // Many-to-many relationship with CustomTools through CustomToolGroups
+      Group.belongsToMany(models.CustomTool, {
+        through: models.CustomToolGroup,
+        foreignKey: 'gidNumber',
+        otherKey: 'customToolId',
+        as: 'customTools'
+      });
     }
   }
   Group.init({

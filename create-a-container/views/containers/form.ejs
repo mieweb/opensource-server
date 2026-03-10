@@ -136,6 +136,28 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       </div>
     </details>
 
+    <% if (!isEdit) { %>
+    <details style="margin-bottom: 15px;">
+      <summary style="cursor: pointer; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; text-align: left;">
+        Custom One-Shot Commands
+      </summary>
+      <div class="mb-3">
+        <textarea
+          class="form-control font-monospace"
+          id="oneShotCommands"
+          name="oneShotCommands"
+          rows="5"
+          placeholder="# One command per line&#10;apt-get update -y&#10;apt-get install -y curl"
+          aria-describedby="oneShotCommands_help"
+        ></textarea>
+        <div id="oneShotCommands_help" class="form-text">
+          Bash commands to run inside the container once during creation, after it starts.
+          Enter one command per line. These run after any global one-shot commands configured in Settings.
+        </div>
+      </div>
+    </details>
+    <% } %>
+
     <input type="submit" value="<%= isEdit ? 'Update Container' : 'Create Container' %>">
   </form>
   <div id="formError" style="color:red; margin-top:10px;"></div>
