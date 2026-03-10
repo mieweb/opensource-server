@@ -26,7 +26,11 @@ COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 # includes user sessions
 COPY environment.sh /usr/local/bin/environment.sh
 COPY environment.service /etc/systemd/system/environment.service
-RUN systemctl enable environment.service
+
+# We have to disable systemd-networkd.service and systemd-networkd.socket to
+# prevent a race condition preventing DHCP-assigned IP addresses from being used
+# when the network is managed via ifupdown2 (which it should be in a Debian LXC)
+RUN echo 'disable systemd-networkd.*' >>/etc/systemd/system-preset/99-mieweb-opensource-server.preset
 
 # Configure systemd to run properly in a container. This isn't nessary for LXC
 # in Proxmox, but is useful for testing with Docker directly.
