@@ -107,66 +107,14 @@
         <table class="table table-sm table-bordered mb-0" aria-describedby="default_env_vars_help">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Value</th>
+              <th style="width: 22%;">Name</th>
+              <th style="width: 22%;">Value</th>
+              <th>Description</th>
               <th style="width: 80px;" class="text-center">Action</th>
             </tr>
           </thead>
           <tbody id="defaultEnvVarsTableBody"></tbody>
         </table>
-      </div>
-
-      <div class="mb-4">
-        <h5 class="mb-3">Wazuh Integration</h5>
-        <p class="text-muted mb-3" id="wazuh_help">
-          Connect this cluster manager to a Wazuh instance. The API URL appears as a sidebar
-          link and its hostname is passed to every new container as <code>WAZUH_MANAGER</code>.
-          Each container enrolls its Wazuh agent on first boot using <code>/etc/machine-id</code>
-          as a stable, unique agent name.
-          <br><br>
-          <strong>Auto-cleanup of inactive agents:</strong> In your Wazuh manager's
-          <code>ossec.conf</code>, set <code>&lt;auth&gt;&lt;purge&gt;yes&lt;/purge&gt;&lt;/auth&gt;</code>
-          to automatically replace stale entries when the same agent name re-enrolls. For fully
-          decommissioned containers, run a periodic cleanup via the Wazuh API:
-          <code>DELETE /agents?status=disconnected&amp;older_than=7d</code>.
-        </p>
-
-        <div class="mb-3">
-          <label for="wazuh_api_url" class="form-label">Wazuh API URL</label>
-          <input
-            type="url"
-            class="form-control font-monospace"
-            id="wazuh_api_url"
-            name="wazuh_api_url"
-            value="<%= wazuhApiUrl %>"
-            placeholder="https://wazuh.example.com:55000"
-            aria-describedby="wazuh_api_url_help"
-          >
-          <div id="wazuh_api_url_help" class="form-text">
-            URL of the Wazuh API. The hostname is extracted and passed to containers as
-            <code>WAZUH_MANAGER</code> at creation time.
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="wazuh_enrollment_password" class="form-label">Agent Enrollment Password</label>
-          <input
-            type="password"
-            class="form-control font-monospace"
-            id="wazuh_enrollment_password"
-            name="wazuh_enrollment_password"
-            placeholder="<%= wazuhPasswordSet ? '(saved — leave blank to keep)' : 'enrollment password' %>"
-            autocomplete="new-password"
-            aria-describedby="wazuh_enrollment_password_help"
-          >
-          <div id="wazuh_enrollment_password_help" class="form-text">
-            Optional. Passed to containers as <code>WAZUH_REGISTRATION_PASSWORD</code> for
-            first-boot enrollment. Requires
-            <code>&lt;auth&gt;&lt;use_password&gt;yes&lt;/use_password&gt;&lt;/auth&gt;</code>
-            in your Wazuh manager's <code>ossec.conf</code>. Deleted from disk inside each
-            container immediately after enrollment completes.
-          </div>
-        </div>
       </div>
 
       <div class="d-flex gap-2">
@@ -186,7 +134,7 @@
 <script>
   let envVarCounter = 0;
 
-  function addDefaultEnvVarRow(key = '', value = '') {
+  function addDefaultEnvVarRow(key = '', value = '', description = '') {
     const row = document.createElement('tr');
     row.id = `default-env-row-${envVarCounter}`;
 
@@ -213,6 +161,17 @@
     valueInput.setAttribute('aria-label', 'Environment variable value');
     valueCell.appendChild(valueInput);
 
+    const descCell = document.createElement('td');
+    descCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const descInput = document.createElement('input');
+    descInput.type = 'text';
+    descInput.className = 'form-control form-control-sm text-muted';
+    descInput.name = `defaultEnvVars[${envVarCounter}][description]`;
+    descInput.value = description;
+    descInput.placeholder = 'optional description (not sent to containers)';
+    descInput.setAttribute('aria-label', 'Environment variable description');
+    descCell.appendChild(descInput);
+
     const actionCell = document.createElement('td');
     actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
     const removeBtn = document.createElement('button');
@@ -226,6 +185,7 @@
 
     row.appendChild(keyCell);
     row.appendChild(valueCell);
+    row.appendChild(descCell);
     row.appendChild(actionCell);
     document.getElementById('defaultEnvVarsTableBody').appendChild(row);
     envVarCounter++;
@@ -233,9 +193,9 @@
 
   document.getElementById('addDefaultEnvVarBtn').addEventListener('click', () => addDefaultEnvVarRow());
 
-  // Pre-populate saved values
+  // Pre-populate saved values (array of {key, value, description} objects)
   const savedEnvVars = <%- JSON.stringify(defaultContainerEnvVars) %>;
-  for (const [key, value] of Object.entries(savedEnvVars)) {
-    addDefaultEnvVarRow(key, value);
+  for (const entry of savedEnvVars) {
+    addDefaultEnvVarRow(entry.key, entry.value, entry.description || '');
   }
 </script>

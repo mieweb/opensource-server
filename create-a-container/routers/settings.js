@@ -12,15 +12,20 @@ router.get('/', async (req, res) => {
     'push_notification_enabled',
     'smtp_url',
     'smtp_noreply_address',
-    'default_container_env_vars',
-    'wazuh_api_url',
-    'wazuh_enrollment_password'
+    'default_container_env_vars'
   ]);
 
-  let defaultContainerEnvVars = {};
+  // Stored as an array of {key, value, description} objects.
+  // Also handles the old flat-object format {KEY: value} from earlier installs.
+  let defaultContainerEnvVars = [];
   try {
     if (settings.default_container_env_vars) {
-      defaultContainerEnvVars = JSON.parse(settings.default_container_env_vars);
+      const parsed = JSON.parse(settings.default_container_env_vars);
+      if (Array.isArray(parsed)) {
+        defaultContainerEnvVars = parsed;
+      } else if (typeof parsed === 'object' && parsed !== null) {
+        defaultContainerEnvVars = Object.entries(parsed).map(([key, value]) => ({ key, value, description: '' }));
+      }
     }
   } catch (_) {
     // ignore malformed JSON — treat as empty
@@ -32,9 +37,6 @@ router.get('/', async (req, res) => {
     smtpUrl: settings.smtp_url || '',
     smtpNoreplyAddress: settings.smtp_noreply_address || '',
     defaultContainerEnvVars,
-    wazuhApiUrl: settings.wazuh_api_url || '',
-    // Don't echo the password back — only indicate whether it's saved
-    wazuhPasswordSet: !!(settings.wazuh_enrollment_password),
     req
   });
 });
@@ -45,9 +47,7 @@ router.post('/', async (req, res) => {
     push_notification_enabled,
     smtp_url,
     smtp_noreply_address,
-    defaultEnvVars,
-    wazuh_api_url,
-    wazuh_enrollment_password
+    defaultEnvVars
   } = req.body;
   
   const enabled = push_notification_enabled === 'on';
@@ -57,22 +57,17 @@ router.post('/', async (req, res) => {
     return res.redirect('/settings');
   }
 
-  // Validate Wazuh API URL if provided
-  if (wazuh_api_url && wazuh_api_url.trim()) {
-    try {
-      new URL(wazuh_api_url.trim());
-    } catch (_) {
-      await req.flash('error', 'Wazuh API URL must be a valid URL (e.g. https://wazuh.example.com:55000)');
-      return res.redirect('/settings');
-    }
-  }
-
-  // Build default container env vars object from form array
-  const envVarsObj = {};
+  // Build default container env vars as an array of {key, value, description} objects.
+  // Descriptions are metadata only — they are never passed to containers.
+  const envVarsArray = [];
   if (Array.isArray(defaultEnvVars)) {
     for (const entry of defaultEnvVars) {
       if (entry && entry.key && entry.key.trim()) {
-        envVarsObj[entry.key.trim()] = entry.value || '';
+        envVarsArray.push({
+          key: entry.key.trim(),
+          value: entry.value || '',
+          description: entry.description || ''
+        });
       }
     }
   }
@@ -81,12 +76,7 @@ router.post('/', async (req, res) => {
   await Setting.set('push_notification_enabled', enabled ? 'true' : 'false');
   await Setting.set('smtp_url', smtp_url || '');
   await Setting.set('smtp_noreply_address', smtp_noreply_address || '');
-  await Setting.set('default_container_env_vars', JSON.stringify(envVarsObj));
-  await Setting.set('wazuh_api_url', wazuh_api_url ? wazuh_api_url.trim() : '');
-  // Only update the password if a new value was submitted; empty = keep existing
-  if (wazuh_enrollment_password && wazuh_enrollment_password.trim()) {
-    await Setting.set('wazuh_enrollment_password', wazuh_enrollment_password.trim());
-  }
+  await Setting.set('default_container_env_vars', JSON.stringify(envVarsArray));
   
   await req.flash('success', 'Settings saved successfully');
   return res.redirect('/settings');
