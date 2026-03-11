@@ -92,6 +92,83 @@
         </div>
       </div>
 
+      <div class="mb-4">
+        <h5 class="mb-3">Default Container Environment Variables</h5>
+        <p class="text-muted mb-3" id="default_env_vars_help">
+          These variables are automatically injected into every new container at creation time.
+          Use them for shared configuration such as agent connection details.
+          Per-container values always take precedence over these defaults.
+        </p>
+        <div class="d-flex justify-content-end mb-2">
+          <button type="button" id="addDefaultEnvVarBtn" class="btn btn-sm btn-primary" aria-label="Add default environment variable">
+            Add Variable
+          </button>
+        </div>
+        <table class="table table-sm table-bordered mb-0" aria-describedby="default_env_vars_help">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Value</th>
+              <th style="width: 80px;" class="text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="defaultEnvVarsTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="mb-4">
+        <h5 class="mb-3">Wazuh Integration</h5>
+        <p class="text-muted mb-3" id="wazuh_help">
+          Connect this cluster manager to a Wazuh instance. The API URL appears as a sidebar
+          link and its hostname is passed to every new container as <code>WAZUH_MANAGER</code>.
+          Each container enrolls its Wazuh agent on first boot using <code>/etc/machine-id</code>
+          as a stable, unique agent name.
+          <br><br>
+          <strong>Auto-cleanup of inactive agents:</strong> In your Wazuh manager's
+          <code>ossec.conf</code>, set <code>&lt;auth&gt;&lt;purge&gt;yes&lt;/purge&gt;&lt;/auth&gt;</code>
+          to automatically replace stale entries when the same agent name re-enrolls. For fully
+          decommissioned containers, run a periodic cleanup via the Wazuh API:
+          <code>DELETE /agents?status=disconnected&amp;older_than=7d</code>.
+        </p>
+
+        <div class="mb-3">
+          <label for="wazuh_api_url" class="form-label">Wazuh API URL</label>
+          <input
+            type="url"
+            class="form-control font-monospace"
+            id="wazuh_api_url"
+            name="wazuh_api_url"
+            value="<%= wazuhApiUrl %>"
+            placeholder="https://wazuh.example.com:55000"
+            aria-describedby="wazuh_api_url_help"
+          >
+          <div id="wazuh_api_url_help" class="form-text">
+            URL of the Wazuh API. The hostname is extracted and passed to containers as
+            <code>WAZUH_MANAGER</code> at creation time.
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="wazuh_enrollment_password" class="form-label">Agent Enrollment Password</label>
+          <input
+            type="password"
+            class="form-control font-monospace"
+            id="wazuh_enrollment_password"
+            name="wazuh_enrollment_password"
+            placeholder="<%= wazuhPasswordSet ? '(saved — leave blank to keep)' : 'enrollment password' %>"
+            autocomplete="new-password"
+            aria-describedby="wazuh_enrollment_password_help"
+          >
+          <div id="wazuh_enrollment_password_help" class="form-text">
+            Optional. Passed to containers as <code>WAZUH_REGISTRATION_PASSWORD</code> for
+            first-boot enrollment. Requires
+            <code>&lt;auth&gt;&lt;use_password&gt;yes&lt;/use_password&gt;&lt;/auth&gt;</code>
+            in your Wazuh manager's <code>ossec.conf</code>. Deleted from disk inside each
+            container immediately after enrollment completes.
+          </div>
+        </div>
+      </div>
+
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary" aria-label="Save settings">
           Save Settings
@@ -105,3 +182,60 @@
 </div>
 
 <%- include('../layouts/footer') %>
+
+<script>
+  let envVarCounter = 0;
+
+  function addDefaultEnvVarRow(key = '', value = '') {
+    const row = document.createElement('tr');
+    row.id = `default-env-row-${envVarCounter}`;
+
+    const keyCell = document.createElement('td');
+    keyCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.className = 'form-control form-control-sm font-monospace';
+    keyInput.name = `defaultEnvVars[${envVarCounter}][key]`;
+    keyInput.value = key;
+    keyInput.placeholder = 'VARIABLE_NAME';
+    keyInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
+    keyInput.setAttribute('aria-label', 'Environment variable name');
+    keyCell.appendChild(keyInput);
+
+    const valueCell = document.createElement('td');
+    valueCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.className = 'form-control form-control-sm font-monospace';
+    valueInput.name = `defaultEnvVars[${envVarCounter}][value]`;
+    valueInput.value = value;
+    valueInput.placeholder = 'value';
+    valueInput.setAttribute('aria-label', 'Environment variable value');
+    valueCell.appendChild(valueInput);
+
+    const actionCell = document.createElement('td');
+    actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-sm btn-danger';
+    removeBtn.textContent = 'Delete';
+    removeBtn.setAttribute('aria-label', 'Remove environment variable');
+    const idx = envVarCounter;
+    removeBtn.onclick = () => document.getElementById(`default-env-row-${idx}`).remove();
+    actionCell.appendChild(removeBtn);
+
+    row.appendChild(keyCell);
+    row.appendChild(valueCell);
+    row.appendChild(actionCell);
+    document.getElementById('defaultEnvVarsTableBody').appendChild(row);
+    envVarCounter++;
+  }
+
+  document.getElementById('addDefaultEnvVarBtn').addEventListener('click', () => addDefaultEnvVarRow());
+
+  // Pre-populate saved values
+  const savedEnvVars = <%- JSON.stringify(defaultContainerEnvVars) %>;
+  for (const [key, value] of Object.entries(savedEnvVars)) {
+    addDefaultEnvVarRow(key, value);
+  }
+</script>

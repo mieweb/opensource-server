@@ -28,7 +28,7 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
@@ -330,7 +330,40 @@ async function main() {
     
     // Merge user-specified env vars (user values override defaults)
     const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
-    mergedEnvVars = { ...mergedEnvVars, ...userEnvVars };
+
+    // Load system-wide default env vars from Settings (e.g., Wazuh agent connection details)
+    let systemDefaultEnvVars = {};
+    try {
+      const systemDefaultsJson = await Setting.get('default_container_env_vars');
+      if (systemDefaultsJson) {
+        systemDefaultEnvVars = JSON.parse(systemDefaultsJson);
+      }
+    } catch (_) {
+      console.warn('Could not load default_container_env_vars from settings, skipping');
+    }
+
+    // Inject Wazuh agent enrollment variables if configured in settings.
+    // WAZUH_MANAGER uses the hostname extracted from the API URL so agents connect
+    // to the right server. WAZUH_REGISTRATION_PASSWORD is cleaned up inside the
+    // container after first-boot enrollment completes.
+    try {
+      const wazuhApiUrl = await Setting.get('wazuh_api_url');
+      if (wazuhApiUrl) {
+        const { hostname } = new URL(wazuhApiUrl);
+        systemDefaultEnvVars['WAZUH_MANAGER'] = hostname;
+        console.log(`Wazuh manager host: ${hostname}`);
+      }
+      const wazuhPassword = await Setting.get('wazuh_enrollment_password');
+      if (wazuhPassword) {
+        systemDefaultEnvVars['WAZUH_REGISTRATION_PASSWORD'] = wazuhPassword;
+        console.log('Wazuh enrollment password: set');
+      }
+    } catch (_) {
+      console.warn('Could not load Wazuh settings, skipping');
+    }
+
+    // Merge priority: image defaults < system defaults < per-container user values
+    mergedEnvVars = { ...mergedEnvVars, ...systemDefaultEnvVars, ...userEnvVars };
     
     // Use user entrypoint if specified, otherwise keep default
     const finalEntrypoint = container.entrypoint || defaultEntrypoint;
@@ -349,7 +382,8 @@ async function main() {
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
       if (defaultEntrypoint) console.log(`Default entrypoint: ${defaultEntrypoint}`);
-      if (defaultEnvStr) console.log(`Default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length} from image`);
+      if (defaultEnvStr) console.log(`Default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length - Object.keys(systemDefaultEnvVars).length} from image`);
+      if (Object.keys(systemDefaultEnvVars).length > 0) console.log(`System default env vars: ${Object.keys(systemDefaultEnvVars).length} from settings`);
       if (Object.keys(userEnvVars).length > 0) console.log(`User env vars: ${Object.keys(userEnvVars).length} overrides`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');

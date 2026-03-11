@@ -27,6 +27,18 @@ COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 COPY environment.sh /usr/local/bin/environment.sh
 COPY environment.service /etc/systemd/system/environment.service
 
+# Wazuh agent first-boot enrollment service.
+# The script checks for WAZUH_MANAGER at runtime; containers without this
+# variable skip enrollment silently. The service is enabled unconditionally so
+# that it runs automatically when WAZUH_MANAGER is later added via a container
+# reconfigure (the sentinel /etc/wazuh-enrolled is only created on success).
+COPY wazuh-enroll.sh /usr/local/bin/wazuh-enroll.sh
+COPY wazuh-enroll.service /etc/systemd/system/wazuh-enroll.service
+RUN chmod +x /usr/local/bin/wazuh-enroll.sh && \
+    mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    ln -sf /etc/systemd/system/wazuh-enroll.service \
+           /etc/systemd/system/multi-user.target.wants/wazuh-enroll.service
+
 # We have to disable systemd-networkd.service and systemd-networkd.socket to
 # prevent a race condition preventing DHCP-assigned IP addresses from being used
 # when the network is managed via ifupdown2 (which it should be in a Debian LXC)

@@ -10,7 +10,7 @@ const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
-const { sequelize, SessionSecret } = require('./models');
+const { sequelize, SessionSecret, Setting } = require('./models');
 const { requireAuth, loadSites } = require('./middlewares');
 
 
@@ -106,6 +106,18 @@ async function main() {
   app.use((req, res, next) => {
     if (req.session && req.session.user) {
       return loadSites(req, res, next);
+    }
+    next();
+  });
+
+  // Middleware to expose Wazuh API URL to all authenticated views (for sidebar link)
+  app.use(async (req, res, next) => {
+    if (req.session && req.session.user) {
+      try {
+        res.locals.wazuhUrl = await Setting.get('wazuh_api_url') || '';
+      } catch (_) {
+        res.locals.wazuhUrl = '';
+      }
     }
     next();
   });
