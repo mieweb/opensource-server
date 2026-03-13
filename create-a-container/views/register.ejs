@@ -33,6 +33,14 @@
       <% }) %>
     <% } %>
 
+    <% if (typeof warningMessages !== 'undefined' && warningMessages && warningMessages.length > 0) { %>
+      <% warningMessages.forEach(function(message) { %>
+        <div class="alert alert-warning">
+          <%= message %>
+        </div>
+      <% }) %>
+    <% } %>
+
     <form id="accountRequestForm" method="POST" action="/register">
       <% if (typeof inviteToken !== 'undefined' && inviteToken) { %>
         <input type="hidden" name="inviteToken" value="<%= inviteToken %>">
