@@ -27,5 +27,149 @@
     const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
     const popoverList = [...popoverTriggerList].map(popoverTriggerEl => new bootstrap.Popover(popoverTriggerEl));
   </script>
+
+  <% if (req.session && req.session.user) { %>
+  <style>
+    /* Replace Ozwell's default /favicon.ico icon with a chat bubble SVG */
+    #ozwell-chat-button .ozwell-chat-icon {
+      content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z'/%3E%3C/svg%3E");
+    }
+  </style>
+  <script>
+    (function () {
+      var TOOL_DEFS = [
+        {
+          type: 'function',
+          function: {
+            name: 'get_page_contents',
+            description: 'Reads the current page. Returns the page title, URL, structured form fields (name, type, value, options), and the full visible text content of the page (tables, headings, buttons, logs, metadata — everything the user can see). Always call this first to understand what is on the page before taking action.',
+            parameters: { type: 'object', properties: {} }
+          }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'set_page_contents',
+            description: 'Updates form field values on the current page. Field names are matched fuzzily — you can use the exact name attribute or descriptive words from the label. Set submit to true to submit the form after filling. Returns which fields were updated, which failed, and lists all available fields.',
+            parameters: {
+              type: 'object',
+              properties: {
+                fields: {
+                  type: 'object',
+                  description: 'Key-value pairs mapping field names to new values. For checkboxes use true/false. For selects use the option text (partial match supported).',
+                  additionalProperties: { type: 'string' }
+                },
+                submit: {
+                  type: 'boolean',
+                  description: 'If true, submit the form after setting all fields. Only submits if all fields were set successfully.'
+                }
+              },
+              required: ['fields']
+            }
+          }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'submit_form',
+            description: 'Submits the form on the current page. Use after setting field values. The page will navigate on success.',
+            parameters: { type: 'object', properties: {} }
+          }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'click_element',
+            description: 'Clicks a button or link on the page by its visible text. Use for navigation or triggering actions.',
+            parameters: {
+              type: 'object',
+              properties: {
+                text: { type: 'string', description: 'The visible text of the button or link to click.' }
+              },
+              required: ['text']
+            }
+          }
+        }
+      ];
+
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.body.appendChild(s);
+        });
+      }
+
+      function initChatbot(token, ozwellUrl, refreshMs) {
+        window.OzwellChatConfig = {
+          apiKey: token,
+          endpoint: window.location.origin + '/api/chatbot/v1/chat/completions',
+          title: 'MIE Assistant',
+          tools: TOOL_DEFS
+        };
+
+        // Load tool handlers and widget loader in parallel
+        Promise.all([
+          loadScript('/js/chatbot-tools.js'),
+          loadScript(ozwellUrl + '/embed/ozwell-loader.js')
+        ]).catch(function (err) {
+          console.warn('Chatbot widget failed to load:', err);
+        });
+
+        // Schedule token refresh
+        if (refreshMs > 0) {
+          setTimeout(function () { refreshToken(ozwellUrl); }, refreshMs);
+        }
+      }
+
+      function refreshToken(ozwellUrl) {
+        fetch('/api/chatbot/token', { credentials: 'same-origin' })
+          .then(function (r) {
+            if (r.status === 401) return null; // session expired
+            if (!r.ok) throw new Error('Token refresh failed');
+            return r.json();
+          })
+          .then(function (data) {
+            if (!data) return; // session expired, stop refreshing
+            if (typeof OzwellChat !== 'undefined' && OzwellChat.configure) {
+              OzwellChat.configure({ apiKey: data.token });
+            }
+            if (data.refreshMs > 0) {
+              setTimeout(function () { refreshToken(ozwellUrl); }, data.refreshMs);
+            }
+          })
+          .catch(function (err) {
+            console.warn('Chatbot token refresh failed:', err);
+            // Retry once after 30 seconds
+            setTimeout(function () {
+              fetch('/api/chatbot/token', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                  if (data && typeof OzwellChat !== 'undefined' && OzwellChat.configure) {
+                    OzwellChat.configure({ apiKey: data.token });
+                    if (data.refreshMs > 0) {
+                      setTimeout(function () { refreshToken(ozwellUrl); }, data.refreshMs);
+                    }
+                  }
+                })
+                .catch(function () {}); // give up silently
+            }, 30000);
+          });
+      }
+
+      // Fetch initial token and bootstrap the widget
+      fetch('/api/chatbot/token', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data && data.token && data.ozwellUrl) {
+            initChatbot(data.token, data.ozwellUrl, data.refreshMs || 0);
+          }
+        })
+        .catch(function () {}); // chatbot not available, fail silently
+    })();
+  </script>
+  <% } %>
 </body>
 </html>
