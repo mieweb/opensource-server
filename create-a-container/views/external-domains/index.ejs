@@ -14,15 +14,15 @@
     </div>
 
     <div class="table-responsive">
-      <table class="table table-hover table-bordered align-middle mb-0">
+      <table class="table table-hover table-bordered align-middle mb-0 table-sm">
         <thead class="table-light">
           <tr>
             <th>Domain Name</th>
             <th>Default Site</th>
             <th>ACME Email</th>
             <th>ACME Directory</th>
-            <th>Cloudflare API Email</th>
-            <th>Actions</th>
+            <th>Cloudflare Email</th>
+            <th class="text-nowrap">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -31,10 +31,10 @@
               <tr>
                 <td><strong><%= domain.name %></strong></td>
                 <td><%= domain.defaultSite || '-' %></td>
-                <td><%= domain.acmeEmail || '-' %></td>
-                <td><small class="text-muted"><%= domain.acmeDirectoryUrl || '-' %></small></td>
-                <td><%= domain.cloudflareApiEmail || '-' %></td>
-                <td>
+                <td class="text-break"><%= domain.acmeEmail || '-' %></td>
+                <td><small class="text-muted text-break"><%= domain.acmeDirectoryUrl || '-' %></small></td>
+                <td class="text-break"><%= domain.cloudflareApiEmail || '-' %></td>
+                <td class="text-nowrap">
                   <a href="/external-domains/<%= domain.id %>/edit" class="btn btn-sm btn-outline-primary" aria-label="Edit domain <%= domain.name %>">Edit</a>
                   <form method="POST" action="/external-domains/<%= domain.id %>" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete <%= domain.name %>? This action cannot be undone.');">
                     <input type="hidden" name="_method" value="DELETE">

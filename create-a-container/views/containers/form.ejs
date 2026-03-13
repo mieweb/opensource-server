@@ -176,13 +176,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       if (this.value === 'custom') {
         customTemplateContainer.style.display = 'block';
         customTemplateInput.required = true;
-        this.removeAttribute('name'); // Don't submit the select value
       } else if (this.value) {
         // Standard image selected (not empty and not custom)
         customTemplateContainer.style.display = 'none';
         customTemplateInput.required = false;
         customTemplateInput.value = '';
-        this.setAttribute('name', 'template'); // Submit select value
         
         // Fetch metadata for standard image
         await fetchAndPopulateMetadata(this.value, this);
@@ -191,7 +189,6 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         customTemplateContainer.style.display = 'none';
         customTemplateInput.required = false;
         customTemplateInput.value = '';
-        this.setAttribute('name', 'template'); // Submit select value
       }
     });
   }

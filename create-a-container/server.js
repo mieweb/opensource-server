@@ -134,7 +134,9 @@ async function main() {
   const settingsRouter = require('./routers/settings');
   const apikeysRouter = require('./routers/apikeys');
   const resetPasswordRouter = require('./routers/reset-password');
+  const chatbotRouter = require('./routers/chatbot');
   
+  app.use('/api/chatbot', chatbotRouter);
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
   app.use('/register', registerRouter);
