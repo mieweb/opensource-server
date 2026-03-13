@@ -8,6 +8,7 @@ router.get('/', (req, res) => {
   res.render('login', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
+    warningMessages: req.flash('warning'),
     redirect: req.query.redirect || '/'
   });
 });

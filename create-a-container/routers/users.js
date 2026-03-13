@@ -3,6 +3,7 @@ const router = express.Router();
 const { User, Group, InviteToken, Setting } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 const { sendInviteEmail } = require('../utils/email');
+const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -186,6 +187,8 @@ router.put('/:id', async (req, res) => {
     const givenName = rawGivenName.trim();
     const sn = rawSn.trim();
     
+    const previousStatus = user.status;
+    
     // Update user fields
     user.uid = uid;
     user.givenName = givenName;
@@ -201,6 +204,15 @@ router.put('/:id', async (req, res) => {
     }
     
     await user.save();
+
+    // Send 2FA invite when user is first approved (pending → active)
+    // Returns null when not configured — skip silently
+    if (previousStatus !== 'active' && user.status === 'active') {
+      const inviteResult = await sendPushNotificationInvite(user);
+      if (inviteResult && !inviteResult.success) {
+        await req.flash('warning', `User approved but 2FA invite failed: ${inviteResult.error}`);
+      }
+    }
 
     // Update groups
     if (groupIds) {

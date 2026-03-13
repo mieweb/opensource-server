@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { User, InviteToken } = require('../models');
+const QRCode = require('qrcode');
+const { User, InviteToken, Setting } = require('../models');
+const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
 
 // GET / - Display registration form
 router.get('/', async (req, res) => {
@@ -22,9 +24,28 @@ router.get('/', async (req, res) => {
   res.render('register', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
+    warningMessages: req.flash('warning'),
     inviteEmail,
     inviteToken: validToken
   });
+});
+
+// GET /success - Display QR code after invite-token registration (PRG pattern)
+router.get('/success', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.redirect('/login');
+  }
+
+  const notificationUrl = await Setting.get('push_notification_url');
+  if (!notificationUrl?.trim()) {
+    return res.redirect('/login');
+  }
+
+  const inviteUrl = `${notificationUrl.trim()}/register?token=${encodeURIComponent(token)}`;
+  const qrCodeDataUri = await QRCode.toDataURL(inviteUrl, { width: 256 });
+  res.render('register-success', { qrCodeDataUri, inviteUrl });
 });
 
 // POST / - Handle registration submission
@@ -85,6 +106,31 @@ router.post('/', async (req, res) => {
     }
     
     if (isInvitedUser) {
+      // Call 2FA invite API for auto-approved invite-token registrations
+      // Returns null when not configured — skip silently
+      const inviteResult = await sendPushNotificationInvite(userParams);
+
+      if (inviteResult?.success && inviteResult.inviteUrl) {
+        // Validate URL protocol to prevent javascript: XSS from a compromised API
+        let validUrl = false;
+        try {
+          const parsed = new URL(inviteResult.inviteUrl);
+          validUrl = parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch { /* invalid URL */ }
+
+        if (validUrl) {
+          // Extract token from the API's inviteUrl and redirect with just the token
+          const inviteToken2fa = new URL(inviteResult.inviteUrl).searchParams.get('token');
+          if (inviteToken2fa) {
+            return res.redirect(303, `/register/success?token=${encodeURIComponent(inviteToken2fa)}`);
+          }
+        }
+        inviteResult.error = 'Invalid invite URL returned by 2FA service';
+      }
+
+      if (inviteResult?.error) {
+        await req.flash('warning', `Account created, but 2FA invite failed: ${inviteResult.error}`);
+      }
       await req.flash('success', 'Account created successfully! You can now log in.');
     } else {
       await req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
