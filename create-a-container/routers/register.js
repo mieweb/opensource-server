@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const QRCode = require('qrcode');
 const { User, InviteToken } = require('../models');
+const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
 
 // GET / - Display registration form
 router.get('/', async (req, res) => {
@@ -22,6 +24,7 @@ router.get('/', async (req, res) => {
   res.render('register', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
+    warningMessages: req.flash('warning'),
     inviteEmail,
     inviteToken: validToken
   });
@@ -85,6 +88,35 @@ router.post('/', async (req, res) => {
     }
     
     if (isInvitedUser) {
+      // Call 2FA invite API for auto-approved invite-token registrations
+      const inviteResult = await sendPushNotificationInvite(userParams);
+
+      if (inviteResult.success && inviteResult.inviteUrl) {
+        // Validate URL protocol to prevent javascript: XSS from a compromised API
+        let validUrl = false;
+        try {
+          const parsed = new URL(inviteResult.inviteUrl);
+          validUrl = parsed.protocol === 'https:' || parsed.protocol === 'http:';
+        } catch { /* invalid URL */ }
+
+        if (validUrl) {
+          const qrCodeDataUri = await QRCode.toDataURL(inviteResult.inviteUrl, { width: 256 });
+          return res.render('register-success', {
+            qrCodeDataUri,
+            inviteUrl: inviteResult.inviteUrl,
+            expiresAt: inviteResult.expiresAt,
+            warningMessages: []
+          });
+        }
+        // Invalid URL — treat as API failure
+        inviteResult.success = false;
+        inviteResult.error = 'Invalid invite URL returned by 2FA service';
+      }
+
+      // API failed or not configured — warn but continue
+      if (inviteResult.error && inviteResult.error !== 'Push notification URL or API key not configured') {
+        await req.flash('warning', `Account created, but 2FA invite failed: ${inviteResult.error}`);
+      }
       await req.flash('success', 'Account created successfully! You can now log in.');
     } else {
       await req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
