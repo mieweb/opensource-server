@@ -4,7 +4,7 @@ const { Setting } = require('../models');
  * Send a 2FA invite request to the push notification service.
  * Returns null when URL/API key are not configured (caller should skip silently).
  * @param {Object} user - User data with mail, uid, givenName, sn fields
- * @returns {Promise<{success: boolean, inviteUrl?: string, expiresAt?: string, error?: string}|null>}
+ * @returns {Promise<{success: boolean, inviteUrl?: string, error?: string}|null>}
  */
 async function sendPushNotificationInvite(user) {
   const settings = await Setting.getMultiple([
@@ -44,8 +44,7 @@ async function sendPushNotificationInvite(user) {
     if (response.status === 201 && body?.success) {
       return {
         success: true,
-        inviteUrl: body.inviteUrl,
-        expiresAt: body.expiresAt
+        inviteUrl: body.inviteUrl
       };
     }
 

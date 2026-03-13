@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const QRCode = require('qrcode');
-const { User, InviteToken } = require('../models');
+const { User, InviteToken, Setting } = require('../models');
 const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
 
 // GET / - Display registration form
@@ -28,6 +28,24 @@ router.get('/', async (req, res) => {
     inviteEmail,
     inviteToken: validToken
   });
+});
+
+// GET /success - Display QR code after invite-token registration (PRG pattern)
+router.get('/success', async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.redirect('/login');
+  }
+
+  const notificationUrl = await Setting.get('push_notification_url');
+  if (!notificationUrl?.trim()) {
+    return res.redirect('/login');
+  }
+
+  const inviteUrl = `${notificationUrl.trim()}/register?token=${encodeURIComponent(token)}`;
+  const qrCodeDataUri = await QRCode.toDataURL(inviteUrl, { width: 256 });
+  res.render('register-success', { qrCodeDataUri, inviteUrl });
 });
 
 // POST / - Handle registration submission
@@ -101,13 +119,11 @@ router.post('/', async (req, res) => {
         } catch { /* invalid URL */ }
 
         if (validUrl) {
-          const qrCodeDataUri = await QRCode.toDataURL(inviteResult.inviteUrl, { width: 256 });
-          return res.render('register-success', {
-            qrCodeDataUri,
-            inviteUrl: inviteResult.inviteUrl,
-            expiresAt: inviteResult.expiresAt,
-            warningMessages: []
-          });
+          // Extract token from the API's inviteUrl and redirect with just the token
+          const inviteToken2fa = new URL(inviteResult.inviteUrl).searchParams.get('token');
+          if (inviteToken2fa) {
+            return res.redirect(303, `/register/success?token=${encodeURIComponent(inviteToken2fa)}`);
+          }
         }
         inviteResult.error = 'Invalid invite URL returned by 2FA service';
       }
