@@ -89,9 +89,10 @@ router.post('/', async (req, res) => {
     
     if (isInvitedUser) {
       // Call 2FA invite API for auto-approved invite-token registrations
+      // Returns null when not configured — skip silently
       const inviteResult = await sendPushNotificationInvite(userParams);
 
-      if (inviteResult.success && inviteResult.inviteUrl) {
+      if (inviteResult?.success && inviteResult.inviteUrl) {
         // Validate URL protocol to prevent javascript: XSS from a compromised API
         let validUrl = false;
         try {
@@ -108,13 +109,10 @@ router.post('/', async (req, res) => {
             warningMessages: []
           });
         }
-        // Invalid URL — treat as API failure
-        inviteResult.success = false;
         inviteResult.error = 'Invalid invite URL returned by 2FA service';
       }
 
-      // API failed or not configured — warn but continue
-      if (inviteResult.error && inviteResult.error !== 'Push notification URL or API key not configured') {
+      if (inviteResult?.error) {
         await req.flash('warning', `Account created, but 2FA invite failed: ${inviteResult.error}`);
       }
       await req.flash('success', 'Account created successfully! You can now log in.');

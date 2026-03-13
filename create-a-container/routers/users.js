@@ -206,9 +206,10 @@ router.put('/:id', async (req, res) => {
     await user.save();
 
     // Send 2FA invite when user is first approved (pending → active)
+    // Returns null when not configured — skip silently
     if (previousStatus !== 'active' && user.status === 'active') {
       const inviteResult = await sendPushNotificationInvite(user);
-      if (!inviteResult.success && inviteResult.error !== 'Push notification URL or API key not configured') {
+      if (inviteResult && !inviteResult.success) {
         await req.flash('warning', `User approved but 2FA invite failed: ${inviteResult.error}`);
       }
     }
