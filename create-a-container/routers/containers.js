@@ -176,6 +176,7 @@ router.get('/', requireAuth, async (req, res) => {
   // e.g. "manager.os.mieweb.org" -> "os.mieweb.org"
   const hostParts = req.hostname.split('.');
   const baseUrl = hostParts.length > 1 ? hostParts.slice(1).join('.') : req.hostname;
+  const sshUsername = req.session.user;
 
   const rows = containers.map(c => {
     const services = c.services || [];
@@ -187,6 +188,12 @@ router.get('/', requireAuth, async (req, res) => {
       ? `https://${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
       : null;
     const sshHost = c.hostname ? `${c.hostname}.${baseUrl}` : null;
+    const sshExternalUrl = sshHost && sshPort && sshUsername
+      ? `ssh://${sshUsername}@${sshHost}:${sshPort}`
+      : null;
+    const vscodeSshExternalUrl = sshHost && sshPort && sshUsername
+      ? `vscode://vscode-remote/ssh-remote+${sshUsername}@${sshHost}:${sshPort}/`
+      : null;
 
     // Common object structure for both API and View
     return {
@@ -200,7 +207,8 @@ router.get('/', requireAuth, async (req, res) => {
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
-      sshHost,
+      sshExternalUrl,
+      vscodeSshExternalUrl,
       httpPort,
       httpExternalUrl,
       nodeName: c.node ? c.node.name : '-',
