@@ -172,6 +172,11 @@ router.get('/', requireAuth, async (req, res) => {
     ]
   });
 
+  // Derive base URL from request hostname by removing the leading subdomain
+  // e.g. "manager.os.mieweb.org" -> "os.mieweb.org"
+  const hostParts = req.hostname.split('.');
+  const baseUrl = hostParts.length > 1 ? hostParts.slice(1).join('.') : req.hostname;
+
   const rows = containers.map(c => {
     const services = c.services || [];
     const ssh = services.find(s => s.type === 'transport' && s.transportService?.protocol === 'tcp' && Number(s.internalPort) === 22);
@@ -181,7 +186,8 @@ router.get('/', requireAuth, async (req, res) => {
     const httpExternalUrl = http?.httpService?.externalHostname && http?.httpService?.externalDomain?.name
       ? `https://${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
       : null;
-    
+    const sshHost = c.hostname ? `${c.hostname}.${baseUrl}` : null;
+
     // Common object structure for both API and View
     return {
       id: c.id,
@@ -194,6 +200,7 @@ router.get('/', requireAuth, async (req, res) => {
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
+      sshHost,
       httpPort,
       httpExternalUrl,
       nodeName: c.node ? c.node.name : '-',
