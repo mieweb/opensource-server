@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registration Complete</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="page-center">
+
+  <div class="login-container">
+    <h2>Account Created Successfully!</h2>
+
+    <div class="alert alert-success">
+      Your account has been created and activated.
+    </div>
+
+    <div style="text-align: center; margin: 1.5rem 0;">
+      <p><strong>Scan the QR code below to set up 2FA on your device:</strong></p>
+      <img 
+        src="<%= qrCodeDataUri %>" 
+        alt="2FA setup QR code" 
+        style="max-width: 256px; width: 100%; image-rendering: pixelated;"
+      >
+      <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">
+        Or open this link directly:
+        <a href="<%= inviteUrl %>" target="_blank" rel="noopener noreferrer" style="word-break: break-all;"><%= inviteUrl %></a>
+      </p>
+    </div>
+
+    <a href="/login" style="display: inline-block; margin-top: 0.8rem; text-decoration: none;">
+      <button type="button">Continue to Login</button>
+    </a>
+  </div>
+
+</body>
+</html>

@@ -134,6 +134,18 @@
               <% }) %>
             <% } %>
 
+              <%
+                const warningMessages = req.flash ? req.flash('warning') : [];
+              %>
+              <% if (warningMessages && warningMessages.length > 0) { %>
+                <% warningMessages.forEach(msg => { %>
+                  <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                    <%= msg %>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                  </div>
+                <% }) %>
+              <% } %>
+
 <script>
   // Site selector navigation
   document.addEventListener('DOMContentLoaded', () => {
