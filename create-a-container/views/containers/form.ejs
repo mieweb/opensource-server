@@ -176,7 +176,6 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       if (this.value === 'custom') {
         customTemplateContainer.style.display = 'block';
         customTemplateInput.required = true;
-        this.removeAttribute('name'); // Don't submit the select value
       } else if (this.value) {
         // Standard image selected (not empty and not custom)
         customTemplateContainer.style.display = 'none';
