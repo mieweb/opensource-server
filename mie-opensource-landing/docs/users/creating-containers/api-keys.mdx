@@ -2,6 +2,8 @@
 sidebar_position: 3
 ---
 
+import { ContainerCreationUrl } from '@site/src/components/InstanceUrl';
+
 # API Keys
 
 API keys authenticate API requests without using your password.
@@ -33,3 +35,15 @@ Click **View** on any key to see its prefix, description, creation date, and las
 ### Deleting a Key
 
 Click **Delete** from the list or details page. Other keys and your password are unaffected.
+
+## Using Your API Key
+
+Pass the key as a Bearer token and request JSON responses:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+     -H "Accept: application/json" \
+     https://your-server/apikeys
+```
+
+For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the <ContainerCreationUrl path="/api">interactive API documentation</ContainerCreationUrl> at `/api` on your server.

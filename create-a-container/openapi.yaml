@@ -1,0 +1,885 @@
+openapi: 3.0.3
+info:
+  title: Create-a-Container API
+  description: |
+    REST API for managing containers, API keys, and jobs.
+
+    ## Authentication
+
+    All API endpoints require authentication via an API key passed as a Bearer token:
+
+    ```
+    Authorization: Bearer <your-api-key>
+    ```
+
+    Create API keys through `POST /apikeys` or the web UI at `/apikeys/new`.
+
+    ## Content Negotiation
+
+    Routes serve both HTML and JSON. To receive JSON responses, set:
+
+    ```
+    Accept: application/json
+    ```
+
+    The API also recognizes `application/vnd.api+json` and `X-Requested-With: XMLHttpRequest`.
+
+    ## Rate Limiting
+
+    Failed requests (4xx/5xx) are rate-limited to **10 per 5-minute window** per IP.
+    Successful requests are not counted.
+  version: 1.0.0
+  license:
+    name: MIT
+
+servers:
+  - url: /
+    description: Current server
+
+tags:
+  - name: API Keys
+    description: Manage personal API keys for Bearer token authentication
+  - name: Containers
+    description: Create, list, update, and delete containers within a site
+  - name: Jobs
+    description: Monitor container creation and reconfiguration jobs
+  - name: Nodes
+    description: Query node storage information
+
+paths:
+  # ── API Keys ──────────────────────────────────────────────────────────
+  /apikeys:
+    get:
+      tags: [API Keys]
+      summary: List API keys
+      description: Returns all API keys belonging to the authenticated user. The full key value is never returned — only the prefix.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKeys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [API Keys]
+      summary: Create an API key
+      description: |
+        Creates a new API key. The full key is returned **only once** in the response.
+        Store it securely — it cannot be retrieved again.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  description: Human-readable label for this key
+                  example: CI/CD pipeline
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      key:
+                        type: string
+                        description: Full API key (shown only once)
+                      keyPrefix:
+                        type: string
+                      description:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+                  warning:
+                    type: string
+                    example: This is the only time the full API key will be displayed. Please store it securely.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /apikeys/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ApiKeyId'
+
+    get:
+      tags: [API Keys]
+      summary: Get API key details
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: API key details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    $ref: '#/components/schemas/ApiKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [API Keys]
+      summary: Delete an API key
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: API key deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Containers ────────────────────────────────────────────────────────
+  /sites/{siteId}/containers:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+
+    get:
+      tags: [Containers]
+      summary: List containers
+      description: Returns containers owned by the authenticated user within the specified site.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: hostname
+          in: query
+          schema:
+            type: string
+          description: Filter by exact hostname
+      responses:
+        '200':
+          description: List of containers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  containers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContainerSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Containers]
+      summary: Create a container
+      description: |
+        Creates a new container and enqueues a provisioning job.
+        Returns `202 Accepted` with a job ID to track progress.
+
+        Use `template_name` or `template` to specify the Docker image.
+        For custom images, set `template` to `"custom"` and provide `customTemplate`.
+
+        To build from a Git repository, provide `repository` and optionally `branch`
+        (defaults to `master`). These are injected as `BUILD_REPOSITORY` and
+        `BUILD_BRANCH` environment variables.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContainerCreateRequest'
+      responses:
+        '202':
+          description: Container creation initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Container creation initiated
+                  status:
+                    type: string
+                    example: pending
+                  jobId:
+                    type: integer
+                    description: Job ID — poll `/jobs/{id}` or stream `/jobs/{id}/stream` for progress
+                  container:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      hostname:
+                        type: string
+                      status:
+                        type: string
+                        example: pending
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteId}/containers/metadata:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+
+    get:
+      tags: [Containers]
+      summary: Fetch Docker image metadata
+      description: Queries the Docker registry for the image's exposed ports, environment variables, entrypoint, and command.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: image
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Docker image reference (e.g. `nginx`, `nginx:latest`, `ghcr.io/org/image:tag`)
+      responses:
+        '200':
+          description: Image metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageMetadata'
+        '400':
+          description: Missing image parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Registry error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorWithDetails'
+
+  /sites/{siteId}/containers/new:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+
+    get:
+      tags: [Containers]
+      summary: List available templates and domains
+      description: Returns the site ID and available external domains for container creation.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Template context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  site_id:
+                    type: integer
+                  domains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExternalDomain'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sites/{siteId}/containers/{containerId}:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/ContainerId'
+
+    put:
+      tags: [Containers]
+      summary: Update container fields
+      description: |
+        Updates mutable container fields. Currently supports `ipv4Address`,
+        `macAddress`, and `osRelease`.
+
+        To update services, environment variables, or trigger a restart, use
+        the web UI (the full update flow is not yet exposed via JSON API).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ipv4Address:
+                  type: string
+                  nullable: true
+                  example: 10.0.0.42
+                macAddress:
+                  type: string
+                  nullable: true
+                  example: "02:00:0A:00:00:2A"
+                osRelease:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Container updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Updated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Containers]
+      summary: Delete a container
+      description: Destroys the container record and its associated Proxmox LXC (if provisioned).
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Container deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── Jobs ──────────────────────────────────────────────────────────────
+  /jobs:
+    post:
+      tags: [Jobs]
+      summary: Create a job
+      description: Enqueues a shell command for asynchronous execution. Admin only.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [command]
+              properties:
+                command:
+                  type: string
+                  maxLength: 2000
+                  description: Shell command to execute
+      responses:
+        '201':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    $ref: '#/components/schemas/JobStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /jobs/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+
+    get:
+      tags: [Jobs]
+      summary: Get job details
+      description: Returns job metadata. Accessible to the job owner or admins.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /jobs/{jobId}/status:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+
+    get:
+      tags: [Jobs]
+      summary: Get job output log
+      description: Returns paginated log entries for the job.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of log entries to skip
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 1000
+            maximum: 1000
+            minimum: 1
+          description: Maximum log entries to return
+      responses:
+        '200':
+          description: Array of log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobLogEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /jobs/{jobId}/stream:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+
+    get:
+      tags: [Jobs]
+      summary: Stream job output (SSE)
+      description: |
+        Server-Sent Events stream for real-time job output.
+
+        **Event types:**
+        - `log` — `{ id, output, timestamp }` — a new line of output
+        - `status` — `{ status }` — sent when the job finishes
+
+        The stream closes automatically when the job completes or fails.
+        Pass `lastId` to resume from a specific log entry.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: lastId
+          in: query
+          schema:
+            type: integer
+          description: Resume streaming after this log entry ID
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Nodes ─────────────────────────────────────────────────────────────
+  /sites/{siteId}/nodes/{nodeId}/storages:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/NodeId'
+
+    get:
+      tags: [Nodes]
+      summary: List node storages
+      description: Returns storage pools on the Proxmox node that support CT templates (vztmpl). Admin only.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of storage pools (empty array if node has no API credentials)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Storage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+# ── Components ────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: API key obtained from `POST /apikeys`
+
+  parameters:
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Site ID
+
+    ContainerId:
+      name: containerId
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Container ID
+
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Job ID
+
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Node ID
+
+    ApiKeyId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: API key ID
+
+  schemas:
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+        keyPrefix:
+          type: string
+          description: First characters of the key for identification
+        description:
+          type: string
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ContainerSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        containerId:
+          type: integer
+          nullable: true
+          description: Proxmox VMID (null while pending)
+        hostname:
+          type: string
+        ipv4Address:
+          type: string
+          nullable: true
+        macAddress:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, running, restarting, stopped]
+        template:
+          type: string
+          description: Docker image reference
+        creationJobId:
+          type: integer
+          nullable: true
+        sshPort:
+          type: integer
+          nullable: true
+        sshHost:
+          type: string
+        httpPort:
+          type: integer
+          nullable: true
+        httpExternalUrl:
+          type: string
+          nullable: true
+          description: Public HTTPS URL (if an HTTP service is configured)
+        nodeName:
+          type: string
+        nodeApiUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ContainerCreateRequest:
+      type: object
+      required: [hostname]
+      properties:
+        hostname:
+          type: string
+          pattern: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+          description: DNS-safe hostname (lowercase letters, digits, hyphens; 1–63 chars)
+          example: my-app
+        template:
+          type: string
+          description: Docker image reference, or `"custom"` when using `customTemplate`
+          example: nginx:latest
+        customTemplate:
+          type: string
+          description: Custom Docker image (used when `template` is `"custom"`)
+        template_name:
+          type: string
+          description: Alias for `template` (API convenience field)
+        repository:
+          type: string
+          description: Git repository URL — injected as `BUILD_REPOSITORY` env var
+        branch:
+          type: string
+          default: master
+          description: Git branch — injected as `BUILD_BRANCH` env var
+        services:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ServiceDefinition'
+          description: Map of service definitions keyed by arbitrary name
+        environmentVars:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                type: string
+          description: Environment variables for the container
+        entrypoint:
+          type: string
+          nullable: true
+          description: Override the container entrypoint command
+
+    ServiceDefinition:
+      type: object
+      required: [type, internalPort]
+      properties:
+        type:
+          type: string
+          enum: [http, https, tcp, udp, srv]
+          description: |
+            - `http`/`https` — HTTP reverse proxy (requires `externalHostname` + `externalDomainId`)
+            - `tcp`/`udp` — Port-forwarded transport (external port auto-assigned)
+            - `srv` — DNS SRV record (requires `dnsName`)
+        internalPort:
+          type: integer
+          description: Port inside the container
+          example: 80
+        externalHostname:
+          type: string
+          description: Subdomain prefix (required for `http`/`https`)
+          example: my-app
+        externalDomainId:
+          type: integer
+          description: External domain ID (required for `http`/`https`)
+        dnsName:
+          type: string
+          description: DNS name (required for `srv`)
+
+    ImageMetadata:
+      type: object
+      properties:
+        Ports:
+          type: object
+          additionalProperties:
+            type: object
+          description: Exposed ports (e.g. `{"80/tcp": {}}`)
+        Env:
+          type: array
+          items:
+            type: string
+          description: Environment variables (e.g. `["PATH=/usr/bin"]`)
+        Entrypoint:
+          type: array
+          items:
+            type: string
+          nullable: true
+        Cmd:
+          type: array
+          items:
+            type: string
+          nullable: true
+        ExposedPorts:
+          type: object
+          additionalProperties:
+            type: object
+          nullable: true
+
+    ExternalDomain:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          description: Domain name (e.g. `example.com`)
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+        command:
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          nullable: true
+
+    JobStatus:
+      type: string
+      enum: [pending, running, completed, failed]
+
+    JobLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: integer
+        output:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Storage:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Storage pool name
+        total:
+          type: integer
+          description: Total capacity in bytes
+        available:
+          type: integer
+          description: Available capacity in bytes
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    ErrorWithDetails:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Unauthorized
+
+    Forbidden:
+      description: Insufficient permissions (admin required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Forbidden: Admin access required"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Internal server error

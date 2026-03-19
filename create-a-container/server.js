@@ -10,6 +10,8 @@ const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
 const { requireAuth, loadSites } = require('./middlewares');
 
@@ -87,6 +89,12 @@ async function main() {
     next();
   });
   app.use(express.static('public'));
+
+  // --- API Documentation (Swagger UI) ---
+  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
+  app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+    customSiteTitle: 'Create-a-Container API',
+  }));
 
   // We rate limit unsucessful (4xx/5xx statuses) to only 10 per 5 minutes, this
   // should allow legitimate users a few tries to login or experiment without
