@@ -11,6 +11,26 @@ const { manageDnsRecords } = require('../utils/cloudflare-dns');
 const { isValidHostname } = require('../utils');
 
 /**
+ * Sort external domains so that default domains for the given site come first (by id),
+ * followed by all other domains (also by id).
+ * @param {Array} domains - All external domain records, pre-sorted by id ASC
+ * @param {number} siteId - The id of the current site
+ * @returns {Array} Domains with site-default entries first, then others
+ */
+function sortExternalDomains(domains, siteId) {
+  const defaults = [];
+  const others = [];
+  for (const domain of domains) {
+    if (domain.siteId === siteId) {
+      defaults.push(domain);
+    } else {
+      others.push(domain);
+    }
+  }
+  return [...defaults, ...others];
+}
+
+/**
  * Normalize a Docker image reference to full format: host/org/image:tag
  */
 function normalizeDockerRef(ref) {
@@ -111,10 +131,11 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get all external domains (global)
-  const externalDomains = await ExternalDomain.findAll({
-    order: [['name', 'ASC']]
-  });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = sortExternalDomains(
+    await ExternalDomain.findAll({ order: [['id', 'ASC']] }),
+    siteId
+  );
 
   if (isApi) {
     return res.json({
@@ -243,7 +264,11 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
-  const externalDomains = await ExternalDomain.findAll({ order: [['name', 'ASC']] });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = sortExternalDomains(
+    await ExternalDomain.findAll({ order: [['id', 'ASC']] }),
+    siteId
+  );
 
   return res.render('containers/form', { 
     site,
