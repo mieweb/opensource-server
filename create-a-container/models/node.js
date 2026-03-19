@@ -90,6 +90,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false,
       defaultValue: 'local-lvm'
+    },
+    networkBridge: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      defaultValue: 'vmbr0'
     }
   }, {
     sequelize,
