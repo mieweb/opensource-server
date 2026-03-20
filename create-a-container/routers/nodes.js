@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
       return res.redirect('/sites');
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge } = req.body;
     
     await Node.create({
       name,
@@ -128,6 +128,7 @@ router.post('/', async (req, res) => {
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
       imageStorage: imageStorage || 'local',
       volumeStorage: volumeStorage || 'local-lvm',
+      networkBridge: networkBridge || 'vmbr0',
       siteId
     });
 
@@ -215,6 +216,7 @@ router.post('/import', async (req, res) => {
         tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
         imageStorage,
         volumeStorage,
+        networkBridge: 'vmbr0',
         siteId
       };
     }));
@@ -265,7 +267,7 @@ router.put('/:id', async (req, res) => {
       return res.redirect(`/sites/${siteId}/nodes`);
     }
 
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage } = req.body;
+    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge } = req.body;
     
     const updateData = {
       name,
@@ -274,7 +276,8 @@ router.put('/:id', async (req, res) => {
       tokenId: tokenId || null,
       tlsVerify: tlsVerify === '' || tlsVerify === null ? null : tlsVerify === 'true',
       imageStorage: imageStorage || 'local',
-      volumeStorage: volumeStorage || 'local-lvm'
+      volumeStorage: volumeStorage || 'local-lvm',
+      networkBridge: networkBridge || 'vmbr0'
     };
 
     // Only update secret if a new value was provided
