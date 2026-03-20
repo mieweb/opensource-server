@@ -26,6 +26,61 @@
                 </div>
             <% }) %>
         <% } %>
+
+        <% if (typeof warningMessages !== 'undefined' && warningMessages && warningMessages.length > 0) { %>
+            <% warningMessages.forEach(function(message) { %>
+                <div class="alert alert-warning">
+                    <%= message %>
+                </div>
+            <% }) %>
+        <% } %>
+
+        <% if (typeof noUsers !== 'undefined' && noUsers) { %>
+            <div class="alert alert-info">
+                <strong>Welcome!</strong> No users exist yet. <a href="/register">Register</a> to create the first admin account.
+            </div>
+        <% } %>
+        <% if (typeof showQuickLogin !== 'undefined' && showQuickLogin) { %>
+        <div class="quick-login-container" style="margin-bottom: 15px; position: relative;">
+            <div class="btn-group" style="display: flex; width: 100%;">
+                <form method="POST" action="/login/quick" style="flex: 1;" id="quickLoginForm">
+                    <input type="hidden" name="role" value="admin" id="quickLoginRole">
+                    <button type="submit" class="btn btn-warning" style="width: 100%; padding: 12px 16px; font-size: 16px; background-color: #ffc107; border: 1px solid #ffc107; border-right: none; border-radius: 4px 0 0 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <span id="quickLoginLabel">Login as Admin</span>
+                    </button>
+                </form>
+                <button type="button" class="btn btn-warning" onclick="toggleQuickLoginDropdown()" style="padding: 12px 14px; font-size: 16px; background-color: #e0a800; border: 1px solid #ffc107; border-radius: 0 4px 4px 0; cursor: pointer;">
+                    ▼
+                </button>
+            </div>
+            <div id="quickLoginDropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 4px; margin-top: 2px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000;">
+                <a href="#" onclick="selectQuickLogin('admin', 'Login as Admin'); return false;" style="display: block; padding: 10px 16px; color: #333; text-decoration: none; border-bottom: 1px solid #eee;">Login as Admin</a>
+                <a href="#" onclick="selectQuickLogin('user', 'Login as Standard User'); return false;" style="display: block; padding: 10px 16px; color: #333; text-decoration: none;">Login as Standard User</a>
+            </div>
+            <small style="display: block; text-align: center; margin-top: 8px; color: #856404;">
+                Development mode only — creates test user with password "test"
+            </small>
+        </div>
+        <hr>
+        <script>
+        function toggleQuickLoginDropdown() {
+            var dropdown = document.getElementById('quickLoginDropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+        function selectQuickLogin(role, label) {
+            document.getElementById('quickLoginRole').value = role;
+            document.getElementById('quickLoginLabel').textContent = label;
+            document.getElementById('quickLoginDropdown').style.display = 'none';
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            var container = document.querySelector('.quick-login-container');
+            if (container && !container.contains(e.target)) {
+                document.getElementById('quickLoginDropdown').style.display = 'none';
+            }
+        });
+        </script>
+        <% } %>
         
         <form method="POST" action="/login" id="loginForm">
             <input type="hidden" name="redirect" value="<%= redirect %>">
@@ -49,25 +104,6 @@
         <div class="signup-section">
             <a href="/reset-password">Forgot your password?</a>
         </div>
-        
-        <% if (testEnabled && testUsers && testUsers.length > 0) { %>
-        <hr>
-        <div class="test-login-section">
-            <strong>⚠️ Test Mode Enabled</strong>
-            <p style="font-size: 0.9em; color: #666; margin: 0.5em 0;">Quick login as test user:</p>
-            <form method="POST" action="/login/test-login" id="testLoginForm">
-                <input type="hidden" name="redirect" value="<%= redirect %>">
-                <select name="testUser" id="testUserSelect" required>
-                    <option value="">Select a test user...</option>
-                    <% testUsers.forEach(function(user) { %>
-                        <option value="<%= user.uid %>"><%= user.displayName %> (<%= user.groupName %>)</option>
-                    <% }) %>
-                </select>
-                <input type="submit" value="Quick Login" class="btn-secondary">
-            </form>
-        </div>
-        <% } %>
-        
         <hr>
         <div class="signup-section">
             <strong>Don't have an account?</strong>
