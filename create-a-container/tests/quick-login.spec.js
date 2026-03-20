@@ -66,7 +66,7 @@ test.describe('Quick Login and API Key', () => {
     // Navigate back to API keys list
     await page.getByRole('link', { name: 'API Keys' }).first().click();
     
-    // Should see the new key in the list (use the table cell to be specific)
-    await expect(page.getByRole('cell', { name: 'Test API Key from Playwright' })).toBeVisible();
+    // Should see the new key in the list (use first() since name may appear in multiple columns)
+    await expect(page.getByRole('cell', { name: 'Test API Key from Playwright' }).first()).toBeVisible();
   });
 });
