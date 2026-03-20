@@ -110,6 +110,31 @@
         </div>
       </div>
 
+      <div class="mb-4">
+        <h5 class="mb-3">Default Container Environment Variables</h5>
+        <p class="text-muted mb-3" id="default_env_vars_help">
+          These variables are automatically injected into every new container at creation time.
+          Use them for shared configuration such as agent connection details.
+          Per-container values always take precedence over these defaults.
+        </p>
+        <div class="d-flex justify-content-end mb-2">
+          <button type="button" id="addDefaultEnvVarBtn" class="btn btn-sm btn-primary" aria-label="Add default environment variable">
+            Add Variable
+          </button>
+        </div>
+        <table class="table table-sm table-bordered mb-0" aria-describedby="default_env_vars_help">
+          <thead>
+            <tr>
+              <th style="width: 22%;">Name</th>
+              <th style="width: 22%;">Value</th>
+              <th>Description</th>
+              <th style="width: 80px;" class="text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="defaultEnvVarsTableBody"></tbody>
+        </table>
+      </div>
+
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary" aria-label="Save settings">
           Save Settings
@@ -123,3 +148,72 @@
 </div>
 
 <%- include('../layouts/footer') %>
+
+<script>
+  let envVarCounter = 0;
+
+  function addDefaultEnvVarRow(key = '', value = '', description = '') {
+    const row = document.createElement('tr');
+    row.id = `default-env-row-${envVarCounter}`;
+
+    const keyCell = document.createElement('td');
+    keyCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const keyInput = document.createElement('input');
+    keyInput.type = 'text';
+    keyInput.className = 'form-control form-control-sm font-monospace';
+    keyInput.name = `defaultEnvVars[${envVarCounter}][key]`;
+    keyInput.value = key;
+    keyInput.placeholder = 'VARIABLE_NAME';
+    keyInput.pattern = '[A-Za-z_][A-Za-z0-9_]*';
+    keyInput.setAttribute('aria-label', 'Environment variable name');
+    keyCell.appendChild(keyInput);
+
+    const valueCell = document.createElement('td');
+    valueCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const valueInput = document.createElement('input');
+    valueInput.type = 'text';
+    valueInput.className = 'form-control form-control-sm font-monospace';
+    valueInput.name = `defaultEnvVars[${envVarCounter}][value]`;
+    valueInput.value = value;
+    valueInput.placeholder = 'value';
+    valueInput.setAttribute('aria-label', 'Environment variable value');
+    valueCell.appendChild(valueInput);
+
+    const descCell = document.createElement('td');
+    descCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
+    const descInput = document.createElement('input');
+    descInput.type = 'text';
+    descInput.className = 'form-control form-control-sm text-muted';
+    descInput.name = `defaultEnvVars[${envVarCounter}][description]`;
+    descInput.value = description;
+    descInput.placeholder = 'optional description (not sent to containers)';
+    descInput.setAttribute('aria-label', 'Environment variable description');
+    descCell.appendChild(descInput);
+
+    const actionCell = document.createElement('td');
+    actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-sm btn-danger';
+    removeBtn.textContent = 'Delete';
+    removeBtn.setAttribute('aria-label', 'Remove environment variable');
+    const idx = envVarCounter;
+    removeBtn.onclick = () => document.getElementById(`default-env-row-${idx}`).remove();
+    actionCell.appendChild(removeBtn);
+
+    row.appendChild(keyCell);
+    row.appendChild(valueCell);
+    row.appendChild(descCell);
+    row.appendChild(actionCell);
+    document.getElementById('defaultEnvVarsTableBody').appendChild(row);
+    envVarCounter++;
+  }
+
+  document.getElementById('addDefaultEnvVarBtn').addEventListener('click', () => addDefaultEnvVarRow());
+
+  // Pre-populate saved values (array of {key, value, description} objects)
+  const savedEnvVars = <%- JSON.stringify(defaultContainerEnvVars) %>;
+  for (const entry of savedEnvVars) {
+    addDefaultEnvVarRow(entry.key, entry.value, entry.description || '');
+  }
+</script>
