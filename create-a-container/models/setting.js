@@ -51,6 +51,23 @@ module.exports = (sequelize, DataTypes) => {
         return acc;
       }, {});
     }
+
+    /**
+     * Returns the default_container_env_vars setting as an array of
+     * {key, value, description} objects. Handles both the current array
+     * format and the legacy flat-object format {KEY: value}.
+     * @returns {Promise<Array<{key: string, value: string, description: string}>>}
+     */
+    static async getDefaultContainerEnvVars() {
+      const json = await Setting.get('default_container_env_vars');
+      if (!json) return [];
+      const parsed = JSON.parse(json);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'object' && parsed !== null) {
+        return Object.entries(parsed).map(([key, value]) => ({ key, value, description: '' }));
+      }
+      return [];
+    }
   }
 
   Setting.init({

@@ -15,18 +15,9 @@ router.get('/', async (req, res) => {
     'default_container_env_vars'
   ]);
 
-  // Stored as an array of {key, value, description} objects.
-  // Also handles the old flat-object format {KEY: value} from earlier installs.
   let defaultContainerEnvVars = [];
   try {
-    if (settings.default_container_env_vars) {
-      const parsed = JSON.parse(settings.default_container_env_vars);
-      if (Array.isArray(parsed)) {
-        defaultContainerEnvVars = parsed;
-      } else if (typeof parsed === 'object' && parsed !== null) {
-        defaultContainerEnvVars = Object.entries(parsed).map(([key, value]) => ({ key, value, description: '' }));
-      }
-    }
+    defaultContainerEnvVars = await Setting.getDefaultContainerEnvVars();
   } catch (_) {
     // ignore malformed JSON — treat as empty
   }

@@ -1,11 +1,8 @@
 [Unit]
 Description=Wazuh Agent First-Boot Enrollment
 Documentation=https://documentation.wazuh.com/current/user-manual/agent/agent-enrollment/
-# Only run if not already enrolled. The sentinel is created by wazuh-enroll.sh
-# after a successful enrollment. If WAZUH_MANAGER is not set when the service
-# runs, the script exits without creating the sentinel so that the service will
-# attempt enrollment again after a container reconfigure adds the variable.
-ConditionPathExists=!/etc/wazuh-enrolled
+# Only run if the agent has never enrolled (client.keys is created on success).
+ConditionPathExists=!/var/ossec/etc/client.keys
 # Run after environment variables have been written to /etc/environment by
 # environment.service and after the network is available for reaching the manager.
 After=environment.service network-online.target
@@ -14,8 +11,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=no
+EnvironmentFile=/etc/environment
 ExecStart=/usr/local/bin/wazuh-enroll.sh
-# apt-get install + key exchange can take a while on slow links
+# Key exchange can take a while on slow links
 TimeoutStartSec=300
 
 [Install]

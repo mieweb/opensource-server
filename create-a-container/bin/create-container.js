@@ -332,21 +332,13 @@ async function main() {
     const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
 
     // Load system-wide default env vars from Settings.
-    // Stored as an array of {key, value, description} — descriptions are metadata
-    // only and are never passed into the container environment.
-    // Also handles the old flat-object format {KEY: value} from earlier installs.
+    // Descriptions are metadata only and are not passed into the container.
     let systemDefaultEnvVars = {};
     try {
-      const systemDefaultsJson = await Setting.get('default_container_env_vars');
-      if (systemDefaultsJson) {
-        const parsed = JSON.parse(systemDefaultsJson);
-        const entries = Array.isArray(parsed)
-          ? parsed
-          : Object.entries(parsed).map(([key, value]) => ({ key, value }));
-        for (const entry of entries) {
-          if (entry.key && entry.key.trim()) {
-            systemDefaultEnvVars[entry.key.trim()] = entry.value || '';
-          }
+      const entries = await Setting.getDefaultContainerEnvVars();
+      for (const entry of entries) {
+        if (entry.key && entry.key.trim()) {
+          systemDefaultEnvVars[entry.key.trim()] = entry.value || '';
         }
       }
     } catch (_) {
