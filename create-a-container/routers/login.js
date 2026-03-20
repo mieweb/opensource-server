@@ -1,16 +1,96 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { User, Setting } = require('../models');
 const { isSafeRelativeUrl } = require('../utils');
 
+// Check if we're in dev mode (no .env file or NODE_ENV !== 'production')
+function isDevMode() {
+  const envPath = path.join(__dirname, '..', '.env');
+  const hasEnvFile = fs.existsSync(envPath);
+  return !hasEnvFile || process.env.NODE_ENV !== 'production';
+}
+
 // GET / - Display login form
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
+  const userCount = await User.count();
+  const devMode = isDevMode();
   res.render('login', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
     warningMessages: req.flash('warning'),
-    redirect: req.query.redirect || '/'
+    redirect: req.query.redirect || '/',
+    noUsers: userCount === 0,
+    showQuickLogin: devMode
   });
+});
+
+// POST /quick - Create test user and auto-login (dev mode only)
+router.post('/quick', async (req, res) => {
+  // Only allow in dev mode
+  if (!isDevMode()) {
+    await req.flash('error', 'Quick login is only available in development mode');
+    return res.redirect('/login');
+  }
+  
+  const role = req.body.role || 'admin';
+  const isAdmin = role === 'admin';
+  const username = isAdmin ? 'admin' : 'testuser';
+  const displayName = isAdmin ? 'Admin User' : 'Test User';
+  
+  try {
+    // Find existing user or create new one
+    let user = await User.findOne({ 
+      where: { uid: username },
+      include: [{ association: 'groups' }]
+    });
+    
+    if (!user) {
+      user = await User.create({
+        uidNumber: await User.nextUidNumber(),
+        uid: username,
+        givenName: isAdmin ? 'Admin' : 'Test',
+        sn: 'User',
+        cn: displayName,
+        mail: `${username}@localhost`,
+        userPassword: 'test',
+        status: 'active',
+        homeDirectory: `/home/${username}`,
+      });
+      
+      // For admin users, ensure they're in sysadmins group
+      if (isAdmin) {
+        const { Group } = require('../models');
+        const sysadminsGroup = await Group.findByPk(2000);
+        if (sysadminsGroup) {
+          await user.addGroup(sysadminsGroup);
+        }
+      }
+      // Reload user with groups
+      user = await User.findOne({ 
+        where: { uid: username },
+        include: [{ association: 'groups' }]
+      });
+    }
+    
+    // Auto-login: set session variables based on user's actual groups
+    const userIsAdmin = user.groups?.some(g => g.isAdmin) || false;
+    req.session.user = user.uid;
+    req.session.isAdmin = userIsAdmin;
+    
+    // Save session and redirect to app
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+      }
+      return res.redirect('/');
+    });
+  } catch (err) {
+    console.error('Quick login error:', err);
+    await req.flash('error', 'Failed to create user: ' + err.message);
+    return res.redirect('/login');
+  }
 });
 
 // POST / - Handle login submission
