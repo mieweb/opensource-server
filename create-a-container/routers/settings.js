@@ -10,6 +10,7 @@ router.get('/', async (req, res) => {
   const settings = await Setting.getMultiple([
     'push_notification_url', 
     'push_notification_enabled',
+    'push_notification_api_key',
     'smtp_url',
     'smtp_noreply_address',
     'default_container_env_vars'
@@ -34,6 +35,7 @@ router.get('/', async (req, res) => {
   res.render('settings/index', {
     pushNotificationUrl: settings.push_notification_url || '',
     pushNotificationEnabled: settings.push_notification_enabled === 'true',
+    pushNotificationApiKey: settings.push_notification_api_key || '',
     smtpUrl: settings.smtp_url || '',
     smtpNoreplyAddress: settings.smtp_noreply_address || '',
     defaultContainerEnvVars,
@@ -45,6 +47,7 @@ router.post('/', async (req, res) => {
   const { 
     push_notification_url, 
     push_notification_enabled,
+    push_notification_api_key,
     smtp_url,
     smtp_noreply_address,
     defaultEnvVars
@@ -74,6 +77,7 @@ router.post('/', async (req, res) => {
   
   await Setting.set('push_notification_url', push_notification_url || '');
   await Setting.set('push_notification_enabled', enabled ? 'true' : 'false');
+  await Setting.set('push_notification_api_key', push_notification_api_key || '');
   await Setting.set('smtp_url', smtp_url || '');
   await Setting.set('smtp_noreply_address', smtp_noreply_address || '');
   await Setting.set('default_container_env_vars', JSON.stringify(envVarsArray));

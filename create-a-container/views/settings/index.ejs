@@ -90,6 +90,24 @@
             When enabled, users must approve login attempts via push notification. URL must be configured.
           </div>
         </div>
+
+        <div class="mb-3">
+          <label for="push_notification_api_key" class="form-label">
+            API Key
+          </label>
+          <input 
+            type="password" 
+            class="form-control font-monospace" 
+            id="push_notification_api_key" 
+            name="push_notification_api_key" 
+            value="<%= pushNotificationApiKey %>"
+            placeholder="Enter API key for push notification service"
+            aria-describedby="push_notification_api_key_help"
+          >
+          <div id="push_notification_api_key_help" class="form-text">
+            Bearer token used to authenticate API requests to the push notification service (e.g. 2FA invite)
+          </div>
+        </div>
       </div>
 
       <div class="mb-4">
