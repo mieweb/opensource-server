@@ -111,10 +111,8 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get all external domains (global)
-  const externalDomains = await ExternalDomain.findAll({
-    order: [['name', 'ASC']]
-  });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = await site.getSortedExternalDomains();
 
   if (isApi) {
     return res.json({
@@ -243,7 +241,8 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
-  const externalDomains = await ExternalDomain.findAll({ order: [['name', 'ASC']] });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = await site.getSortedExternalDomains();
 
   return res.render('containers/form', { 
     site,
