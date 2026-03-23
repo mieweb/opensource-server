@@ -1,0 +1,23 @@
+[Unit]
+Description=Wazuh Agent First-Boot Enrollment
+Documentation=https://documentation.wazuh.com/current/user-manual/agent/agent-enrollment/
+# Only run if the agent has never successfully enrolled. client.keys is created
+# by the agent on startup regardless of enrollment outcome, so ConditionPathExists
+# would skip re-enrollment after a failed attempt. ConditionFileNotEmpty (negated)
+# means: run if the file does not exist or is empty.
+ConditionFileNotEmpty=!/var/ossec/etc/client.keys
+# Run after environment variables have been written to /etc/environment by
+# environment.service and after the network is available for reaching the manager.
+After=environment.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+EnvironmentFile=/etc/environment
+ExecStart=/usr/local/bin/wazuh-enroll.sh
+# Key exchange can take a while on slow links
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

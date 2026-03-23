@@ -28,7 +28,7 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
@@ -330,7 +330,23 @@ async function main() {
     
     // Merge user-specified env vars (user values override defaults)
     const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
-    mergedEnvVars = { ...mergedEnvVars, ...userEnvVars };
+
+    // Load system-wide default env vars from Settings.
+    // Descriptions are metadata only and are not passed into the container.
+    let systemDefaultEnvVars = {};
+    try {
+      const entries = await Setting.getDefaultContainerEnvVars();
+      for (const entry of entries) {
+        if (entry.key && entry.key.trim()) {
+          systemDefaultEnvVars[entry.key.trim()] = entry.value || '';
+        }
+      }
+    } catch (_) {
+      console.warn('Could not load default_container_env_vars from settings, skipping');
+    }
+
+    // Merge priority: image defaults < system defaults < per-container user values
+    mergedEnvVars = { ...mergedEnvVars, ...systemDefaultEnvVars, ...userEnvVars };
     
     // Use user entrypoint if specified, otherwise keep default
     const finalEntrypoint = container.entrypoint || defaultEntrypoint;
@@ -359,8 +375,9 @@ async function main() {
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
       if (defaultEntrypoint) console.log(`Default entrypoint: ${defaultEntrypoint}`);
-      if (defaultEnvStr) console.log(`Default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length} from image`);
-      if (Object.keys(userEnvVars).length > 0) console.log(`User env vars: ${Object.keys(userEnvVars).length} overrides`);
+      if (defaultEnvStr) console.log(`Image default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length - Object.keys(systemDefaultEnvVars).length}`);
+      if (Object.keys(systemDefaultEnvVars).length > 0) console.log(`System default env vars: ${Object.keys(systemDefaultEnvVars).length} from settings`);
+      if (Object.keys(userEnvVars).length > 0) console.log(`Per-container env vars: ${Object.keys(userEnvVars).length}`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }
