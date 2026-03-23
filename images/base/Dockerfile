@@ -41,9 +41,9 @@ RUN curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH \
 
 # Wazuh agent first-boot enrollment service.
 # The script checks for WAZUH_MANAGER at runtime; containers without this
-# variable skip enrollment silently. ConditionPathExists ensures the service
-# only runs when the agent has never enrolled (no client.keys yet).
-COPY wazuh-enroll.sh /usr/local/bin/wazuh-enroll.sh
+# variable skip enrollment silently. ConditionFileNotEmpty ensures the service
+# only runs when the agent has never successfully enrolled (client.keys is empty).
+COPY --chmod=0755 wazuh-enroll.sh /usr/local/bin/wazuh-enroll.sh
 COPY wazuh-enroll.service /etc/systemd/system/wazuh-enroll.service
 
 # We have to disable systemd-networkd.service and systemd-networkd.socket to

@@ -35,6 +35,9 @@ cat > /var/ossec/etc/ossec.conf <<EOF
     <server>
       <address>${WAZUH_MANAGER}</address>
     </server>
+    <enrollment>
+      <agent_name>${AGENT_NAME}</agent_name>
+    </enrollment>
   </client>
 </ossec_config>
 EOF
@@ -52,9 +55,10 @@ if [ -n "${WAZUH_REGISTRATION_PASSWORD:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Start the agent (auto-enrollment on first start)
+# Start (or restart) the agent so it picks up the freshly written ossec.conf
+# even if a previous failed attempt left it running with stale configuration.
 # ---------------------------------------------------------------------------
-systemctl start wazuh-agent
+systemctl restart wazuh-agent
 
 # ---------------------------------------------------------------------------
 # Wait for successful enrollment (up to 60 s)
