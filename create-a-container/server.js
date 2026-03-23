@@ -156,7 +156,13 @@ async function main() {
 
   // --- Routes ---
   const PORT = 3000;
-  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('='.repeat(50));
+    console.log('  Server ready at http://localhost:' + PORT);
+    console.log('='.repeat(50));
+    console.log('');
+  });
 
   // Handles logout
   app.post('/logout', (req, res) => {
