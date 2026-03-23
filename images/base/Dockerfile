@@ -45,7 +45,6 @@ RUN curl -fsSL https://packages.wazuh.com/key/GPG-KEY-WAZUH \
 # only runs when the agent has never enrolled (no client.keys yet).
 COPY wazuh-enroll.sh /usr/local/bin/wazuh-enroll.sh
 COPY wazuh-enroll.service /etc/systemd/system/wazuh-enroll.service
-RUN chmod +x /usr/local/bin/wazuh-enroll.sh
 
 # We have to disable systemd-networkd.service and systemd-networkd.socket to
 # prevent a race condition preventing DHCP-assigned IP addresses from being used
