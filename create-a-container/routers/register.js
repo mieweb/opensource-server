@@ -74,8 +74,10 @@ router.post('/', async (req, res) => {
   
   // Determine user status
   let status;
+  let isFirstUser = false;
   if (await User.count() === 0) {
     status = 'active'; // First user is always active
+    isFirstUser = true;
   } else if (isInvitedUser) {
     status = 'active'; // Invited users are auto-activated
   } else {
@@ -132,6 +134,8 @@ router.post('/', async (req, res) => {
         await req.flash('warning', `Account created, but 2FA invite failed: ${inviteResult.error}`);
       }
       await req.flash('success', 'Account created successfully! You can now log in.');
+    } else if (isFirstUser) {
+      await req.flash('success', 'Admin account created successfully! You can now log in.');
     } else {
       await req.flash('success', 'Account registered successfully. You will be notified via email once approved.');
     }
