@@ -126,6 +126,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'N'
     },
+    nvidiaRequested: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     environmentVars: {
       type: DataTypes.TEXT,
       allowNull: true,

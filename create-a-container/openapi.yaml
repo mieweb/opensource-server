@@ -307,6 +307,9 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ExternalDomain'
+                  nvidiaAvailable:
+                    type: boolean
+                    description: Whether any node in the site has NVIDIA GPU support
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -668,6 +671,9 @@ components:
         createdAt:
           type: string
           format: date-time
+        nvidiaRequested:
+          type: boolean
+          description: Whether NVIDIA GPU passthrough was requested
 
     ContainerCreateRequest:
       type: object
@@ -714,6 +720,13 @@ components:
           type: string
           nullable: true
           description: Override the container entrypoint command
+        nvidiaRequested:
+          type: boolean
+          default: false
+          description: |
+            Request NVIDIA GPU passthrough. Requires at least one NVIDIA-capable node in the site.
+            When true, `NVIDIA_VISIBLE_DEVICES` and `NVIDIA_DRIVER_CAPABILITIES` environment
+            variables are set automatically (unless explicitly provided in `environmentVars`).
 
     ServiceDefinition:
       type: object
