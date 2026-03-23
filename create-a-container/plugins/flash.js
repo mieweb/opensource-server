@@ -39,23 +39,16 @@ async function flashPlugin(fastify, options) {
     return this.session.flash[type].length;
   });
 
-  // Pre-handler to expose flash messages to views
+  // Pre-handler to expose flash messages to reply.locals for templates
+  // that read from locals directly (login, register, reset-password).
+  // Don't clear here — header.ejs calls req.flash() which handles clearing.
   fastify.addHook('preHandler', async (request, reply) => {
-    // Make flash messages available to templates
     reply.locals = reply.locals || {};
-    
-    // Get flash messages without clearing them yet
     const flashMessages = request.session?.flash || {};
-    
     reply.locals.successMessages = flashMessages.success || [];
     reply.locals.errorMessages = flashMessages.error || [];
     reply.locals.warningMessages = flashMessages.warning || [];
     reply.locals.infoMessages = flashMessages.info || [];
-    
-    // Clear flash after reading
-    if (request.session) {
-      request.session.flash = {};
-    }
   });
 }
 

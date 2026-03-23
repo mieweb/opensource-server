@@ -32,15 +32,24 @@ async function settingsRoutes(fastify, options) {
       'push_notification_enabled',
       'push_notification_api_key',
       'smtp_url',
-      'smtp_noreply_address'
+      'smtp_noreply_address',
+      'default_container_env_vars'
     ]);
+
+    let defaultContainerEnvVars = [];
+    try {
+      defaultContainerEnvVars = await Setting.getDefaultContainerEnvVars();
+    } catch (_) {
+      // ignore malformed JSON — treat as empty
+    }
 
     const data = {
       pushNotificationUrl: settings.push_notification_url || '',
       pushNotificationEnabled: settings.push_notification_enabled === 'true',
       pushNotificationApiKey: settings.push_notification_api_key || '',
       smtpUrl: settings.smtp_url || '',
-      smtpNoreplyAddress: settings.smtp_noreply_address || ''
+      smtpNoreplyAddress: settings.smtp_noreply_address || '',
+      defaultContainerEnvVars,
     };
 
     if (request.isApiRequest()) {
@@ -83,7 +92,8 @@ async function settingsRoutes(fastify, options) {
       push_notification_enabled,
       push_notification_api_key,
       smtp_url,
-      smtp_noreply_address
+      smtp_noreply_address,
+      defaultEnvVars,
     } = request.body || {};
 
     const enabled = push_notification_enabled === 'on' || push_notification_enabled === 'true';
@@ -96,11 +106,26 @@ async function settingsRoutes(fastify, options) {
       return reply.redirect('/settings');
     }
 
+    // Build default container env vars as an array of {key, value, description} objects
+    const envVarsArray = [];
+    if (Array.isArray(defaultEnvVars)) {
+      for (const entry of defaultEnvVars) {
+        if (entry && entry.key && entry.key.trim()) {
+          envVarsArray.push({
+            key: entry.key.trim(),
+            value: entry.value || '',
+            description: entry.description || '',
+          });
+        }
+      }
+    }
+
     await Setting.set('push_notification_url', push_notification_url || '');
     await Setting.set('push_notification_enabled', enabled ? 'true' : 'false');
     await Setting.set('push_notification_api_key', push_notification_api_key || '');
     await Setting.set('smtp_url', smtp_url || '');
     await Setting.set('smtp_noreply_address', smtp_noreply_address || '');
+    await Setting.set('default_container_env_vars', JSON.stringify(envVarsArray));
 
     if (request.isApiRequest()) {
       return { success: true, message: 'Settings saved successfully' };

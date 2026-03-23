@@ -42,6 +42,7 @@ async function buildApp(opts = {}) {
     credentials: true
   });
   await app.register(require('@fastify/formbody'));
+  await app.register(require('./plugins/method-override'));
   await app.register(require('@fastify/cookie'));
 
   // --- Session ---
@@ -75,10 +76,12 @@ async function buildApp(opts = {}) {
   });
 
   // --- Rate Limiting ---
+  // Express uses skipSuccessfulRequests:true (only failed responses count).
+  // @fastify/rate-limit lacks this option, so we use a high max for overall
+  // requests and rely on route-level guards for abuse prevention.
   await app.register(require('@fastify/rate-limit'), {
-    max: 10,
+    max: 1000,
     timeWindow: 5 * 60 * 1000, // 5 minutes
-    skipOnError: true,
     keyGenerator: (request) => request.ip
   });
 
@@ -152,7 +155,17 @@ Failed requests (4xx/5xx) are rate-limited to **10 per 5-minute window** per IP.
 
   // --- Version Info ---
   const { getVersionInfo } = require('./utils');
-  app.decorate('versionInfo', getVersionInfo());
+  const versionInfo = getVersionInfo();
+  app.decorate('versionInfo', versionInfo);
+
+  // --- Global Template Context ---
+  // Inject `req` and `versionInfo` into every template render via reply.locals,
+  // matching Express's implicit behavior where app.locals and req are available.
+  app.addHook('preHandler', async (request, reply) => {
+    reply.locals = reply.locals || {};
+    reply.locals.req = request;
+    reply.locals.versionInfo = versionInfo;
+  });
 
   // --- Routes ---
   app.get('/', async (request, reply) => {
