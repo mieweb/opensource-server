@@ -119,6 +119,14 @@ async function sitesRoutes(fastify, options) {
   // Apply auth to all routes below this point
   fastify.addHook('preHandler', fastify.requireAuth);
 
+  // Set currentSite in session when visiting /sites/:siteId/* routes,
+  // mirroring Express's router.use('/:siteId', setCurrentSite)
+  fastify.addHook('preHandler', async (request, reply) => {
+    if (request.params.siteId) {
+      fastify.setCurrentSite(request, reply);
+    }
+  });
+
   // Register nested routers
   fastify.register(require('./nodes'), { prefix: '/:siteId/nodes' });
   fastify.register(require('./containers'), { prefix: '/:siteId/containers' });

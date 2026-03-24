@@ -151,6 +151,33 @@ test.describe('Sites CRUD', () => {
     await page.goto('/sites');
     await expect(page.locator('body')).toContainText('Test Site PW');
   });
+
+  test('sidebar shows selected site and nav links when visiting site resources', async ({ page }) => {
+    // Create a site first
+    await page.goto('/sites/new');
+    const siteName = 'SidebarTest' + Date.now();
+    await page.fill('input[name="name"]', siteName);
+    await page.locator('form[action="/sites"] button[type="submit"]').click();
+    await page.waitForURL('**/sites', { timeout: 10000 });
+
+    // Get the site ID from the list — find the link for our new site
+    const row = page.locator(`td:has-text("${siteName}")`).first().locator('..');
+    const containerLink = row.locator('a:has-text("Containers")');
+    const href = await containerLink.getAttribute('href');
+    const siteId = href.match(/\/sites\/(\d+)\//)[1];
+
+    // Navigate to containers page
+    await page.goto(`/sites/${siteId}/containers`);
+
+    // Site selector should have our site selected
+    const selector = page.locator('#site-selector');
+    await expect(selector).toBeVisible();
+    await expect(selector).toHaveValue(siteId);
+
+    // Containers and Nodes links should be visible with correct siteId
+    await expect(page.locator(`a[href="/sites/${siteId}/containers"]`).first()).toBeVisible();
+    await expect(page.locator(`a[href="/sites/${siteId}/nodes"]`)).toBeVisible();
+  });
 });
 
 // 5. USERS CRUD
