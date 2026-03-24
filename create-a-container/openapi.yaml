@@ -645,6 +645,7 @@ components:
         template:
           type: string
           description: Docker image reference
+          nullable: true
         creationJobId:
           type: integer
           nullable: true
@@ -748,7 +749,7 @@ components:
           type: object
           additionalProperties:
             type: object
-          description: Exposed ports (e.g. `{"80/tcp": {}}`)
+          description: 'Exposed ports (e.g. `{"80/tcp": {}}`)'
         Env:
           type: array
           items:
@@ -800,7 +801,7 @@ components:
 
     JobStatus:
       type: string
-      enum: [pending, running, completed, failed]
+      enum: [pending, running, success, failure, cancelled]
 
     JobLogEntry:
       type: object
