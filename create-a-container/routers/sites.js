@@ -1,6 +1,6 @@
 const express = require('express');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
-const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite } = require('../middlewares');
+const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite, isApiRequest } = require('../middlewares');
 
 const router = express.Router();
 
@@ -130,6 +130,10 @@ router.get('/', async (req, res) => {
     gateway: s.gateway,
     nodeCount: s.nodes ? s.nodes.length : 0
   }));
+
+  if (isApiRequest(req)) {
+    return res.json({ sites: rows });
+  }
 
   return res.render('sites/index', {
     rows,
