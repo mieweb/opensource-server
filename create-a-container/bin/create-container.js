@@ -351,16 +351,6 @@ async function main() {
     // Use user entrypoint if specified, otherwise keep default
     const finalEntrypoint = container.entrypoint || defaultEntrypoint;
     
-    // OCI images that aren't system containers (entrypoint != /sbin/init) need
-    // host-managed networking since they lack their own DHCP/networking stack
-    if (isDocker && finalEntrypoint !== '/sbin/init') {
-      const net0 = defaultConfig['net0'] || `name=eth0,ip=dhcp,bridge=${node.networkBridge}`;
-      console.log('Non-init container detected, enabling host-managed networking');
-      await client.updateLxcConfig(node.name, vmid, {
-        net0: `${net0},host-managed=1`
-      });
-    }
-    
     // Build config to apply
     const envConfig = {};
     if (finalEntrypoint) {
