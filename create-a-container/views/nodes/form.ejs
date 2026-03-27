@@ -143,6 +143,21 @@
         <div class="form-text">Proxmox network bridge used when creating containers</div>
       </div>
 
+      <div class="mb-3 form-check">
+        <input 
+          type="checkbox" 
+          class="form-check-input" 
+          id="nvidiaAvailable" 
+          name="nvidiaAvailable" 
+          value="true"
+          <%= (node && node.nvidiaAvailable) ? 'checked' : '' %>
+          aria-label="NVIDIA GPU available on this node"
+        >
+        <label class="form-check-label" for="nvidiaAvailable">NVIDIA Available</label>
+        <div class="form-text">Enable if this node has NVIDIA drivers and nvidia-container-toolkit installed</div>
+      </div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/sites/<%= site.id %>/nodes" class="btn btn-secondary" aria-label="Cancel and return to nodes list">Cancel</a>
         <button type="submit" class="btn btn-primary">
