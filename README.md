@@ -9,6 +9,7 @@ This repository provides a complete self-service container management system wit
 - [`create-a-container/`](create-a-container/README.md) - Web application for container lifecycle management
 - [`pull-config/`](pull-config/README.md) - Automated configuration distribution system for nginx and dnsmasq
 - [`mie-opensource-landing/`](mie-opensource-landing/README.md) - Landing page and documentation site
+- [`manager-control-program/`](manager-control-program/README.md) - MCP server for AI-assisted container management
 - [`packer/`](packer/README.md) - LXC container template creation
 - [`ci-cd-automation/`](ci-cd-automation/README.md) - Proxmox API automation scripts
 - [`LDAP/`](LDAP/README.md) - Centralized authentication infrastructure

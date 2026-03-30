@@ -90,12 +90,6 @@ async function main() {
   });
   app.use(express.static('public'));
 
-  // --- API Documentation (Swagger UI) ---
-  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
-  app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
-    customSiteTitle: 'Create-a-Container API',
-  }));
-
   // We rate limit unsucessful (4xx/5xx statuses) to only 10 per 5 minutes, this
   // should allow legitimate users a few tries to login or experiment without
   // allowing bad-actors to abuse requests.
@@ -153,6 +147,16 @@ async function main() {
   app.use('/settings', settingsRouter);
   app.use('/apikeys', apikeysRouter);
   app.use('/reset-password', resetPasswordRouter);
+
+  // --- API Documentation (Swagger UI) ---
+  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
+  app.get('/api/openapi.json', (req, res) => res.json(openapiSpec));
+  app.get('/api/openapi.yaml', (req, res) => {
+    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.yaml'));
+  });
+  app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+    customSiteTitle: 'Create-a-Container API',
+  }));
 
   // --- Routes ---
   const PORT = 3000;
