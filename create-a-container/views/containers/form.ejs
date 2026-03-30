@@ -57,6 +57,31 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       </div>
     </div>
 
+    <% if (!isEdit) { %>
+    <%
+      const nvidiaEnabled = typeof nvidiaAvailable !== 'undefined' && nvidiaAvailable;
+      const nvidiaTooltip = nvidiaEnabled
+        ? 'Enable NVIDIA GPU passthrough for this container'
+        : 'No NVIDIA-capable nodes are available in this site';
+    %>
+    <div style="margin-bottom: 15px;">
+      <div class="form-check" title="<%= nvidiaTooltip %>">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="nvidiaRequested"
+          name="nvidiaRequested"
+          value="true"
+          <%= nvidiaEnabled ? '' : 'disabled' %>
+          aria-label="<%= nvidiaTooltip %>"
+        >
+        <label class="form-check-label" for="nvidiaRequested" style="<%= nvidiaEnabled ? '' : 'color: #999;' %>">
+          NVIDIA GPU
+        </label>
+      </div>
+    </div>
+    <% } %>
+
     <details style="margin-bottom: 15px;">
       <summary style="cursor: pointer; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; text-align: left;">
         Services

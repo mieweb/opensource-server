@@ -71,6 +71,16 @@ Default: `/sbin/init` for system containers.
 Changing the entrypoint for provided templates or derived images is not supported. This should only be used to add arguments to standard Docker images.
 :::
 
+### NVIDIA GPU (Optional)
+
+If your site has NVIDIA-capable nodes (configured by an administrator), a **NVIDIA GPU** checkbox appears on the form. Checking it:
+
+- Assigns the container to a node with GPU support
+- Sets `NVIDIA_VISIBLE_DEVICES=all` and `NVIDIA_DRIVER_CAPABILITIES=utility compute` automatically
+- Attaches the nvidia-container-toolkit hookscript for GPU passthrough
+
+If no NVIDIA-capable nodes are available, the checkbox is greyed out with an explanation. You can override the auto-injected environment variables by explicitly setting `NVIDIA_VISIBLE_DEVICES` or `NVIDIA_DRIVER_CAPABILITIES` in the Environment Variables section.
+
 ### Submit
 
 Click **Create Container**. You'll be redirected to a page to watch the creation job progress. After the creation finishes successfully, please allow up to 1 minute to allow the load balancer to reconfigure before your services are accessible.
