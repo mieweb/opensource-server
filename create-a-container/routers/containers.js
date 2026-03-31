@@ -637,20 +637,11 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
 
-  if (isApiRequest(req)) {
-    try {
-      const container = await Container.findByPk(containerId);
-      if (!container) return res.status(404).json({ error: 'Not found' });
-      await container.destroy(); // Triggers hooks/cascades
-      return res.status(204).send();
-    } catch (err) {
-      console.error('API DELETE Error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  }
-  
   const site = await Site.findByPk(siteId);
-  if (!site) return res.redirect('/sites');
+  if (!site) {
+    if (isApiRequest(req)) return res.status(404).json({ error: 'Site not found' });
+    return res.redirect('/sites');
+  }
   
   const container = await Container.findOne({
     where: { id: containerId, username: req.session.user },
@@ -661,7 +652,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
   });
   
   if (!container || !container.node || container.node.siteId !== siteId) {
-    await req.flash('error', 'Container not found or access denied');
+    const error = 'Container not found';
+    if (isApiRequest(req)) return res.status(404).json({ error });
+    await req.flash('error', error);
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
@@ -681,7 +674,9 @@ router.delete('/:id', requireAuth, async (req, res) => {
       try {
         const config = await api.lxcConfig(node.name, container.containerId);
         if (config.hostname && config.hostname !== container.hostname) {
-           await req.flash('error', `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`);
+           const error = `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`;
+           if (isApiRequest(req)) return res.status(400).json({ error });
+           await req.flash('error', error);
            return res.redirect(`/sites/${siteId}/containers`);
         }
         await api.deleteContainer(node.name, container.containerId, true, true);
@@ -692,11 +687,13 @@ router.delete('/:id', requireAuth, async (req, res) => {
     await container.destroy();
   } catch (error) {
     console.error(error);
+    if (isApiRequest(req)) return res.status(500).json({ error });
     await req.flash('error', `Failed to delete: ${error.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
   
   let msg = 'Container deleted successfully';
+  if (isApiRequest(req)) return res.status(200).json({ msg, dnsWarnings });
   for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
   await req.flash('success', msg);
   return res.redirect(`/sites/${siteId}/containers`);
