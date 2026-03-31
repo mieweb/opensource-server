@@ -399,8 +399,22 @@ paths:
       security:
         - BearerAuth: []
       responses:
-        '204':
+        '200':
           description: Container deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: Container deleted successfully
+                  dnsWarnings:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
