@@ -639,9 +639,28 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
   if (isApiRequest(req)) {
     try {
-      const container = await Container.findByPk(containerId);
+      const container = await Container.findOne({
+        where: { id: containerId },
+        include: [{ model: Node, as: 'node' }]
+      });
       if (!container) return res.status(404).json({ error: 'Not found' });
-      await container.destroy(); // Triggers hooks/cascades
+
+      const node = container.node;
+
+      if (container.containerId && node && node.apiUrl && node.tokenId) {
+        const api = await node.api();
+        try {
+          const config = await api.lxcConfig(node.name, container.containerId);
+          if (config.hostname && config.hostname !== container.hostname) {
+            return res.status(409).json({ error: `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.` });
+          }
+          await api.deleteContainer(node.name, container.containerId, true, true);
+        } catch (proxmoxError) {
+          console.log(`Proxmox deletion skipped or failed: ${proxmoxError.message}`);
+        }
+      }
+
+      await container.destroy();
       return res.status(204).send();
     } catch (err) {
       console.error('API DELETE Error:', err);
