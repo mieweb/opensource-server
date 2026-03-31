@@ -632,93 +632,85 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Delete a container from Proxmox if it has an associated node with API credentials.
+ * Returns a hostname-mismatch error string if the safety check fails, otherwise null.
+ * Proxmox API errors are logged and swallowed so DB cleanup can still proceed.
+ * @param {object} container - Container instance with eager-loaded `node`
+ * @returns {Promise<string|null>} Error message on hostname mismatch, null on success/skip
+ */
+async function deleteContainerFromProxmox(container) {
+  const node = container.node;
+  if (!container.containerId || !node || !node.apiUrl || !node.tokenId) return null;
+
+  const api = await node.api();
+  try {
+    const config = await api.lxcConfig(node.name, container.containerId);
+    if (config.hostname && config.hostname !== container.hostname) {
+      return `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`;
+    }
+    await api.deleteContainer(node.name, container.containerId, true, true);
+  } catch (proxmoxError) {
+    console.log(`Proxmox deletion skipped or failed: ${proxmoxError.message}`);
+  }
+  return null;
+}
+
 // DELETE /sites/:siteId/containers/:id
 router.delete('/:id', requireAuth, async (req, res) => {
   const siteId = parseInt(req.params.siteId, 10);
   const containerId = parseInt(req.params.id, 10);
+  const api = isApiRequest(req);
 
-  if (isApiRequest(req)) {
-    try {
-      const container = await Container.findOne({
-        where: { id: containerId },
-        include: [{ model: Node, as: 'node' }]
-      });
-      if (!container) return res.status(404).json({ error: 'Not found' });
-
-      const node = container.node;
-
-      if (container.containerId && node && node.apiUrl && node.tokenId) {
-        const api = await node.api();
-        try {
-          const config = await api.lxcConfig(node.name, container.containerId);
-          if (config.hostname && config.hostname !== container.hostname) {
-            return res.status(409).json({ error: `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.` });
-          }
-          await api.deleteContainer(node.name, container.containerId, true, true);
-        } catch (proxmoxError) {
-          console.log(`Proxmox deletion skipped or failed: ${proxmoxError.message}`);
-        }
-      }
-
-      await container.destroy();
-      return res.status(204).send();
-    } catch (err) {
-      console.error('API DELETE Error:', err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-  }
-  
-  const site = await Site.findByPk(siteId);
-  if (!site) return res.redirect('/sites');
-  
-  const container = await Container.findOne({
-    where: { id: containerId, username: req.session.user },
-    include: [
-      { model: Node, as: 'node' },
-      { model: Service, as: 'services', include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }] }
-    ]
-  });
-  
-  if (!container || !container.node || container.node.siteId !== siteId) {
-    await req.flash('error', 'Container not found or access denied');
-    return res.redirect(`/sites/${siteId}/containers`);
-  }
-  
-  const node = container.node;
-  let dnsWarnings = [];
   try {
-    // Clean up DNS records for cross-site HTTP services
-    const httpServices = (container.services || [])
-      .filter(s => s.httpService?.externalDomain)
-      .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
-    if (httpServices.length > 0) {
-      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
+    const container = await Container.findOne({
+      where: api ? { id: containerId } : { id: containerId, username: req.session.user },
+      include: [
+        { model: Node, as: 'node' },
+        { model: Service, as: 'services', include: [{ model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] }] }
+      ]
+    });
+
+    if (!container || (!api && (!container.node || container.node.siteId !== siteId))) {
+      if (api) return res.status(404).json({ error: 'Not found' });
+      await req.flash('error', 'Container not found or access denied');
+      return res.redirect(`/sites/${siteId}/containers`);
     }
 
-    if (container.containerId && node.apiUrl && node.tokenId) {
-      const api = await node.api();
-      try {
-        const config = await api.lxcConfig(node.name, container.containerId);
-        if (config.hostname && config.hostname !== container.hostname) {
-           await req.flash('error', `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`);
-           return res.redirect(`/sites/${siteId}/containers`);
-        }
-        await api.deleteContainer(node.name, container.containerId, true, true);
-      } catch (proxmoxError) {
-        console.log(`Proxmox deletion skipped or failed: ${proxmoxError.message}`);
+    // Clean up DNS records for HTTP services with external domains
+    let dnsWarnings = [];
+    if (!api) {
+      const site = await Site.findByPk(siteId);
+      if (!site) return res.redirect('/sites');
+      const httpServices = (container.services || [])
+        .filter(s => s.httpService?.externalDomain)
+        .map(s => ({ externalHostname: s.httpService.externalHostname, ExternalDomain: s.httpService.externalDomain }));
+      if (httpServices.length > 0) {
+        dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
       }
     }
+
+    const hostnameError = await deleteContainerFromProxmox(container);
+    if (hostnameError) {
+      if (api) return res.status(409).json({ error: hostnameError });
+      await req.flash('error', hostnameError);
+      return res.redirect(`/sites/${siteId}/containers`);
+    }
+
     await container.destroy();
-  } catch (error) {
-    console.error(error);
-    await req.flash('error', `Failed to delete: ${error.message}`);
+
+    if (api) return res.status(204).send();
+
+    let msg = 'Container deleted successfully';
+    for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
+    await req.flash('success', msg);
+    return res.redirect(`/sites/${siteId}/containers`);
+  } catch (err) {
+    console.error('Error deleting container:', err);
+    if (api) return res.status(500).json({ error: 'Internal server error' });
+    await req.flash('error', `Failed to delete: ${err.message}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
-  
-  let msg = 'Container deleted successfully';
-  for (const w of dnsWarnings) msg += ` ⚠️ ${w}`;
-  await req.flash('success', msg);
-  return res.redirect(`/sites/${siteId}/containers`);
 });
 
 module.exports = router;
