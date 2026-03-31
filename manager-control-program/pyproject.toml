@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "awslabs.openapi-mcp-server>=0.2.14",
-    "fastmcp>=2.14.0,<3.0.0",
+    "fastmcp>=2.14.0,<4.0.0",
 ]
 
 [project.scripts]
