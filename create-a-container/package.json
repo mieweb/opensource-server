@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
-    "job-runner": "node job-runner.js"
+    "job-runner": "node job-runner.js",
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui"
   },
   "dependencies": {
     "argon2": "^0.44.0",
@@ -26,10 +28,12 @@
     "qrcode": "^1.5.4",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.3",
+    "sqlite3": "^6.0.1",
     "swagger-ui-express": "^5.0.1",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "nodemon": "^3.1.10"
   }
 }

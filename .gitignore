@@ -1,2 +1,5 @@
 node_modules
 .env
+.playwright-mcp/
+playwright-report/
+test-results/
