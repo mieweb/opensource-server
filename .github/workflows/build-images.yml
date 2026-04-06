@@ -141,7 +141,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mieweb/launchpad@cmyers_issue5
+      - uses: mieweb/launchpad@main
         with:
           api_key: ${{ secrets.API_KEY }}
           api_url: ${{ secrets.API_URL }}
