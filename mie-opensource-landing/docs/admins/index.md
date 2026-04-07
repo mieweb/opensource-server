@@ -8,3 +8,4 @@ sidebar_position: 1
 - **[Core Concepts →](core-concepts)** — Cluster organization, user roles, container lifecycle
 - **[Deploying LDAP Servers →](ldap-servers)** — Set up ldap1/ldap2 for container authentication
 - **[Deploying Agents →](deploying-agents)** — Set up agent containers on remote Proxmox nodes
+- **[Kernel Keyring Configuration →](kernel-keyring)** — Fix "disk quota exceeded" errors under nested Docker/LXC virtualization
