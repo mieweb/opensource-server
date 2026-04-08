@@ -105,6 +105,7 @@ function requireLocalhostOrAdmin(req, res, next) {
 const { setCurrentSite, loadSites } = require('./currentSite');
 
 module.exports = { 
+  isApiRequest,
   requireAuth, 
   requireAdmin, 
   requireLocalhostOrAdmin,

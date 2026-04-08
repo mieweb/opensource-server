@@ -39,6 +39,8 @@ servers:
 tags:
   - name: API Keys
     description: Manage personal API keys for Bearer token authentication
+  - name: Sites
+    description: List available sites
   - name: Containers
     description: Create, list, update, and delete containers within a site
   - name: Jobs
@@ -154,6 +156,29 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # ── Sites ─────────────────────────────────────────────────────────────
+  /sites:
+    get:
+      tags: [Sites]
+      summary: List sites
+      description: Returns all sites available to the authenticated user.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SiteSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   # ── Containers ────────────────────────────────────────────────────────
   /sites/{siteId}/containers:
@@ -307,6 +332,9 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ExternalDomain'
+                  nvidiaAvailable:
+                    type: boolean
+                    description: Whether any node in the site has NVIDIA GPU support
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -600,6 +628,22 @@ components:
       description: API key ID
 
   schemas:
+    SiteSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        internalDomain:
+          type: string
+        dhcpRange:
+          type: string
+        gateway:
+          type: string
+        nodeCount:
+          type: integer
+
     ApiKey:
       type: object
       properties:
@@ -645,6 +689,7 @@ components:
         template:
           type: string
           description: Docker image reference
+          nullable: true
         creationJobId:
           type: integer
           nullable: true
@@ -668,6 +713,9 @@ components:
         createdAt:
           type: string
           format: date-time
+        nvidiaRequested:
+          type: boolean
+          description: Whether NVIDIA GPU passthrough was requested
 
     ContainerCreateRequest:
       type: object
@@ -714,6 +762,13 @@ components:
           type: string
           nullable: true
           description: Override the container entrypoint command
+        nvidiaRequested:
+          type: boolean
+          default: false
+          description: |
+            Request NVIDIA GPU passthrough. Requires at least one NVIDIA-capable node in the site.
+            When true, `NVIDIA_VISIBLE_DEVICES` and `NVIDIA_DRIVER_CAPABILITIES` environment
+            variables are set automatically (unless explicitly provided in `environmentVars`).
 
     ServiceDefinition:
       type: object
@@ -748,7 +803,7 @@ components:
           type: object
           additionalProperties:
             type: object
-          description: Exposed ports (e.g. `{"80/tcp": {}}`)
+          description: 'Exposed ports (e.g. `{"80/tcp": {}}`)'
         Env:
           type: array
           items:
@@ -800,7 +855,7 @@ components:
 
     JobStatus:
       type: string
-      enum: [pending, running, completed, failed]
+      enum: [pending, running, success, failure, cancelled]
 
     JobLogEntry:
       type: object

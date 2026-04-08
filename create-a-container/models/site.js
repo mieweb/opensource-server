@@ -22,6 +22,27 @@ module.exports = (sequelize, DataTypes) => {
         as: 'externalDomains'
       });
     }
+
+    /**
+     * Returns all external domains sorted so that domains whose default site is
+     * this site appear first (in id order), followed by all other domains (also
+     * in id order).
+     * @returns {Promise<Array>} Sorted array of ExternalDomain instances
+     */
+    async getSortedExternalDomains() {
+      const { ExternalDomain } = sequelize.models;
+      const all = await ExternalDomain.findAll({ order: [['id', 'ASC']] });
+      const defaults = [];
+      const others = [];
+      for (const domain of all) {
+        if (domain.siteId === this.id) {
+          defaults.push(domain);
+        } else {
+          others.push(domain);
+        }
+      }
+      return [...defaults, ...others];
+    }
   }
   Site.init({
     name: DataTypes.STRING,

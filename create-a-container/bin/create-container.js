@@ -251,7 +251,7 @@ async function main() {
         cores: 4,
         features: 'nesting=1,keyctl=1,fuse=1',
         memory: 4096,
-        net0: 'name=eth0,ip=dhcp,bridge=vmbr0,host-managed=1',
+        net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
         swap: 0,
         onboot: 1,
@@ -301,7 +301,7 @@ async function main() {
         cores: 4,
         features: 'nesting=1,keyctl=1,fuse=1',
         memory: 4096,
-        net0: 'name=eth0,ip=dhcp,bridge=vmbr0',
+        net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
         swap: 0,
         onboot: 1,
@@ -372,6 +372,28 @@ async function main() {
       console.log('Environment/entrypoint configuration applied');
     }
     
+    // Attach NVIDIA hookscript when GPU passthrough is requested
+    if (container.nvidiaRequested) {
+      const hookscriptVolid = 'local:snippets/nvidia';
+      console.log(`NVIDIA requested — attaching hookscript ${hookscriptVolid}...`);
+
+      // Check if the hookscript file exists on the node
+      try {
+        const snippets = await client.storageContents(node.name, 'local', 'snippets');
+        const hookExists = snippets.some(item => item.volid === hookscriptVolid);
+        if (!hookExists) {
+          console.warn('⚠️  WARNING: nvidia-container-toolkit hookscript not found at local:snippets/nvidia.');
+          console.warn('   NVIDIA GPU passthrough may not function. See admin docs for setup instructions.');
+        }
+      } catch (snippetErr) {
+        console.warn('⚠️  WARNING: Could not verify nvidia hookscript availability:', snippetErr.message);
+        console.warn('   NVIDIA GPU passthrough may not function. See admin docs for setup instructions.');
+      }
+
+      await client.updateLxcConfig(node.name, vmid, { hookscript: hookscriptVolid });
+      console.log('NVIDIA hookscript attached');
+    }
+
     // Setup ACL for container owner
     await setupContainerAcl(client, node.name, vmid, container.username);
     

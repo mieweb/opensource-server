@@ -90,19 +90,16 @@ async function main() {
   });
   app.use(express.static('public'));
 
-  // --- API Documentation (Swagger UI) ---
-  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
-  app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
-    customSiteTitle: 'Create-a-Container API',
-  }));
-
-  // We rate limit unsucessful (4xx/5xx statuses) to only 10 per 5 minutes, this
+  // We rate limit unsuccessful (4xx/5xx statuses, excluding 404) to only 10 per 5 minutes, this
   // should allow legitimate users a few tries to login or experiment without
-  // allowing bad-actors to abuse requests.
+  // allowing bad-actors to abuse requests. 404s are excluded because browsers
+  // (especially Safari) automatically request favicon/apple-touch-icon paths that
+  // don't exist, and those harmless misses should not burn the rate-limit budget.
   app.use(RateLimit({
     windowMs: 5 * 60 * 1000,
     max: 10,
     skipSuccessfulRequests: true,
+    requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
   }));
 
   // Set version info once at startup in app.locals
@@ -153,6 +150,16 @@ async function main() {
   app.use('/settings', settingsRouter);
   app.use('/apikeys', apikeysRouter);
   app.use('/reset-password', resetPasswordRouter);
+
+  // --- API Documentation (Swagger UI) ---
+  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
+  app.get('/api/openapi.json', (req, res) => res.json(openapiSpec));
+  app.get('/api/openapi.yaml', (req, res) => {
+    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.yaml'));
+  });
+  app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
+    customSiteTitle: 'Create-a-Container API',
+  }));
 
   // --- Routes ---
   const PORT = 3000;

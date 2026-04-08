@@ -47,6 +47,8 @@ erDiagram
         boolean disableTlsVerification
         string imageStorage "default: local"
         string volumeStorage "default: local-lvm"
+        string networkBridge "default: vmbr0"
+        boolean nvidiaAvailable "default: false"
         int siteId FK
     }
 
@@ -62,6 +64,7 @@ erDiagram
         string macAddress UK
         string ipv4Address UK
         string aiContainer
+        boolean nvidiaRequested "default: false"
     }
 
     Services {
@@ -173,10 +176,10 @@ erDiagram
 Top-level organizational unit. Has many Nodes. Has many ExternalDomains (as default site). `externalIp` is the public IP used as the target for Cloudflare DNS A records when cross-site HTTP services are created.
 
 ### Node
-Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). Belongs to Site, has many Containers.
+Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). `networkBridge` defaults to `'vmbr0'` (Proxmox bridge used in container net0 config). `nvidiaAvailable` indicates the node has NVIDIA drivers and nvidia-container-toolkit configured for GPU passthrough. Belongs to Site, has many Containers.
 
 ### Container
-LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. Belongs to Node and optionally to a Job.
+LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. `nvidiaRequested` indicates GPU passthrough was requested — the container is assigned to an NVIDIA-capable node and the nvidia hookscript is attached. Belongs to Node and optionally to a Job.
 
 ### Service (STI)
 Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.

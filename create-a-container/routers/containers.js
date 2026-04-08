@@ -111,15 +111,19 @@ router.get('/new', requireAuth, async (req, res) => {
     return res.redirect('/sites');
   }
   
-  // Get all external domains (global)
-  const externalDomains = await ExternalDomain.findAll({
-    order: [['name', 'ASC']]
-  });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = await site.getSortedExternalDomains();
+
+  // Check if any node in this site has NVIDIA available
+  const nvidiaAvailable = await Node.count({
+    where: { siteId, nvidiaAvailable: true }
+  }) > 0;
 
   if (isApi) {
     return res.json({
       site_id: site.id,
-      domains: externalDomains
+      domains: externalDomains,
+      nvidiaAvailable
     });
   }
   // ----------------------------
@@ -127,6 +131,7 @@ router.get('/new', requireAuth, async (req, res) => {
   return res.render('containers/form', { 
     site,
     externalDomains,
+    nvidiaAvailable,
     container: undefined, 
     req 
   });
@@ -243,7 +248,8 @@ router.get('/:id/edit', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   }
 
-  const externalDomains = await ExternalDomain.findAll({ order: [['name', 'ASC']] });
+  // Get all external domains: default domains for this site first (by id), then others (by id)
+  const externalDomains = await site.getSortedExternalDomains();
 
   return res.render('containers/form', { 
     site,
@@ -272,8 +278,13 @@ router.post('/', async (req, res) => {
   try {
     let { hostname, template, customTemplate, services, environmentVars, entrypoint, 
           // Extract specific API fields
-          template_name, repository, branch 
+          template_name, repository, branch,
+          // NVIDIA GPU passthrough
+          nvidiaRequested
         } = req.body;
+
+    // Normalize NVIDIA requested flag
+    const wantsNvidia = !!nvidiaRequested;
 
     // --- API Payload Mapping ---
     if (isApi) {
@@ -310,6 +321,18 @@ router.post('/', async (req, res) => {
         envVarsJson = JSON.stringify(envObj);
       }
     }
+
+    // Inject NVIDIA environment variables when GPU passthrough is requested
+    if (wantsNvidia) {
+      const envObj = envVarsJson ? JSON.parse(envVarsJson) : {};
+      if (!envObj['NVIDIA_VISIBLE_DEVICES']) {
+        envObj['NVIDIA_VISIBLE_DEVICES'] = 'all';
+      }
+      if (!envObj['NVIDIA_DRIVER_CAPABILITIES']) {
+        envObj['NVIDIA_DRIVER_CAPABILITIES'] = 'utility compute';
+      }
+      envVarsJson = JSON.stringify(envObj);
+    }
     
     // Resolve Docker image ref from either the dropdown or the custom input
     const imageRef = (template === 'custom') ? customTemplate?.trim() : template;
@@ -318,14 +341,21 @@ router.post('/', async (req, res) => {
     }
     const templateName = normalizeDockerRef(imageRef);
 
-    const node = await Node.findOne({ 
-      where: { 
-        siteId,
-        apiUrl: { [Sequelize.Op.ne]: null },
-        tokenId: { [Sequelize.Op.ne]: null },
-        secret: { [Sequelize.Op.ne]: null }
-      } 
-    });
+    // Build node selection criteria
+    const nodeWhere = {
+      siteId,
+      apiUrl: { [Sequelize.Op.ne]: null },
+      tokenId: { [Sequelize.Op.ne]: null },
+      secret: { [Sequelize.Op.ne]: null }
+    };
+    if (wantsNvidia) {
+      nodeWhere.nvidiaAvailable = true;
+    }
+
+    const node = await Node.findOne({ where: nodeWhere });
+    if (!node && wantsNvidia) {
+      throw new Error('NVIDIA requested but no NVIDIA-capable nodes are available in this site');
+    }
     if (!node) {
       throw new Error('No nodes with API access available in this site');
     }
@@ -341,6 +371,7 @@ router.post('/', async (req, res) => {
       containerId: null,
       macAddress: null,
       ipv4Address: null,
+      nvidiaRequested: wantsNvidia,
       environmentVars: envVarsJson,
       entrypoint: entrypoint && entrypoint.trim() ? entrypoint.trim() : null
     }, { transaction: t });
