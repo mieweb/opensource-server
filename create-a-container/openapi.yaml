@@ -795,6 +795,13 @@ components:
         dnsName:
           type: string
           description: DNS name (required for `srv`)
+        authRequired:
+          type: boolean
+          default: false
+          description: |
+            When true, NGINX uses `auth_request` to verify authentication before
+            proxying requests. Requires the external domain to have an `authServer`
+            configured. Only applies to `http`/`https` services.
 
     ImageMetadata:
       type: object
@@ -833,6 +840,15 @@ components:
         name:
           type: string
           description: Domain name (e.g. `example.com`)
+        authServer:
+          type: string
+          nullable: true
+          description: |
+            URL of an auth server for this domain (e.g. `https://manager.example.com`).
+            Must support the NGINX `auth_request` protocol: `GET /verify` (return 2xx/401)
+            and `GET /login?redirect=<url>` for unauthenticated users. Used for HTTP services
+            that have `authRequired: true`. Must be on a subdomain of this domain for
+            session cookie sharing.
 
     Job:
       type: object

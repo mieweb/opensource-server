@@ -380,7 +380,7 @@ router.post('/', async (req, res) => {
     if (services && typeof services === 'object') {
       for (const key in services) {
         const service = services[key];
-        const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
+        const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = service;
         
         if (!type || !internalPort) continue;
         
@@ -412,7 +412,8 @@ router.post('/', async (req, res) => {
             serviceId: createdService.id,
             externalHostname,
             externalDomainId: parseInt(externalDomainId, 10),
-            backendProtocol: type === 'https' ? 'https' : 'http'
+            backendProtocol: type === 'https' ? 'https' : 'http',
+            authRequired: authRequired === 'true' || authRequired === true
           }, { transaction: t });
         } else if (serviceType === 'dns') {
           if (!dnsName) throw new Error('DNS services must have a DNS name');
@@ -576,10 +577,27 @@ router.put('/:id', requireAuth, async (req, res) => {
             });
           }
         }
+
+        // Update authRequired on existing HTTP services
+        for (const key in services) {
+          const { id, deleted, authRequired } = services[key];
+          if (deleted === 'true' || !id) continue;
+          const svc = await Service.findByPk(parseInt(id, 10), {
+            include: [{ model: HTTPService, as: 'httpService' }],
+            transaction: t
+          });
+          if (svc?.httpService) {
+            const newAuthRequired = authRequired === 'true' || authRequired === true;
+            if (svc.httpService.authRequired !== newAuthRequired) {
+              await svc.httpService.update({ authRequired: newAuthRequired }, { transaction: t });
+            }
+          }
+        }
+
         // Create new services — collect cross-site HTTP services for DNS creation
         const newHttpServices = [];
         for (const key in services) {
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = services[key];
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = services[key];
           if (deleted === 'true' || id || !type || !internalPort) continue;
           
           let serviceType = type === 'srv' ? 'dns' : ((type === 'http' || type === 'https') ? 'http' : 'transport');
@@ -592,7 +610,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           }, { transaction: t });
 
           if (serviceType === 'http') {
-             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId, backendProtocol: type === 'https' ? 'https' : 'http' }, { transaction: t });
+             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId, backendProtocol: type === 'https' ? 'https' : 'http', authRequired: authRequired === 'true' || authRequired === true }, { transaction: t });
              const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
              if (domain) newHttpServices.push({ externalHostname, ExternalDomain: domain });
           } else if (serviceType === 'dns') {

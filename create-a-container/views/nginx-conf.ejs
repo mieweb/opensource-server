@@ -52,6 +52,7 @@ http {
     location /403.html { }
     location /404.html { }
     location /502.html { }
+    location /auth-unavailable.html { }
   }
   
   server {
@@ -175,6 +176,8 @@ http {
   }
 
   <%_ httpServices.forEach((service, index) => { _%>
+  <%_ const authRequired = service.httpService.authRequired; _%>
+  <%_ const authServer = service.httpService.externalDomain.authServer; _%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -226,8 +229,61 @@ http {
       proxy_pass http://error_pages;
     }
 
+    <%_ if (authRequired && authServer) { _%>
+    # Auth subrequest — proxied to the auth server's /verify endpoint.
+    location = /.oss-auth-verify {
+      internal;
+      proxy_pass <%= authServer %>/verify;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_set_header X-Original-URI $request_uri;
+      proxy_set_header X-Original-Host $host;
+      proxy_set_header Cookie $http_cookie;
+      proxy_set_header Authorization $http_authorization;
+    }
+
+    # Capture user identity headers from the auth subrequest response.
+    auth_request_set $auth_user_id $upstream_http_x_user_id;
+    auth_request_set $auth_username $upstream_http_x_username;
+    auth_request_set $auth_first_name $upstream_http_x_user_first_name;
+    auth_request_set $auth_last_name $upstream_http_x_user_last_name;
+    auth_request_set $auth_email $upstream_http_x_email;
+    auth_request_set $auth_groups $upstream_http_x_groups;
+
+    location @login_redirect {
+      return 302 <%= authServer %>/login?redirect=https://$host$request_uri;
+    }
+
+    <%_ } _%>
+    <%_ if (authRequired && !authServer) { _%>
+    # Authentication required but no auth server URL configured for this domain
+    location @auth_unavailable {
+      rewrite ^ /auth-unavailable.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
+
+    location / {
+      error_page 503 @auth_unavailable;
+      return 503;
+    }
+    <%_ } else { _%>
     # Proxy settings
     location / {
+      <%_ if (authRequired && authServer) { _%>
+      auth_request /.oss-auth-verify;
+      error_page 401 = @login_redirect;
+
+      # Forward user identity from auth subrequest to backend
+      proxy_set_header X-User-ID $auth_user_id;
+      proxy_set_header X-Username $auth_username;
+      proxy_set_header X-User-First-Name $auth_first_name;
+      proxy_set_header X-User-Last-Name $auth_last_name;
+      proxy_set_header X-Email $auth_email;
+      proxy_set_header X-Groups $auth_groups;
+      <%_ } _%>
       proxy_pass <%= service.httpService.backendProtocol %>://<%= service.Container.ipv4Address %>:<%= service.internalPort %>;
       proxy_http_version 1.1;
       
@@ -255,6 +311,7 @@ http {
       # Allow large uploads
       client_max_body_size 2G;
     }
+    <%_ } _%>
   }
   <%_ }) _%>
 

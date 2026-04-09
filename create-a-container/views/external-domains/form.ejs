@@ -109,6 +109,29 @@
         </div>
       </div>
 
+      <div class="mb-3">
+        <label for="authServer" class="form-label">Auth Server URL</label>
+        <input 
+          type="url" 
+          class="form-control" 
+          id="authServer" 
+          name="authServer" 
+          value="<%= externalDomain ? (externalDomain.authServer || '') : '' %>"
+          placeholder="https://manager.example.com"
+        >
+        <div class="form-text">
+          URL of an authentication server that supports the NGINX
+          <a href="https://nginx.org/en/docs/http/ngx_http_auth_request_module.html" target="_blank"><code>auth_request</code></a>
+          protocol. Must implement <code>GET /verify</code> (return 2xx if authenticated, 401 otherwise)
+          and <code>GET /login?redirect=&lt;url&gt;</code> for unauthenticated users.
+          The server must be on a subdomain of this external domain for session cookie sharing.
+        </div>
+        <div id="authServerWarning" class="form-text text-warning" style="display: none;">
+          ⚠️ The auth server URL does not appear to be on a subdomain of this domain.
+          Cookie sharing for <code>auth_request</code> may not work correctly.
+        </div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="/external-domains" class="btn btn-secondary" aria-label="Cancel and return to external domains list">Cancel</a>
         <button type="submit" class="btn btn-primary">
@@ -121,5 +144,31 @@
     &copy; 2025 Medical Informatics Engineering
   </div>
 </div>
+
+<script>
+(function() {
+  const domainInput = document.getElementById('name');
+  const authServerInput = document.getElementById('authServer');
+  const warning = document.getElementById('authServerWarning');
+
+  function checkDomainMatch() {
+    const domain = (domainInput.value || '').trim().toLowerCase();
+    const url = (authServerInput.value || '').trim();
+    if (!domain || !url) { warning.style.display = 'none'; return; }
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.toLowerCase();
+      const matches = hostname === domain || hostname.endsWith('.' + domain);
+      warning.style.display = matches ? 'none' : 'block';
+    } catch {
+      warning.style.display = 'none';
+    }
+  }
+
+  domainInput.addEventListener('input', checkDomainMatch);
+  authServerInput.addEventListener('input', checkDomainMatch);
+  checkDomainMatch();
+})();
+</script>
 
 <%- include('../layouts/footer') %>

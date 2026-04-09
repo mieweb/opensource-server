@@ -59,14 +59,26 @@ async function main() {
     db: sequelize,
   });
 
+  const isProduction = process.env.NODE_ENV === 'production';
+
   app.use(session({
     secret: await getSessionSecrets(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    cookie: { 
-      secure: process.env.NODE_ENV === 'production', // Only secure in production
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    // Dynamic cookie: drop the host part and set domain to the parent domain
+    // (e.g., manager.example.com → .example.com) so the session cookie is
+    // shared across sibling subdomains for nginx auth_request.
+    cookie: function(req) {
+      const hostname = req.hostname || '';
+      const parts = hostname.split('.');
+      const domain = parts.length >= 2 ? '.' + parts.slice(1).join('.') : undefined;
+      return {
+        secure: isProduction,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: 'lax',
+        domain
+      };
     }
   }));
 
@@ -131,6 +143,7 @@ async function main() {
   // --- Mount Routers ---
   const loginRouter = require('./routers/login');
   const registerRouter = require('./routers/register');
+  const verifyRouter = require('./routers/verify');
   const usersRouter = require('./routers/users');
   const groupsRouter = require('./routers/groups');
   const sitesRouter = require('./routers/sites'); // Includes nested nodes and containers routers
@@ -143,6 +156,7 @@ async function main() {
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
   app.use('/register', registerRouter);
+  app.use('/verify', verifyRouter);
   app.use('/users', usersRouter);
   app.use('/groups', groupsRouter);
   app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/containers routes nested here

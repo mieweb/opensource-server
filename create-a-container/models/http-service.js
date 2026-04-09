@@ -38,6 +38,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('http', 'https'),
       allowNull: false,
       defaultValue: 'http'
+    },
+    authRequired: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   }, {
     sequelize,

@@ -346,7 +346,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     }
   }
 
-  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '') {
+  function addServiceRow(type = 'http', internalPort = '', externalHostname = '', externalDomainId = '', serviceId = null, externalPort = null, dnsName = '', authRequired = false) {
     const row = document.createElement('tr');
     row.id = `service-row-${serviceCounter}`;
     const isExisting = !!serviceId;
@@ -420,7 +420,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     const externalCell = document.createElement('td');
     externalCell.style.cssText = 'border: 1px solid #ddd; padding: 8px;';
     externalCell.id = `external-cell-${serviceCounter}`;
-    
+
     // Action cell
     const actionCell = document.createElement('td');
     actionCell.style.cssText = 'border: 1px solid #ddd; padding: 8px; text-align: center;';
@@ -442,11 +442,11 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     
     document.getElementById('servicesTableBody').appendChild(row);
     
-    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting, dnsName);
+    updateExternalCell(serviceCounter, type, externalHostname, externalDomainId, externalPort, isExisting, dnsName, authRequired);
     serviceCounter++;
   }
 
-  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false, dnsName = '') {
+  function updateExternalCell(index, type, hostname = '', domainId = '', externalPort = null, isExisting = false, dnsName = '', authRequired = false) {
     const cell = document.getElementById(`external-cell-${index}`);
     
     // Clear existing content
@@ -493,6 +493,19 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
       container.appendChild(dot);
       container.appendChild(domainSelect);
       cell.appendChild(container);
+
+      const authLabel = document.createElement('label');
+      authLabel.style.cssText = 'display: flex; align-items: center; gap: 4px; margin-top: 4px; margin-bottom: 0; font-size: 0.85em; line-height: 1; color: #555; cursor: pointer;';
+      const authCheckbox = document.createElement('input');
+      authCheckbox.type = 'checkbox';
+      authCheckbox.name = `services[${index}][authRequired]`;
+      authCheckbox.value = 'true';
+      authCheckbox.checked = !!authRequired;
+      authCheckbox.style.cssText = 'width: 14px; height: 14px; cursor: pointer; vertical-align: middle; margin: 0;';
+      authCheckbox.setAttribute('aria-label', 'Require authentication');
+      authLabel.appendChild(authCheckbox);
+      authLabel.appendChild(document.createTextNode('Require auth'));
+      cell.appendChild(authLabel);
     } else if (type === 'srv') {
       // SRV record - DNS name input with internal domain display
       const container = document.createElement('div');
@@ -573,7 +586,6 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     if (e.target.classList.contains('service-type')) {
       const index = e.target.dataset.index;
       const type = e.target.value;
-      // Try to find existing external port from hidden field
       const row = document.getElementById(`service-row-${index}`);
       const externalPortInput = row?.querySelector('input[name*="[externalPort]"]');
       const externalPort = externalPortInput?.value || null;
@@ -587,12 +599,13 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
   if (isEdit && existingServices.length > 0) {
     // Load existing services when editing
     existingServices.forEach(service => {
-      let type, externalHostname = '', externalDomainId = '', externalPort = null, dnsName = '';
+      let type, externalHostname = '', externalDomainId = '', externalPort = null, dnsName = '', authRequired = false;
       
       if (service.type === 'http') {
         type = service.httpService?.backendProtocol === 'https' ? 'https' : 'http';
         externalHostname = service.httpService?.externalHostname || '';
         externalDomainId = service.httpService?.externalDomainId || '';
+        authRequired = !!service.httpService?.authRequired;
       } else if (service.type === 'dns') {
         type = 'srv';
         dnsName = service.dnsService?.dnsName || '';
@@ -602,7 +615,7 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
         externalPort = service.transportService?.externalPort || null;
       }
       
-      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort, dnsName);
+      addServiceRow(type, service.internalPort, externalHostname, externalDomainId, service.id, externalPort, dnsName, authRequired);
     });
   }
   
