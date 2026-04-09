@@ -145,3 +145,31 @@ sequenceDiagram
     NGINX-->>Client: HTTPS response
 ```
 
+### Authenticated HTTP Services
+
+When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests before proxying. The domain's `authServer` must be configured (see [External Domains](/docs/admins/core-concepts/external-domains#authentication)).
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant NGINX
+    participant AuthServer as Auth Server
+    participant Container
+
+    Client->>NGINX: GET app.example.com/page
+    NGINX->>AuthServer: Subrequest: GET /verify
+    alt 2xx (authenticated)
+        AuthServer-->>NGINX: 200 + X-User-* headers
+        NGINX->>Container: Proxied request + identity headers
+        Container-->>NGINX: Response
+        NGINX-->>Client: Response
+    else 401 (unauthenticated)
+        AuthServer-->>NGINX: 401
+        NGINX-->>Client: 302 → /login?redirect=original_url
+    end
+```
+
+NGINX captures identity headers from the auth server subrequest (`X-User-ID`, `X-Username`, `X-User-First-Name`, `X-User-Last-Name`, `X-Email`, `X-Groups`) and forwards them to the backend container via `proxy_set_header`.
+
+If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page.
+

@@ -145,7 +145,7 @@ RUN apt-get update && \
 **Rules:**
 - `FROM base` — Docker Bake resolves this to the freshly built base image via `contexts`
 - Use `EXPOSE` to declare ports that should become container Services automatically
-- Use `LABEL org.mieweb.opensource-server.services.http.default-port=<port>` to set a default HTTP port (associated with `<hostname>.<externalDomainName>`)
+- Use `LABEL` directives to define HTTP services (see [Service Labels](/docs/users/creating-containers/using-environment-variables#service-labels))
 - **Never** set `CMD`, `ENTRYPOINT`, `WORKDIR`, or `USER` — base images run systemd as PID 1
 
 ### 2. Update docker-bake.hcl

@@ -82,9 +82,47 @@ The same pattern applies to **Node.js** (use `ghcr.io/mieweb/opensource-server/n
 1. `EnvironmentFile=/etc/environment` in your `.service` file
 2. `systemctl enable` in your Dockerfile
 
-:::note
-Adding the label `org.mieweb.opensource-server.services.http.default-port` with a number between 1 and 65535 will automattically create an HTTP service on new containers with the value as the internal port number and an external hostname matching the container name. See ghcr.io/mieweb/opensource-server/nodejs:latest for an example.
+## Service Labels
+
+Docker images can declare HTTP services via OCI labels under the `org.mieweb.opensource-server.services.http` namespace. When a user selects the image as a template, the container creation form auto-populates services from these labels.
+
+### Default Port
+
+```dockerfile
+LABEL org.mieweb.opensource-server.services.http.default-port=3000
+```
+
+Creates one HTTP service on port 3000 with the container hostname as the external hostname.
+
+### Named Services
+
+Named labels use the pattern `...http.<name>.<field>` where `<name>` groups fields for a single service:
+
+| Label | Required | Description |
+|-------|----------|-------------|
+| `...http.<name>.port` | Yes | Internal port number |
+| `...http.<name>.hostnameSuffix` | No | External hostname becomes `<container-hostname>-<suffix>` |
+| `...http.<name>.requireAuth` | No | `true`, `1`, or `yes` to enable [authentication](/docs/admins/core-concepts/external-domains#authentication) |
+
+:::warning
+The `<name>` groups fields together — a typo in the name (e.g., `ozwell-studio` vs `ozwell-sutdio`) causes fields to be treated as separate services.
 :::
+
+```dockerfile
+# Main app on port 3000 (hostname: myapp.example.com)
+LABEL org.mieweb.opensource-server.services.http.default-port=3000
+
+# API on port 8080 (hostname: myapp-api.example.com, auth required)
+LABEL org.mieweb.opensource-server.services.http.api.port=8080
+LABEL org.mieweb.opensource-server.services.http.api.hostnameSuffix=api
+LABEL org.mieweb.opensource-server.services.http.api.requireAuth=true
+
+# Docs on port 9090 (hostname: myapp-docs.example.com)
+LABEL org.mieweb.opensource-server.services.http.docs.port=9090
+LABEL org.mieweb.opensource-server.services.http.docs.hostnameSuffix=docs
+```
+
+TCP ports declared by named services are excluded from the auto-populated transport services list (same dedup as `default-port`).
 
 ## Testing
 
