@@ -181,12 +181,17 @@ router.get('/', requireAuth, async (req, res) => {
     const services = c.services || [];
     const ssh = services.find(s => s.type === 'transport' && s.transportService?.protocol === 'tcp' && Number(s.internalPort) === 22);
     const sshPort = ssh?.transportService?.externalPort || null;
-    const http = services.find(s => s.type === 'http');
-    const httpPort = http ? http.internalPort : null;
-    const httpExternalHost = http?.httpService?.externalHostname && http?.httpService?.externalDomain?.name
-      ? `${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
-      : null;
-    const httpExternalUrl = httpExternalHost ? `https://${httpExternalHost}` : null;
+    const httpList = services.filter(s => s.type === 'http');
+    const httpEntries = httpList.map(s => {
+      const host = s.httpService?.externalHostname && s.httpService?.externalDomain?.name
+        ? `${s.httpService.externalHostname}.${s.httpService.externalDomain.name}`
+        : null;
+      return {
+        port: s.internalPort,
+        externalUrl: host ? `https://${host}` : null
+      };
+    });
+    const primaryHttp = httpEntries[0] || null;
     
     // Common object structure for both API and View
     return {
@@ -200,9 +205,10 @@ router.get('/', requireAuth, async (req, res) => {
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
-      sshHost: httpExternalHost || site.externalIp,
-      httpPort,
-      httpExternalUrl,
+      sshHost: primaryHttp?.externalUrl ? new URL(primaryHttp.externalUrl).hostname : site.externalIp,
+      httpEntries,
+      httpPort: primaryHttp?.port || null,
+      httpExternalUrl: primaryHttp?.externalUrl || null,
       nodeName: c.node ? c.node.name : '-',
       nodeApiUrl: c.node ? c.node.apiUrl : null,
       createdAt: c.createdAt
