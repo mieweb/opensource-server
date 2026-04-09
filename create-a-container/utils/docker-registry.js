@@ -299,32 +299,55 @@ function extractImageMetadata(config) {
     entrypoint: ''
   };
   
-  // Extract HTTP service from OCI labels first
-  // Label: org.mieweb.opensource-server.services.http.default-port
-  let httpServicePort = null;
+  const httpServicePorts = new Set();
+  const LABEL_PREFIX = 'org.mieweb.opensource-server.services.http.';
+
   if (config.config?.Labels) {
-    const httpPortLabel = config.config.Labels['org.mieweb.opensource-server.services.http.default-port'];
-    if (httpPortLabel) {
-      const port = parseInt(httpPortLabel, 10);
+    const labels = config.config.Labels;
+
+    // Legacy unnamed label: org.mieweb.opensource-server.services.http.default-port
+    const defaultPortLabel = labels[LABEL_PREFIX + 'default-port'];
+    if (defaultPortLabel) {
+      const port = parseInt(defaultPortLabel, 10);
       if (!isNaN(port) && port > 0 && port <= 65535) {
-        httpServicePort = port;
-        metadata.httpServices.push({
-          port: port
-        });
+        httpServicePorts.add(port);
+        metadata.httpServices.push({ port });
       }
+    }
+
+    // Named labels: org.mieweb.opensource-server.services.http.<name>.port
+    const namedServices = {};
+    for (const [key, value] of Object.entries(labels)) {
+      if (!key.startsWith(LABEL_PREFIX)) continue;
+      const rest = key.slice(LABEL_PREFIX.length);
+      const dotIdx = rest.indexOf('.');
+      if (dotIdx === -1) continue; // not a named label (e.g. "default-port")
+      const name = rest.slice(0, dotIdx);
+      const field = rest.slice(dotIdx + 1);
+      if (!namedServices[name]) namedServices[name] = {};
+      namedServices[name][field] = value;
+    }
+
+    for (const [, fields] of Object.entries(namedServices)) {
+      if (!fields.port) continue;
+      const port = parseInt(fields.port, 10);
+      if (isNaN(port) || port <= 0 || port > 65535) continue;
+      httpServicePorts.add(port);
+      const svc = { port };
+      if (fields.hostnameSuffix) svc.hostnameSuffix = fields.hostnameSuffix;
+      if (fields.requireAuth && /^(true|1|yes)$/i.test(fields.requireAuth)) svc.requireAuth = true;
+      metadata.httpServices.push(svc);
     }
   }
   
-  // Extract exposed ports (excluding HTTP service port on TCP to avoid duplicates)
+  // Extract exposed ports (excluding HTTP service ports on TCP to avoid duplicates)
   // Format: { "80/tcp": {}, "443/tcp": {}, "8080/udp": {} }
   if (config.config?.ExposedPorts) {
     for (const portSpec of Object.keys(config.config.ExposedPorts)) {
       const [port, protocol = 'tcp'] = portSpec.split('/');
       const portNum = parseInt(port, 10);
       
-      // Skip if this port is designated as an HTTP service AND it's TCP
-      // (HTTP runs over TCP, but keep UDP ports even if same number)
-      if (portNum === httpServicePort && protocol.toLowerCase() === 'tcp') {
+      if (httpServicePorts.has(portNum) && protocol.toLowerCase() === 'tcp') {
         continue;
       }
       

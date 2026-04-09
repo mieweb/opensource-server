@@ -314,11 +314,12 @@ const breadcrumbLabel = isEdit ? 'Edit' : 'New';
     // Pre-populate HTTP Services from OCI labels
     if (metadata.httpServices && Array.isArray(metadata.httpServices)) {
       for (const httpService of metadata.httpServices) {
-        // Use container hostname as the external hostname
-        const hostname = document.getElementById('hostname')?.value || '';
-        // Auto-select first domain if available
+        const baseHostname = document.getElementById('hostname')?.value || '';
+        const externalHostname = httpService.hostnameSuffix
+          ? baseHostname + '-' + httpService.hostnameSuffix
+          : baseHostname;
         const firstDomainId = externalDomains.length > 0 ? externalDomains[0].id : '';
-        addServiceRow('http', httpService.port, hostname, firstDomainId);
+        addServiceRow('http', httpService.port, externalHostname, firstDomainId, null, null, '', !!httpService.requireAuth);
       }
     }
     
