@@ -112,6 +112,7 @@ async function main() {
     max: 10,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
+    skip: (req) => req.path === '/verify',
   }));
 
   // Set version info once at startup in app.locals
