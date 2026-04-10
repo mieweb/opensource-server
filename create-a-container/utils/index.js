@@ -56,16 +56,6 @@ function getVersionInfo() {
 }
 
 /**
- * Validate that a hostname is a legal DNS subdomain label (RFC 1123).
- * @param {string} hostname
- * @returns {boolean}
- */
-function isValidHostname(hostname) {
-  if (typeof hostname !== 'string') return false;
-  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(hostname);
-}
-
-/**
  * Helper to validate that a redirect URL is a safe relative path.
  * @param {string} url - the URL to validate
  * @returns {boolean}
@@ -81,10 +71,36 @@ function isSafeRelativeUrl(url) {
     !url.includes('%2F%2E%2E%2F'); // basic check against encoded path traversal
 }
 
+/**
+ * Validate that a redirect URL is safe — either a relative path or an absolute
+ * URL whose hostname is a subdomain of (or equal to) one of the allowed domains.
+ * Used by the login flow to support cross-domain redirects for auth_request.
+ * @param {string} url - the URL to validate
+ * @param {string[]} allowedDomains - list of allowed root domains (e.g., ['example.com'])
+ * @returns {boolean}
+ */
+function isSafeRedirectUrl(url, allowedDomains = []) {
+  if (typeof url !== 'string') return false;
+  if (isSafeRelativeUrl(url)) return true;
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+
+    const hostname = parsed.hostname.toLowerCase();
+    return allowedDomains.some(domain => {
+      const d = domain.toLowerCase();
+      return hostname === d || hostname.endsWith('.' + d);
+    });
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   ProxmoxApi,
   run,
-  isValidHostname,
   isSafeRelativeUrl,
+  isSafeRedirectUrl,
   getVersionInfo
 };

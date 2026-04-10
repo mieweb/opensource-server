@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { User, Setting } = require('../models');
-const { isSafeRelativeUrl } = require('../utils');
+const { User, Setting, ExternalDomain } = require('../models');
+const { isSafeRedirectUrl } = require('../utils');
 
 // GET / - Display login form
 router.get('/', (req, res) => {
@@ -101,8 +101,9 @@ router.post('/', async (req, res) => {
 
   // Return redirect to original page or default to home
   let redirectUrl = req.body.redirect || '/';
-  if (!isSafeRelativeUrl(redirectUrl)) {
-    // ensure redirect is a relative path
+  const domains = await ExternalDomain.findAll({ attributes: ['name'] });
+  const allowedDomains = domains.map(d => d.name);
+  if (!isSafeRedirectUrl(redirectUrl, allowedDomains)) {
     redirectUrl = '/';
   }
   

@@ -20,6 +20,7 @@ External domains expose container HTTP services to the internet. Domains are glo
 | **ACME Email** | Certificate expiration notifications |
 | **ACME Directory** | CA endpoint (Let's Encrypt Production/Staging) |
 | **Cloudflare API Token** | For DNS-01 challenge authentication and cross-site DNS record management |
+| **Auth Server URL** | Optional — URL of an authentication server for NGINX `auth_request`. See [Authentication](#authentication) |
 
 :::tip
 Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
@@ -110,4 +111,58 @@ When creating a container service, users select an external domain and specify a
 - Store Cloudflare API tokens with minimal permissions (Zone:DNS:Edit only)
 - Rotate tokens periodically; revoke immediately if compromised
 - Private keys never leave the cluster
+
+## Authentication
+
+HTTP services can require authentication via NGINX's [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module. When a service has **Require auth** enabled, NGINX sends a subrequest to the domain's auth server before proxying each request. Unauthenticated users are redirected to the auth server's login page.
+
+### Auth Server Requirements
+
+The auth server URL (e.g., `https://manager.example.com`) must implement two endpoints:
+
+| Endpoint | Behavior |
+|----------|----------|
+| `GET /verify` | Return `2xx` if the user is authenticated, `401` otherwise. May return identity headers (see below). |
+| `GET /login?redirect=<url>` | Login page that redirects to `<url>` after successful authentication. |
+
+The manager application implements both endpoints and can be used as the auth server.
+
+### Identity Headers
+
+On successful authentication, the auth server can return identity headers that NGINX forwards to the backend:
+
+| Header | Description |
+|--------|-------------|
+| `X-User-ID` | Numeric user ID |
+| `X-Username` | Username |
+| `X-User-First-Name` | First name |
+| `X-User-Last-Name` | Last name |
+| `X-Email` | Email address |
+| `X-Groups` | Comma-separated group names |
+
+### Cookie Sharing
+
+The auth server must be on a subdomain of the external domain (e.g., `manager.example.com` for domain `example.com`). The manager sets its session cookie on the parent domain (`.example.com`) so sibling subdomains share the cookie for `auth_request` subrequests.
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant NGINX
+    participant AuthServer as Auth Server
+    participant Backend
+
+    Client->>NGINX: GET app.example.com/page
+    NGINX->>AuthServer: GET /verify (subrequest)
+    alt Authenticated
+        AuthServer-->>NGINX: 200 + identity headers
+        NGINX->>Backend: Proxied request + X-User-* headers
+        Backend-->>NGINX: Response
+        NGINX-->>Client: Response
+    else Not authenticated
+        AuthServer-->>NGINX: 401
+        NGINX-->>Client: 302 → auth server /login?redirect=...
+    end
+```
 

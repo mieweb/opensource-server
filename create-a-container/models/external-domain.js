@@ -52,6 +52,14 @@ module.exports = (sequelize) => {
         key: 'id'
       },
       comment: 'Optional default site — when null, domain has no default site'
+    },
+    authServer: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        isUrl: true
+      },
+      comment: 'Auth server URL for auth_request (e.g., https://manager.example.com). Must implement GET /verify and GET /login?redirect='
     }
   }, {
     tableName: 'ExternalDomains',

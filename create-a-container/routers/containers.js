@@ -8,7 +8,6 @@ const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
 const { manageDnsRecords } = require('../utils/cloudflare-dns');
-const { isValidHostname } = require('../utils');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -181,12 +180,17 @@ router.get('/', requireAuth, async (req, res) => {
     const services = c.services || [];
     const ssh = services.find(s => s.type === 'transport' && s.transportService?.protocol === 'tcp' && Number(s.internalPort) === 22);
     const sshPort = ssh?.transportService?.externalPort || null;
-    const http = services.find(s => s.type === 'http');
-    const httpPort = http ? http.internalPort : null;
-    const httpExternalHost = http?.httpService?.externalHostname && http?.httpService?.externalDomain?.name
-      ? `${http.httpService.externalHostname}.${http.httpService.externalDomain.name}`
-      : null;
-    const httpExternalUrl = httpExternalHost ? `https://${httpExternalHost}` : null;
+    const httpList = services.filter(s => s.type === 'http');
+    const httpEntries = httpList.map(s => {
+      const host = s.httpService?.externalHostname && s.httpService?.externalDomain?.name
+        ? `${s.httpService.externalHostname}.${s.httpService.externalDomain.name}`
+        : null;
+      return {
+        port: s.internalPort,
+        externalUrl: host ? `https://${host}` : null
+      };
+    });
+    const primaryHttp = httpEntries[0] || null;
     
     // Common object structure for both API and View
     return {
@@ -200,9 +204,10 @@ router.get('/', requireAuth, async (req, res) => {
       template: c.template,
       creationJobId: c.creationJobId,
       sshPort,
-      sshHost: httpExternalHost || site.externalIp,
-      httpPort,
-      httpExternalUrl,
+      sshHost: primaryHttp?.externalUrl ? new URL(primaryHttp.externalUrl).hostname : site.externalIp,
+      httpEntries,
+      httpPort: primaryHttp?.port || null,
+      httpExternalUrl: primaryHttp?.externalUrl || null,
       nodeName: c.node ? c.node.name : '-',
       nodeApiUrl: c.node ? c.node.apiUrl : null,
       createdAt: c.createdAt
@@ -301,12 +306,6 @@ router.post('/', async (req, res) => {
     }
     // ---------------------------
     
-    // Hostname must be lowercase before validation
-    if (hostname) hostname = hostname.trim().toLowerCase();
-    if (!isValidHostname(hostname)) {
-      throw new Error('Invalid hostname: must be 1–63 characters, only lowercase letters, digits, and hyphens, and must start and end with a letter or digit');
-    }
-
     const currentUser = req.session?.user || req.user?.username || 'api-user';
 
     let envVarsJson = null;
@@ -380,7 +379,7 @@ router.post('/', async (req, res) => {
     if (services && typeof services === 'object') {
       for (const key in services) {
         const service = services[key];
-        const { type, internalPort, externalHostname, externalDomainId, dnsName } = service;
+        const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = service;
         
         if (!type || !internalPort) continue;
         
@@ -412,7 +411,8 @@ router.post('/', async (req, res) => {
             serviceId: createdService.id,
             externalHostname,
             externalDomainId: parseInt(externalDomainId, 10),
-            backendProtocol: type === 'https' ? 'https' : 'http'
+            backendProtocol: type === 'https' ? 'https' : 'http',
+            authRequired: authRequired === 'true' || authRequired === true
           }, { transaction: t });
         } else if (serviceType === 'dns') {
           if (!dnsName) throw new Error('DNS services must have a DNS name');
@@ -576,10 +576,27 @@ router.put('/:id', requireAuth, async (req, res) => {
             });
           }
         }
+
+        // Update authRequired on existing HTTP services
+        for (const key in services) {
+          const { id, deleted, authRequired } = services[key];
+          if (deleted === 'true' || !id) continue;
+          const svc = await Service.findByPk(parseInt(id, 10), {
+            include: [{ model: HTTPService, as: 'httpService' }],
+            transaction: t
+          });
+          if (svc?.httpService) {
+            const newAuthRequired = authRequired === 'true' || authRequired === true;
+            if (svc.httpService.authRequired !== newAuthRequired) {
+              await svc.httpService.update({ authRequired: newAuthRequired }, { transaction: t });
+            }
+          }
+        }
+
         // Create new services — collect cross-site HTTP services for DNS creation
         const newHttpServices = [];
         for (const key in services) {
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName } = services[key];
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = services[key];
           if (deleted === 'true' || id || !type || !internalPort) continue;
           
           let serviceType = type === 'srv' ? 'dns' : ((type === 'http' || type === 'https') ? 'http' : 'transport');
@@ -592,7 +609,7 @@ router.put('/:id', requireAuth, async (req, res) => {
           }, { transaction: t });
 
           if (serviceType === 'http') {
-             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId, backendProtocol: type === 'https' ? 'https' : 'http' }, { transaction: t });
+             await HTTPService.create({ serviceId: createdService.id, externalHostname, externalDomainId, backendProtocol: type === 'https' ? 'https' : 'http', authRequired: authRequired === 'true' || authRequired === true }, { transaction: t });
              const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
              if (domain) newHttpServices.push({ externalHostname, ExternalDomain: domain });
           } else if (serviceType === 'dns') {

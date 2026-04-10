@@ -59,7 +59,7 @@ router.get('/:id/edit', async (req, res) => {
 // POST /external-domains
 router.post('/', async (req, res) => {
   try {
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId, authServer } = req.body;
 
     await ExternalDomain.create({
       name,
@@ -67,7 +67,8 @@ router.post('/', async (req, res) => {
       acmeDirectoryUrl: acmeDirectoryUrl || null,
       cloudflareApiEmail: cloudflareApiEmail || null,
       cloudflareApiKey: cloudflareApiKey || null,
-      siteId: siteId || null
+      siteId: siteId || null,
+      authServer: authServer || null
     });
 
     await req.flash('success', `External domain ${name} created successfully`);
@@ -92,14 +93,15 @@ router.put('/:id', async (req, res) => {
       return res.redirect('/external-domains');
     }
 
-    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId } = req.body;
+    const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId, authServer } = req.body;
 
     const updateData = {
       name,
       acmeEmail: acmeEmail || null,
       acmeDirectoryUrl: acmeDirectoryUrl || null,
       cloudflareApiEmail: cloudflareApiEmail || null,
-      siteId: siteId || null
+      siteId: siteId || null,
+      authServer: authServer || null
     };
     
     // Only update cloudflareApiKey if a new value was provided
