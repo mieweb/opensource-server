@@ -12,14 +12,18 @@ RUN mkdir /rootfs && curl "$URL" | tar --zstd -x -C /rootfs
 FROM scratch
 COPY --from=builder /rootfs /
 
-# Install and setup sssd autoconfiguration
+# Install and setup sssd autoconfiguration.
+# ldap-utils provides ldapsearch, used by the git-identity profile script to
+# fetch a user's email from the internal LDAP server on first interactive login.
 RUN apt-get update && \
-    apt-get install -y sssd sudo tmux curl gnupg git jq unattended-upgrades && \
+    apt-get install -y sssd sudo tmux curl gnupg git jq ldap-utils unattended-upgrades && \
     pam-auth-update --enable mkhomedir && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 COPY --chmod=0440 sssd.conf /etc/sssd/sssd.conf
 COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
+COPY --chmod=0644 ldap.conf /etc/ldap/ldap.conf
+COPY --chmod=0755 git-identity.sh /etc/profile.d/git-identity.sh
 
 # The following service ensures environment variables set in the OCI metadata
 # or container configuration are passed to programs executed by systemd which
