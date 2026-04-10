@@ -5,14 +5,11 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "proxy": "node proxy-server.js",
-    "dev": "concurrently \"npm run proxy\" \"npm run start -- --host 0.0.0.0 --port 2998\"",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
-    "serve": "npm run build && docusaurus serve --host 0.0.0.0 --port 2998",
-    "serve-with-proxy": "concurrently \"npm run proxy\" \"npm run serve\"",
+    "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "typecheck": "tsc"
@@ -53,7 +50,6 @@
     "@docusaurus/module-type-aliases": "^3.9.2",
     "@docusaurus/tsconfig": "^3.9.2",
     "@docusaurus/types": "^3.9.2",
-    "concurrently": "^9.2.0",
     "typescript": "~5.6.2"
   },
   "browserslist": {
