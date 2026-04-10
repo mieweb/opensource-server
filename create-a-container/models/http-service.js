@@ -23,7 +23,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false,
       validate: {
-        notEmpty: true
+        is: {
+          args: /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/,
+          msg: 'Hostname must be 1–63 characters, only lowercase letters, digits, and hyphens, and must start and end with a letter or digit'
+        }
       }
     },
     externalDomainId: {
