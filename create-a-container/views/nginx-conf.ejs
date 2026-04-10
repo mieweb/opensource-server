@@ -30,6 +30,10 @@ http {
 
   server_names_hash_bucket_size 128;
 
+  # Cache zone for auth_request subrequests, keyed on credentials.
+  proxy_cache_path /var/cache/nginx/auth_cache levels=1:2 keys_zone=auth_cache:1m
+                   max_size=10m inactive=5m;
+
   modsecurity on;
   modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
   modsecurity_transaction_id "$request_id";
@@ -231,6 +235,8 @@ http {
 
     <%_ if (authRequired && authServer) { _%>
     # Auth subrequest — proxied to the auth server's /verify endpoint.
+    # Responses are cached per Cookie+Authorization pair so NGINX only
+    # contacts the auth server when credentials change.
     location = /.oss-auth-verify {
       internal;
       proxy_pass <%= authServer %>/verify;
@@ -240,6 +246,11 @@ http {
       proxy_set_header X-Original-Host $host;
       proxy_set_header Cookie $http_cookie;
       proxy_set_header Authorization $http_authorization;
+
+      proxy_cache auth_cache;
+      proxy_cache_key "$http_cookie$http_authorization";
+      proxy_cache_valid 200 5m;
+      proxy_cache_valid 401 30s;
     }
 
     # Capture user identity headers from the auth subrequest response.

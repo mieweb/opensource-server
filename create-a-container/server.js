@@ -43,9 +43,7 @@ async function main() {
   app.set('trust proxy', 1);
 
   // setup middleware
-  app.use(morgan('combined', {
-    skip: (req) => req.originalUrl === '/verify'
-  }));
+  app.use(morgan('combined'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true })); // Parse form data
   app.use(methodOverride((req, res) => {
@@ -114,7 +112,6 @@ async function main() {
     max: 10,
     skipSuccessfulRequests: true,
     requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
-    skip: (req) => req.originalUrl === '/verify',
   }));
 
   // Set version info once at startup in app.locals
