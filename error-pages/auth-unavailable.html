@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>503 — Authentication Unavailable</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      max-width: 620px;
+      width: 90%;
+      padding: 3rem 2.5rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      text-align: center;
+    }
+
+    .status-code {
+      font-size: 5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ff6b35, #e74c3c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+      margin: 0.5rem 0 1.5rem;
+    }
+
+    p {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #b0b0b0;
+      margin-bottom: 1rem;
+    }
+
+    .hostname {
+      display: inline-block;
+      margin-top: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 0.85rem;
+      color: #ff6b35;
+      word-break: break-all;
+    }
+
+    .info {
+      margin-top: 1.5rem;
+      padding: 1.25rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .info h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+
+    .info p {
+      font-size: 0.9rem;
+      color: #b0b0b0;
+    }
+
+    .info ul {
+      margin: 0.5rem 0 0 1.25rem;
+      font-size: 0.9rem;
+      color: #b0b0b0;
+    }
+
+    .info li {
+      margin-bottom: 0.4rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="status-code">503</div>
+    <h1>Authentication Unavailable</h1>
+    <p>
+      This service requires authentication, but no authentication server has been
+      configured for this domain.
+    </p>
+    <div class="hostname" id="hostname"></div>
+    <div class="info">
+      <h2>What happened?</h2>
+      <p>
+        This service has authentication enabled, but no authentication server
+        has been configured for the domain. To resolve this:
+      </p>
+      <ul>
+        <li>If you're a <strong>user</strong> of this service, let the person in charge of it know.</li>
+        <li>If you're in <strong>charge of this service</strong> and authentication was enabled
+          by mistake, disable it. Otherwise, contact your environment administrator.</li>
+        <li>If you're the <strong>environment administrator</strong>, configure an auth server
+          for this domain.</li>
+      </ul>
+    </div>
+  </div>
+  <script>
+    document.getElementById('hostname').textContent = window.location.hostname;
+  </script>
+</body>
+</html>

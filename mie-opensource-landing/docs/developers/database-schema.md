@@ -80,6 +80,7 @@ erDiagram
         string externalHostname
         int externalDomainId FK
         enum backendProtocol "http | https (default: http)"
+        boolean authRequired "default: false"
     }
 
     TransportServices {
@@ -105,6 +106,7 @@ erDiagram
         string cloudflareApiEmail
         string cloudflareApiKey
         int siteId FK "nullable, default site"
+        string authServer "nullable, auth server URL"
     }
 
     Jobs {
@@ -184,12 +186,12 @@ LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId
 ### Service (STI)
 Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.
 
-- **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain. `backendProtocol` controls `proxy_pass` scheme (`http` or `https`).
+- **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain. `backendProtocol` controls `proxy_pass` scheme (`http` or `https`). `authRequired` enables NGINX `auth_request` — requires the domain's `authServer` to be configured.
 - **TransportService**: `(protocol, externalPort)` unique. `findNextAvailablePort()` static method.
 - **DnsService**: SRV records with `serviceName`.
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management.
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional URL pointing to an authentication server that implements the NGINX `auth_request` protocol (see [External Domains](/docs/admins/core-concepts/external-domains#authentication)).
 
 ## User Management Models
 

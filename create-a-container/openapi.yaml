@@ -809,35 +809,60 @@ components:
         dnsName:
           type: string
           description: DNS name (required for `srv`)
+        authRequired:
+          type: boolean
+          default: false
+          description: |
+            When true, NGINX uses `auth_request` to verify authentication before
+            proxying requests. Requires the external domain to have an `authServer`
+            configured. Only applies to `http`/`https` services.
 
     ImageMetadata:
       type: object
       properties:
-        Ports:
+        ports:
+          type: array
+          items:
+            type: object
+            properties:
+              port:
+                type: integer
+              protocol:
+                type: string
+                enum: [tcp, udp]
+          description: Non-HTTP exposed ports from EXPOSE directives
+        httpServices:
+          type: array
+          items:
+            type: object
+            required: [port]
+            properties:
+              port:
+                type: integer
+                description: Internal port number
+              hostnameSuffix:
+                type: string
+                description: |
+                  When set, the external hostname is built as `<container-hostname>-<suffix>`.
+                  From label `org.mieweb.opensource-server.services.http.<name>.hostnameSuffix`.
+              requireAuth:
+                type: boolean
+                description: |
+                  Enable authentication via `auth_request` for this service.
+                  From label `org.mieweb.opensource-server.services.http.<name>.requireAuth`.
+          description: |
+            HTTP services derived from OCI labels. Supports the legacy
+            `org.mieweb.opensource-server.services.http.default-port` label and named
+            labels: `...http.<name>.port`, `...http.<name>.hostnameSuffix`,
+            `...http.<name>.requireAuth`.
+        env:
           type: object
           additionalProperties:
-            type: object
-          description: 'Exposed ports (e.g. `{"80/tcp": {}}`)'
-        Env:
-          type: array
-          items:
             type: string
-          description: Environment variables (e.g. `["PATH=/usr/bin"]`)
-        Entrypoint:
-          type: array
-          items:
-            type: string
-          nullable: true
-        Cmd:
-          type: array
-          items:
-            type: string
-          nullable: true
-        ExposedPorts:
-          type: object
-          additionalProperties:
-            type: object
-          nullable: true
+          description: Environment variables (excluding common ones like PATH, HOME)
+        entrypoint:
+          type: string
+          description: Container entrypoint command
 
     ExternalDomain:
       type: object
@@ -847,6 +872,15 @@ components:
         name:
           type: string
           description: Domain name (e.g. `example.com`)
+        authServer:
+          type: string
+          nullable: true
+          description: |
+            URL of an auth server for this domain (e.g. `https://manager.example.com`).
+            Must support the NGINX `auth_request` protocol: `GET /verify` (return 2xx/401)
+            and `GET /login?redirect=<url>` for unauthenticated users. Used for HTTP services
+            that have `authRequired: true`. Must be on a subdomain of this domain for
+            session cookie sharing.
 
     Job:
       type: object

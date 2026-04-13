@@ -25,7 +25,7 @@
             <th>Template</th>
             <th>Node</th>
             <th>SSH Port</th>
-            <th>HTTP Port</th>
+            <th>HTTP</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -82,10 +82,17 @@
                   <% } %>
                 </td>
                 <td>
-                  <% if (r.httpExternalUrl) { %>
-                    <a href="<%= r.httpExternalUrl %>" target="_blank" rel="noopener noreferrer" aria-label="Open external URL for container <%= r.hostname %>"><%= r.httpPort %> <i class="bi bi-box-arrow-up-right"></i></a>
+                  <% if (r.httpEntries && r.httpEntries.length > 0) { %>
+                    <% r.httpEntries.forEach((entry, i) => { %>
+                      <% if (i > 0) { %><br><% } %>
+                      <% if (entry.externalUrl) { %>
+                        <a href="<%= entry.externalUrl %>" target="_blank" rel="noopener noreferrer" aria-label="Open external URL for container <%= r.hostname %>"><%= entry.port %> <i class="bi bi-box-arrow-up-right"></i></a>
+                      <% } else { %>
+                        <%= entry.port %>
+                      <% } %>
+                    <% }) %>
                   <% } else { %>
-                    <%= r.httpPort || '-' %>
+                    -
                   <% } %>
                 </td>
                 <td>
