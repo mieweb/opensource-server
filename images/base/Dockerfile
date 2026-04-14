@@ -17,7 +17,7 @@ COPY --from=builder /rootfs /
 # fetch a user's email from the internal LDAP server on first interactive login.
 RUN apt-get update && \
     apt-get install -y sssd sudo tmux curl gnupg git jq ldap-utils unattended-upgrades locales && \
-    grep -qxF 'en_US.UTF-8 UTF-8' /etc/locale.gen || echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && \
+    grep -qxF 'en_US.UTF-8 UTF-8' /etc/locale.gen 2>/dev/null || echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && \
     locale-gen en_US.UTF-8 && \
     update-locale LANG=en_US.UTF-8 && \
     pam-auth-update --enable mkhomedir && \
