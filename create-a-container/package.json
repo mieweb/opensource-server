@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "argon2": "^0.44.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.0",
     "connect-flash": "^0.1.1",
     "dotenv": "^17.2.3",
     "ejs": "^3.1.10",
@@ -21,7 +21,7 @@
     "express-session-sequelize": "^2.3.0",
     "method-override": "^3.0.0",
     "morgan": "^1.10.1",
-    "nodemailer": "^8.0.4",
+    "nodemailer": "^8.0.5",
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "sequelize": "^6.37.8",
