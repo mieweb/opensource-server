@@ -18,7 +18,7 @@ COPY --from=builder /rootfs /
 RUN apt-get update && \
     apt-get install -y sssd sudo tmux curl gnupg git jq ldap-utils unattended-upgrades locales && \
     echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && \
-    locale-gen en_US.UTF-8 && \
+    locale-gen && \
     update-locale LANG=en_US.UTF-8 && \
     pam-auth-update --enable mkhomedir && \
     apt-get clean && \
