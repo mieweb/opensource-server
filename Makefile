@@ -28,7 +28,3 @@ install-pull-config:
 install-docs:
 	cd mie-opensource-landing && npm install --production
 	cd mie-opensource-landing && npm run build
-	install -m644 -oroot -groot mie-opensource-landing/systemd/opensource-docs.service /etc/systemd/system/opensource-docs.service
-	systemctl daemon-reload || true
-	systemctl enable opensource-docs.service
-	systemctl start opensource-docs.service || true
