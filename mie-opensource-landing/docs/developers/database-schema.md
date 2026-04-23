@@ -1,6 +1,3 @@
----
-sidebar_position: 6
----
 
 # Database Schema
 
@@ -191,7 +188,7 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 - **DnsService**: SRV records with `serviceName`.
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional URL pointing to an authentication server that implements the NGINX `auth_request` protocol (see [External Domains](/docs/admins/core-concepts/external-domains#authentication)).
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional URL pointing to an authentication server that implements the NGINX `auth_request` protocol (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
 
 ## User Management Models
 

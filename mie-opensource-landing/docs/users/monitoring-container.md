@@ -1,12 +1,6 @@
----
-sidebar_position: 5
----
-
-import { ProxmoxUrl } from '@site/src/components/InstanceUrl';
-
 # Monitoring Containers in Proxmox
 
-Monitor container performance in the Proxmox Web GUI at <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>.
+Monitor container performance in the Proxmox Web GUI at [https://os.mieweb.org:8006](https://os.mieweb.org:8006).
 
 ## Dashboard
 
@@ -22,9 +16,9 @@ Double-click a container to view CPU, memory, swap, and disk usage with progress
 
 ![Container Charts](./img/container-charts.png)
 
-:::important
-If any metric stays above 80%, contact an MIE cluster admin to upgrade that resource.
-:::
+!!! important
+
+    If any metric stays above 80%, contact an MIE cluster admin to upgrade that resource.
 
 ## Shell Access
 

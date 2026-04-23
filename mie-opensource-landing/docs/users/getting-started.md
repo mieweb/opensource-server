@@ -1,12 +1,6 @@
----
-sidebar_position: 0
----
-
-import { ContainerCreationUrl } from '@site/src/components/InstanceUrl';
-
 # Getting Started
 
-To use the cluster, you need an account on the web interface at <ContainerCreationUrl><ContainerCreationUrl /></ContainerCreationUrl>.
+To use the cluster, you need an account on the web interface at [https://manager.os.mieweb.org](https://manager.os.mieweb.org).
 
 ## Registering with an Invite
 

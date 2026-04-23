@@ -1,6 +1,3 @@
----
-sidebar_position: 4
----
 
 # Sites
 
@@ -24,9 +21,8 @@ A site groups Proxmox nodes, defines network configuration, and manages containe
 3. Configure DHCP range, subnet mask, gateway, and DNS forwarders
 4. Save
 
-:::important
-Ensure the DHCP range doesn't conflict with static IPs (Proxmox nodes, management container, infrastructure devices).
-:::
+!!! warning "Important"
+    Ensure the DHCP range doesn't conflict with static IPs (Proxmox nodes, management container, infrastructure devices).
 
 ## DHCP and DNS
 

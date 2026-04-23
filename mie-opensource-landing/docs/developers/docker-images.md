@@ -1,6 +1,3 @@
----
-sidebar_position: 5
----
 
 # Docker Images
 
@@ -8,9 +5,8 @@ OCI container images automatically built and published to GitHub Container Regis
 
 ## Available Images
 
-:::note
-For custom *application* images (not new base images), see [Building Custom Images](/docs/users/creating-containers/using-environment-variables).
-:::
+!!! note
+    For custom *application* images (not new base images), see [Building Custom Images](../users/creating-containers/using-environment-variables.md).
 
 ### Debian 13 (`base`)
 
@@ -26,13 +22,13 @@ Extends base with Node.js 24 from NodeSource. Inherits LDAP authentication.
 
 ### Agent (`agent`)
 
-Extends nodejs with nginx (+ ModSecurity/OWASP CRS), dnsmasq, and [lego](https://github.com/go-acme/lego) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](/docs/admins/deploying-agents).
+Extends nodejs with nginx (+ ModSecurity/OWASP CRS), dnsmasq, and [lego](https://github.com/go-acme/lego) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
 
 **Registry:** `ghcr.io/mieweb/opensource-server/agent` · **Source:** [`images/agent/`](https://github.com/mieweb/opensource-server/tree/main/images/agent)
 
 ### Manager (`manager`)
 
-Extends agent with PostgreSQL 18. Runs the full management application. See [Installation Guide](/docs/admins/installation).
+Extends agent with PostgreSQL 18. Runs the full management application. See [Installation Guide](../admins/installation.md).
 
 **Registry:** `ghcr.io/mieweb/opensource-server/manager` · **Source:** [`images/manager/`](https://github.com/mieweb/opensource-server/tree/main/images/manager)
 
@@ -145,7 +141,7 @@ RUN apt-get update && \
 **Rules:**
 - `FROM base` — Docker Bake resolves this to the freshly built base image via `contexts`
 - Use `EXPOSE` to declare ports that should become container Services automatically
-- Use `LABEL` directives to define HTTP services (see [Service Labels](/docs/users/creating-containers/using-environment-variables#service-labels))
+- Use `LABEL` directives to define HTTP services (see [Service Labels](../users/creating-containers/using-environment-variables.md#service-labels))
 - **Never** set `CMD`, `ENTRYPOINT`, `WORKDIR`, or `USER` — base images run systemd as PID 1
 
 ### 2. Update docker-bake.hcl
@@ -180,7 +176,7 @@ Verify: runtime installed, systemd running, `/etc/environment` exists.
 ### 5. Update docs and frontend
 
 - Add the image to the [Available Images](#available-images) section above
-- Update `docs/users/creating-containers/web-gui.mdx` template list
+- Update `docs/users/creating-containers/web-gui.md` template list
 - Update `create-a-container/views/containers/form.ejs` dropdown
 
 ### 6. Submit PR

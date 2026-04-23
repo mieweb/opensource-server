@@ -1,14 +1,10 @@
----
-sidebar_position: 1
----
 
 # What is Launchpad?
 
 Launchpad is a GitHub Action that provisions and manages LXC containers on MIE's open source Proxmox cluster. It deploys Docker/OCI images as containers with automatic networking, DNS, and reverse proxy configuration.
 
-:::note GitHub Marketplace
-[View Launchpad on the GitHub Actions Marketplace](https://github.com/marketplace/actions/mieweb-launchpad)
-:::
+!!! note "GitHub Marketplace"
+    [View Launchpad on the GitHub Actions Marketplace](https://github.com/marketplace/actions/mieweb-launchpad)
 
 ## How It Works
 
@@ -54,5 +50,5 @@ Each container provides:
 
 ---
 
-**Next Steps**: See the [Getting Started](/docs/users/proxmox-launchpad/getting-started) guide to set up Launchpad in your repository.
+**Next Steps**: See the [Getting Started](getting-started.md) guide to set up Launchpad in your repository.
 

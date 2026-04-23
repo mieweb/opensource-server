@@ -1,24 +1,18 @@
----
-sidebar_position: 2
----
-
-import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceUrl';
-
 # Using the API with curl
 
-:::tip Interactive API Docs
-Your server hosts interactive Swagger documentation at `/api` with a "Try it out" console, full request/response schemas, and authentication support.
-:::
+!!! tip "Interactive API Docs"
 
-:::caution Outdated Documentation
-This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
-:::
+    Your server hosts interactive Swagger documentation at `/api` with a "Try it out" console, full request/response schemas, and authentication support.
 
-API endpoint: <ContainerCreationUrl />
+!!! caution "Outdated Documentation"
+
+    This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
+
+API endpoint: https://manager.os.mieweb.org
 
 **Prerequisites:**
 
-* Active account, an [API key](./api-keys.mdx), `curl`, and your site ID (from the web interface).
+* Active account, an [API key](./api-keys.md), `curl`, and your site ID (from the web interface).
 
 ## 1. List Available Templates
 
@@ -98,11 +92,10 @@ curl -X GET 'https://create-a-container.opensource.mieweb.org/api/containers' \
 
 **HTTP:** `https://<externalHostname>.<externalDomain>`
 
-**Proxmox:** Navigate to <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl> — your container is listed with your username in the tags field.
+**Proxmox:** Navigate to [https://os.mieweb.org:8006](https://os.mieweb.org:8006) — your container is listed with your username in the tags field.
 
 ![Hostname](img/proxmox-lxc.jpg)
 
-:::note
-You can start, stop, and reboot through Proxmox. To delete, contact an administrator.
-:::
+!!! note
 
+    You can start, stop, and reboot through Proxmox. To delete, contact an administrator.

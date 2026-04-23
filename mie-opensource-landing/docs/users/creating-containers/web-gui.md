@@ -1,14 +1,8 @@
----
-sidebar_position: 1
----
-
-import { ProxmoxUrl, ContainerCreationUrl } from '@site/src/components/InstanceUrl';
-
 # Using the Web GUI
 
 Create and manage LXC containers through the web interface.
 
-**Prerequisites:** A registered account and at least one configured site. See [Getting Started](/docs/users/getting-started) for account setup.
+**Prerequisites:** A registered account and at least one configured site. See [Getting Started](../getting-started.md) for account setup.
 
 ## Logging In
 
@@ -55,21 +49,21 @@ Both HTTP and HTTPS services are served to the public over HTTPS with automatic 
 
 HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP services are auto-assigned an external port.
 
-:::note
-You'll need to add a TCP service with internal port 22 in order to expose the SSH connection to your container.
-:::
+!!! note
+
+    You'll need to add a TCP service with internal port 22 in order to expose the SSH connection to your container.
 
 ### Environment Variables (Optional)
 
-Key-value pairs written to `/etc/environment` in system containers. See [Building Custom Images](./using-environment-variables.mdx) for details on systemd integration.
+Key-value pairs written to `/etc/environment` in system containers. See [Building Custom Images](./using-environment-variables.md) for details on systemd integration.
 
 ### Entrypoint Command (Optional)
 
 Default: `/sbin/init` for system containers.
 
-:::warning
-Changing the entrypoint for provided templates or derived images is not supported. This should only be used to add arguments to standard Docker images.
-:::
+!!! warning
+
+    Changing the entrypoint for provided templates or derived images is not supported. This should only be used to add arguments to standard Docker images.
 
 ### NVIDIA GPU (Optional)
 
@@ -91,11 +85,10 @@ Click **Create Container**. You'll be redirected to a page to watch the creation
 
 **HTTP:** `https://<hostname>.<domain>`
 
-**Proxmox Console:** <ProxmoxUrl><ProxmoxUrl /></ProxmoxUrl>
+**Proxmox Console:** [https://os.mieweb.org:8006](https://os.mieweb.org:8006)
 
 ## Managing Containers
 
 - **Start/Stop/Restart/Force Stop** via the Actions column
 - **Edit** to modify environment variables, entrypoint, or services (restart required)
 - **Delete** to permanently remove (irreversible — back up data first)
-

@@ -1,10 +1,7 @@
----
-sidebar_position: 7
----
 
 # Containers
 
-Containers are LXC instances running on Proxmox nodes. For creating and managing containers, see the [Web GUI Guide](/docs/users/creating-containers/web-gui) or [Command Line Guide](/docs/users/creating-containers/command-line).
+Containers are LXC instances running on Proxmox nodes. For creating and managing containers, see the [Web GUI Guide](../../users/creating-containers/web-gui.md) or [Command Line Guide](../../users/creating-containers/command-line.md).
 
 ## LDAP Authentication
 
@@ -21,7 +18,7 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 
 ## Service Exposure
 
-Users can expose HTTP services from containers using [external domains](external-domains). Services are automatically configured with SSL/TLS certificates, reverse proxy routing, and DNS records.
+Users can expose HTTP services from containers using [external domains](external-domains.md). Services are automatically configured with SSL/TLS certificates, reverse proxy routing, and DNS records.
 
-HTTP services can optionally require authentication via the **Require auth** checkbox. When enabled, NGINX authenticates requests against the domain's [auth server](external-domains#authentication) before proxying. Authenticated requests include identity headers (`X-User-ID`, `X-Username`, etc.) forwarded to the backend. See [External Domains — Authentication](external-domains#authentication) for configuration details.
+HTTP services can optionally require authentication via the **Require auth** checkbox. When enabled, NGINX authenticates requests against the domain's [auth server](external-domains.md#authentication) before proxying. Authenticated requests include identity headers (`X-User-ID`, `X-Username`, etc.) forwarded to the backend. See [External Domains — Authentication](external-domains.md#authentication) for configuration details.
 

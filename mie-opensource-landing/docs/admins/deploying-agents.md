@@ -1,6 +1,3 @@
----
-sidebar_position: 4
----
 
 # Deploying Agents
 
@@ -10,9 +7,9 @@ Agents are deployed **manually in Proxmox** (not through the manager UI) and sho
 
 ## Prerequisites
 
-- Management container deployed and running ([Installation Guide](installation))
-- A [site](core-concepts/sites) configured in the manager
-- An [API key](../users/creating-containers/api-keys) generated from an **admin** account
+- Management container deployed and running ([Installation Guide](installation.md))
+- A [site](core-concepts/sites.md) configured in the manager
+- An [API key](../users/creating-containers/api-keys.md) generated from an **admin** account
 - SSH or web UI access to the target Proxmox host
 
 ## Workflow
@@ -112,7 +109,7 @@ Forward the following ports from the Proxmox host to the agent container:
 
 ## 6. Import the Node
 
-With the agent running, proceed to [import the node](core-concepts/nodes#import-nodes-recommended) in the manager. The agent's dnsmasq and nginx will automatically receive updated configurations as containers are created and removed.
+With the agent running, proceed to [import the node](core-concepts/nodes.md#import-nodes-recommended) in the manager. The agent's dnsmasq and nginx will automatically receive updated configurations as containers are created and removed.
 
 ## How It Works
 

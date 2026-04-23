@@ -1,9 +1,3 @@
----
-sidebar_position: 3
----
-
-import { ContainerCreationUrl } from '@site/src/components/InstanceUrl';
-
 # API Keys
 
 API keys authenticate API requests without using your password.
@@ -12,7 +6,7 @@ API keys authenticate API requests without using your password.
 
 Navigate to **API Keys** from the main navigation.
 
-![API Keys List](/img/apikeys-list-with-key.png)
+![API Keys List](../../assets/img/apikeys-list-with-key.png)
 
 ### Creating a Key
 
@@ -20,17 +14,17 @@ Navigate to **API Keys** from the main navigation.
 2. (Optional) Enter a description (e.g., "CI/CD pipeline")
 3. Click **"Generate API Key"**
 
-![API Key Created Success](/img/apikeys-created-success.png)
+![API Key Created Success](../../assets/img/apikeys-created-success.png)
 
-:::danger Critical
-The full key is shown only once. Copy it immediately. The server stores only a hash — lost keys cannot be recovered.
-:::
+!!! danger "Critical"
+
+    The full key is shown only once. Copy it immediately. The server stores only a hash — lost keys cannot be recovered.
 
 ### Viewing Key Details
 
 Click **View** on any key to see its prefix, description, creation date, and last-used timestamp.
 
-![API Key Details](/img/apikeys-details.png)
+![API Key Details](../../assets/img/apikeys-details.png)
 
 ### Deleting a Key
 
@@ -46,4 +40,4 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
      https://your-server/apikeys
 ```
 
-For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the <ContainerCreationUrl path="/api">interactive API documentation</ContainerCreationUrl> at `/api` on your server.
+For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the [interactive API documentation](https://manager.os.mieweb.org/api) at `/api` on your server.

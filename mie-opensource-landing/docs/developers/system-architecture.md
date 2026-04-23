@@ -1,6 +1,3 @@
----
-sidebar_position: 2
----
 
 # System Architecture
 
@@ -55,11 +52,11 @@ graph TB
 
 | Component | Role |
 |-----------|------|
-| **Proxmox VE 13+** | Hypervisor — manages LXC containers via REST API. [Nodes](/docs/admins/core-concepts/nodes) are registered Proxmox servers. |
+| **Proxmox VE 13+** | Hypervisor — manages LXC containers via REST API. [Nodes](../admins/core-concepts/nodes.md) are registered Proxmox servers. |
 | **DNSMasq** | DHCP + DNS. Auto-assigns IPs to containers, provides internal name resolution (`container.cluster.internal`). |
 | **NGINX** | Reverse proxy — L7 (HTTP/HTTPS with auto TLS via ACME) and L4 (TCP port mapping). Config auto-generated from container services. |
 | **LDAP Gateway** | Node.js LDAP server ([source](https://github.com/mieweb/LDAPServer)). Reads users/groups from the DB; containers authenticate via PAM/SSSD. |
-| **Push Notification Service** | 2FA via push notifications ([source](https://github.com/mieweb/mieweb_auth_app)). Configured in [Settings](/docs/admins/settings). Used by LDAP gateway when `AUTH_BACKENDS` includes `notification`. |
+| **Push Notification Service** | 2FA via push notifications ([source](https://github.com/mieweb/mieweb_auth_app)). Configured in [Settings](../admins/settings.md). Used by LDAP gateway when `AUTH_BACKENDS` includes `notification`. |
 | **Database** | PostgreSQL via Sequelize ORM. Stores users, groups, sites, nodes, containers, and service config. |
 
 ## Data Flow
@@ -147,7 +144,7 @@ sequenceDiagram
 
 ### Authenticated HTTP Services
 
-When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests before proxying. The domain's `authServer` must be configured (see [External Domains](/docs/admins/core-concepts/external-domains#authentication)).
+When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests before proxying. The domain's `authServer` must be configured (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
 
 ```mermaid
 sequenceDiagram

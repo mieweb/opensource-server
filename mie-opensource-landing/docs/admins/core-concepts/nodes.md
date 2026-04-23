@@ -1,6 +1,3 @@
----
-sidebar_position: 6
----
 
 # Nodes
 
@@ -26,18 +23,16 @@ Discovers all nodes in a Proxmox cluster automatically:
 2. Enter API URL of any node, credentials, and TLS setting
 3. Click **Import** — all cluster nodes are discovered and imported
 
-:::tip
-Import only needs credentials for one node. It discovers all other nodes in the same cluster.
-:::
+!!! tip
+    Import only needs credentials for one node. It discovers all other nodes in the same cluster.
 
 ### Manual Node Creation
 
 1. Navigate to **Nodes** → select site → **Create New Node**
 2. Enter name (must match Proxmox hostname exactly), IP, API URL, and credentials
 
-:::important
-Name mismatches cause API communication failures.
-:::
+!!! warning "Important"
+    Name mismatches cause API communication failures.
 
 ## Authentication
 

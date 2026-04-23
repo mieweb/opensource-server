@@ -1,12 +1,9 @@
----
-sidebar_position: 7
----
 
 # System Settings
 
 Admin-only system-wide configuration. Access via **Settings** in the admin sidebar.
 
-![Settings Page](/img/screenshots/settings-page.png)
+![Settings Page](../assets/img/screenshots/settings-page.png)
 
 ## Email (SMTP)
 
@@ -17,9 +14,8 @@ Configure SMTP for password resets and system notifications.
 
 When configured, users can reset passwords via "Forgot your password?" on the login page (reset link valid for 1 hour).
 
-:::warning
-Without SMTP, password resets require manual admin intervention.
-:::
+!!! warning
+    Without SMTP, password resets require manual admin intervention.
 
 ## Push Notification 2FA
 
@@ -57,4 +53,4 @@ When enabled, `AUTH_BACKENDS` is set to `sql,notification` and `NOTIFICATION_URL
 
 ## Access Control
 
-Requires membership in a group with admin privileges (typically `sysadmins`). See [Users & Groups](core-concepts/users-and-groups).
+Requires membership in a group with admin privileges (typically `sysadmins`). See [Users & Groups](core-concepts/users-and-groups.md).

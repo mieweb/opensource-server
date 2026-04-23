@@ -437,7 +437,7 @@ http {
 
     # Serve documentation site statically
     location / {
-      root /opt/opensource-server/mie-opensource-landing/build;
+      root /opt/opensource-server/mie-opensource-landing/site;
       index index.html;
       try_files $uri $uri/ $uri.html /404.html =404;
     }
