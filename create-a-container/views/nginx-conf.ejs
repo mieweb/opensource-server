@@ -443,6 +443,7 @@ http {
       root /opt/opensource-server/mie-opensource-landing/site;
       index index.html;
       try_files $uri $uri/ $uri.html /404.html =404;
+      open_file_cache max=1000 inactive=20s;
     }
   }
   <%_ }) _%>
