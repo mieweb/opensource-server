@@ -26,5 +26,4 @@ install-pull-config:
 	cd pull-config && bash install.sh
 
 install-docs:
-	cd mie-opensource-landing && npm install --production
-	cd mie-opensource-landing && npm run build
+	cd mie-opensource-landing && uv run zensical build

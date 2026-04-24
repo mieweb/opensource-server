@@ -38,6 +38,12 @@ RUN sed -i \
 RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
 
+# Install uv for building the docs
+ARG UV_VERSION=0.11.6
+RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+    | tar -xzf - --strip-components=1 -C /usr/local/bin \
+      uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
+
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
 COPY . /opt/opensource-server
