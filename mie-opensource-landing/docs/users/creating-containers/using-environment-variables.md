@@ -1,7 +1,3 @@
----
-sidebar_position: 3
----
-
 # Building Custom Templates
 
 Create custom Docker images based on the standard images (Debian 13 or NodeJS 24) that use environment variables set at container creation time.
@@ -102,11 +98,11 @@ Named labels use the pattern `...http.<name>.<field>` where `<name>` groups fiel
 |-------|----------|-------------|
 | `...http.<name>.port` | Yes | Internal port number |
 | `...http.<name>.hostnameSuffix` | No | External hostname becomes `<container-hostname>-<suffix>` |
-| `...http.<name>.requireAuth` | No | `true`, `1`, or `yes` to enable [authentication](/docs/admins/core-concepts/external-domains#authentication) |
+| `...http.<name>.requireAuth` | No | `true`, `1`, or `yes` to enable [authentication](../../admins/core-concepts/external-domains.md#authentication) |
 
-:::warning
-The `<name>` groups fields together — a typo in the name (e.g., `ozwell-studio` vs `ozwell-sutdio`) causes fields to be treated as separate services.
-:::
+!!! warning
+
+    The `<name>` groups fields together — a typo in the name (e.g., `ozwell-studio` vs `ozwell-sutdio`) causes fields to be treated as separate services.
 
 ```dockerfile
 # Main app on port 3000 (hostname: myapp.example.com)

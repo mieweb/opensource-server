@@ -1,10 +1,7 @@
----
-sidebar_position: 7
----
 
 # pull-config
 
-Cron-based configuration management that pulls config files from the manager API. Installed on agent and manager containers. For deployment instructions, see [Deploying Agents](/docs/admins/deploying-agents).
+Cron-based configuration management that pulls config files from the manager API. Installed on agent and manager containers. For deployment instructions, see [Deploying Agents](../admins/deploying-agents.md).
 
 ## Architecture
 

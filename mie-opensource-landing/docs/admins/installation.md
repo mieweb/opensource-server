@@ -1,6 +1,3 @@
----
-sidebar_position: 1
----
 
 # Installation Guide
 
@@ -30,9 +27,8 @@ In the Proxmox web interface (`https://your-proxmox-host:8006`):
 3. **Network**: Configure with a **static IP** in the same subnet as your Proxmox server(s)
 4. **Resources**: Allocate CPU, memory, and storage as needed
 
-:::important Static IP Required
-The management container must have a static IP. It runs a DNSMasq instance to manage DHCP within the network.
-:::
+!!! warning "Static IP Required"
+    The management container must have a static IP. It runs a DNSMasq instance to manage DHCP within the network.
 
 ### 3. Configure Network Access
 
@@ -48,9 +44,8 @@ pct start <container-id>
 
 Navigate to `https://your-external-address:443` and register an account.
 
-:::important First Account
-The **first account registered** is automatically approved with full admin privileges. Register the intended administrator account first.
-:::
+!!! warning "First Account"
+    The **first account registered** is automatically approved with full admin privileges. Register the intended administrator account first.
 
-Once logged in, proceed to [Core Concepts](core-concepts) to configure your first site.
+Once logged in, proceed to [Core Concepts](core-concepts/index.md) to configure your first site.
 

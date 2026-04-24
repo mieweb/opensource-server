@@ -1,7 +1,3 @@
----
-sidebar_position: 8
----
-
 # Kernel Keyring Configuration
 
 Configure kernel keyring quotas on Proxmox hosts so the unprivileged UID mapped to `root` inside containers has the same key limits as the real host root, preventing quota exhaustion under nested Docker/LXC virtualization.
@@ -32,6 +28,6 @@ EOF
 sysctl --system
 ```
 
-:::important
-These settings must be applied on every Proxmox node where nested Docker builds or Docker-in-LXC workloads run.
-:::
+!!! important
+
+    These settings must be applied on every Proxmox node where nested Docker builds or Docker-in-LXC workloads run.

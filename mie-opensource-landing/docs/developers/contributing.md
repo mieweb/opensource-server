@@ -1,13 +1,10 @@
----
-sidebar_position: 4
----
 
 # Contributing
 
 ## Getting Started
 
 1. Review the [GitHub repository](https://github.com/mieweb/opensource-server) and open issues
-2. Set up a local dev environment using the [Development Workflow](development-workflow) guide
+2. Set up a local dev environment using the [Development Workflow](development-workflow.md) guide
 3. Fork the repository and create a feature branch
 4. Make changes, test thoroughly, submit a pull request
 

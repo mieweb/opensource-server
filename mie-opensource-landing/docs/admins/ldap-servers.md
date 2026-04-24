@@ -1,6 +1,3 @@
----
-sidebar_position: 3
----
 
 # Deploying LDAP Servers
 
@@ -8,7 +5,7 @@ The base container images authenticate users via LDAP against two servers named 
 
 ## Prerequisites
 
-- A running cluster with at least one [site](/docs/admins/core-concepts/sites) configured
+- A running cluster with at least one [site](core-concepts/sites.md) configured
 - The management software deployed and accessible
 - Two available container slots for `ldap1` and `ldap2`
 

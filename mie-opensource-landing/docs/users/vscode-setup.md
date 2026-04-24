@@ -1,6 +1,3 @@
----
-sidebar_position: 5
----
 
 # VSCode Remote SSH Setup
 
@@ -46,9 +43,8 @@ Command Palette → "Remote-SSH: Connect to Host..." → select your host → ch
 
 Once connected: **Open Folder** (`Ctrl+K Ctrl+O`) → navigate to your project directory (typically `/root/` or `/home/<username>/`).
 
-:::tip
-If you can't access `/root`, run `sudo su` in the VSCode terminal using your Proxmox password.
-:::
+!!! tip
+    If you can't access `/root`, run `sudo su` in the VSCode terminal using your Proxmox password.
 
 ## 5. Develop
 

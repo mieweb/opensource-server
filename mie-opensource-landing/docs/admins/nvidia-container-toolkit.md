@@ -1,6 +1,3 @@
----
-sidebar_position: 7
----
 
 # NVIDIA Container Toolkit
 
@@ -60,9 +57,8 @@ ls -la /var/lib/vz/snippets/nvidia
 # Should show: /var/lib/vz/snippets/nvidia -> /usr/share/lxc/hooks/nvidia
 ```
 
-:::important
-This symlink must exist on every Proxmox node where NVIDIA containers will be created. Without it, containers will be created but GPU passthrough will not function. The application logs a warning during container creation if the hookscript is missing.
-:::
+!!! warning "Important"
+    This symlink must exist on every Proxmox node where NVIDIA containers will be created. Without it, containers will be created but GPU passthrough will not function. The application logs a warning during container creation if the hookscript is missing.
 
 ## 4. Mark the Node as NVIDIA-Capable
 

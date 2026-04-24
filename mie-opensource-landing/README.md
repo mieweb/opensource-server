@@ -1,27 +1,20 @@
-# MIE Open Source Landing Page
+# Opensource at MIE - Documentation
 
-A modern, responsive landing page showcasing MIE's open source initiatives, built with [Docusaurus](https://docusaurus.io/). Features container management tools, Proxmox Launchpad CI/CD integration, and comprehensive documentation.
+Documentation site for MIE's opensource Proxmox cluster, built with [Zensical](https://zensical.org/) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/).
 
-## Configuration for Self-Hosted Deployments
-
-This documentation site is designed to work for both MIE's hosted deployment and self-hosted instances. URLs for Proxmox and container creation services are parameterized.
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and update the URLs for your deployment:
+## Quick Start
 
 ```bash
-cp .env.example .env
+uv sync
+uv run zensical serve
 ```
 
-Then edit `.env` with your instance URLs:
+Open http://localhost:8000 to preview the site.
 
-```env
-# Your Proxmox Web GUI URL
-PROXMOX_URL=https://your-proxmox-server:8006
+## Build
 
-# Your Container Creation Web GUI URL
-CONTAINER_CREATION_URL=https://your-container-creation-url.com
+```bash
+uv run zensical build
 ```
 
-These URLs will be used throughout the documentation and site interface automatically.
+Output is in the `site/` directory.

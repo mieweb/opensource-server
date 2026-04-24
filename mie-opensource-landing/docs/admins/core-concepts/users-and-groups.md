@@ -1,6 +1,3 @@
----
-sidebar_position: 3
----
 
 # Users & Groups
 
@@ -24,9 +21,8 @@ Admins can invite users via email: **Users** → **Invite User** → enter email
 
 The recipient gets a secure link (expires in 24 hours). Registering via the link pre-fills and locks the email, and the account is **automatically activated**.
 
-:::important
-SMTP must be configured in [Settings](../settings) before sending invitations.
-:::
+!!! warning "Important"
+    SMTP must be configured in [Settings](../settings.md) before sending invitations.
 
 ## User Statuses
 

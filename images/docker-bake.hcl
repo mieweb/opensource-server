@@ -17,7 +17,7 @@ target "docs" {
     context = "../"
     dockerfile = "images/docs/Dockerfile"
     contexts = {
-        nodejs = "target:nodejs"
+        base = "target:base"
     }
 }
 

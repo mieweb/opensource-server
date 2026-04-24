@@ -1,6 +1,3 @@
----
-sidebar_position: 5
----
 
 # External Domains
 
@@ -22,9 +19,8 @@ External domains expose container HTTP services to the internet. Domains are glo
 | **Cloudflare API Token** | For DNS-01 challenge authentication and cross-site DNS record management |
 | **Auth Server URL** | Optional — URL of an authentication server for NGINX `auth_request`. See [Authentication](#authentication) |
 
-:::tip
-Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
-:::
+!!! tip
+    Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
 
 ## Setup
 
@@ -104,7 +100,7 @@ On container or service deletion, cross-site A records are cleaned up automatica
 
 ## Using with Services
 
-When creating a container service, users select an external domain and specify a subdomain (e.g., `app` for `app.example.com`). All external domains are available regardless of which site the container is on. See the [Web GUI guide](/docs/users/creating-containers/web-gui) for details.
+When creating a container service, users select an external domain and specify a subdomain (e.g., `app` for `app.example.com`). All external domains are available regardless of which site the container is on. See the [Web GUI guide](../../users/creating-containers/web-gui.md) for details.
 
 ## Security
 
