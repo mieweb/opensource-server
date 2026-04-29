@@ -227,14 +227,31 @@ router.post('/import', async (req, res) => {
     const containerList = await client.clusterResources('lxc');
     const containers = await Promise.all(containerList.map(async (c) => {
       const config = await client.lxcConfig(c.node, c.vmid);
+
+      const macMatch = config.net0?.match(/hwaddr=([0-9A-Fa-f:]+)/);
+      const macAddress = macMatch ? macMatch[1] : null;
+
+      let ipv4Address = null;
+      const ipMatch = config.net0?.match(/ip=([^,]+)/);
+      if (ipMatch && ipMatch[1] !== 'dhcp') {
+        ipv4Address = ipMatch[1].split('/')[0];
+      } else if (ipMatch && ipMatch[1] === 'dhcp') {
+        // For DHCP containers, query the actual interface IP from the running container
+        try {
+          ipv4Address = await client.getLxcIpAddress(c.node, c.vmid, 3, 2000);
+        } catch (err) {
+          console.error(`Failed to get IP for DHCP container ${c.vmid}: ${err.message}`);
+        }
+      }
+
       return {
         hostname: config.hostname,
         username: req.session.user,
         nodeId: importedNodes.find(n => n.name === c.node).id,
         siteId,
         containerId: c.vmid,
-        macAddress: config.net0.match(/hwaddr=([0-9A-Fa-f:]+)/)[1],
-        ipv4Address: config.net0.match(/ip=([^,]+)/)[1].split('/')[0],
+        macAddress,
+        ipv4Address,
         status: 'running'
       };
     }));
