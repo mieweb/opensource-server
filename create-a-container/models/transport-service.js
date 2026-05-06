@@ -5,13 +5,16 @@ module.exports = (sequelize, DataTypes) => {
   class TransportService extends Model {
     static associate(models) {
       TransportService.belongsTo(models.Service, { foreignKey: 'serviceId', as: 'service' });
+      TransportService.belongsTo(models.Site, { foreignKey: 'siteId', as: 'site' });
     }
 
-    // Find the next available external port for the given protocol in the specified range
-    static async nextAvailablePortInRange(protocol, minPort, maxPort, transaction = null) {
+    // Find the next available external port for the given protocol in the specified range,
+    // scoped to a specific site.
+    static async nextAvailablePortInRange(protocol, minPort, maxPort, siteId, transaction = null) {
       const queryOptions = {
         where: {
           protocol: protocol,
+          siteId: siteId,
           externalPort: {
             [sequelize.Sequelize.Op.between]: [minPort, maxPort]
           }
@@ -19,7 +22,7 @@ module.exports = (sequelize, DataTypes) => {
         attributes: ['externalPort'],
         order: [['externalPort', 'ASC']]
       };
-      
+
       if (transaction) {
         queryOptions.transaction = transaction;
         queryOptions.lock = sequelize.Sequelize.Transaction.LOCK.UPDATE;
@@ -49,6 +52,14 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       }
     },
+    siteId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Sites',
+        key: 'id'
+      }
+    },
     protocol: {
       type: DataTypes.ENUM('tcp', 'udp'),
       allowNull: false,
@@ -74,9 +85,9 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'TransportService',
     indexes: [
       {
-        name: 'transport_services_unique_protocol_port',
+        name: 'transport_services_unique_site_protocol_port',
         unique: true,
-        fields: ['protocol', 'externalPort']
+        fields: ['siteId', 'protocol', 'externalPort']
       }
     ]
   });
