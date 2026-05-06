@@ -427,6 +427,7 @@ router.post('/', async (req, res) => {
           const externalPort = await TransportService.nextAvailablePortInRange(protocol, minPort, maxPort, siteId, t);
           await TransportService.create({
             serviceId: createdService.id,
+            siteId,
             protocol: protocol,
             externalPort
           }, { transaction: t });
@@ -616,7 +617,7 @@ router.put('/:id', requireAuth, async (req, res) => {
              await DnsService.create({ serviceId: createdService.id, recordType: 'SRV', dnsName }, { transaction: t });
           } else {
               const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535, siteId, t);
-             await TransportService.create({ serviceId: createdService.id, protocol, externalPort }, { transaction: t });
+              await TransportService.create({ serviceId: createdService.id, siteId, protocol, externalPort }, { transaction: t });
           }
         }
 
