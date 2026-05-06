@@ -7,8 +7,11 @@ module.exports = (sequelize, DataTypes) => {
       TransportService.belongsTo(models.Service, { foreignKey: 'serviceId', as: 'service' });
     }
 
-    // Find the next available external port for the given protocol in the specified range
-    static async nextAvailablePortInRange(protocol, minPort, maxPort, transaction = null) {
+    // Find the next available external port for the given protocol in the specified range,
+    // scoped to a specific site when siteId is provided.
+    static async nextAvailablePortInRange(protocol, minPort, maxPort, siteId = null, transaction = null) {
+      const { Service, Container } = sequelize.models;
+
       const queryOptions = {
         where: {
           protocol: protocol,
@@ -19,7 +22,22 @@ module.exports = (sequelize, DataTypes) => {
         attributes: ['externalPort'],
         order: [['externalPort', 'ASC']]
       };
-      
+
+      if (siteId !== null) {
+        queryOptions.include = [{
+          model: Service,
+          as: 'service',
+          attributes: [],
+          required: true,
+          include: [{
+            model: Container,
+            attributes: [],
+            required: true,
+            where: { siteId }
+          }]
+        }];
+      }
+
       if (transaction) {
         queryOptions.transaction = transaction;
         queryOptions.lock = sequelize.Sequelize.Transaction.LOCK.UPDATE;
