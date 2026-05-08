@@ -351,7 +351,7 @@ router.post('/', async (req, res) => {
       nodeWhere.nvidiaAvailable = true;
     }
 
-    const [node] = await Node.findAll({
+    const eligibleNodes = await Node.findAll({
       where: nodeWhere,
       attributes: [
         'id',
@@ -364,11 +364,12 @@ router.post('/', async (req, res) => {
       }],
       group: ['Node.id'],
       order: [
-        [Sequelize.literal('containerCount'), 'ASC'],
+        [Sequelize.fn('COUNT', Sequelize.col('containers.id')), 'ASC'],
         ['id', 'ASC']
       ],
       limit: 1
     });
+    const node = eligibleNodes[0] || null;
     if (!node && wantsNvidia) {
       throw new Error('NVIDIA requested but no NVIDIA-capable nodes are available in this site');
     }
