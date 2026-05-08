@@ -351,20 +351,32 @@ router.post('/', async (req, res) => {
       nodeWhere.nvidiaAvailable = true;
     }
 
-    const node = await Node.findOne({
+    const eligibleNodes = await Node.findAll({
       where: nodeWhere,
-      attributes: ['id'],
-      include: [{
-        association: 'containers',
-        attributes: [],
-        required: false
-      }],
-      group: ['Node.id'],
-      order: [
-        [Sequelize.fn('COUNT', Sequelize.col('containers.id')), 'ASC'],
-        ['id', 'ASC']
-      ]
+      attributes: ['id']
     });
+    const eligibleNodeIds = eligibleNodes.map(({ id }) => id);
+    const nodeContainerCounts = eligibleNodeIds.length === 0 ? [] : await Container.findAll({
+      where: { nodeId: eligibleNodeIds },
+      attributes: [
+        'nodeId',
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'containerCount']
+      ],
+      group: ['nodeId'],
+      raw: true
+    });
+    const countByNodeId = new Map(
+      nodeContainerCounts.map(({ nodeId, containerCount }) => [Number(nodeId), Number(containerCount)])
+    );
+    const node = eligibleNodes.reduce((leastLoadedNode, candidateNode) => {
+      const candidateCount = countByNodeId.get(candidateNode.id) || 0;
+      if (!leastLoadedNode) return candidateNode;
+
+      const leastLoadedCount = countByNodeId.get(leastLoadedNode.id) || 0;
+      if (candidateCount < leastLoadedCount) return candidateNode;
+      if (candidateCount === leastLoadedCount && candidateNode.id < leastLoadedNode.id) return candidateNode;
+      return leastLoadedNode;
+    }, null);
     if (!node && wantsNvidia) {
       throw new Error('NVIDIA requested but no NVIDIA-capable nodes are available in this site');
     }
