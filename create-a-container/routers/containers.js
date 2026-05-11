@@ -351,7 +351,26 @@ router.post('/', async (req, res) => {
       nodeWhere.nvidiaAvailable = true;
     }
 
-    const node = await Node.findOne({ where: nodeWhere });
+    // Select the node with the fewest existing containers to balance load.
+    // LEFT JOINs containers, groups by node, and orders by count ascending
+    // so the least-loaded node is chosen first.
+    const node = await Node.findOne({
+      where: nodeWhere,
+      include: [{
+        model: Container,
+        as: 'containers',
+        attributes: [],
+        required: false
+      }],
+      attributes: {
+        include: [
+          [Sequelize.fn('COUNT', Sequelize.col('containers.id')), 'containerCount']
+        ]
+      },
+      group: ['Node.id'],
+      order: [[Sequelize.fn('COUNT', Sequelize.col('containers.id')), 'ASC']],
+      subQuery: false
+    });
     if (!node && wantsNvidia) {
       throw new Error('NVIDIA requested but no NVIDIA-capable nodes are available in this site');
     }
