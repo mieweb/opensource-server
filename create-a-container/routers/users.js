@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { User, Group, InviteToken, Setting } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
-const { sendInviteEmail } = require('../utils/email');
+const { sendInviteEmail, sendBulkEmail } = require('../utils/email');
 const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
 
 // Apply auth and admin check to all routes
@@ -54,6 +54,55 @@ router.get('/invite', async (req, res) => {
   res.render('users/invite', {
     req
   });
+});
+
+// POST /users/email-all - Send an email to all users with an email address
+router.post('/email-all', async (req, res) => {
+  const { subject, message } = req.body;
+
+  if (!subject || subject.trim() === '' || !message || message.trim() === '') {
+    await req.flash('error', 'Both Subject and Message are required');
+    return res.redirect('/users');
+  }
+
+  try {
+    // Verify SMTP is configured before attempting to send
+    const settings = await Setting.getMultiple(['smtp_url']);
+    if (!settings.smtp_url || settings.smtp_url.trim() === '') {
+      await req.flash('error', 'SMTP is not configured. Please configure SMTP settings before sending email.');
+      return res.redirect('/users');
+    }
+
+    // Collect unique, non-empty email addresses across all users
+    const users = await User.findAll({ attributes: ['mail'] });
+    const recipients = [...new Set(
+      users
+        .map(u => (u.mail || '').trim().toLowerCase())
+        .filter(m => m.length > 0)
+    )];
+
+    if (recipients.length === 0) {
+      await req.flash('error', 'No users with email addresses to send to');
+      return res.redirect('/users');
+    }
+
+    const { sent, failed } = await sendBulkEmail(recipients, subject.trim(), message);
+
+    if (failed.length === 0) {
+      await req.flash('success', `Email sent to ${sent.length} user${sent.length === 1 ? '' : 's'}`);
+    } else if (sent.length === 0) {
+      console.error('Bulk email failures:', failed);
+      await req.flash('error', `Failed to send email to all ${failed.length} recipient${failed.length === 1 ? '' : 's'}. Check SMTP settings.`);
+    } else {
+      console.error('Bulk email partial failures:', failed);
+      await req.flash('warning', `Email sent to ${sent.length} user${sent.length === 1 ? '' : 's'}; failed for ${failed.length}.`);
+    }
+    return res.redirect('/users');
+  } catch (error) {
+    console.error('Email all error:', error);
+    await req.flash('error', 'Failed to send email: ' + error.message);
+    return res.redirect('/users');
+  }
 });
 
 // POST /users/invite - Send invitation email

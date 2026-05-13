@@ -154,8 +154,68 @@ Medical Informatics Engineering`,
   await transporter.sendMail(mailOptions);
 }
 
+/**
+ * Escape HTML special characters to prevent injection in email HTML body
+ */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Send a bulk email to multiple recipients (one message per recipient).
+ * Returns { sent, failed } where failed is an array of { to, error }.
+ *
+ * @param {string[]} recipients - List of recipient email addresses
+ * @param {string} subject - Email subject
+ * @param {string} message - Plain-text message body
+ */
+async function sendBulkEmail(recipients, subject, message) {
+  const settings = await Setting.getMultiple(['smtp_noreply_address']);
+  const from = settings.smtp_noreply_address || 'noreply@localhost';
+
+  const transporter = await createTransport();
+
+  // Convert plain-text body to safe HTML (preserve line breaks)
+  const htmlBody = escapeHtml(message).replace(/\r?\n/g, '<br>');
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="color: #333; font-size: 14px; line-height: 1.5;">${htmlBody}</div>
+      <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+      <p style="color: #333; font-size: 14px;">
+        <strong>Medical Informatics Engineering</strong>
+      </p>
+    </div>
+  `;
+
+  const sent = [];
+  const failed = [];
+
+  for (const to of recipients) {
+    try {
+      await transporter.sendMail({
+        from,
+        to,
+        subject,
+        text: message,
+        html
+      });
+      sent.push(to);
+    } catch (error) {
+      failed.push({ to, error: error.message });
+    }
+  }
+
+  return { sent, failed };
+}
+
 module.exports = {
   createTransport,
   sendPasswordResetEmail,
-  sendInviteEmail
+  sendInviteEmail,
+  sendBulkEmail
 };

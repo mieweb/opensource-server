@@ -10,6 +10,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="card-title mb-0">Users</h4>
       <div>
+        <button type="button" class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#emailAllModal" aria-label="Send email to all users">Email All</button>
         <a class="btn btn-success me-2" href="/users/invite" role="button" aria-label="Invite user via email">Invite User</a>
         <a class="btn btn-primary" href="/users/new" role="button" aria-label="Create new user">New User</a>
       </div>
@@ -70,6 +71,39 @@
           <% } %>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- Email All Modal -->
+<div class="modal fade" id="emailAllModal" tabindex="-1" aria-labelledby="emailAllModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="/users/email-all" onsubmit="return confirm('Send this email to all <%= rows.length %> user(s)?');">
+        <div class="modal-header">
+          <h5 class="modal-title" id="emailAllModalLabel">Email All Users</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small">
+            This will send an email to every user with a registered email address (<%= rows.filter(r => r.mail && r.mail.trim() !== '').length %> recipient(s)).
+          </p>
+          <div class="mb-3">
+            <label for="emailAllSubject" class="form-label">Subject <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="emailAllSubject" name="subject" required maxlength="200" aria-required="true">
+          </div>
+          <div class="mb-3">
+            <label for="emailAllMessage" class="form-label">Message <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="emailAllMessage" name="message" rows="8" required aria-required="true"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info" aria-label="Send email to all users">
+            <i class="bi bi-envelope me-1"></i> Send Email
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
