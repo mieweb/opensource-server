@@ -1,13 +1,19 @@
 {
   "nodemonConfig": {
     "ignore": [
-      "certs"
+      "certs",
+      "client"
     ]
   },
   "scripts": {
     "dev": "nodemon server.js",
     "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
-    "job-runner": "node job-runner.js"
+    "job-runner": "node job-runner.js",
+    "client:install": "npm --prefix client install",
+    "client:dev": "npm --prefix client run dev",
+    "client:build": "npm --prefix client run build",
+    "client:preview": "npm --prefix client run preview",
+    "client:type-check": "npm --prefix client run type-check"
   },
   "dependencies": {
     "argon2": "^0.44.0",
