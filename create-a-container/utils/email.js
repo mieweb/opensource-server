@@ -43,8 +43,11 @@ async function createTransport() {
  */
 async function sendPasswordResetEmail(to, username, resetUrl) {
   const settings = await Setting.getMultiple(['smtp_noreply_address']);
-  const from = settings.smtp_noreply_address || 'noreply@localhost';
-  
+  const from = settings.smtp_noreply_address;
+  if (!from || from.trim() === '') {
+    throw new Error('SMTP no-reply address is not configured');
+  }
+
   const transporter = await createTransport();
   
   const mailOptions = {
@@ -102,8 +105,11 @@ Medical Informatics Engineering`,
  */
 async function sendInviteEmail(to, inviteUrl) {
   const settings = await Setting.getMultiple(['smtp_noreply_address']);
-  const from = settings.smtp_noreply_address || 'noreply@localhost';
-  
+  const from = settings.smtp_noreply_address;
+  if (!from || from.trim() === '') {
+    throw new Error('SMTP no-reply address is not configured');
+  }
+
   const transporter = await createTransport();
   
   const mailOptions = {
@@ -176,7 +182,10 @@ function escapeHtml(str) {
  */
 async function sendBulkEmail(recipients, subject, message) {
   const settings = await Setting.getMultiple(['smtp_noreply_address']);
-  const from = settings.smtp_noreply_address || 'noreply@localhost';
+  const from = settings.smtp_noreply_address;
+  if (!from || from.trim() === '') {
+    throw new Error('SMTP no-reply address is not configured');
+  }
 
   const transporter = await createTransport();
 
@@ -192,25 +201,16 @@ async function sendBulkEmail(recipients, subject, message) {
     </div>
   `;
 
-  const sent = [];
-  const failed = [];
+  await transporter.sendMail({
+    from,
+    to: from,
+    bcc: recipients.join(', '),
+    subject,
+    text: message,
+    html
+  });
 
-  for (const to of recipients) {
-    try {
-      await transporter.sendMail({
-        from,
-        to,
-        subject,
-        text: message,
-        html
-      });
-      sent.push(to);
-    } catch (error) {
-      failed.push({ to, error: error.message });
-    }
-  }
-
-  return { sent, failed };
+  return { sent: recipients, failed: [] };
 }
 
 module.exports = {
