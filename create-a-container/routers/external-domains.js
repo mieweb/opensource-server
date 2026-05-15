@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { ExternalDomain, Site } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
+const { formatSequelizeError } = require('../utils');
 
 // All routes require authentication + admin
 router.use(requireAuth);
@@ -76,7 +77,7 @@ router.post('/', async (req, res) => {
     return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error creating external domain:', error);
-    await req.flash('error', 'Failed to create external domain: ' + error.message);
+    await req.flash('error', 'Failed to create external domain: ' + formatSequelizeError(error));
     return res.redirect('/external-domains/new');
   }
 });
@@ -115,7 +116,7 @@ router.put('/:id', async (req, res) => {
     return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error updating external domain:', error);
-    await req.flash('error', 'Failed to update external domain: ' + error.message);
+    await req.flash('error', 'Failed to update external domain: ' + formatSequelizeError(error));
     return res.redirect(`/external-domains/${domainId}/edit`);
   }
 });
@@ -139,7 +140,7 @@ router.delete('/:id', async (req, res) => {
     return res.redirect('/external-domains');
   } catch (error) {
     console.error('Error deleting external domain:', error);
-    await req.flash('error', 'Failed to delete external domain: ' + error.message);
+    await req.flash('error', 'Failed to delete external domain: ' + formatSequelizeError(error));
     return res.redirect('/external-domains');
   }
 });

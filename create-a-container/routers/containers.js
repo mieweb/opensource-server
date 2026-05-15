@@ -8,6 +8,7 @@ const serviceMap = require('../data/services.json');
 const { isApiRequest } = require('../utils/http');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../utils/docker-registry');
 const { manageDnsRecords } = require('../utils/cloudflare-dns');
+const { formatSequelizeError } = require('../utils');
 
 /**
  * Normalize a Docker image reference to full format: host/org/image:tag
@@ -663,7 +664,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     return res.redirect(`/sites/${siteId}/containers`);
   } catch (err) {
     console.error('Error updating container:', err);
-    await req.flash('error', 'Failed to update container: ' + err.message);
+    await req.flash('error', 'Failed to update container: ' + formatSequelizeError(err));
     return res.redirect(`/sites/${siteId}/containers/${containerId}/edit`);
   }
 });
@@ -724,7 +725,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
   } catch (error) {
     console.error(error);
     if (isApiRequest(req)) return res.status(500).json({ error });
-    await req.flash('error', `Failed to delete: ${error.message}`);
+    await req.flash('error', `Failed to delete: ${formatSequelizeError(error)}`);
     return res.redirect(`/sites/${siteId}/containers`);
   }
   

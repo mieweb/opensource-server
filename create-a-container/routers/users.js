@@ -4,6 +4,7 @@ const { User, Group, InviteToken, Setting } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
 const { sendInviteEmail } = require('../utils/email');
 const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
+const { formatSequelizeError } = require('../utils');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -100,7 +101,7 @@ router.post('/invite', async (req, res) => {
     }
   } catch (error) {
     console.error('Invite error:', error);
-    await req.flash('error', 'Failed to send invitation: ' + error.message);
+    await req.flash('error', 'Failed to send invitation: ' + formatSequelizeError(error));
     return res.redirect('/users/invite');
   }
 });
@@ -165,7 +166,7 @@ router.post('/', async (req, res) => {
     return res.redirect('/users');
   } catch (error) {
     console.error('Error creating user:', error);
-    await req.flash('error', 'Failed to create user: ' + error.message);
+    await req.flash('error', 'Failed to create user: ' + formatSequelizeError(error));
     return res.redirect('/users/new');
   }
 });
@@ -230,7 +231,7 @@ router.put('/:id', async (req, res) => {
     return res.redirect('/users');
   } catch (error) {
     console.error('Error updating user:', error);
-    await req.flash('error', 'Failed to update user: ' + error.message);
+    await req.flash('error', 'Failed to update user: ' + formatSequelizeError(error));
     return res.redirect(`/users/${uidNumber}/edit`);
   }
 });
@@ -254,7 +255,7 @@ router.delete('/:id', async (req, res) => {
     return res.redirect('/users');
   } catch (error) {
     console.error('Error deleting user:', error);
-    await req.flash('error', 'Failed to delete user: ' + error.message);
+    await req.flash('error', 'Failed to delete user: ' + formatSequelizeError(error));
     return res.redirect('/users');
   }
 });

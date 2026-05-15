@@ -5,6 +5,7 @@ const { requireAuth, requireAdmin } = require('../middlewares');
 const axios = require('axios');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
+const { formatSequelizeError } = require('../utils');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -137,7 +138,7 @@ router.post('/', async (req, res) => {
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error creating node:', err);
-    await req.flash('error', `Failed to create node: ${err.message}`);
+    await req.flash('error', `Failed to create node: ${formatSequelizeError(err)}`);
     return res.redirect(`/sites/${siteId}/nodes/new`);
   }
 });
@@ -259,7 +260,7 @@ router.post('/import', async (req, res) => {
     res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.log(err);
-    await req.flash('error', `Failed to import nodes: ${err.message}`);
+    await req.flash('error', `Failed to import nodes: ${formatSequelizeError(err)}`);
     return res.redirect(`/sites/${siteId}/nodes/import`);
   }
 });
@@ -310,7 +311,7 @@ router.put('/:id', async (req, res) => {
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error updating node:', err);
-    await req.flash('error', `Failed to update node: ${err.message}`);
+    await req.flash('error', `Failed to update node: ${formatSequelizeError(err)}`);
     return res.redirect(`/sites/${siteId}/nodes/${nodeId}/edit`);
   }
 });
@@ -377,7 +378,7 @@ router.delete('/:id', async (req, res) => {
     return res.redirect(`/sites/${siteId}/nodes`);
   } catch (err) {
     console.error('Error deleting node:', err);
-    await req.flash('error', `Failed to delete node: ${err.message}`);
+    await req.flash('error', `Failed to delete node: ${formatSequelizeError(err)}`);
     return res.redirect(`/sites/${siteId}/nodes`);
   }
 });
