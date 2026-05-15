@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Group, User } = require('../models');
 const { requireAuth, requireAdmin } = require('../middlewares');
+const { formatSequelizeError } = require('../utils');
 
 // Apply auth and admin check to all routes
 router.use(requireAuth);
@@ -72,7 +73,7 @@ router.post('/', async (req, res) => {
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error creating group:', error);
-    await req.flash('error', 'Failed to create group: ' + error.message);
+    await req.flash('error', 'Failed to create group: ' + formatSequelizeError(error));
     return res.redirect('/groups/new');
   }
 });
@@ -98,7 +99,7 @@ router.put('/:id', async (req, res) => {
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error updating group:', error);
-    await req.flash('error', 'Failed to update group: ' + error.message);
+    await req.flash('error', 'Failed to update group: ' + formatSequelizeError(error));
     return res.redirect(`/groups/${req.params.id}/edit`);
   }
 });
@@ -120,7 +121,7 @@ router.delete('/:id', async (req, res) => {
     return res.redirect('/groups');
   } catch (error) {
     console.error('Error deleting group:', error);
-    await req.flash('error', 'Failed to delete group: ' + error.message);
+    await req.flash('error', 'Failed to delete group: ' + formatSequelizeError(error));
     return res.redirect('/groups');
   }
 });

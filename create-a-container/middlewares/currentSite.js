@@ -1,4 +1,4 @@
-const { Site } = require('../models');
+const { Site, Setting } = require('../models');
 
 // Middleware to set req.session.currentSite based on the :siteId parameter
 function setCurrentSite(req, res, next) {
@@ -9,7 +9,9 @@ function setCurrentSite(req, res, next) {
   next();
 }
 
-// Middleware to load all sites and attach to res.locals for use in views
+// Middleware to load all sites and attach to res.locals for use in views.
+// Also exposes a small set of layout-wide settings (e.g. push notification URL,
+// used by the sidebar to render the MFA Admin link).
 async function loadSites(req, res, next) {
   try {
     const sites = await Site.findAll({
@@ -23,6 +25,15 @@ async function loadSites(req, res, next) {
     res.locals.sites = [];
     res.locals.currentSite = null;
   }
+
+  try {
+    const pushNotificationUrl = await Setting.get('push_notification_url');
+    res.locals.pushNotificationUrl = pushNotificationUrl?.trim() || '';
+  } catch (error) {
+    console.error('Error loading push notification URL:', error);
+    res.locals.pushNotificationUrl = '';
+  }
+
   next();
 }
 

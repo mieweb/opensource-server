@@ -1,6 +1,7 @@
 const express = require('express');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
 const { requireAuth, requireAdmin, requireLocalhostOrAdmin, setCurrentSite, isApiRequest } = require('../middlewares');
+const { formatSequelizeError } = require('../utils');
 
 const router = express.Router();
 
@@ -185,7 +186,7 @@ router.post('/', requireAdmin, async (req, res) => {
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error creating site:', error);
-    await req.flash('error', 'Failed to create site: ' + error.message);
+    await req.flash('error', 'Failed to create site: ' + formatSequelizeError(error));
     return res.redirect('/sites/new');
   }
 });
@@ -216,7 +217,7 @@ router.put('/:id', requireAdmin, async (req, res) => {
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error updating site:', error);
-    await req.flash('error', 'Failed to update site: ' + error.message);
+    await req.flash('error', 'Failed to update site: ' + formatSequelizeError(error));
     return res.redirect(`/sites/${req.params.id}/edit`);
   }
 });
@@ -245,7 +246,7 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     return res.redirect('/sites');
   } catch (error) {
     console.error('Error deleting site:', error);
-    await req.flash('error', 'Failed to delete site: ' + error.message);
+    await req.flash('error', 'Failed to delete site: ' + formatSequelizeError(error));
     return res.redirect('/sites');
   }
 });

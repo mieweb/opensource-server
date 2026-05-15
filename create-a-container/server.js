@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const morgan = require('morgan');
+const fs = require('fs');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
 const flash = require('connect-flash');
 const methodOverride = require('method-override');
@@ -43,7 +44,10 @@ async function main() {
   app.set('trust proxy', 1);
 
   // setup middleware
-  app.use(morgan('combined'));
+  const accessLogStream = process.env.ACCESS_LOG
+    ? fs.createWriteStream(process.env.ACCESS_LOG, { flags: 'a' })
+    : process.stdout;
+  app.use(morgan('combined', { stream: accessLogStream }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true })); // Parse form data
   app.use(methodOverride((req, res) => {

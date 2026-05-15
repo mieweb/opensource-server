@@ -38,7 +38,7 @@
   <div class="container-fluid" style="margin-top: 56px;">
     <div class="row">
       <!-- Collapsible Sidebar -->
-      <nav id="sidebarMenu" class="col-auto d-md-block bg-dark sidebar collapse">
+      <nav id="sidebarMenu" class="col-auto d-lg-block bg-dark sidebar collapse">
         <div class="position-sticky pt-3">
           <ul class="nav flex-column">
             <% 
@@ -102,6 +102,13 @@
                   Settings
                 </a>
               </li>
+              <% if (typeof pushNotificationUrl !== 'undefined' && pushNotificationUrl) { %>
+                <li class="nav-item">
+                  <a class="nav-link" href="<%= pushNotificationUrl %>/admin" target="_blank" rel="noopener noreferrer">
+                    MFA Admin <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </li>
+              <% } %>
             <% } %>
           </ul>
         </div>

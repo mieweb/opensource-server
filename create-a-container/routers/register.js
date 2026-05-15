@@ -3,6 +3,7 @@ const router = express.Router();
 const QRCode = require('qrcode');
 const { User, InviteToken, Setting } = require('../models');
 const { sendPushNotificationInvite } = require('../utils/push-notification-invite');
+const { formatSequelizeError } = require('../utils');
 
 // GET / - Display registration form
 router.get('/', async (req, res) => {
@@ -150,7 +151,7 @@ router.post('/', async (req, res) => {
         await req.flash('error', 'A user with these details is already registered. Please login with your existing account.');
       }
     } else {
-      await req.flash('error', 'Registration failed: ' + err.message);
+      await req.flash('error', 'Registration failed: ' + formatSequelizeError(err));
     }
     
     // Preserve invite token in redirect if present

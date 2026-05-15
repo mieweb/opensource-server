@@ -27,6 +27,8 @@ Two-factor authentication via push notifications using the [MieWeb Auth App](htt
 2. Check **Enable Push Notification 2FA**
 3. Save
 
+Once a Push Notification URL is configured, an **MFA Admin** link appears at the bottom of the admin sidebar. It opens `${push_notification_url}/admin` in a new tab so admins can manage registered devices in the notification service.
+
 ### Flow
 
 1. User enters username/password

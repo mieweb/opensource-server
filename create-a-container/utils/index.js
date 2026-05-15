@@ -97,10 +97,26 @@ function isSafeRedirectUrl(url, allowedDomains = []) {
   }
 }
 
+/**
+ * Convert a Sequelize validation or constraint error into a plain-english
+ * message by joining the per-item messages from `err.errors`. Falls back to
+ * the error's own `message` for non-Sequelize errors.
+ * @param {Error} err
+ * @returns {string}
+ */
+function formatSequelizeError(err) {
+  if (!err) return 'Unknown error';
+  if (Array.isArray(err.errors) && err.errors.length > 0) {
+    return err.errors.map(e => e.message).filter(Boolean).join(' ');
+  }
+  return err.message || 'Unknown error';
+}
+
 module.exports = {
   ProxmoxApi,
   run,
   isSafeRelativeUrl,
   isSafeRedirectUrl,
-  getVersionInfo
+  getVersionInfo,
+  formatSequelizeError
 };

@@ -21,6 +21,12 @@ RUN apt update && apt -y install postgresql-common \
 # override prevents a race condition at boot.
 COPY images/manager/wait-proxmox-regenerate-snakeoil.conf /etc/systemd/system/postgresql@.service.d/
 
+# Directory for the create-a-container access log written by morgan
+# (see Environment=ACCESS_LOG in container-creator.service) and its
+# logrotate config.
+RUN mkdir -p /var/log/opensource-server
+COPY images/manager/opensource-server.logrotate /etc/logrotate.d/opensource-server
+
 # Install the software. We include the .git directory so that the software can
 # update itself without replacing the entire container.
 COPY . /opt/opensource-server
