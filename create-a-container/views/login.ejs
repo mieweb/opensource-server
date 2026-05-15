@@ -47,6 +47,20 @@
             <input type="submit" value="Login" id="loginButton">
         </form>
         
+        <% if (isDev) { %>
+            <hr>
+            <div class="signup-section" style="display: flex; gap: 8px; justify-content: center;">
+                <form method="POST" action="/login/dev" style="flex: 1;">
+                    <input type="hidden" name="role" value="admin">
+                    <input type="submit" value="Login as Admin" style="margin-top: 0;">
+                </form>
+                <form method="POST" action="/login/dev" style="flex: 1;">
+                    <input type="hidden" name="role" value="user">
+                    <input type="submit" value="Login as User" style="margin-top: 0;">
+                </form>
+            </div>
+        <% } %>
+        
         <!-- Loading banner for 2FA waiting -->
         <div id="loadingBanner" class="alert alert-info" style="display: none;">
             <strong>⏳ Waiting for authentication...</strong>

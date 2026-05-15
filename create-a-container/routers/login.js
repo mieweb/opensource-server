@@ -3,15 +3,66 @@ const router = express.Router();
 const { User, Setting, ExternalDomain } = require('../models');
 const { isSafeRedirectUrl } = require('../utils');
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 // GET / - Display login form
 router.get('/', (req, res) => {
   res.render('login', {
     successMessages: req.flash('success'),
     errorMessages: req.flash('error'),
     warningMessages: req.flash('warning'),
-    redirect: req.query.redirect || '/'
+    redirect: req.query.redirect || '/',
+    isDev
   });
 });
+
+// POST /dev - One-click dev login (non-production only)
+if (isDev) {
+  router.post('/dev', async (req, res) => {
+    const isAdmin = req.body.role === 'admin';
+    const uid = isAdmin ? 'dev-admin' : 'dev-user';
+
+    let user = await User.findOne({
+      where: { uid },
+      include: [{ association: 'groups' }]
+    });
+
+    if (!user) {
+      user = await User.create({
+        uidNumber: await User.nextUidNumber(),
+        uid,
+        givenName: 'Dev',
+        sn: isAdmin ? 'Admin' : 'User',
+        cn: isAdmin ? 'Dev Admin' : 'Dev User',
+        mail: `${uid}@localhost`,
+        userPassword: 'dev-password-not-used',
+        status: 'active',
+        homeDirectory: `/home/${uid}`,
+      });
+
+      // The User afterCreate hook auto-adds the first user to sysadmins.
+      // Adjust group membership to match the requested role.
+      const { Group } = require('../models');
+      const adminGroup = await Group.findByPk(2000);
+      if (adminGroup) {
+        if (isAdmin) {
+          await user.addGroup(adminGroup);
+        } else {
+          await user.removeGroup(adminGroup);
+        }
+      }
+
+      user = await User.findOne({
+        where: { uid },
+        include: [{ association: 'groups' }]
+      });
+    }
+
+    req.session.user = user.uid;
+    req.session.isAdmin = user.groups?.some(g => g.isAdmin) || false;
+    req.session.save(() => res.redirect('/'));
+  });
+}
 
 // POST / - Handle login submission
 router.post('/', async (req, res) => {
