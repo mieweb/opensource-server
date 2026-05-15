@@ -19,6 +19,9 @@ RUN sed -i \
     && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
     && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine DetectionOnly/' /etc/nginx/modsecurity.conf
 
+# Create the auth cache directory for NGINX forward auth
+RUN mkdir -p /var/cache/nginx/auth_cache
+
 # Logrotate overrides for NGINX and ModSecurity to work around a logrotate
 # repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
 COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
