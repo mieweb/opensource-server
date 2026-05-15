@@ -1,0 +1,107 @@
+---
+x-proxmox-service: &proxmox-service
+  image: proxmox-ve:9
+  build: images/proxmox-ve
+  volumes:
+    - local:/var/lib/vz
+    - ./:/opt/opensource-server
+  environment:
+    MANAGER_TAG: ${MANAGER_TAG:-latest}
+
+services:
+  # This service runs once when bringing the compose stack up to ensure the
+  # latest manager image (overridable by .env) is installed into the Proxmox
+  # template cache. This can run in parallel with other build tasks, slightly
+  # speeding up the overall time to a complete setup.
+  pull-image:
+    <<: *proxmox-service
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        MANAGER_TAG=$${MANAGER_TAG:-latest}
+        FILENAME=/var/lib/vz/template/cache/manager_$${MANAGER_TAG}.tar
+        if [ ! -f "$$FILENAME" ]; then
+          skopeo copy docker://ghcr.io/mieweb/opensource-server/manager:$${MANAGER_TAG} oci-archive:$${FILENAME}
+        fi
+
+  # This service runs once when bringing the compose stack up to ensure the
+  # node_modules are populated in the user's create-a-container directory. This
+  # is usually handled by the manager's Dockerfile, but we're mounting over that
+  # directory so we need to be sure the user has them.
+  npm-install:
+    image: node:24-trixie-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/create-a-container
+    command: npm ci --no-audit --no-fund
+
+  # Similar to the npm-install service, this service builds the documentation in
+  # mie-opensource-landing to ensure it's populated in the dev environment. This
+  # is also usually handled by the container build, but again, we're overriding
+  # it with the bind mount of the working directory.
+  build-docs:
+    image: astral/uv:python3.12-bookworm-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/mie-opensource-landing
+    command: uv run zensical build
+  # This is the only long-running service in the stack. On startup it creates
+  # the manager container as CTID 100 (if it needs to) with the current
+  # directory mounted over the /opt/opensource-server in the container so local
+  # changes easily propogate inwards. `npm install` and the documentation build
+  # should be managed by their respective services above so there's no questions
+  # about environment or permissions. TODO: make those services rebuild when
+  # there's changes to their directories. TODO: add a second Proxmox to test
+  # multiple nodes.
+  proxmox:
+    <<: *proxmox-service
+    privileged: true
+    devices:
+      - /dev/loop-control:/dev/loop-control
+    ports:
+      - 127.0.0.1:80:80
+      - 127.0.0.1:443:443
+      - 127.0.0.1:8006:8006
+    hostname: proxmox
+    domainname: cluster.internal
+    dns:
+      - 10.254.0.2
+    dns_search: cluster.internal
+    security_opt:
+      - label=disable
+      - seccomp=unconfined
+    depends_on:
+      pull-image:
+        condition: service_completed_successfully
+      npm-install:
+        condition: service_completed_successfully
+      build-docs:
+        condition: service_completed_successfully
+
+  # After the Proxmox (which includes the manager LXC) is healthy we have to
+  # bootstrap the Manager setup. The commands below were derived from doing a
+  # manual bootstrap and copying the network requests.
+  #
+  #   - Will try to recreate everything each up/start even if they already exist
+  #   - Doesn't work after the last step because the "proxmox" hostname no
+  #     longer routes to the container-creator instance
+  #   - TODO: This step should be the one to configure the ldap container(s) and
+  #     set the Proxmox up to allow login through them
+  #   - Can we move create-manager.service from the Proxmox image to here?
+  #
+  bootstrap-manager:
+    image: curlimages/curl:latest
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        curl -c cookies.txt -k -X POST --data 'role=admin' https://proxmox/login/dev
+        curl -b cookies.txt -k -X POST --data 'name=Development&internalDomain=cluster.internal&dhcpRange=10.254.1.1%2C10.254.254.254&subnetMask=255.255.0.0&gateway=10.254.0.1&dnsForwarders=8.8.8.8%2C1.1.1.1&externalIp=127.0.0.1' https://proxmox/sites
+        curl -b cookies.txt -k -X POST --data 'apiUrl=https%3A%2F%2F10.254.0.1%3A8006&username=root%40pam&password=root&tlsVerify=false' https://proxmox/sites/1/nodes/import
+        curl -b cookies.txt -k -X POST --data 'name=localhost&siteId=1&authServer=https://manager.localhost' https://proxmox/external-domains
+        curl -b cookies.txt -k -X PUT  --data 'services%5B0%5D%5Bdeleted%5D=false&services%5B0%5D%5Btype%5D=http&services%5B0%5D%5BinternalPort%5D=3000&services%5B0%5D%5BexternalHostname%5D=manager&services%5B0%5D%5BexternalDomainId%5D=1' https://proxmox/sites/1/containers/1
+    depends_on:
+      proxmox:
+        condition: service_healthy
+
+volumes:
+  local:
