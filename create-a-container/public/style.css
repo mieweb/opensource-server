@@ -258,8 +258,10 @@ select:focus {
   margin-right: 0.5rem;
 }
 
-/* Mobile: Make sidebar full-width when expanded */
-@media (max-width: 767.98px) {
+/* Mobile/tablet: Make sidebar full-width when expanded.
+   Matches the navbar's navbar-expand-lg breakpoint so the sidebar
+   collapses whenever the navbar toggler is visible. */
+@media (max-width: 991.98px) {
   .sidebar {
     position: fixed;
     top: 56px;
