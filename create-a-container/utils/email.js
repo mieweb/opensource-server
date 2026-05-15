@@ -204,7 +204,7 @@ async function sendBulkEmail(recipients, subject, message) {
   await transporter.sendMail({
     from,
     to: from,
-    bcc: recipients.join('; '),
+    bcc: recipients.join(', '),
     subject,
     text: message,
     html
