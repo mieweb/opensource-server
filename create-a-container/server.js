@@ -11,6 +11,7 @@ const path = require('path');
 const RateLimit = require('express-rate-limit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const net = require('net');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
@@ -63,8 +64,6 @@ async function main() {
     db: sequelize,
   });
 
-  const isProduction = process.env.NODE_ENV === 'production';
-
   app.use(session({
     secret: await getSessionSecrets(),
     store: sessionStore,
@@ -73,15 +72,22 @@ async function main() {
     // Dynamic cookie: drop the host part and set domain to the parent domain
     // (e.g., manager.example.com → .example.com) so the session cookie is
     // shared across sibling subdomains for nginx auth_request.
+    // For IP addresses (IPv4/IPv6) and single-label hosts like "localhost",
+    // omit the domain attribute so the browser scopes the cookie to the
+    // exact host (RFC 6265 forbids domain attributes on IP literals).
+    // `secure` is derived from the request protocol (honoring `trust proxy`
+    // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
+    // tracks the actual transport — set on HTTPS, omitted on plain HTTP
+    // bootstrap/dev access.
     cookie: function(req) {
       const hostname = req.hostname || '';
       const parts = hostname.split('.');
-      const domain = parts.length >= 2 ? '.' + parts.slice(1).join('.') : undefined;
+      const shouldDropHost = !net.isIP(hostname) && parts.length > 2;
       return {
-        secure: isProduction,
+        secure: req.secure,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: 'lax',
-        domain
+        domain: shouldDropHost ? `.${parts.slice(1).join('.')}` : hostname
       };
     }
   }));
