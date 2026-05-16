@@ -45,6 +45,10 @@ services:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/mie-opensource-landing
     command: uv run zensical build
+    environment:
+      PROXMOX_URL: https://localhost:8006
+      MANAGER_URL: https://manager.localhost
+
   # This is the only long-running service in the stack. On startup it creates
   # the manager container as CTID 100 (if it needs to) with the current
   # directory mounted over the /opt/opensource-server in the container so local

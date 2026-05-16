@@ -8,7 +8,7 @@ copyright = "&copy; Medical Informatics Engineering"
 
 nav = [
   { "Home" = "index.md" },
-  { "Create a Container" = "https://manager.os.mieweb.org" },
+  { "Create a Container" = "{{ manager_url }}" },
   { "Launchpad" = "https://github.com/marketplace/actions/mieweb-launchpad" },
   { "Documentation" = [
     { "Introduction" = "intro.md" },
@@ -94,6 +94,7 @@ accent = "green"
 icon = "material/brightness-4"
 name = "Switch to light mode"
 
+[project.markdown_extensions.zensical.extensions.macros]
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.superfences]
