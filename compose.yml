@@ -43,7 +43,7 @@ services:
   # not a hard dependency. The Proxmox service works just fine if the docs are
   # not getting rebuilt or even if they were never built in the first place.
   zensical:
-    image: astral/uv:python3.12-bookworm-slim
+    image: astral/uv:0.11.14-trixie-slim
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/mie-opensource-landing
