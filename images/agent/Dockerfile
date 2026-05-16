@@ -42,7 +42,7 @@ RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
 
 # Install uv for building the docs
-ARG UV_VERSION=0.11.6
+ARG UV_VERSION=0.11.14
 RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
     | tar -xzf - --strip-components=1 -C /usr/local/bin \
       uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
