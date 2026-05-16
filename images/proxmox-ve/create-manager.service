@@ -14,7 +14,7 @@ ExecStart=/bin/bash -ec '\
     if [ -f /etc/pve/lxc/$$CTID.conf ]; then exit 0; fi; \
     if [ ! -d /sys/class/net/$$BRIDGE ]; then exit 1; fi; \
     if [ ! -f /var/lib/vz/template/cache/manager_$${MANAGER_TAG}.tar ]; then exit 1; fi; \
-    pct create 100 local:vztmpl/manager_$${MANAGER_TAG}.tar --cores=4 --features=nesting=1 --hostname=manager --memory=8192 --net0=name=eth0,bridge=$$BRIDGE,gw=10.254.0.1,ip=10.254.0.2/24 --onboot=1 --ostype=debian --rootfs=local:50 --entrypoint="/sbin/init systemd.unit=emergency.target"; \
+    pct create 100 local:vztmpl/manager_$${MANAGER_TAG}.tar --cores=4 --features=nesting=1 --hostname=manager --memory=8192 --net0=name=eth0,bridge=$$BRIDGE,gw=10.254.0.1,ip=10.254.0.2/16 --onboot=1 --ostype=debian --rootfs=local:50 --entrypoint="/sbin/init systemd.unit=emergency.target"; \
     pct start 100; \
     pct exec 100 -- openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /etc/ssl/private/localhost.key -out /etc/ssl/certs/localhost.crt -days 3650 -noenc -subj /CN=localhost; \
     pct exec 100 -- mkdir -p /etc/systemd/system/container-creator.service.d; \
