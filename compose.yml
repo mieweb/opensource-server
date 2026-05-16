@@ -35,17 +35,21 @@ services:
     working_dir: /opt/opensource-server/create-a-container
     command: npm ci --no-audit --no-fund
 
-  # Similar to the npm-install service, this service builds the documentation in
-  # mie-opensource-landing to ensure it's populated in the dev environment. This
-  # is also usually handled by the container build, but again, we're overriding
-  # it with the bind mount of the working directory.
-  build-docs:
+  # This service will watch the documentation for any changes and rebuild when
+  # needed. Technically it's listening on port 8000, but we only care about the
+  # HTML being placed in ./mie-opensource-landing/site which is shared with the
+  # Manager LXC running in the Proxmox. The Proxmox service doesn't have a
+  # direct dependency on this because it's meant to be a development convenience
+  # not a hard dependency. The Proxmox service works just fine if the docs are
+  # not getting rebuilt or even if they were never built in the first place.
+  zensical:
     image: astral/uv:python3.12-bookworm-slim
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/mie-opensource-landing
-    command: uv run zensical build
+    command: uv run --active zensical serve
     environment:
+      VIRTUAL_ENV: /opt/zensical
       PROXMOX_URL: https://localhost:8006
       MANAGER_URL: https://manager.localhost
 
@@ -78,8 +82,6 @@ services:
       pull-image:
         condition: service_completed_successfully
       npm-install:
-        condition: service_completed_successfully
-      build-docs:
         condition: service_completed_successfully
 
   # After the Proxmox (which includes the manager LXC) is healthy we have to
