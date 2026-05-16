@@ -1,6 +1,7 @@
 [Unit]
 Description=Job Runner for create-a-container
-After=network.target
+After=network.target container-creator-init.service
+Wants=container-creator-init.service
 
 [Service]
 Type=simple
@@ -9,6 +10,7 @@ WorkingDirectory=/opt/opensource-server/create-a-container
 ExecStart=/usr/bin/node /opt/opensource-server/create-a-container/job-runner.js
 Restart=on-failure
 Environment=NODE_ENV=production
+EnvironmentFile=/etc/default/container-creator
 
 [Install]
 WantedBy=multi-user.target
