@@ -8,7 +8,7 @@
 
     This page predates the last major rewrite and may not be accurate. Check back weekly for updates.
 
-API endpoint: https://manager.os.mieweb.org
+API endpoint: {{ manager_url }}
 
 **Prerequisites:**
 
@@ -92,7 +92,7 @@ curl -X GET 'https://create-a-container.opensource.mieweb.org/api/containers' \
 
 **HTTP:** `https://<externalHostname>.<externalDomain>`
 
-**Proxmox:** Navigate to [https://os.mieweb.org:8006](https://os.mieweb.org:8006) — your container is listed with your username in the tags field.
+**Proxmox:** Navigate to [{{ proxmox_url }}]({{ proxmox_url }}) — your container is listed with your username in the tags field.
 
 ![Hostname](img/proxmox-lxc.jpg)
 

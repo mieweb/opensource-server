@@ -5,7 +5,7 @@ Use the MCP (Model Context Protocol) server to manage your containers through AI
 **Prerequisites:**
 - VS Code with an MCP-capable AI extension (e.g., [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), [Claude for VS Code](https://marketplace.visualstudio.com/items?itemName=AnthropicPublicBeta.claude-for-vscode))
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) installed
-- An API key from [your server](https://manager.os.mieweb.org/apikeys) (see [API Keys](./creating-containers/api-keys.md))
+- An API key from [your server]({{ manager_url }}/apikeys) (see [API Keys](./creating-containers/api-keys.md))
 
 ## 1. Configure VS Code
 

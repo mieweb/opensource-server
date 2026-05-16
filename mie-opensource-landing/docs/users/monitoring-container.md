@@ -1,6 +1,6 @@
 # Monitoring Containers in Proxmox
 
-Monitor container performance in the Proxmox Web GUI at [https://os.mieweb.org:8006](https://os.mieweb.org:8006).
+Monitor container performance in the Proxmox Web GUI at [{{ proxmox_url }}]({{ proxmox_url }}).
 
 ## Dashboard
 
