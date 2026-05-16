@@ -2,9 +2,6 @@
 x-proxmox-service: &proxmox-service
   image: proxmox-ve:9
   build: images/proxmox-ve
-  volumes:
-    - local:/var/lib/vz
-    - ./:/opt/opensource-server
   environment:
     MANAGER_TAG: ${MANAGER_TAG:-latest}
 
@@ -12,16 +9,24 @@ services:
   # This service runs once when bringing the compose stack up to ensure the
   # latest manager image (overridable by .env) is installed into the Proxmox
   # template cache. This can run in parallel with other build tasks, slightly
-  # speeding up the overall time to a complete setup.
+  # speeding up the overall time to a complete setup. It prefers to pull from
+  # the local docker image storage, but if the requested tag isn't available
+  # there it will fallback to pulling from the registry.
   pull-image:
     <<: *proxmox-service
+    volumes:
+      - local:/var/lib/vz
+      - ./:/opt/opensource-server
+      - /var/run/docker.sock:/var/run/docker.sock
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
         MANAGER_TAG=$${MANAGER_TAG:-latest}
         FILENAME=/var/lib/vz/template/cache/manager_$${MANAGER_TAG}.tar
+        IMAGE_REF=ghcr.io/mieweb/opensource-server/manager:$${MANAGER_TAG}
         if [ ! -f "$$FILENAME" ]; then
-          skopeo copy docker://ghcr.io/mieweb/opensource-server/manager:$${MANAGER_TAG} oci-archive:$${FILENAME}
+          skopeo copy docker-daemon:$${IMAGE_REF} oci-archive:$${FILENAME} || \
+          skopeo copy docker://$${IMAGE_REF} oci-archive:$${FILENAME}
         fi
 
   # This service runs once when bringing the compose stack up to ensure the
@@ -63,6 +68,9 @@ services:
   # multiple nodes.
   proxmox:
     <<: *proxmox-service
+    volumes:
+      - local:/var/lib/vz
+      - ./:/opt/opensource-server
     privileged: true
     devices:
       - /dev/loop-control:/dev/loop-control
