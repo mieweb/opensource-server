@@ -1,117 +1,35 @@
 # opensource-server
 
-Infrastructure management platform for automated LXC container hosting with Proxmox VE.
+Self-service LXC container hosting on Proxmox VE — web UI, automated DNS/reverse proxy, LDAP authentication, and ACME TLS.
 
-This repository provides a complete self-service container management system with web interface, automated configuration distribution, and integrated DNS/reverse proxy services.
+Full documentation lives in [`mie-opensource-landing/docs/`](mie-opensource-landing/docs/) and is published to the project documentation site.
 
-## Project Components
+## Get Started
 
-- [`create-a-container/`](create-a-container/README.md) - Web application for container lifecycle management
-- [`pull-config/`](pull-config/README.md) - Automated configuration distribution system for nginx and dnsmasq
-- [`mie-opensource-landing/`](mie-opensource-landing/README.md) - Landing page and documentation site
-- [`manager-control-program/`](manager-control-program/README.md) - MCP server for AI-assisted container management
-- [`packer/`](packer/README.md) - LXC container template creation
-- [`ci-cd-automation/`](ci-cd-automation/README.md) - Proxmox API automation scripts
-- [`LDAP/`](LDAP/README.md) - Centralized authentication infrastructure
-- [`Wazuh/`](Wazuh/README.md) - Security monitoring and threat detection
+| If you want to... | Read |
+|---|---|
+| Install and operate a production deployment | [Installation Guide](mie-opensource-landing/docs/admins/installation.md) |
+| Run the full stack locally to develop or contribute | [Development Workflow](mie-opensource-landing/docs/developers/development-workflow.md) |
+| Use a deployed cluster as an end user (create containers, etc.) | [User Getting Started](mie-opensource-landing/docs/users/getting-started.md) |
+| Contribute changes | [Contributing](mie-opensource-landing/docs/developers/contributing.md) |
+| Understand the system design | [System Architecture](mie-opensource-landing/docs/developers/system-architecture.md) |
 
-## Installation
+## Repository Layout
 
-### Recommended: Proxmox 9+ OCI Container (Preferred)
+| Path | Purpose |
+|---|---|
+| [`create-a-container/`](create-a-container/) | Manager web application (Node.js + Express + Sequelize) |
+| [`pull-config/`](pull-config/) | Cron-driven config distribution for nginx and dnsmasq on agents — see [pull-config docs](mie-opensource-landing/docs/developers/pull-config.md) |
+| [`images/`](images/) | Docker Bake definitions for the `base`, `nodejs`, `agent`, and `manager` images — see [Docker Images](mie-opensource-landing/docs/developers/docker-images.md) |
+| [`manager-control-program/`](manager-control-program/) | MCP server for AI-assisted container management — see [MCP Server](mie-opensource-landing/docs/users/mcp-server.md) |
+| [`mie-opensource-landing/`](mie-opensource-landing/) | Documentation site source |
+| [`error-pages/`](error-pages/) | Static error pages served by NGINX |
+| [`compose.yml`](compose.yml) | Local development stack (used by the Development Workflow guide) |
 
-With Proxmox 9's native OCI container support, the easiest installation method is to deploy directly from GitHub Container Registry:
+## Contributors
 
-```bash
-# Pull and run the container from GHCR
-pct create <VMID> ghcr.io/mieweb/opensource-server:latest \
-  --hostname opensource-server \
-  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --features nesting=1 \
-  --privileged 1 \
-  --onboot 1
-```
+<a href="https://github.com/mieweb/opensource-server/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=mieweb/opensource-server" alt="Contributors" />
+</a>
 
-> **Note**: Adjust the VMID, network configuration, and other parameters according to your Proxmox environment.
-
-### Alternative: Docker Container
-
-See the [`Dockerfile`](Dockerfile) in the repository root for building and running the container with Docker:
-
-```bash
-docker build -t opensource-server .
-docker run -d --privileged \
-  -p 443:443 \
-  -p 53:53/udp \
-  --name opensource-server \
-  opensource-server:latest
-```
-
-### Manual Installation (Legacy)
-
-For a traditional installation on a Debian-based system, see the [`Dockerfile`](Dockerfile) for the complete installation steps and dependencies. The Dockerfile serves as the canonical reference for system setup and configuration.
-
-Key steps include:
-1. Install nginx (mainline from nginx's repo preferred)
-2. Install dnsmasq with proper configuration
-3. Clone repository and run `make install`
-
-For detailed configuration and usage instructions, refer to the individual component READMEs linked above.
-
-## Architecture Overview
-
-The system provides automated container hosting through three main components:
-
-1. **Container Management** (`create-a-container/`)
-   - Web-based interface for container lifecycle operations
-   - Proxmox VE API integration for LXC container provisioning
-   - Site-based organization with hierarchical node/container relationships
-   - Service port mapping and DNS configuration
-
-2. **Configuration Distribution** (`pull-config/`)
-   - Automated pulling of nginx and dnsmasq configurations
-   - ETag-based change detection for efficient updates
-   - Validation and automatic rollback on errors
-   - Multi-instance support via run-parts pattern
-
-3. **Infrastructure Services**
-   - nginx reverse proxy with SSL/TLS termination
-   - dnsmasq for DHCP and DNS services
-   - LDAP authentication for centralized user management
-   - Wazuh security monitoring and threat detection
-
-### Data Flow
-
-```mermaid
-graph TD
-    User[User] --> WebUI[create-a-container Web UI]
-    WebUI --> DB[(PostgreSQL)]
-    WebUI --> PVE[Proxmox VE API]
-    PVE --> LXC[LXC Container]
-    
-    Cron[Cron Job] --> PullConfig[pull-config]
-    PullConfig --> WebUI
-    PullConfig --> Nginx[nginx config]
-    PullConfig --> Dnsmasq[dnsmasq config]
-    
-    Client[Client Request] --> Nginx
-    Nginx --> LXC
-    
-    DB --> Sites[Sites]
-    Sites --> Nodes[Nodes]
-    Nodes --> Containers[Containers]
-    Containers --> Services[Services]
-    
-    classDef user fill:#f57c00,stroke:#fff3e0,stroke-width:2px,color:#ffffff
-    classDef app fill:#1976d2,stroke:#e3f2fd,stroke-width:2px,color:#ffffff
-    classDef infra fill:#689f38,stroke:#f1f8e9,stroke-width:2px,color:#ffffff
-    classDef data fill:#7b1fa2,stroke:#f3e5f5,stroke-width:2px,color:#ffffff
-    
-    class User,Client user
-    class WebUI,PullConfig app
-    class PVE,LXC,Nginx,Dnsmasq,Cron infra
-    class DB,Sites,Nodes,Containers,Services data
-```
-
----
-
-Contributors: Carter Myers, Maxwell Klema, Anisha Pant, and Robert Gingras
+Made with [contrib.rocks](https://contrib.rocks).
