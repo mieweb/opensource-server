@@ -1,6 +1,6 @@
 ---
 x-proxmox-service: &proxmox-service
-  image: proxmox-ve:9
+  image: ghcr.io/mieweb/opensource-server/proxmox-ve:latest
   build: images/proxmox-ve
   environment:
     MANAGER_TAG: ${MANAGER_TAG:-latest}

@@ -1,5 +1,5 @@
 group "default" {
-    targets = ["base", "nodejs", "docs", "agent", "manager"]
+    targets = ["base", "nodejs", "docs", "agent", "manager", "proxmox-ve"]
 }
 
 target "base" {
@@ -35,4 +35,8 @@ target "manager" {
     contexts = {
         agent = "target:agent"
     }
+}
+
+target "proxmox-ve" {
+    context = "./proxmox-ve"
 }

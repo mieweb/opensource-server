@@ -110,6 +110,18 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
+      - name: Docker Meta (Proxmox VE)
+        id: meta-proxmox-ve
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/proxmox-ve
+          bake-target: proxmox-ve
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
       - name: Build and push
         uses: docker/bake-action@v5
         with:
@@ -122,6 +134,7 @@ jobs:
             ${{ steps.meta-docs.outputs.bake-file }}
             ${{ steps.meta-agent.outputs.bake-file }}
             ${{ steps.meta-manager.outputs.bake-file }}
+            ${{ steps.meta-proxmox-ve.outputs.bake-file }}
           set: |
             base.cache-from=type=gha,scope=base-${{ github.ref_name }}
             base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}
@@ -133,6 +146,8 @@ jobs:
             agent.cache-to=type=gha,mode=max,scope=agent-${{ github.ref_name }}
             manager.cache-from=type=gha,scope=manager-${{ github.ref_name }}
             manager.cache-to=type=gha,mode=max,scope=manager-${{ github.ref_name }}
+            proxmox-ve.cache-from=type=gha,scope=proxmox-ve-${{ github.ref_name }}
+            proxmox-ve.cache-to=type=gha,mode=max,scope=proxmox-ve-${{ github.ref_name }}
 
   deploy-preview:
     if: github.event.action != 'closed'
