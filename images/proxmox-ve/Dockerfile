@@ -16,7 +16,14 @@ COPY pve-install-repo.sources /etc/apt/sources.list.d/
 
 # Install the Proxmox packages
 RUN apt-get update \
-    && apt-get install -y proxmox-ve postfix open-iscsi chrony e2fsprogs \
+    && apt-get install --no-install-recommends -y \
+        openssh-server \
+        openssh-client \
+        proxmox-archive-keyring \
+        pve-manager \
+        systemd-sysv \
+        e2fsprogs \
+        skopeo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm /etc/apt/sources.list.d/pve-enterprise.sources /etc/network/interfaces.new
