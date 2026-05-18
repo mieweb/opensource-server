@@ -1,13 +1,30 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './AppLayout';
 import { AuthLayout } from './AuthLayout';
-import { PlaceholderPage } from './PlaceholderPage';
 import { RequireAuth } from './RequireAuth';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { RegisterSuccessPage } from '@/pages/auth/RegisterSuccessPage';
 import { ResetPasswordRequestPage } from '@/pages/auth/ResetPasswordRequestPage';
 import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
+import { SitesListPage } from '@/pages/sites/SitesListPage';
+import { SiteFormPage } from '@/pages/sites/SiteFormPage';
+import { ContainersListPage } from '@/pages/containers/ContainersListPage';
+import { ContainerFormPage } from '@/pages/containers/ContainerFormPage';
+import { NodesListPage } from '@/pages/nodes/NodesListPage';
+import { NodeFormPage } from '@/pages/nodes/NodeFormPage';
+import { NodeImportPage } from '@/pages/nodes/NodeImportPage';
+import { ExternalDomainsListPage } from '@/pages/external-domains/ExternalDomainsListPage';
+import { ExternalDomainFormPage } from '@/pages/external-domains/ExternalDomainFormPage';
+import { JobDetailPage } from '@/pages/jobs/JobDetailPage';
+import { UsersListPage } from '@/pages/users/UsersListPage';
+import { UserFormPage } from '@/pages/users/UserFormPage';
+import { InviteUserPage } from '@/pages/users/InviteUserPage';
+import { GroupsListPage } from '@/pages/groups/GroupsListPage';
+import { GroupFormPage } from '@/pages/groups/GroupFormPage';
+import { ApiKeysListPage } from '@/pages/apikeys/ApiKeysListPage';
+import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
 
 export const router = createBrowserRouter([
   {
@@ -23,38 +40,47 @@ export const router = createBrowserRouter([
   },
   {
     element: <RequireAuth />,
-    children: [{
-    element: <AppLayout />,
     children: [
-      { index: true, element: <Navigate to="/sites" replace /> },
-      { path: '/sites', element: <PlaceholderPage title="Sites" /> },
-      { path: '/sites/new', element: <PlaceholderPage title="New Site" /> },
-      { path: '/sites/:id/edit', element: <PlaceholderPage title="Edit Site" /> },
-      { path: '/sites/:siteId/containers', element: <PlaceholderPage title="Containers" /> },
-      { path: '/sites/:siteId/containers/new', element: <PlaceholderPage title="New Container" /> },
-      { path: '/sites/:siteId/containers/:id/edit', element: <PlaceholderPage title="Edit Container" /> },
-      { path: '/sites/:siteId/nodes', element: <PlaceholderPage title="Nodes" /> },
-      { path: '/sites/:siteId/nodes/new', element: <PlaceholderPage title="New Node" /> },
-      { path: '/sites/:siteId/nodes/import', element: <PlaceholderPage title="Import Nodes" /> },
-      { path: '/sites/:siteId/nodes/:id/edit', element: <PlaceholderPage title="Edit Node" /> },
-      { path: '/external-domains', element: <PlaceholderPage title="External Domains" /> },
-      { path: '/external-domains/new', element: <PlaceholderPage title="New External Domain" /> },
-      { path: '/external-domains/:id/edit', element: <PlaceholderPage title="Edit External Domain" /> },
-      { path: '/jobs/:id', element: <PlaceholderPage title="Job" /> },
-      { path: '/users', element: <PlaceholderPage title="Users" /> },
-      { path: '/users/new', element: <PlaceholderPage title="New User" /> },
-      { path: '/users/invite', element: <PlaceholderPage title="Invite User" /> },
-      { path: '/users/:uid/edit', element: <PlaceholderPage title="Edit User" /> },
-      { path: '/groups', element: <PlaceholderPage title="Groups" /> },
-      { path: '/groups/new', element: <PlaceholderPage title="New Group" /> },
-      { path: '/groups/:id/edit', element: <PlaceholderPage title="Edit Group" /> },
-      { path: '/apikeys', element: <PlaceholderPage title="API Keys" /> },
-      { path: '/apikeys/new', element: <PlaceholderPage title="New API Key" /> },
-      { path: '/apikeys/created', element: <PlaceholderPage title="API Key Created" /> },
-      { path: '/apikeys/:id', element: <PlaceholderPage title="API Key" /> },
-      { path: '/settings', element: <PlaceholderPage title="Settings" /> },
-      { path: '*', element: <PlaceholderPage title="Not Found" /> },
+      {
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <Navigate to="/sites" replace /> },
+
+          { path: '/sites', element: <SitesListPage /> },
+          { path: '/sites/new', element: <SiteFormPage /> },
+          { path: '/sites/:id/edit', element: <SiteFormPage /> },
+
+          { path: '/sites/:siteId/containers', element: <ContainersListPage /> },
+          { path: '/sites/:siteId/containers/new', element: <ContainerFormPage /> },
+          { path: '/sites/:siteId/containers/:id/edit', element: <ContainerFormPage /> },
+
+          { path: '/sites/:siteId/nodes', element: <NodesListPage /> },
+          { path: '/sites/:siteId/nodes/new', element: <NodeFormPage /> },
+          { path: '/sites/:siteId/nodes/import', element: <NodeImportPage /> },
+          { path: '/sites/:siteId/nodes/:id/edit', element: <NodeFormPage /> },
+
+          { path: '/external-domains', element: <ExternalDomainsListPage /> },
+          { path: '/external-domains/new', element: <ExternalDomainFormPage /> },
+          { path: '/external-domains/:id/edit', element: <ExternalDomainFormPage /> },
+
+          { path: '/jobs/:id', element: <JobDetailPage /> },
+
+          { path: '/users', element: <UsersListPage /> },
+          { path: '/users/new', element: <UserFormPage /> },
+          { path: '/users/invite', element: <InviteUserPage /> },
+          { path: '/users/:uid/edit', element: <UserFormPage /> },
+
+          { path: '/groups', element: <GroupsListPage /> },
+          { path: '/groups/new', element: <GroupFormPage /> },
+          { path: '/groups/:id/edit', element: <GroupFormPage /> },
+
+          { path: '/apikeys', element: <ApiKeysListPage /> },
+
+          { path: '/settings', element: <SettingsPage /> },
+
+          { path: '*', element: <NotFoundPage /> },
+        ],
+      },
     ],
-  }],
   },
 ]);
