@@ -28,7 +28,7 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, Job } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
@@ -199,6 +199,15 @@ async function main() {
     console.log('Allocating VMID from Proxmox...');
     const vmid = await client.nextId();
     console.log(`Allocated VMID: ${vmid}`);
+
+    // Check if our job was cancelled (e.g., container was deleted while we were starting)
+    if (container.creationJobId) {
+      const job = await Job.findByPk(container.creationJobId);
+      if (job && job.status === 'cancelled') {
+        console.error('Job was cancelled — aborting container creation.');
+        process.exit(1);
+      }
+    }
     
     if (isDocker) {
       // Docker image: pull from OCI registry, then create container
@@ -310,6 +319,21 @@ async function main() {
       console.log('Container configured');
     }
     
+    // Verify the DB record still exists before proceeding.
+    // If another workflow deleted it while we were creating on Proxmox,
+    // destroy the orphan and abort to prevent duplicate containers.
+    const freshContainer = await Container.findByPk(container.id);
+    if (!freshContainer) {
+      console.error(`Container record ${container.id} was deleted during creation. Destroying orphaned Proxmox container ${vmid}...`);
+      try {
+        await client.deleteContainer(node.name, vmid, true, true);
+        console.log(`Orphaned Proxmox container ${vmid} destroyed successfully.`);
+      } catch (cleanupErr) {
+        console.error(`Failed to destroy orphaned container ${vmid}: ${cleanupErr.message}`);
+      }
+      process.exit(1);
+    }
+
     // Apply environment variables and entrypoint
     // First read defaults from the image, then merge with user-specified values
     const defaultConfig = await client.lxcConfig(node.name, vmid);

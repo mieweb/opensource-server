@@ -378,6 +378,28 @@ router.post('/', async (req, res) => {
     if (!node) {
       throw new Error('No nodes with API access available in this site');
     }
+
+    // Check for existing container with same hostname in this site (prevent duplicates)
+    const existingContainer = await Container.findOne({
+      where: { siteId, hostname },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+    if (existingContainer) {
+      await t.rollback();
+      if (isApi) {
+        return res.status(409).json({
+          error: `Container with hostname "${hostname}" already exists in this site`,
+          container: {
+            id: existingContainer.id,
+            hostname: existingContainer.hostname,
+            status: existingContainer.status
+          }
+        });
+      }
+      await req.flash('error', `Container "${hostname}" already exists.`);
+      return res.redirect(`/sites/${siteId}/containers`);
+    }
     
     // Create container record
     const container = await Container.create({
@@ -698,6 +720,15 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const node = container.node;
   let dnsWarnings = [];
   try {
+    // Cancel any pending/running creation job to prevent orphaned Proxmox containers
+    if (container.creationJobId) {
+      const creationJob = await Job.findByPk(container.creationJobId);
+      if (creationJob && (creationJob.status === 'pending' || creationJob.status === 'running')) {
+        await creationJob.update({ status: 'cancelled' });
+        console.log(`Cancelled creation job ${creationJob.id} for container ${container.hostname}`);
+      }
+    }
+
     // Clean up DNS records for cross-site HTTP services
     const httpServices = (container.services || [])
       .filter(s => s.httpService?.externalDomain)
