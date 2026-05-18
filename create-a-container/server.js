@@ -152,7 +152,12 @@ async function main() {
   const settingsRouter = require('./routers/settings');
   const apikeysRouter = require('./routers/apikeys');
   const resetPasswordRouter = require('./routers/reset-password');
-  
+  const apiV1Router = require('./routers/api/v1');
+
+  // Mount the new JSON API for the React SPA + external consumers BEFORE the legacy EJS routes,
+  // so /api/v1/* never falls through to a user-facing redirect.
+  app.use('/api/v1', apiV1Router);
+
   app.use('/jobs', jobsRouter);
   app.use('/login', loginRouter);
   app.use('/register', registerRouter);
