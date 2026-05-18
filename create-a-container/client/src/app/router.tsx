@@ -2,20 +2,28 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './AppLayout';
 import { AuthLayout } from './AuthLayout';
 import { PlaceholderPage } from './PlaceholderPage';
+import { RequireAuth } from './RequireAuth';
+import { LoginPage } from '@/pages/auth/LoginPage';
+import { RegisterPage } from '@/pages/auth/RegisterPage';
+import { RegisterSuccessPage } from '@/pages/auth/RegisterSuccessPage';
+import { ResetPasswordRequestPage } from '@/pages/auth/ResetPasswordRequestPage';
+import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage';
 
 export const router = createBrowserRouter([
   {
     element: <AuthLayout />,
     children: [
-      { path: '/login', element: <PlaceholderPage title="Login" /> },
-      { path: '/register', element: <PlaceholderPage title="Register" /> },
-      { path: '/register/success', element: <PlaceholderPage title="Registration Success" /> },
-      { path: '/verify/:token', element: <PlaceholderPage title="Verify" /> },
-      { path: '/reset-password', element: <PlaceholderPage title="Reset Password" /> },
-      { path: '/reset-password/:token', element: <PlaceholderPage title="Reset Password" /> },
+      { path: '/login', element: <LoginPage /> },
+      { path: '/register', element: <RegisterPage /> },
+      { path: '/register/invite/:token', element: <RegisterPage /> },
+      { path: '/register/success', element: <RegisterSuccessPage /> },
+      { path: '/reset-password', element: <ResetPasswordRequestPage /> },
+      { path: '/reset-password/:token', element: <ResetPasswordPage /> },
     ],
   },
   {
+    element: <RequireAuth />,
+    children: [{
     element: <AppLayout />,
     children: [
       { index: true, element: <Navigate to="/sites" replace /> },
@@ -47,5 +55,6 @@ export const router = createBrowserRouter([
       { path: '/settings', element: <PlaceholderPage title="Settings" /> },
       { path: '*', element: <PlaceholderPage title="Not Found" /> },
     ],
+  }],
   },
 ]);

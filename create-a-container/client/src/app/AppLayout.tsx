@@ -1,14 +1,21 @@
 import { Outlet } from 'react-router';
+import { Sidebar, CommandPalette } from '@mieweb/ui';
+import { AppSidebar } from './Sidebar';
+import { AppTopHeader } from './Header';
 
 export function AppLayout() {
   return (
-    <div className="flex min-h-full flex-col bg-[var(--color-background,#f8fafc)] text-[var(--color-foreground,#0f172a)]">
-      <header className="border-b border-[var(--color-border,#e2e8f0)] bg-[var(--color-card,#ffffff)] px-6 py-3">
-        <h1 className="text-lg font-semibold">MIE Container Manager</h1>
-      </header>
-      <main className="flex-1 px-6 py-6">
-        <Outlet />
-      </main>
+    <div className="flex min-h-full bg-(--color-background,#f8fafc) text-(--color-foreground,#0f172a)">
+      <Sidebar>
+        <AppSidebar />
+      </Sidebar>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <AppTopHeader />
+        <main className="flex-1 overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
+          <Outlet />
+        </main>
+      </div>
+      <CommandPalette placeholder="Search…" />
     </div>
   );
 }
