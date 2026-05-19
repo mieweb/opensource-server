@@ -1,7 +1,6 @@
 import {
   AppHeader,
   AppHeaderSection,
-  AppHeaderBrand,
   AppHeaderActions,
   AppHeaderIconButton,
   AppHeaderUserMenu,
@@ -30,7 +29,10 @@ export function AppTopHeader() {
     <AppHeader sticky bordered>
       <AppHeaderSection align="left">
         <SidebarMobileToggle className="lg:hidden" />
-        <AppHeaderBrand>Container Manager</AppHeaderBrand>
+        {/* Sidebar already shows the brand on desktop; only repeat it on mobile
+            where the sidebar is collapsed off-canvas. AppHeaderBrand itself
+            is hidden below md by the library, so render a plain span. */}
+        <span className="font-semibold tracking-tight lg:hidden">Container Manager</span>
       </AppHeaderSection>
       <AppHeaderSection align="right">
         <AppHeaderActions>
