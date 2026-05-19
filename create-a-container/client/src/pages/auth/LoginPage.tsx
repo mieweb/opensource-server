@@ -21,7 +21,7 @@ import {
   EyeOff,
   Lock,
 } from 'lucide-react';
-import { useLoginMutation, fetchChallenge, type ChallengeStatus } from '@/lib/auth';
+import { useLoginMutation, useDevLoginMutation, useServerInfo, fetchChallenge, type ChallengeStatus } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
@@ -40,6 +40,9 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const redirect = params.get('redirect') || '/';
   const login = useLoginMutation();
+  const devLogin = useDevLoginMutation();
+  const { data: serverInfo } = useServerInfo();
+  const isDev = !!serverInfo?.isDev;
 
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challenge, setChallenge] = useState<ChallengeStatus | null>(null);
@@ -113,6 +116,15 @@ export function LoginPage() {
       /* error handled via login.error */
     }
   });
+
+  const onDevLogin = async (role: 'admin' | 'user') => {
+    try {
+      await devLogin.mutateAsync({ role });
+      navigate(redirect, { replace: true });
+    } catch {
+      /* error handled via devLogin.error */
+    }
+  };
 
   const submissionError =
     login.error && login.error.status !== 401
@@ -236,6 +248,41 @@ export function LoginPage() {
         >
           Create an account
         </Link>
+
+        {isDev && (
+          <div className="flex flex-col gap-2 rounded-md border border-dashed border-[var(--mieweb-warning,#f59e0b)]/60 bg-[var(--mieweb-warning,#f59e0b)]/5 p-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-[var(--mieweb-warning,#f59e0b)]">
+              Dev mode
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                fullWidth
+                isLoading={devLogin.isPending && devLogin.variables?.role === 'admin'}
+                onClick={() => onDevLogin('admin')}
+              >
+                Login as Admin
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                fullWidth
+                isLoading={devLogin.isPending && devLogin.variables?.role === 'user'}
+                onClick={() => onDevLogin('user')}
+              >
+                Login as User
+              </Button>
+            </div>
+            {devLogin.error && (
+              <p className="text-xs text-[var(--mieweb-destructive,#dc2626)]">
+                {devLogin.error.message}
+              </p>
+            )}
+          </div>
+        )}
       </form>
 
       <p className="text-center text-xs text-[var(--mieweb-muted-foreground,#64748b)]">

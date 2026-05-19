@@ -4,9 +4,25 @@ import { api, ApiError, clearCsrfToken } from './api';
 export interface SessionUser {
   user: string;
   isAdmin: boolean;
+  /** Configured push-notification service URL (admins only, empty if unset). */
+  pushNotificationUrl?: string;
+}
+
+export interface ServerInfo {
+  status: string;
+  isDev: boolean;
 }
 
 export const sessionKey = ['session'] as const;
+export const serverInfoKey = ['server-info'] as const;
+
+export function useServerInfo() {
+  return useQuery<ServerInfo>({
+    queryKey: serverInfoKey,
+    queryFn: () => api.get<ServerInfo>('/api/v1/health'),
+    staleTime: Infinity,
+  });
+}
 
 export function useSession() {
   return useQuery<SessionUser | null>({
@@ -91,6 +107,33 @@ export function useLogoutMutation() {
       clearCsrfToken();
       qc.setQueryData<SessionUser | null>(sessionKey, null);
       qc.clear();
+    },
+  });
+}
+
+export interface DevLoginInput {
+  role: 'admin' | 'user';
+}
+
+interface DevLoginResponse {
+  user: string;
+  isAdmin: boolean;
+  redirect?: string;
+}
+
+/**
+ * One-click dev login (non-production only). The /api/v1/auth/dev endpoint
+ * returns 404 in production, so the UI gates this behind useServerInfo().isDev.
+ */
+export function useDevLoginMutation() {
+  const qc = useQueryClient();
+  return useMutation<DevLoginResponse, ApiError, DevLoginInput>({
+    mutationFn: (input) => api.post<DevLoginResponse>('/api/v1/auth/dev', input),
+    onSuccess: (data) => {
+      qc.setQueryData<SessionUser>(sessionKey, {
+        user: data.user,
+        isAdmin: data.isAdmin,
+      });
     },
   });
 }

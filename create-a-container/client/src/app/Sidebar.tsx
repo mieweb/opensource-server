@@ -11,10 +11,12 @@ import {
 import {
   Box,
   Building2,
+  ExternalLink,
   Globe,
   KeyRound,
   LogOut,
   Settings,
+  ShieldCheck,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -59,6 +61,8 @@ export function AppSidebar() {
   const { data: session } = useSession();
   const logout = useLogoutMutation();
   const isAdmin = !!session?.isAdmin;
+  const mfaAdminUrl =
+    isAdmin && session?.pushNotificationUrl ? `${session.pushNotificationUrl}/admin` : null;
 
   const isActive = (link: NavLink) => {
     const prefix = link.match ?? link.to;
@@ -85,6 +89,16 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarNav>{PRIMARY.map(renderLink)}</SidebarNav>
+          {mfaAdminUrl && (
+            <SidebarNavItem
+              key="mfa-admin"
+              label="MFA Admin"
+              icon={<ShieldCheck className="size-4" />}
+              badge={<ExternalLink className="size-3" aria-hidden="true" />}
+              isActive={false}
+              onClick={() => window.open(mfaAdminUrl, '_blank', 'noopener,noreferrer')}
+            />
+          )}
         <SidebarNav className="mt-2">
           {ADMIN.filter((l) => !l.adminOnly || isAdmin).map(renderLink)}
         </SidebarNav>

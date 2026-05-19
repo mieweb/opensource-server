@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { User, Group, InviteToken, Setting } = require('../../../models');
-const { sendInviteEmail } = require('../../../utils/email');
+const { sendInviteEmail, sendBulkEmail } = require('../../../utils/email');
 const { sendPushNotificationInvite } = require('../../../utils/push-notification-invite');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
@@ -153,6 +153,44 @@ router.post(
       throw new ApiError(502, 'email_failed', 'Failed to send invitation email');
     }
     return ok(res, { email: normalized, message: 'Invitation sent' });
+  }),
+);
+
+// POST /api/v1/users/email-all — broadcast an email to every user with an address
+router.post(
+  '/email-all',
+  asyncHandler(async (req, res) => {
+    const { subject, message } = req.body || {};
+    if (!subject || subject.trim() === '' || !message || message.trim() === '') {
+      throw new ApiError(400, 'invalid_request', 'subject and message are required');
+    }
+
+    const settings = await Setting.getMultiple(['smtp_url']);
+    if (!settings.smtp_url || settings.smtp_url.trim() === '') {
+      throw new ApiError(409, 'smtp_not_configured', 'SMTP is not configured');
+    }
+
+    const users = await User.findAll({ attributes: ['mail'] });
+    const recipients = [
+      ...new Set(
+        users
+          .map((u) => (u.mail || '').trim().toLowerCase())
+          .filter((m) => m.length > 0),
+      ),
+    ];
+    if (recipients.length === 0) {
+      throw new ApiError(409, 'no_recipients', 'No users with email addresses');
+    }
+
+    const { sent, failed } = await sendBulkEmail(recipients, subject.trim(), message);
+    if (failed.length > 0) {
+      console.error('Bulk email failures:', failed);
+    }
+    return ok(res, {
+      sent: sent.length,
+      failed: failed.length,
+      recipients: recipients.length,
+    });
   }),
 );
 

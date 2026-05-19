@@ -30,8 +30,11 @@ router.get('/csrf-token', (req, res) => {
   return ok(res, { csrfToken });
 });
 
-// Health check (unauthenticated)
-router.get('/health', (_req, res) => ok(res, { status: 'ok' }));
+// Health check (unauthenticated). Exposes `isDev` so the SPA can render
+// non-production helpers like one-click dev login buttons.
+router.get('/health', (_req, res) =>
+  ok(res, { status: 'ok', isDev: process.env.NODE_ENV !== 'production' }),
+);
 
 // OpenAPI v1 spec (unauthenticated)
 router.get('/openapi.json', (_req, res) => res.json(openapiSpec));
@@ -45,13 +48,25 @@ router.use(csrfGuard);
 // Auth routes (login/register/reset are intentionally outside apiAuth)
 router.use('/auth', require('./auth'));
 
-// Authenticated session check
-router.get('/session', apiAuth, (req, res) =>
-  ok(res, {
+// Authenticated session check. Admins also receive `pushNotificationUrl` when
+// configured so the sidebar can render the MFA Admin link.
+router.get('/session', apiAuth, async (req, res) => {
+  const payload = {
     user: req.session.user,
     isAdmin: !!req.session.isAdmin,
-  }),
-);
+  };
+  if (req.session.isAdmin) {
+    try {
+      const { Setting } = require('../../../models');
+      const url = await Setting.get('push_notification_url');
+      payload.pushNotificationUrl = url?.trim() || '';
+    } catch (err) {
+      console.error('Failed to load pushNotificationUrl for session:', err);
+      payload.pushNotificationUrl = '';
+    }
+  }
+  return ok(res, payload);
+});
 
 // Resource routes — each sub-router applies its own apiAuth/apiAdmin
 router.use('/sites', require('./sites'));
