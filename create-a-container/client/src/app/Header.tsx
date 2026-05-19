@@ -4,12 +4,18 @@ import {
   AppHeaderActions,
   AppHeaderIconButton,
   AppHeaderUserMenu,
+  Dropdown,
+  DropdownContent,
+  DropdownHeader,
+  DropdownItem,
+  DropdownSeparator,
   SidebarMobileToggle,
+  useCommandPalette,
   useThemeContext,
 } from '@mieweb/ui';
-import { Moon, Search, Sun } from 'lucide-react';
-import { useSession } from '@/lib/auth';
-import { useCommandPalette } from '@mieweb/ui';
+import { LogOut, Moon, Search, Settings, Sun } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { useLogoutMutation, useSession } from '@/lib/auth';
 
 function initialsOf(name: string | undefined) {
   if (!name) return '?';
@@ -22,8 +28,14 @@ export function AppTopHeader() {
   const { data: session } = useSession();
   const { resolvedTheme, setTheme } = useThemeContext();
   const palette = useCommandPalette();
+  const logout = useLogoutMutation();
+  const navigate = useNavigate();
 
   const isDark = resolvedTheme === 'dark';
+  const isAdmin = !!session?.isAdmin;
+  const userName = session?.user || 'Account';
+  const roleLabel = isAdmin ? 'Administrator' : 'User';
+  const initials = initialsOf(session?.user);
 
   return (
     <AppHeader sticky bordered>
@@ -46,11 +58,44 @@ export function AppTopHeader() {
             label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
           />
-          <AppHeaderUserMenu
-            name={session?.user || 'Account'}
-            email={session?.isAdmin ? 'Administrator' : 'User'}
-            initials={initialsOf(session?.user)}
-          />
+          <Dropdown
+            placement="bottom-end"
+            trigger={
+              <AppHeaderUserMenu name={userName} email={roleLabel} initials={initials} />
+            }
+          >
+            <DropdownHeader
+              avatar={
+                <div
+                  className="flex size-8 items-center justify-center rounded-full bg-(--color-primary,#1d4ed8) text-xs font-semibold text-white"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </div>
+              }
+              title={userName}
+              subtitle={roleLabel}
+            />
+            <DropdownSeparator />
+            <DropdownContent>
+              {isAdmin && (
+                <DropdownItem
+                  icon={<Settings className="size-4" aria-hidden="true" />}
+                  onClick={() => navigate('/settings')}
+                >
+                  Settings
+                </DropdownItem>
+              )}
+              <DropdownItem
+                icon={<LogOut className="size-4" aria-hidden="true" />}
+                variant="danger"
+                disabled={logout.isPending}
+                onClick={() => logout.mutate()}
+              >
+                Sign out
+              </DropdownItem>
+            </DropdownContent>
+          </Dropdown>
         </AppHeaderActions>
       </AppHeaderSection>
     </AppHeader>
