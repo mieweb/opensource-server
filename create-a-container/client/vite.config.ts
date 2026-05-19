@@ -17,10 +17,6 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
-      '/login': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
-      '/logout': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
-      '/nginx-conf': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
-      '/dnsmasq': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
     },
   },
   build: {

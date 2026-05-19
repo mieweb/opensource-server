@@ -13,18 +13,25 @@ const { doubleCsrf } = require('csrf-csrf');
 // Skipped for Bearer-token API key requests (those are already cryptographically auth'd).
 const csrfSecret = () => process.env.CSRF_SECRET || process.env.SESSION_SECRET || 'dev-csrf-secret-change-me';
 
+// __Host- prefix requires Secure + Path=/ + no Domain; browsers reject it on
+// plain HTTP (including dev), so fall back to a plain cookie name off-prod.
+const isProd = process.env.NODE_ENV === 'production';
+
 const {
   doubleCsrfProtection,
   generateCsrfToken,
   invalidCsrfTokenError,
 } = doubleCsrf({
   getSecret: csrfSecret,
-  getSessionIdentifier: (req) => (req.session && req.session.id) || req.ip || 'anonymous',
-  cookieName: '__Host-csrf.token',
+  // Double-submit pattern is sufficient on its own; binding to req.session.id
+  // breaks for anon requests because saveUninitialized:false hands out a fresh
+  // session id every request until a user signs in.
+  getSessionIdentifier: (req) => (req.session && req.session.user && req.session.id) || req.ip || 'anonymous',
+  cookieName: isProd ? '__Host-csrf.token' : 'csrf.token',
   cookieOptions: {
     sameSite: 'lax',
     path: '/',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProd,
     httpOnly: true,
   },
   size: 32,
