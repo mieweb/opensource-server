@@ -60,6 +60,7 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       as: 'externalDomains',
     }],
   });
+  if (!site) return res.status(404).send('Site not found');
 
   const allServices = [];
   site?.nodes?.forEach((node) => {

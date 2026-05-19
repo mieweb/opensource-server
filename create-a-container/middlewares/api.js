@@ -11,11 +11,18 @@ const { doubleCsrf } = require('csrf-csrf');
 // --- CSRF (double-submit cookie) ----------------------------------------------------------
 // Token lives in a cookie + must echo in X-CSRF-Token (or _csrf in body).
 // Skipped for Bearer-token API key requests (those are already cryptographically auth'd).
-const csrfSecret = () => process.env.CSRF_SECRET || process.env.SESSION_SECRET || 'dev-csrf-secret-change-me';
+const isProd = process.env.NODE_ENV === 'production';
+const csrfSecret = () => {
+  const secret = process.env.CSRF_SECRET || process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (isProd) {
+    throw new Error('CSRF_SECRET (or SESSION_SECRET) must be set in production');
+  }
+  return 'dev-csrf-secret-change-me';
+};
 
 // __Host- prefix requires Secure + Path=/ + no Domain; browsers reject it on
 // plain HTTP (including dev), so fall back to a plain cookie name off-prod.
-const isProd = process.env.NODE_ENV === 'production';
 
 const {
   doubleCsrfProtection,

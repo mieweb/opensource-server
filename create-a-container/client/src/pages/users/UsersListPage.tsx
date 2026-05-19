@@ -99,11 +99,6 @@ export function UsersListPage() {
                     onClick={() => { if (confirm(`Delete user "${u.uid}"?`)) del.mutate(u.uidNumber); }}
                     disabled={del.isPending}
                   >
-      <EmailAllModal
-        open={emailAllOpen}
-        onOpenChange={setEmailAllOpen}
-        recipientCount={data?.filter((u: User) => u.mail?.trim()).length ?? 0}
-      />
                     Delete
                   </Button>
                 </TableCell>
@@ -112,6 +107,11 @@ export function UsersListPage() {
           </TableBody>
         </Table>
       )}
+      <EmailAllModal
+        open={emailAllOpen}
+        onOpenChange={setEmailAllOpen}
+        recipientCount={data?.filter((u: User) => u.mail?.trim()).length ?? 0}
+      />
     </div>
   );
 }

@@ -6,7 +6,7 @@ Vite + React 19 + TypeScript SPA for the Create-a-Container manager. Styles via 
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 (proxies /api, /login, /logout, /nginx-conf, /dnsmasq to Express)
+npm run dev          # http://localhost:5173 (proxies /api/* to Express; other routes are SPA-handled)
 ```
 
 Express must be running on `http://localhost:3000` (or set `VITE_API_TARGET`).

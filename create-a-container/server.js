@@ -102,10 +102,11 @@ async function main() {
   app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
-  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
+  // Swagger UI at /api documents the versioned v1 API (the spec also served at /api/v1/openapi.*).
+  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.v1.yaml'));
   app.get('/api/openapi.json', (req, res) => res.json(openapiSpec));
   app.get('/api/openapi.yaml', (req, res) => {
-    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.yaml'));
+    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.v1.yaml'));
   });
   app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
     customSiteTitle: 'Create-a-Container API',
