@@ -3,20 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Button,
-  Input,
-  PageHeader,
-  Switch,
-  useToast,
-} from '@mieweb/ui';
+import { Alert, AlertDescription, Button, Input, Switch, useToast } from '@mieweb/ui';
 import { Download } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys } from '@/lib/queries';
-import type { Node } from '@/lib/types';
+import { FormPageLayout } from '@/components/FormPageLayout';
 
 const schema = z.object({
   apiUrl: z.string().url('Must be a valid URL'),
@@ -25,11 +16,6 @@ const schema = z.object({
   tlsVerify: z.boolean().optional(),
 });
 type FormData = z.infer<typeof schema>;
-
-interface ImportResult {
-  nodes: Node[];
-  importedContainerCount: number;
-}
 
 export function NodeImportPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -44,37 +30,81 @@ export function NodeImportPage() {
   const tlsVerify = watch('tlsVerify');
 
   const mutation = useMutation({
-    mutationFn: (v: FormData) => api.post<ImportResult>(`/api/v1/sites/${siteId}/nodes/import`, v),
-    onSuccess: (r) => {
-      toast.success(`Imported ${r.nodes.length} node(s) and ${r.importedContainerCount} container(s)`);
+    mutationFn: (values: FormData) =>
+      api.post<{ imported: number }>(`/api/v1/sites/${siteId}/nodes/import-proxmox`, values),
+    onSuccess: (result) => {
+      toast.success(`Imported ${result.imported} node(s)`);
       qc.invalidateQueries({ queryKey: keys.nodes(siteId!) });
-      qc.invalidateQueries({ queryKey: keys.containers(siteId!) });
       navigate(`/sites/${siteId}/nodes`);
     },
     onError: (err: ApiError) => toast.error(err.message),
   });
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Import nodes from Proxmox" icon={<Download className="size-6" />} bordered />
-      <Alert variant="info">
-        <AlertTitle>Bulk import</AlertTitle>
-        <AlertDescription>
-          Sign in to a Proxmox cluster and import every node along with its existing LXC containers into this site.
-        </AlertDescription>
-      </Alert>
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate className="grid max-w-xl gap-4">
-        <Input label="Proxmox API URL" type="url" required placeholder="https://pve.example.com:8006" error={formState.errors.apiUrl?.message} hasError={!!formState.errors.apiUrl} {...register('apiUrl')} />
-        <Input label="API token ID / username" required placeholder="root@pam!token-name" error={formState.errors.username?.message} hasError={!!formState.errors.username} {...register('username')} />
-        <Input label="API token secret / password" type="password" required autoComplete="new-password" error={formState.errors.password?.message} hasError={!!formState.errors.password} {...register('password')} />
-        <Switch label="Verify TLS certificate" checked={tlsVerify ?? true} onCheckedChange={(c) => setValue('tlsVerify', c)} />
-
-        {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate(`/sites/${siteId}/nodes`)}>Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>Import</Button>
-        </div>
-      </form>
-    </div>
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<Download className="size-6" />}
+        title="Import nodes from Proxmox"
+        subtitle="Bulk import from a Proxmox cluster"
+        description="Sign in to a Proxmox cluster and import every node along with its existing LXC containers into this site."
+        backTo={{ label: 'Back to nodes', to: `/sites/${siteId}/nodes` }}
+        maxWidth="xl"
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate(`/sites/${siteId}/nodes`)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              Import
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Proxmox API URL"
+          type="url"
+          required
+          placeholder="https://pve.example.com:8006"
+          error={formState.errors.apiUrl?.message}
+          hasError={!!formState.errors.apiUrl}
+          {...register('apiUrl')}
+        />
+        <Input
+          label="Username"
+          required
+          placeholder="root@pam"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoComplete="username"
+          error={formState.errors.username?.message}
+          hasError={!!formState.errors.username}
+          {...register('username')}
+        />
+        <Input
+          label="Password"
+          type="password"
+          required
+          autoComplete="current-password"
+          error={formState.errors.password?.message}
+          hasError={!!formState.errors.password}
+          {...register('password')}
+        />
+        <Switch
+          label="Verify TLS certificate"
+          checked={tlsVerify ?? true}
+          onCheckedChange={(c) => setValue('tlsVerify', c)}
+        />
+        {mutation.error && (
+          <Alert variant="danger">
+            <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
+          </Alert>
+        )}
+      </FormPageLayout>
+    </form>
   );
 }

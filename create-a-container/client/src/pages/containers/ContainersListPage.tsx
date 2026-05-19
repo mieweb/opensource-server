@@ -70,7 +70,7 @@ export function ContainersListPage() {
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link to={`/sites/${siteId}/nodes`}>
               <Button variant="ghost">Nodes</Button>
             </Link>
@@ -153,7 +153,7 @@ export function ContainersListPage() {
                 <TableCell className="font-mono text-xs">
                   {c.sshHost && c.sshPort ? `${c.sshHost}:${c.sshPort}` : '—'}
                 </TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   {c.creationJobId && (
                     <Link to={`/jobs/${c.creationJobId}`}>
                       <Button variant="ghost" size="sm">

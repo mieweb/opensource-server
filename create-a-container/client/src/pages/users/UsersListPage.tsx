@@ -39,7 +39,7 @@ export function UsersListPage() {
         title="Users"
         icon={<Users className="size-6" />}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link to="/users/invite">
               <Button variant="outline" leftIcon={<Mail className="size-4" />}>Invite</Button>
             </Link>
@@ -77,7 +77,7 @@ export function UsersListPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>{u.isAdmin ? <Badge variant="warning">Admin</Badge> : '—'}</TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   <Link to={`/users/${u.uidNumber}/edit`}>
                     <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</Button>
                   </Link>

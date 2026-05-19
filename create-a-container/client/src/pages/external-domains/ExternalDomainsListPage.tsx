@@ -84,7 +84,7 @@ export function ExternalDomainsListPage() {
                   )}
                 </TableCell>
                 <TableCell>{d.authServer || '—'}</TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   <Link to={`/external-domains/${d.id}/edit`}>
                     <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
                       Edit

@@ -16,7 +16,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
+      // Use a regex so /api/* is proxied but client routes like /apikeys are not.
+      '^/api(/|$)': { target: EXPRESS_TARGET, changeOrigin: false, secure: false },
     },
   },
   build: {

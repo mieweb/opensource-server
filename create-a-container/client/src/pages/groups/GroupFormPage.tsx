@@ -10,12 +10,13 @@ import {
   Button,
   Checkbox,
   Input,
-  PageHeader,
   Spinner,
   useToast,
 } from '@mieweb/ui';
+import { UsersRound } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageLayout } from '@/components/FormPageLayout';
 import type { Group } from '@/lib/types';
 
 const schema = z.object({
@@ -65,17 +66,43 @@ export function GroupFormPage() {
   });
 
   if (isEdit && isLoading) {
-    return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
+    return (
+      <div className="flex justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? 'Edit group' : 'New group'} bordered />
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate className="grid max-w-md gap-4">
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<UsersRound className="size-6" />}
+        title={isEdit ? 'Edit group' : 'New group'}
+        subtitle={
+          isEdit
+            ? 'Update group details and admin status.'
+            : 'Create a POSIX group for users and access control.'
+        }
+        backTo={{ label: 'Back to groups', to: '/groups' }}
+        maxWidth="xl"
+        actions={
+          <>
+            <Button type="button" variant="ghost" onClick={() => navigate('/groups')}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create group'}
+            </Button>
+          </>
+        }
+      >
         <Input
           label="GID number"
           required
           disabled={isEdit}
+          inputMode="numeric"
+          autoComplete="off"
+          helperText={isEdit ? undefined : 'POSIX numeric group ID.'}
           error={formState.errors.gidNumber?.message}
           hasError={!!formState.errors.gidNumber}
           {...register('gidNumber')}
@@ -83,19 +110,22 @@ export function GroupFormPage() {
         <Input
           label="Common name"
           required
+          placeholder="developers"
           error={formState.errors.cn?.message}
           hasError={!!formState.errors.cn}
           {...register('cn')}
         />
-        <Checkbox label="Administrator group" description="Members receive admin privileges" {...register('isAdmin')} />
-        {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate('/groups')}>Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create group'}
-          </Button>
-        </div>
-      </form>
-    </div>
+        <Checkbox
+          label="Administrator group"
+          description="Members receive admin privileges"
+          {...register('isAdmin')}
+        />
+        {mutation.error && (
+          <Alert variant="danger">
+            <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
+          </Alert>
+        )}
+      </FormPageLayout>
+    </form>
   );
 }

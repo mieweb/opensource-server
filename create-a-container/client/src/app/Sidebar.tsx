@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router';
 import {
+  Button,
   SidebarNav,
   SidebarNavItem,
   SidebarHeader,
@@ -16,7 +17,6 @@ import {
   Settings,
   Users,
   UsersRound,
-  Container as ContainerIcon,
 } from 'lucide-react';
 import { useSession, useLogoutMutation } from '@/lib/auth';
 
@@ -38,12 +38,6 @@ interface NavLink {
 
 const PRIMARY: NavLink[] = [
   { to: '/sites', label: 'Sites', icon: <Building2 className="size-4" />, match: '/sites' },
-  {
-    to: '/containers',
-    label: 'Containers',
-    icon: <ContainerIcon className="size-4" />,
-    match: '/containers',
-  },
 ];
 
 const ADMIN: NavLink[] = [
@@ -111,16 +105,16 @@ export function AppSidebar() {
               {isAdmin ? 'Administrator' : 'User'}
             </div>
           </div>
-          <button
-            type="button"
-            className="rounded-md p-1.5 text-(--color-muted-foreground,#64748b) hover:bg-(--color-muted,#f1f5f9) hover:text-(--color-foreground,#0f172a) disabled:opacity-50"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => logout.mutate()}
             disabled={logout.isPending}
             aria-label="Sign out"
             title="Sign out"
           >
             <LogOut className="size-4" />
-          </button>
+          </Button>
         </div>
         <SidebarToggle />
       </SidebarFooter>

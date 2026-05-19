@@ -102,7 +102,7 @@ export function SitesListPage() {
                 <TableCell>
                   <Badge variant="secondary">{s.nodeCount ?? 0}</Badge>
                 </TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   {session?.isAdmin && (
                     <>
                       <Link to={`/sites/${s.id}/edit`}>

@@ -66,7 +66,7 @@ export function GroupsListPage() {
                 <TableCell className="font-medium">{g.cn}</TableCell>
                 <TableCell>{g.isAdmin ? <Badge variant="warning">Admin</Badge> : <Badge variant="secondary">No</Badge>}</TableCell>
                 <TableCell>{g.userCount ?? 0}</TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   <Link to={`/groups/${g.gidNumber}/edit`}>
                     <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</Button>
                   </Link>

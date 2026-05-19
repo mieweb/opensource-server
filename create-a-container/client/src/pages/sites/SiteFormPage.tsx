@@ -4,17 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  Input,
-  PageHeader,
-  Spinner,
-  useToast,
-} from '@mieweb/ui';
+import { Alert, AlertDescription, Button, Input, Spinner, useToast } from '@mieweb/ui';
+import { Building2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageLayout } from '@/components/FormPageLayout';
 import type { Site } from '@/lib/types';
 
 const schema = z.object({
@@ -61,8 +55,6 @@ export function SiteFormPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  const onSubmit = handleSubmit((values) => mutation.mutate(values));
-
   if (isEdit && isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -72,12 +64,31 @@ export function SiteFormPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? 'Edit site' : 'New site'} bordered />
-      <form onSubmit={onSubmit} noValidate className="grid max-w-2xl gap-4">
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<Building2 className="size-6" />}
+        title={isEdit ? 'Edit site' : 'New site'}
+        subtitle={
+          isEdit
+            ? 'Update networking and DNS settings for this site.'
+            : 'Define a new site with its internal network, DHCP, and DNS.'
+        }
+        backTo={{ label: 'Back to sites', to: '/sites' }}
+        actions={
+          <>
+            <Button type="button" variant="ghost" onClick={() => navigate('/sites')}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create site'}
+            </Button>
+          </>
+        }
+      >
         <Input
           label="Name"
           required
+          placeholder="Production"
           error={formState.errors.name?.message}
           hasError={!!formState.errors.name}
           {...register('name')}
@@ -86,35 +97,52 @@ export function SiteFormPage() {
           label="Internal domain"
           helperText="Used for DNS inside the site, e.g. mie.lan"
           required
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           error={formState.errors.internalDomain?.message}
           hasError={!!formState.errors.internalDomain}
           {...register('internalDomain')}
         />
-        <div className="grid grid-cols-2 gap-4">
-          <Input label="DHCP range" placeholder="10.0.0.100-10.0.0.200" {...register('dhcpRange')} />
-          <Input label="Subnet mask" placeholder="255.255.255.0" {...register('subnetMask')} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="DHCP range"
+            placeholder="10.0.0.100-10.0.0.200"
+            {...register('dhcpRange')}
+          />
+          <Input
+            label="Subnet mask"
+            placeholder="255.255.255.0"
+            inputMode="numeric"
+            {...register('subnetMask')}
+          />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Input label="Gateway" placeholder="10.0.0.1" {...register('gateway')} />
-          <Input label="DNS forwarders" placeholder="8.8.8.8 1.1.1.1" {...register('dnsForwarders')} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Gateway"
+            placeholder="10.0.0.1"
+            inputMode="numeric"
+            {...register('gateway')}
+          />
+          <Input
+            label="DNS forwarders"
+            placeholder="8.8.8.8 1.1.1.1"
+            {...register('dnsForwarders')}
+          />
         </div>
-        <Input label="External IP" placeholder="Public IP for this site" {...register('externalIp')} />
-
+        <Input
+          label="External IP"
+          placeholder="Public IP for this site"
+          inputMode="numeric"
+          autoComplete="off"
+          {...register('externalIp')}
+        />
         {mutation.error && (
           <Alert variant="danger">
             <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
           </Alert>
         )}
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate('/sites')}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create site'}
-          </Button>
-        </div>
-      </form>
-    </div>
+      </FormPageLayout>
+    </form>
   );
 }

@@ -10,13 +10,14 @@ import {
   Button,
   Checkbox,
   Input,
-  PageHeader,
   Select,
   Spinner,
   useToast,
 } from '@mieweb/ui';
+import { UserCog } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageLayout } from '@/components/FormPageLayout';
 import type { User } from '@/lib/types';
 
 const schema = z.object({
@@ -85,7 +86,13 @@ export function UserFormPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  if (isEdit && isLoading) return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
+  if (isEdit && isLoading) {
+    return (
+      <div className="flex justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   function toggleGroup(gid: number) {
     const next = groupIds.includes(gid) ? groupIds.filter((g) => g !== gid) : [...groupIds, gid];
@@ -93,15 +100,67 @@ export function UserFormPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? `Edit user: ${user?.uid ?? ''}` : 'New user'} bordered />
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate className="grid max-w-2xl gap-4">
-        <Input label="Username" required disabled={isEdit} error={formState.errors.uid?.message} hasError={!!formState.errors.uid} {...register('uid')} />
-        <div className="grid grid-cols-2 gap-4">
-          <Input label="First name" required error={formState.errors.givenName?.message} hasError={!!formState.errors.givenName} {...register('givenName')} />
-          <Input label="Last name" required error={formState.errors.sn?.message} hasError={!!formState.errors.sn} {...register('sn')} />
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<UserCog className="size-6" />}
+        title={isEdit ? `Edit user: ${user?.uid ?? ''}` : 'New user'}
+        subtitle={
+          isEdit
+            ? 'Update profile details, password, status, and group memberships.'
+            : 'Provision a new account directly without sending an invitation.'
+        }
+        backTo={{ label: 'Back to users', to: '/users' }}
+        actions={
+          <>
+            <Button type="button" variant="ghost" onClick={() => navigate('/users')}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create user'}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Username"
+          required
+          disabled={isEdit}
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          error={formState.errors.uid?.message}
+          hasError={!!formState.errors.uid}
+          {...register('uid')}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="First name"
+            required
+            autoComplete="given-name"
+            error={formState.errors.givenName?.message}
+            hasError={!!formState.errors.givenName}
+            {...register('givenName')}
+          />
+          <Input
+            label="Last name"
+            required
+            autoComplete="family-name"
+            error={formState.errors.sn?.message}
+            hasError={!!formState.errors.sn}
+            {...register('sn')}
+          />
         </div>
-        <Input label="Email" type="email" required error={formState.errors.mail?.message} hasError={!!formState.errors.mail} {...register('mail')} />
+        <Input
+          label="Email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          required
+          error={formState.errors.mail?.message}
+          hasError={!!formState.errors.mail}
+          {...register('mail')}
+        />
         <Input
           label="Password"
           type="password"
@@ -121,25 +180,26 @@ export function UserFormPage() {
           ]}
         />
         <fieldset className="grid gap-2">
-          <legend className="text-sm font-medium">Groups</legend>
-          {groups?.map((g) => (
-            <Checkbox
-              key={g.gidNumber}
-              label={g.cn + (g.isAdmin ? ' (admin)' : '')}
-              checked={groupIds.includes(g.gidNumber)}
-              onChange={() => toggleGroup(g.gidNumber)}
-            />
-          ))}
+          <legend className="text-sm font-medium text-foreground">Groups</legend>
+          {groups && groups.length > 0 ? (
+            groups.map((g) => (
+              <Checkbox
+                key={g.gidNumber}
+                label={g.cn + (g.isAdmin ? ' (admin)' : '')}
+                checked={groupIds.includes(g.gidNumber)}
+                onChange={() => toggleGroup(g.gidNumber)}
+              />
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">No groups available.</p>
+          )}
         </fieldset>
-
-        {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate('/users')}>Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create user'}
-          </Button>
-        </div>
-      </form>
-    </div>
+        {mutation.error && (
+          <Alert variant="danger">
+            <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
+          </Alert>
+        )}
+      </FormPageLayout>
+    </form>
   );
 }

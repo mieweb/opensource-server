@@ -3,9 +3,27 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from '@mieweb/ui';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Input,
+  Spinner,
+  usePrefersReducedMotion,
+} from '@mieweb/ui';
+import {
+  ShieldCheck,
+  Smartphone,
+  AlertTriangle,
+  XCircle,
+  Eye,
+  EyeOff,
+  Lock,
+} from 'lucide-react';
 import { useLoginMutation, fetchChallenge, type ChallengeStatus } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -17,6 +35,7 @@ const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_MS = 5 * 60 * 1000;
 
 export function LoginPage() {
+  useDocumentTitle('Sign in');
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const redirect = params.get('redirect') || '/';
@@ -24,6 +43,8 @@ export function LoginPage() {
 
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challenge, setChallenge] = useState<ChallengeStatus | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const pollStart = useRef<number>(0);
 
@@ -104,53 +125,124 @@ export function LoginPage() {
     return <ChallengeStatusView status={challenge} onCancel={() => setChallengeId(null)} />;
   }
 
+  const passwordField = register('password');
+
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold">Sign in</h1>
-        <p className="mt-1 text-sm text-(--color-muted-foreground,#64748b)">
-          Use your account credentials.
+    <section aria-labelledby="signin-heading" className="flex flex-col gap-8">
+      <header className="space-y-2">
+        <h1
+          id="signin-heading"
+          className="text-2xl font-semibold tracking-tight text-[var(--mieweb-foreground,#171717)] sm:text-3xl"
+        >
+          Welcome back
+        </h1>
+        <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+          Sign in to your Container Manager account to continue.
         </p>
       </header>
 
-      {submissionError && (
-        <Alert variant="danger">
-          <AlertTitle>Sign in failed</AlertTitle>
-          <AlertDescription>{submissionError}</AlertDescription>
-        </Alert>
-      )}
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        {submissionError && (
+          <Alert variant="danger">
+            <AlertTitle>Sign in failed</AlertTitle>
+            <AlertDescription>{submissionError}</AlertDescription>
+          </Alert>
+        )}
 
-      <Input
-        label="Username"
-        autoComplete="username"
-        required
-        error={errors.username?.message}
-        hasError={!!errors.username}
-        {...register('username')}
-      />
-      <Input
-        label="Password"
-        type="password"
-        autoComplete="current-password"
-        required
-        error={errors.password?.message}
-        hasError={!!errors.password}
-        {...register('password')}
-      />
+        <Input
+          label="Username"
+          autoComplete="username"
+          autoFocus
+          required
+          error={errors.username?.message}
+          hasError={!!errors.username}
+          {...register('username')}
+        />
 
-      <Button type="submit" variant="primary" isLoading={isSubmitting || login.isPending} fullWidth>
-        Sign in
-      </Button>
+        <div className="flex flex-col gap-1.5">
+          <Input
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+            error={errors.password?.message}
+            hasError={!!errors.password}
+            {...passwordField}
+            onKeyUp={(e) => setCapsLock(e.getModifierState('CapsLock'))}
+            onKeyDown={(e) => setCapsLock(e.getModifierState('CapsLock'))}
+            onBlur={(e) => {
+              setCapsLock(false);
+              void passwordField.onBlur(e);
+            }}
+          />
+          {capsLock && (
+            <p
+              role="status"
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--mieweb-warning,#f59e0b)]"
+            >
+              <Lock className="size-3.5" aria-hidden="true" />
+              Caps Lock is on
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-pressed={showPassword}
+              className="inline-flex items-center gap-1.5 rounded text-xs font-medium text-[var(--mieweb-muted-foreground,#64748b)] transition hover:text-[var(--mieweb-foreground,#171717)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mieweb-ring,#27aae1)] focus-visible:ring-offset-2"
+            >
+              {showPassword ? (
+                <>
+                  <EyeOff className="size-3.5" aria-hidden="true" /> Hide password
+                </>
+              ) : (
+                <>
+                  <Eye className="size-3.5" aria-hidden="true" /> Show password
+                </>
+              )}
+            </button>
+            <Link
+              to="/reset-password"
+              className="text-xs font-medium text-[var(--mieweb-primary-700,#1786b3)] hover:text-[var(--mieweb-primary-800,#0f749c)] hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+        </div>
 
-      <div className="flex justify-between text-sm">
-        <Link to="/reset-password" className="text-(--color-primary,#1d4ed8) hover:underline">
-          Forgot password?
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          isLoading={isSubmitting || login.isPending}
+          fullWidth
+        >
+          Sign in
+        </Button>
+
+        <div className="relative py-1 text-center">
+          <span
+            aria-hidden="true"
+            className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--mieweb-border,#e5e7eb)]"
+          />
+          <span className="relative inline-block bg-[var(--mieweb-background,#ffffff)] px-3 text-xs uppercase tracking-wider text-[var(--mieweb-muted-foreground,#64748b)]">
+            New to Container Manager?
+          </span>
+        </div>
+
+        <Link
+          to="/register"
+          className="inline-flex w-full items-center justify-center rounded-md border border-[var(--mieweb-border,#e5e7eb)] px-4 py-2.5 text-sm font-medium text-[var(--mieweb-foreground,#171717)] transition hover:bg-[var(--mieweb-muted,#f5f5f5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mieweb-ring,#27aae1)] focus-visible:ring-offset-2"
+        >
+          Create an account
         </Link>
-        <Link to="/register" className="text-(--color-primary,#1d4ed8) hover:underline">
-          Create account
-        </Link>
-      </div>
-    </form>
+      </form>
+
+      <p className="text-center text-xs text-[var(--mieweb-muted-foreground,#64748b)]">
+        Protected by push-approved sign-in.{' '}
+        <ShieldCheck className="-mt-0.5 inline size-3.5 text-[var(--mieweb-primary-700,#1786b3)]" />
+      </p>
+    </section>
   );
 }
 
@@ -161,44 +253,90 @@ function ChallengeStatusView({
   status: ChallengeStatus;
   onCancel: () => void;
 }) {
+  const reduceMotion = usePrefersReducedMotion();
   if (status.status === 'pending') {
     return (
-      <div className="flex flex-col items-center gap-4 text-center">
-        <Spinner size="lg" />
-        <h2 className="text-lg font-semibold">Approve sign-in on your device</h2>
-        <p className="text-sm text-(--color-muted-foreground,#64748b)">
-          We sent a push notification to confirm this sign-in.
-        </p>
+      <section
+        aria-labelledby="challenge-heading"
+        aria-live="polite"
+        className="flex flex-col items-center gap-6 text-center"
+      >
+        <div className="relative">
+          {!reduceMotion && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 animate-ping rounded-full bg-[var(--mieweb-primary-200,#80d5f0)] opacity-75"
+            />
+          )}
+          <span className="relative flex size-20 items-center justify-center rounded-full bg-[var(--mieweb-primary-50,#e6f7fc)] ring-1 ring-[var(--mieweb-primary-200,#80d5f0)]">
+            <Smartphone className="size-9 text-[var(--mieweb-primary-700,#1786b3)]" />
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <h2
+            id="challenge-heading"
+            className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]"
+          >
+            Approve sign-in on your device
+          </h2>
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+            We sent a push notification to your registered device. Tap{' '}
+            <span className="font-medium text-[var(--mieweb-foreground,#171717)]">Approve</span> to
+            finish signing in.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-[var(--mieweb-muted-foreground,#64748b)]">
+          <Spinner size="sm" />
+          <span>Waiting for approval&hellip;</span>
+        </div>
+
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          Cancel and try again
         </Button>
-      </div>
+      </section>
     );
   }
+
   if (status.status === 'unregistered') {
     return (
-      <div className="flex flex-col gap-4">
-        <Alert variant="warning">
-          <AlertTitle>Device not registered</AlertTitle>
-          <AlertDescription>
-            No device is enrolled for push 2FA. Contact an administrator to receive an invite.
-          </AlertDescription>
-        </Alert>
-        <Button variant="primary" onClick={onCancel}>
-          Try again
+      <section className="flex flex-col gap-5" aria-live="polite">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="flex size-14 items-center justify-center rounded-full bg-[var(--mieweb-warning,#f59e0b)]/10 ring-1 ring-[var(--mieweb-warning,#f59e0b)]/30">
+            <AlertTriangle className="size-6 text-[var(--mieweb-warning,#f59e0b)]" />
+          </span>
+          <h2 className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]">
+            Device not registered
+          </h2>
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+            No device is enrolled for push 2FA on this account. Contact an administrator to receive
+            an enrollment invite.
+          </p>
+        </div>
+        <Button variant="primary" onClick={onCancel} fullWidth>
+          Back to sign in
         </Button>
-      </div>
+      </section>
     );
   }
+
   return (
-    <div className="flex flex-col gap-4">
-      <Alert variant="danger">
-        <AlertTitle>Sign-in not completed</AlertTitle>
-        <AlertDescription>{status.message || `Status: ${status.status}`}</AlertDescription>
-      </Alert>
-      <Button variant="primary" onClick={onCancel}>
+    <section className="flex flex-col gap-5" aria-live="assertive">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="flex size-14 items-center justify-center rounded-full bg-[var(--mieweb-destructive,#dc2626)]/10 ring-1 ring-[var(--mieweb-destructive,#dc2626)]/30">
+          <XCircle className="size-6 text-[var(--mieweb-destructive,#dc2626)]" />
+        </span>
+        <h2 className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]">
+          Sign-in not completed
+        </h2>
+        <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+          {status.message || `Status: ${status.status}`}
+        </p>
+      </div>
+      <Button variant="primary" onClick={onCancel} fullWidth>
         Try again
       </Button>
-    </div>
+    </section>
   );
 }

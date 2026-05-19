@@ -8,16 +8,21 @@ import {
   Alert,
   AlertDescription,
   Button,
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
   Input,
-  PageHeader,
   Select,
   Spinner,
   Switch,
   useToast,
 } from '@mieweb/ui';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { Container, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageHeader } from '@/components/FormPageHeader';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 const SERVICE_TYPES = [
@@ -61,6 +66,10 @@ const COMMON_TEMPLATES = [
   'docker:postgres:16',
 ];
 
+const sectionCardClass = 'overflow-hidden shadow-sm';
+const sectionHeaderClass = 'flex flex-row items-center justify-between gap-3 border-b border-border bg-muted/30 px-6 py-4';
+const sectionContentClass = 'grid gap-4 px-6 py-6';
+
 export function ContainerFormPage() {
   const { siteId, id } = useParams<{ siteId: string; id?: string }>();
   const isEdit = !!id;
@@ -95,7 +104,7 @@ export function ContainerFormPage() {
   const restart = watch('restart');
 
   useEffect(() => {
-    if (container) {
+    if (container && isEdit) {
       reset({
         hostname: container.hostname,
         template: container.template || '',
@@ -119,10 +128,13 @@ export function ContainerFormPage() {
           authRequired: !!s.httpService?.authRequired,
           deleted: false,
         })),
-        environmentVars: Object.entries(container.environmentVars || {}).map(([key, value]) => ({ key, value })),
+        environmentVars: Object.entries(container.environmentVars || {}).map(([key, value]) => ({
+          key,
+          value,
+        })),
       });
     }
-  }, [container, reset]);
+  }, [container, isEdit, reset]);
 
   const [metadataMsg, setMetadataMsg] = useState<string | null>(null);
   const metadataMutation = useMutation({
@@ -189,11 +201,17 @@ export function ContainerFormPage() {
         environmentVars: values.environmentVars.filter((e) => e.key.trim()),
         restart: values.restart,
       };
-      type UpdateResult = { containerId: number; jobId: number | null; message: string; dnsWarnings: string[] };
+      type UpdateResult = {
+        containerId: number;
+        jobId: number | null;
+        message: string;
+        dnsWarnings: string[];
+      };
       type SaveResult = UpdateResult | ContainerCreateResult;
-      return (isEdit
-        ? api.put<UpdateResult>(`/api/v1/sites/${siteId}/containers/${id}`, payload)
-        : api.post<ContainerCreateResult>(`/api/v1/sites/${siteId}/containers`, payload)
+      return (
+        isEdit
+          ? api.put<UpdateResult>(`/api/v1/sites/${siteId}/containers/${id}`, payload)
+          : api.post<ContainerCreateResult>(`/api/v1/sites/${siteId}/containers`, payload)
       ) as Promise<SaveResult>;
     },
     onSuccess: (result) => {
@@ -215,7 +233,11 @@ export function ContainerFormPage() {
   });
 
   if ((isEdit && containerLoading) || bootstrapLoading) {
-    return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
+    return (
+      <div className="flex justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   const domainOptions = [
@@ -229,161 +251,269 @@ export function ContainerFormPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? `Edit container: ${container?.hostname ?? ''}` : 'New container'} bordered />
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate className="grid max-w-4xl gap-6">
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+        <FormPageHeader
+          icon={<Container className="size-6" />}
+          title={isEdit ? `Edit container: ${container?.hostname ?? ''}` : 'New container'}
+          subtitle={
+            isEdit
+              ? 'Update the container, its services, and environment variables.'
+              : 'Configure a new container, expose services, and set environment variables.'
+          }
+          backTo={{ label: 'Back to containers', to: `/sites/${siteId}/containers` }}
+        />
 
-        <section className="grid gap-4">
-          <h2 className="text-lg font-semibold">Basic</h2>
-          <Input
-            label="Hostname"
-            required
-            disabled={isEdit}
-            error={formState.errors.hostname?.message}
-            hasError={!!formState.errors.hostname}
-            {...register('hostname')}
-          />
-          {!isEdit && (
-            <>
-              <Select
-                label="Template"
-                value={template || ''}
-                onValueChange={(v) => setValue('template', v)}
-                options={templateOptions}
-              />
-              {template === 'custom' && (
-                <Input label="Custom template" placeholder="e.g. docker:my-org/my-image:tag" {...register('customTemplate')} />
-              )}
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Input label="Or look up image metadata" placeholder="docker:org/image:tag" {...register('customTemplate')} />
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Basics</CardTitle>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            <Input
+              label="Hostname"
+              required
+              disabled={isEdit}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              error={formState.errors.hostname?.message}
+              hasError={!!formState.errors.hostname}
+              {...register('hostname')}
+            />
+            {!isEdit && (
+              <>
+                <Select
+                  label="Template"
+                  value={template || ''}
+                  onValueChange={(v) => setValue('template', v)}
+                  options={templateOptions}
+                />
+                {template === 'custom' && (
+                  <Input
+                    label="Custom template"
+                    placeholder="e.g. docker:my-org/my-image:tag"
+                    {...register('customTemplate')}
+                  />
+                )}
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Input
+                      label="Or look up image metadata"
+                      placeholder="docker:org/image:tag"
+                      {...register('customTemplate')}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    leftIcon={<Search className="size-4" />}
+                    isLoading={metadataMutation.isPending}
+                    onClick={() => {
+                      const img = watch('customTemplate') || template;
+                      if (img && img !== 'custom') metadataMutation.mutate(img);
+                    }}
+                  >
+                    Fetch
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  leftIcon={<Search className="size-4" />}
-                  isLoading={metadataMutation.isPending}
-                  onClick={() => {
-                    const img = watch('customTemplate') || template;
-                    if (img && img !== 'custom') metadataMutation.mutate(img);
-                  }}
-                >
-                  Fetch
-                </Button>
-              </div>
-              {metadataMsg && <p className="text-xs text-(--color-muted,#6b7280)">{metadataMsg}</p>}
-            </>
-          )}
-          <Input label="Entrypoint" placeholder="Override container entrypoint" {...register('entrypoint')} />
-          {bootstrap?.nvidiaAvailable && (
-            <Switch
-              label="Request NVIDIA GPU"
-              description="Schedule on a node with a GPU and pass it through"
-              checked={!!nvidiaRequested}
-              onCheckedChange={(c) => setValue('nvidiaRequested', c)}
+                {metadataMsg && (
+                  <p className="text-xs text-muted-foreground">{metadataMsg}</p>
+                )}
+              </>
+            )}
+            <Input
+              label="Entrypoint"
+              placeholder="Override container entrypoint"
+              {...register('entrypoint')}
             />
-          )}
-          {isEdit && (
-            <Switch
-              label="Restart container after saving"
-              description="Required if you change environment variables or entrypoint"
-              checked={!!restart}
-              onCheckedChange={(c) => setValue('restart', c)}
-            />
-          )}
-        </section>
+            {bootstrap?.nvidiaAvailable && (
+              <Switch
+                label="Request NVIDIA GPU"
+                description="Schedule on a node with a GPU and pass it through"
+                checked={!!nvidiaRequested}
+                onCheckedChange={(c) => setValue('nvidiaRequested', c)}
+              />
+            )}
+            {isEdit && (
+              <Switch
+                label="Restart container after saving"
+                description="Required if you change environment variables or entrypoint"
+                checked={!!restart}
+                onCheckedChange={(c) => setValue('restart', c)}
+              />
+            )}
+          </CardContent>
+        </Card>
 
-        <section className="grid gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Services</h2>
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Services</CardTitle>
             <Button
               type="button"
               size="sm"
               variant="outline"
               leftIcon={<Plus className="size-4" />}
-              onClick={() => services.append({ type: 'http', internalPort: '', externalHostname: '', externalDomainId: '', dnsName: '', authRequired: false, deleted: false })}
+              onClick={() =>
+                services.append({
+                  type: 'http',
+                  internalPort: '',
+                  externalHostname: '',
+                  externalDomainId: '',
+                  dnsName: '',
+                  authRequired: false,
+                  deleted: false,
+                })
+              }
             >
               Add service
             </Button>
-          </div>
-          {services.fields.length === 0 && <p className="text-sm text-(--color-muted,#6b7280)">No services defined.</p>}
-          {services.fields.map((f, idx) => {
-            const svc = watch(`services.${idx}`);
-            if (svc.deleted) return null;
-            return (
-              <div key={f.id} className="grid gap-3 rounded-lg border border-(--color-border,#e5e7eb) p-4">
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-3">
-                  <Select
-                    label="Type"
-                    value={svc.type}
-                    onValueChange={(v) => setValue(`services.${idx}.type`, v as FormData['services'][number]['type'])}
-                    options={SERVICE_TYPES}
-                  />
-                  <Input label="Internal port" type="number" {...register(`services.${idx}.internalPort`)} />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (svc.id) setValue(`services.${idx}.deleted`, true);
-                      else services.remove(idx);
-                    }}
-                    aria-label="Remove service"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-                {(svc.type === 'http' || svc.type === 'https') && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input label="External hostname" placeholder="app" {...register(`services.${idx}.externalHostname`)} />
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            {services.fields.length === 0 && (
+              <p className="text-sm text-muted-foreground">No services defined.</p>
+            )}
+            {services.fields.map((f, idx) => {
+              const svc = watch(`services.${idx}`);
+              if (svc.deleted) return null;
+              return (
+                <div key={f.id} className="grid gap-3 rounded-lg border border-border p-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <Select
-                      label="External domain"
-                      value={svc.externalDomainId || ''}
-                      onValueChange={(v) => setValue(`services.${idx}.externalDomainId`, v)}
-                      options={domainOptions}
+                      label="Type"
+                      value={svc.type}
+                      onValueChange={(v) =>
+                        setValue(
+                          `services.${idx}.type`,
+                          v as FormData['services'][number]['type'],
+                        )
+                      }
+                      options={SERVICE_TYPES}
                     />
-                    <Switch
-                      label="Require authentication"
-                      checked={!!svc.authRequired}
-                      onCheckedChange={(c) => setValue(`services.${idx}.authRequired`, c)}
+                    <Input
+                      label="Internal port"
+                      type="number"
+                      inputMode="numeric"
+                      {...register(`services.${idx}.internalPort`)}
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (svc.id) setValue(`services.${idx}.deleted`, true);
+                        else services.remove(idx);
+                      }}
+                      aria-label="Remove service"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
                   </div>
-                )}
-                {svc.type === 'srv' && (
-                  <Input label="DNS name" placeholder="_service._tcp.example" {...register(`services.${idx}.dnsName`)} />
-                )}
-              </div>
-            );
-          })}
-        </section>
+                  {(svc.type === 'http' || svc.type === 'https') && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        label="External hostname"
+                        placeholder="app"
+                        {...register(`services.${idx}.externalHostname`)}
+                      />
+                      <Select
+                        label="External domain"
+                        value={svc.externalDomainId || ''}
+                        onValueChange={(v) =>
+                          setValue(`services.${idx}.externalDomainId`, v)
+                        }
+                        options={domainOptions}
+                      />
+                      <Switch
+                        label="Require authentication"
+                        checked={!!svc.authRequired}
+                        onCheckedChange={(c) =>
+                          setValue(`services.${idx}.authRequired`, c)
+                        }
+                      />
+                    </div>
+                  )}
+                  {svc.type === 'srv' && (
+                    <Input
+                      label="DNS name"
+                      placeholder="_service._tcp.example"
+                      {...register(`services.${idx}.dnsName`)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
-        <section className="grid gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Environment variables</h2>
-            <Button type="button" size="sm" variant="outline" leftIcon={<Plus className="size-4" />} onClick={() => envVars.append({ key: '', value: '' })}>
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Environment variables</CardTitle>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => envVars.append({ key: '', value: '' })}
+            >
               Add variable
             </Button>
-          </div>
-          {envVars.fields.map((f, idx) => (
-            <div key={f.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-              <Input label={idx === 0 ? 'Key' : undefined} hideLabel={idx !== 0} placeholder="KEY" {...register(`environmentVars.${idx}.key`)} />
-              <Input label={idx === 0 ? 'Value' : undefined} hideLabel={idx !== 0} placeholder="value" {...register(`environmentVars.${idx}.value`)} />
-              <Button type="button" variant="ghost" size="icon" onClick={() => envVars.remove(idx)} aria-label="Remove">
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-        </section>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            {envVars.fields.length === 0 && (
+              <p className="text-sm text-muted-foreground">No environment variables.</p>
+            )}
+            {envVars.fields.map((f, idx) => (
+              <div key={f.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <Input
+                  label={idx === 0 ? 'Key' : undefined}
+                  hideLabel={idx !== 0}
+                  placeholder="KEY"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  {...register(`environmentVars.${idx}.key`)}
+                />
+                <Input
+                  label={idx === 0 ? 'Value' : undefined}
+                  hideLabel={idx !== 0}
+                  placeholder="value"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  {...register(`environmentVars.${idx}.value`)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="self-end"
+                  onClick={() => envVars.remove(idx)}
+                  aria-label="Remove"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+          <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate(`/sites/${siteId}/containers`)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create container'}
+            </Button>
+          </CardFooter>
+        </Card>
 
-        {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate(`/sites/${siteId}/containers`)}>Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create container'}
-          </Button>
-        </div>
-      </form>
-    </div>
+        {mutation.error && (
+          <Alert variant="danger">
+            <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
+          </Alert>
+        )}
+      </div>
+    </form>
   );
 }

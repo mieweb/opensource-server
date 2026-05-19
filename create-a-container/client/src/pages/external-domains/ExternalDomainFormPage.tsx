@@ -9,13 +9,14 @@ import {
   AlertDescription,
   Button,
   Input,
-  PageHeader,
   Select,
   Spinner,
   useToast,
 } from '@mieweb/ui';
+import { Globe } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageLayout } from '@/components/FormPageLayout';
 import type { ExternalDomain } from '@/lib/types';
 
 const schema = z.object({
@@ -80,8 +81,6 @@ export function ExternalDomainFormPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  const onSubmit = handleSubmit((v) => mutation.mutate(v));
-
   if (isEdit && isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -91,13 +90,34 @@ export function ExternalDomainFormPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? 'Edit external domain' : 'New external domain'} bordered />
-      <form onSubmit={onSubmit} noValidate className="grid max-w-2xl gap-4">
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<Globe className="size-6" />}
+        title={isEdit ? 'Edit external domain' : 'New external domain'}
+        subtitle={
+          isEdit
+            ? 'Update ACME, DNS, and authentication settings.'
+            : 'Configure a public domain with ACME certificate issuance and optional Cloudflare DNS.'
+        }
+        backTo={{ label: 'Back to external domains', to: '/external-domains' }}
+        actions={
+          <>
+            <Button type="button" variant="ghost" onClick={() => navigate('/external-domains')}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create domain'}
+            </Button>
+          </>
+        }
+      >
         <Input
           label="Domain"
           required
           placeholder="example.com"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           error={formState.errors.name?.message}
           hasError={!!formState.errors.name}
           {...register('name')}
@@ -112,32 +132,50 @@ export function ExternalDomainFormPage() {
             ...(sites?.map((s) => ({ value: String(s.id), label: s.name })) || []),
           ]}
         />
-        <Input label="ACME email" type="email" {...register('acmeEmail')} error={formState.errors.acmeEmail?.message} hasError={!!formState.errors.acmeEmail} />
-        <Input label="ACME directory URL" placeholder="https://acme-v02.api.letsencrypt.org/directory" {...register('acmeDirectoryUrl')} error={formState.errors.acmeDirectoryUrl?.message} hasError={!!formState.errors.acmeDirectoryUrl} />
-        <Input label="Cloudflare API email" type="email" {...register('cloudflareApiEmail')} error={formState.errors.cloudflareApiEmail?.message} hasError={!!formState.errors.cloudflareApiEmail} />
+        <Input
+          label="ACME email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          {...register('acmeEmail')}
+          error={formState.errors.acmeEmail?.message}
+          hasError={!!formState.errors.acmeEmail}
+        />
+        <Input
+          label="ACME directory URL"
+          placeholder="https://acme-v02.api.letsencrypt.org/directory"
+          {...register('acmeDirectoryUrl')}
+          error={formState.errors.acmeDirectoryUrl?.message}
+          hasError={!!formState.errors.acmeDirectoryUrl}
+        />
+        <Input
+          label="Cloudflare API email"
+          type="email"
+          inputMode="email"
+          {...register('cloudflareApiEmail')}
+          error={formState.errors.cloudflareApiEmail?.message}
+          hasError={!!formState.errors.cloudflareApiEmail}
+        />
         <Input
           label="Cloudflare API key"
           type="password"
           autoComplete="new-password"
-          helperText={isEdit && domain?.hasCloudflareApiKey ? 'Leave blank to keep existing key' : undefined}
+          helperText={
+            isEdit && domain?.hasCloudflareApiKey ? 'Leave blank to keep existing key' : undefined
+          }
           {...register('cloudflareApiKey')}
         />
-        <Input label="Auth server" helperText="Optional URL for nginx auth_request" {...register('authServer')} />
-
+        <Input
+          label="Auth server"
+          helperText="Optional URL for nginx auth_request"
+          {...register('authServer')}
+        />
         {mutation.error && (
           <Alert variant="danger">
             <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
           </Alert>
         )}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate('/external-domains')}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create domain'}
-          </Button>
-        </div>
-      </form>
-    </div>
+      </FormPageLayout>
+    </form>
   );
 }

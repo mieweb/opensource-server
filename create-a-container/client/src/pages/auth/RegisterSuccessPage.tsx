@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { Alert, AlertDescription, AlertTitle, Spinner } from '@mieweb/ui';
 import { api, ApiError } from '@/lib/api';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 interface RegisterState {
   uid?: string;
@@ -12,6 +13,7 @@ interface RegisterState {
 }
 
 export function RegisterSuccessPage() {
+  useDocumentTitle('Account created');
   const location = useLocation();
   const state = (location.state as RegisterState | null) || {};
   const [qr, setQr] = useState<{ qrCodeDataUri: string; inviteUrl: string } | null>(null);
@@ -41,11 +43,11 @@ export function RegisterSuccessPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header>
-        <h1 className="text-xl font-semibold">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--mieweb-foreground,#171717)] sm:text-3xl">
           {state.status === 'active' ? 'Welcome aboard' : 'Almost there'}
         </h1>
-        <p className="mt-1 text-sm text-(--color-muted-foreground,#64748b)">
+        <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
           {state.message ||
             (state.status === 'active'
               ? 'Your account is ready. You can sign in.'
@@ -61,9 +63,11 @@ export function RegisterSuccessPage() {
       )}
 
       {state.enrollmentToken && (
-        <div className="rounded-lg border border-(--color-border,#e2e8f0) bg-(--color-muted,#f8fafc) p-4">
-          <h2 className="mb-2 text-sm font-semibold">Enroll your second factor</h2>
-          <p className="mb-3 text-sm text-(--color-muted-foreground,#64748b)">
+        <div className="rounded-lg border border-[var(--mieweb-border,#e5e7eb)] bg-[var(--mieweb-muted,#f5f5f5)] p-4">
+          <h2 className="mb-2 text-sm font-semibold text-[var(--mieweb-foreground,#171717)]">
+            Enroll your second factor
+          </h2>
+          <p className="mb-3 text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
             Scan this QR code with the push-notification app to register your device for 2FA.
           </p>
           {qrLoading && (
@@ -85,7 +89,7 @@ export function RegisterSuccessPage() {
               />
               <a
                 href={qr.inviteUrl}
-                className="text-xs text-(--color-primary,#1d4ed8) hover:underline"
+                className="text-xs font-medium text-[var(--mieweb-primary-700,#1786b3)] hover:text-[var(--mieweb-primary-800,#0f749c)] hover:underline"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -98,7 +102,7 @@ export function RegisterSuccessPage() {
 
       <Link
         to="/login"
-        className="text-center text-sm text-(--color-primary,#1d4ed8) hover:underline"
+        className="text-center text-sm font-medium text-[var(--mieweb-primary-700,#1786b3)] hover:text-[var(--mieweb-primary-800,#0f749c)] hover:underline"
       >
         Continue to sign in
       </Link>

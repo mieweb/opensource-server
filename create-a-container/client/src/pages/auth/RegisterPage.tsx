@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from '@mieweb/ui';
 import { api, ApiError } from '@/lib/api';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 const schema = z
   .object({
@@ -33,6 +34,7 @@ interface RegisterResponse {
 }
 
 export function RegisterPage() {
+  useDocumentTitle('Create account');
   const navigate = useNavigate();
   const { token } = useParams<{ token?: string }>();
   const [invite, setInvite] = useState<InviteData | null>(null);
@@ -106,11 +108,13 @@ export function RegisterPage() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <header>
-        <h1 className="text-xl font-semibold">Create your account</h1>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--mieweb-foreground,#171717)] sm:text-3xl">
+          Create your account
+        </h1>
         {invite && (
-          <p className="mt-1 text-sm text-(--color-muted-foreground,#64748b)">
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
             Invitation for <strong>{invite.email}</strong>
           </p>
         )}
@@ -131,7 +135,7 @@ export function RegisterPage() {
         hasError={!!formState.errors.uid}
         {...register('uid')}
       />
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Input
           label="First name"
           required
@@ -178,13 +182,17 @@ export function RegisterPage() {
         {...register('confirmPassword')}
       />
 
-      <Button type="submit" variant="primary" isLoading={formState.isSubmitting} fullWidth>
+      <Button type="submit" variant="primary" size="lg" isLoading={formState.isSubmitting} fullWidth>
         Create account
       </Button>
 
-      <p className="text-center text-sm">
-        <Link to="/login" className="text-(--color-primary,#1d4ed8) hover:underline">
-          Back to sign in
+      <p className="text-center text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+        Already have an account?{' '}
+        <Link
+          to="/login"
+          className="font-medium text-[var(--mieweb-primary-700,#1786b3)] hover:text-[var(--mieweb-primary-800,#0f749c)] hover:underline"
+        >
+          Sign in
         </Link>
       </p>
     </form>

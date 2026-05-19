@@ -118,12 +118,12 @@ export function SettingsPage() {
           </div>
           {fields.length === 0 && <p className="text-sm text-(--color-muted,#6b7280)">No defaults defined.</p>}
           {fields.map((f, idx) => (
-            <div key={f.id} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-              <Input label={idx === 0 ? 'Key' : undefined} hideLabel={idx !== 0} placeholder="KEY" {...register(`defaultContainerEnvVars.${idx}.key`)} />
-              <Input label={idx === 0 ? 'Value' : undefined} hideLabel={idx !== 0} placeholder="value" {...register(`defaultContainerEnvVars.${idx}.value`)} />
-              <Input label={idx === 0 ? 'Description' : undefined} hideLabel={idx !== 0} placeholder="optional" {...register(`defaultContainerEnvVars.${idx}.description`)} />
-              <Button type="button" variant="ghost" size="icon" onClick={() => remove(idx)} aria-label="Remove">
-                <Trash2 className="size-4" />
+            <div key={f.id} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              <Input label="Key" hideLabel={idx !== 0} placeholder="KEY" autoCapitalize="characters" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.key`)} />
+              <Input label="Value" hideLabel={idx !== 0} placeholder="value" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.value`)} />
+              <Input label="Description" hideLabel={idx !== 0} placeholder="optional" {...register(`defaultContainerEnvVars.${idx}.description`)} />
+              <Button type="button" variant="ghost" size="sm" leftIcon={<Trash2 className="size-4" />} onClick={() => remove(idx)} aria-label="Remove variable">
+                <span className="sm:sr-only">Remove</span>
               </Button>
             </div>
           ))}
@@ -131,7 +131,7 @@ export function SettingsPage() {
 
         {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button type="submit" variant="primary" isLoading={mutation.isPending}>Save settings</Button>
         </div>
       </form>

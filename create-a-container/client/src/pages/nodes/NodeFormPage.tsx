@@ -9,13 +9,14 @@ import {
   AlertDescription,
   Button,
   Input,
-  PageHeader,
   Spinner,
   Switch,
   useToast,
 } from '@mieweb/ui';
+import { Server } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { FormPageLayout } from '@/components/FormPageLayout';
 import type { Node } from '@/lib/types';
 
 const schema = z.object({
@@ -91,16 +92,72 @@ export function NodeFormPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  if (isEdit && isLoading) return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
+  if (isEdit && isLoading) {
+    return (
+      <div className="flex justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={isEdit ? 'Edit node' : 'New node'} bordered />
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate className="grid max-w-2xl gap-4">
-        <Input label="Name" required error={formState.errors.name?.message} hasError={!!formState.errors.name} {...register('name')} />
-        <Input label="IPv4 address" placeholder="10.0.0.1" {...register('ipv4Address')} />
-        <Input label="Proxmox API URL" type="url" placeholder="https://pve.example.com:8006" error={formState.errors.apiUrl?.message} hasError={!!formState.errors.apiUrl} {...register('apiUrl')} />
-        <Input label="API token ID" placeholder="root@pam!my-token" {...register('tokenId')} />
+    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+      <FormPageLayout
+        icon={<Server className="size-6" />}
+        title={isEdit ? 'Edit node' : 'New node'}
+        subtitle={
+          isEdit
+            ? 'Update Proxmox connection details and storage settings.'
+            : 'Register a Proxmox node with API credentials and default storage.'
+        }
+        backTo={{ label: 'Back to nodes', to: `/sites/${siteId}/nodes` }}
+        maxWidth="3xl"
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate(`/sites/${siteId}/nodes`)}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Create node'}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Name"
+          required
+          placeholder="pve-01"
+          error={formState.errors.name?.message}
+          hasError={!!formState.errors.name}
+          {...register('name')}
+        />
+        <Input
+          label="IPv4 address"
+          placeholder="10.0.0.1"
+          inputMode="numeric"
+          autoComplete="off"
+          {...register('ipv4Address')}
+        />
+        <Input
+          label="Proxmox API URL"
+          type="url"
+          placeholder="https://pve.example.com:8006"
+          error={formState.errors.apiUrl?.message}
+          hasError={!!formState.errors.apiUrl}
+          {...register('apiUrl')}
+        />
+        <Input
+          label="API token ID"
+          placeholder="root@pam!my-token"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          {...register('tokenId')}
+        />
         <Input
           label="API token secret"
           type="password"
@@ -108,22 +165,28 @@ export function NodeFormPage() {
           helperText={isEdit && node?.hasSecret ? 'Leave blank to keep existing secret' : undefined}
           {...register('secret')}
         />
-        <Switch label="Verify TLS certificate" checked={tlsVerify ?? true} onCheckedChange={(c) => setValue('tlsVerify', c)} />
-        <div className="grid grid-cols-3 gap-4">
+        <Switch
+          label="Verify TLS certificate"
+          checked={tlsVerify ?? true}
+          onCheckedChange={(c) => setValue('tlsVerify', c)}
+        />
+        <div className="grid gap-4 sm:grid-cols-3">
           <Input label="Image storage" required {...register('imageStorage')} />
           <Input label="Volume storage" required {...register('volumeStorage')} />
           <Input label="Network bridge" required {...register('networkBridge')} />
         </div>
-        <Switch label="NVIDIA available" description="GPU passthrough is supported on this node" checked={nvidiaAvailable ?? false} onCheckedChange={(c) => setValue('nvidiaAvailable', c)} />
-
-        {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={() => navigate(`/sites/${siteId}/nodes`)}>Cancel</Button>
-          <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-            {isEdit ? 'Save changes' : 'Create node'}
-          </Button>
-        </div>
-      </form>
-    </div>
+        <Switch
+          label="NVIDIA available"
+          description="GPU passthrough is supported on this node"
+          checked={nvidiaAvailable ?? false}
+          onCheckedChange={(c) => setValue('nvidiaAvailable', c)}
+        />
+        {mutation.error && (
+          <Alert variant="danger">
+            <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
+          </Alert>
+        )}
+      </FormPageLayout>
+    </form>
   );
 }

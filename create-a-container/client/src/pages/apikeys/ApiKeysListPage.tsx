@@ -109,7 +109,7 @@ export function ApiKeysListPage() {
             onChange={(e) => setDescription(e.target.value)}
             required
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setCreating(false)}>Cancel</Button>
             <Button type="submit" variant="primary" isLoading={createMutation.isPending}>Generate key</Button>
           </div>

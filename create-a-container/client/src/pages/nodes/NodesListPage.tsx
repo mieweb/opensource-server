@@ -47,7 +47,7 @@ export function NodesListPage() {
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<Server className="size-6" />}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link to={`/sites/${siteId}/nodes/import`}>
               <Button variant="outline" leftIcon={<Download className="size-4" />}>Import from Proxmox</Button>
             </Link>
@@ -79,7 +79,7 @@ export function NodesListPage() {
                 <TableCell className="max-w-xs truncate">{n.apiUrl || '—'}</TableCell>
                 <TableCell>{n.nvidiaAvailable ? <Badge variant="success">Available</Badge> : <Badge variant="secondary">No</Badge>}</TableCell>
                 <TableCell>{n.hasSecret ? <Badge variant="success">Set</Badge> : <Badge variant="warning">Missing</Badge>}</TableCell>
-                <TableCell className="flex justify-end gap-2">
+                <TableCell className="flex flex-wrap justify-end gap-2">
                   <Link to={`/sites/${siteId}/nodes/${n.id}/edit`}>
                     <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</Button>
                   </Link>

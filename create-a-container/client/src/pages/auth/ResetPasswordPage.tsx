@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle, Button, Input, Spinner } from '@mieweb/ui';
 import { api, ApiError } from '@/lib/api';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 const schema = z
   .object({
@@ -18,6 +19,7 @@ const schema = z
 type FormData = z.infer<typeof schema>;
 
 export function ResetPasswordPage() {
+  useDocumentTitle('Set new password');
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const [username, setUsername] = useState<string | null>(null);
@@ -75,14 +77,14 @@ export function ResetPasswordPage() {
   }
   if (tokenError) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5">
         <Alert variant="danger">
           <AlertTitle>Reset link invalid</AlertTitle>
           <AlertDescription>{tokenError}</AlertDescription>
         </Alert>
         <Link
           to="/reset-password"
-          className="text-center text-sm text-(--color-primary,#1d4ed8) hover:underline"
+          className="text-center text-sm font-medium text-[var(--mieweb-primary-700,#1786b3)] hover:text-[var(--mieweb-primary-800,#0f749c)] hover:underline"
         >
           Request a new link
         </Link>
@@ -91,11 +93,13 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <header>
-        <h1 className="text-xl font-semibold">Set a new password</h1>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--mieweb-foreground,#171717)] sm:text-3xl">
+          Set a new password
+        </h1>
         {username && (
-          <p className="mt-1 text-sm text-(--color-muted-foreground,#64748b)">
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
             For account <strong>{username}</strong>
           </p>
         )}
@@ -123,7 +127,7 @@ export function ResetPasswordPage() {
         hasError={!!errors.confirmPassword}
         {...register('confirmPassword')}
       />
-      <Button type="submit" variant="primary" isLoading={isSubmitting} fullWidth>
+      <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} fullWidth>
         Reset password
       </Button>
     </form>
