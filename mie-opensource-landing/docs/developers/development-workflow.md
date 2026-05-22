@@ -13,11 +13,61 @@
 ```bash
 git clone https://github.com/mieweb/opensource-server
 cd opensource-server/create-a-container
-cp example.env .env   # Edit with your Proxmox/DB settings
-docker compose up -d   # Start PostgreSQL
+cp example.env .env
+# Edit .env with your Proxmox/DB settings
+```
+
+#### Example local PostgreSQL configuration
+
+After copying `example.env` to `.env`, set the PostgreSQL variables for local development. The values below are examples for a local Docker setup:
+
+```env
+DATABASE_DIALECT=postgres
+
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DATABASE=opensource_server
+```
+
+When using PostgreSQL, the SQLite and MySQL/MariaDB variables can remain blank.
+
+Then start PostgreSQL and run the application:
+
+```bash
+docker compose up -d # Start PostgreSQL
 npm install
 npm run db:migrate
 npm run dev
+```
+
+#### Troubleshooting
+
+On Windows, if Docker Compose fails with an error similar to:
+
+```text
+POSTGRES_PASSWORD is missing a value
+```
+
+make sure `POSTGRES_PASSWORD` is set in `.env`.
+
+If Docker Compose fails with an error similar to:
+
+```text
+open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified
+```
+
+make sure Docker Desktop is running, then verify Docker is available:
+
+```bash
+docker ps
+```
+
+After Docker Desktop is running, retry:
+
+```bash
+docker compose up -d
 ```
 
 ### Without Docker
