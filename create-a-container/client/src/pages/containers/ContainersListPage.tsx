@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -16,8 +16,9 @@ import {
   TableRow,
   useToast,
 } from '@mieweb/ui';
-import { Container as ContainerIcon, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Code2, Container as ContainerIcon, ExternalLink, Pencil, Plus, Terminal, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import type { Container } from '@/lib/types';
 
@@ -42,6 +43,10 @@ export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
+  const { data: session } = useSession();
+  const sessionUser = session?.user;
+  const location = useLocation();
+  const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const { data: site } = useQuery({
     queryKey: keys.site(siteId!),
@@ -88,6 +93,18 @@ export function ContainersListPage() {
           <AlertDescription>{(error as ApiError).message}</AlertDescription>
         </Alert>
       )}
+      {dnsWarnings && dnsWarnings.length > 0 && (
+        <Alert variant="warning">
+          <AlertTitle>DNS warnings</AlertTitle>
+          <AlertDescription>
+            <ul className="list-disc pl-5">
+              {dnsWarnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {isLoading && (
         <div className="flex justify-center p-12">
           <Spinner size="lg" />
@@ -120,7 +137,21 @@ export function ContainersListPage() {
                 <TableCell>
                   <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
                 </TableCell>
-                <TableCell>{c.nodeName || '—'}</TableCell>
+                <TableCell>
+                  {c.nodeApiUrl ? (
+                    <a
+                      href={`${c.nodeApiUrl}${c.containerId ? `/#v1:0:=lxc%2F${c.containerId}:4:::::::` : ''}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open node in Proxmox web UI"
+                      className="text-(--color-primary,#1d4ed8) hover:underline"
+                    >
+                      {c.nodeName || c.nodeApiUrl}
+                    </a>
+                  ) : (
+                    c.nodeName || '—'
+                  )}
+                </TableCell>
                 <TableCell className="max-w-[18rem] truncate font-mono text-xs">
                   {c.template || '—'}
                 </TableCell>
@@ -151,7 +182,37 @@ export function ContainersListPage() {
                   )}
                 </TableCell>
                 <TableCell className="font-mono text-xs">
-                  {c.sshHost && c.sshPort ? `${c.sshHost}:${c.sshPort}` : '—'}
+                  {c.sshHost && c.sshPort ? (
+                    <div className="flex items-center gap-2">
+                      <span>{c.sshHost}:{c.sshPort}</span>
+                      {sessionUser && (
+                        <>
+                          <a
+                            href={`vscode://vscode-remote/ssh-remote+${sessionUser}@${c.sshHost}:${c.sshPort}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open in VS Code"
+                            aria-label={`Open SSH in VS Code for container ${c.hostname}`}
+                            className="text-(--color-primary,#1d4ed8) hover:underline"
+                          >
+                            <Code2 className="size-4" aria-hidden="true" />
+                          </a>
+                          <a
+                            href={`ssh://${sessionUser}@${c.sshHost}:${c.sshPort}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open SSH in terminal"
+                            aria-label={`Open SSH terminal for container ${c.hostname}`}
+                            className="text-(--color-primary,#1d4ed8) hover:underline"
+                          >
+                            <Terminal className="size-4" aria-hidden="true" />
+                          </a>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    '—'
+                  )}
                 </TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
                   {c.creationJobId && (

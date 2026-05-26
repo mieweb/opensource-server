@@ -77,6 +77,11 @@ async function main() {
 
   app.use(express.static('public'));
 
+  // Initialize CSRF secret from the SessionSecrets table so it rotates with
+  // the session secret and is shared across instances.
+  const { initCsrfSecret } = require('./middlewares/api');
+  await initCsrfSecret();
+
   // We rate limit unsuccessful (4xx/5xx statuses, excluding 404) to only 10 per 5 minutes, this
   // should allow legitimate users a few tries to login or experiment without
   // allowing bad-actors to abuse requests. 404s are excluded because browsers
@@ -97,8 +102,10 @@ async function main() {
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
   const templatesRouter = require('./routers/templates');
+  const verifyRouter = require('./routers/verify');
 
   app.use('/api/v1', apiV1Router);
+  app.use('/verify', verifyRouter); // nginx auth_request subrequest endpoint
   app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
@@ -115,7 +122,7 @@ async function main() {
   // --- SPA: serve compiled React app for everything else ---
   const clientDist = path.join(__dirname, 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+  app.get(/^\/(?!api(\/|$)|verify(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 

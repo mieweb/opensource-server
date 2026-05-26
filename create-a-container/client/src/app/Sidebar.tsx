@@ -12,9 +12,11 @@ import {
 import {
   Box,
   Building2,
+  Container as ContainerIcon,
   ExternalLink,
   Globe,
   KeyRound,
+  Server,
   Settings,
   ShieldCheck,
   Users,
@@ -64,6 +66,9 @@ export function AppSidebar() {
   const mfaAdminUrl =
     isAdmin && session?.pushNotificationUrl ? `${session.pushNotificationUrl}/admin` : null;
 
+  const siteMatch = location.pathname.match(/^\/sites\/(\d+)(?:\/|$)/);
+  const activeSiteId = siteMatch ? siteMatch[1] : null;
+
   // Treat the sidebar as compact only on desktop collapse; on mobile the off-canvas
   // panel is full-width and should always show labels.
   const compact = isCollapsed && !isMobileViewport;
@@ -95,6 +100,22 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarNav>{PRIMARY.map(renderLink)}</SidebarNav>
+        {activeSiteId && (
+          <SidebarNav className="mt-2">
+            {renderLink({
+              to: `/sites/${activeSiteId}/containers`,
+              label: 'Containers',
+              icon: <ContainerIcon className="size-4" />,
+              match: `/sites/${activeSiteId}/containers`,
+            })}
+            {isAdmin && renderLink({
+              to: `/sites/${activeSiteId}/nodes`,
+              label: 'Nodes',
+              icon: <Server className="size-4" />,
+              match: `/sites/${activeSiteId}/nodes`,
+            })}
+          </SidebarNav>
+        )}
         {mfaAdminUrl && (
           <SidebarNavItem
             key="mfa-admin"

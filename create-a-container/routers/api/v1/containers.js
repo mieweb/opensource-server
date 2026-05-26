@@ -99,6 +99,7 @@ function serializeContainer(c, site) {
     sshHost: primaryHttp?.externalUrl ? new URL(primaryHttp.externalUrl).hostname : site?.externalIp,
     httpEntries,
     nodeName: c.node ? c.node.name : null,
+    nodeApiUrl: c.node ? c.node.apiUrl : null,
     services: services.map((s) => ({
       id: s.id,
       type: s.type,

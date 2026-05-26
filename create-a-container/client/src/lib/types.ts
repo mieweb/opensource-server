@@ -85,6 +85,7 @@ export interface Container {
   sshHost: string | null;
   httpEntries: { port: number; externalUrl: string | null }[];
   nodeName: string | null;
+  nodeApiUrl: string | null;
   services: ContainerService[];
   createdAt: string;
 }
@@ -103,10 +104,10 @@ export interface ContainerNewBootstrap {
 }
 
 export interface ContainerMetadata {
-  exposedPorts?: string[];
-  entrypoint?: string[] | string;
-  cmd?: string[] | string;
-  env?: string[];
+  ports?: { port: number; protocol: string }[];
+  httpServices?: { port: number; hostnameSuffix?: string; requireAuth?: boolean }[];
+  entrypoint?: string;
+  env?: Record<string, string>;
 }
 
 export interface Job {

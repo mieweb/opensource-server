@@ -59,11 +59,9 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const COMMON_TEMPLATES = [
-  'ubuntu-22.04-standard',
-  'ubuntu-24.04-standard',
-  'debian-12-standard',
-  'docker:nginx:latest',
-  'docker:postgres:16',
+  'ghcr.io/mieweb/opensource-server/base:latest',
+  'ghcr.io/mieweb/opensource-server/nodejs:latest',
+  'ghcr.io/mieweb/ozwell-studio:latest',
 ];
 
 const sectionCardClass = 'overflow-hidden shadow-sm';
@@ -140,15 +138,24 @@ export function ContainerFormPage() {
   const metadataMutation = useMutation({
     mutationFn: (image: string) => queries.containerMetadata(siteId!, image),
     onSuccess: (meta: ContainerMetadata) => {
-      const ports = (meta.exposedPorts || []).filter((p) => /^\d+(\/\w+)?$/.test(p));
       let added = 0;
-      ports.forEach((p) => {
-        const [portStr, proto] = p.split('/');
-        const port = parseInt(portStr, 10);
-        const t = !proto || proto === 'tcp' ? 'http' : 'tcp';
+      (meta.httpServices || []).forEach((svc) => {
+        services.append({
+          type: 'http' as FormData['services'][number]['type'],
+          internalPort: String(svc.port),
+          externalHostname: '',
+          externalDomainId: '',
+          dnsName: '',
+          authRequired: !!svc.requireAuth,
+          deleted: false,
+        });
+        added += 1;
+      });
+      (meta.ports || []).forEach((p) => {
+        const t = p.protocol === 'tcp' ? 'tcp' : p.protocol === 'udp' ? 'udp' : 'tcp';
         services.append({
           type: t as FormData['services'][number]['type'],
-          internalPort: String(port),
+          internalPort: String(p.port),
           externalHostname: '',
           externalDomainId: '',
           dnsName: '',
@@ -158,13 +165,11 @@ export function ContainerFormPage() {
         added += 1;
       });
       if (meta.entrypoint) {
-        const ep = Array.isArray(meta.entrypoint) ? meta.entrypoint.join(' ') : meta.entrypoint;
-        setValue('entrypoint', ep);
+        setValue('entrypoint', meta.entrypoint);
       }
-      if (Array.isArray(meta.env)) {
-        meta.env.forEach((e) => {
-          const eq = e.indexOf('=');
-          if (eq > 0) envVars.append({ key: e.slice(0, eq), value: e.slice(eq + 1) });
+      if (meta.env && typeof meta.env === 'object') {
+        Object.entries(meta.env).forEach(([key, value]) => {
+          envVars.append({ key, value });
         });
       }
       setMetadataMsg(`Loaded metadata: ${added} port(s) discovered.`);
@@ -216,17 +221,13 @@ export function ContainerFormPage() {
     },
     onSuccess: (result) => {
       const dnsWarnings = (result as { dnsWarnings?: string[] }).dnsWarnings;
-      if (dnsWarnings && dnsWarnings.length > 0) {
-        toast.warning(`Saved with DNS warnings: ${dnsWarnings.join('; ')}`);
-      } else {
-        toast.success(isEdit ? 'Container updated' : 'Container queued for creation');
-      }
+      toast.success(isEdit ? 'Container updated' : 'Container queued for creation');
       qc.invalidateQueries({ queryKey: keys.containers(siteId!) });
       const jobId = (result as { jobId?: number | null }).jobId;
       if (jobId) {
-        navigate(`/jobs/${jobId}`);
+        navigate(`/jobs/${jobId}`, { state: { dnsWarnings } });
       } else {
-        navigate(`/sites/${siteId}/containers`);
+        navigate(`/sites/${siteId}/containers`, { state: { dnsWarnings } });
       }
     },
     onError: (err: ApiError) => toast.error(err.message),
@@ -289,33 +290,29 @@ export function ContainerFormPage() {
                   options={templateOptions}
                 />
                 {template === 'custom' && (
-                  <Input
-                    label="Custom template"
-                    placeholder="e.g. docker:my-org/my-image:tag"
-                    {...register('customTemplate')}
-                  />
-                )}
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Input
-                      label="Or look up image metadata"
-                      placeholder="docker:org/image:tag"
-                      {...register('customTemplate')}
-                    />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Input
+                        label="Custom image"
+                        helperText="Image reference, e.g. docker:org/image:tag or ghcr.io/org/image:tag"
+                        placeholder="docker:org/image:tag"
+                        {...register('customTemplate')}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      leftIcon={<Search className="size-4" />}
+                      isLoading={metadataMutation.isPending}
+                      onClick={() => {
+                        const img = watch('customTemplate');
+                        if (img) metadataMutation.mutate(img);
+                      }}
+                    >
+                      Fetch metadata
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    leftIcon={<Search className="size-4" />}
-                    isLoading={metadataMutation.isPending}
-                    onClick={() => {
-                      const img = watch('customTemplate') || template;
-                      if (img && img !== 'custom') metadataMutation.mutate(img);
-                    }}
-                  >
-                    Fetch
-                  </Button>
-                </div>
+                )}
                 {metadataMsg && (
                   <p className="text-xs text-muted-foreground">{metadataMsg}</p>
                 )}
@@ -375,8 +372,17 @@ export function ContainerFormPage() {
             {services.fields.map((f, idx) => {
               const svc = watch(`services.${idx}`);
               if (svc.deleted) return null;
+              // Existing services (with id) are immutable except for
+              // authRequired and delete — the API only accepts updates to
+              // the auth flag. To change other fields, delete and re-add.
+              const isExisting = !!svc.id;
               return (
                 <div key={f.id} className="grid gap-3 rounded-lg border border-border p-4">
+                  {isExisting && (
+                    <p className="text-xs text-muted-foreground">
+                      Existing service — only Require authentication can be changed. Delete and re-add to modify other fields.
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <Select
                       label="Type"
@@ -388,11 +394,13 @@ export function ContainerFormPage() {
                         )
                       }
                       options={SERVICE_TYPES}
+                      disabled={isExisting}
                     />
                     <Input
                       label="Internal port"
                       type="number"
                       inputMode="numeric"
+                      readOnly={isExisting}
                       {...register(`services.${idx}.internalPort`)}
                     />
                     <Button
@@ -413,6 +421,7 @@ export function ContainerFormPage() {
                       <Input
                         label="External hostname"
                         placeholder="app"
+                        readOnly={isExisting}
                         {...register(`services.${idx}.externalHostname`)}
                       />
                       <Select
@@ -422,6 +431,7 @@ export function ContainerFormPage() {
                           setValue(`services.${idx}.externalDomainId`, v)
                         }
                         options={domainOptions}
+                        disabled={isExisting}
                       />
                       <Switch
                         label="Require authentication"
@@ -436,6 +446,7 @@ export function ContainerFormPage() {
                     <Input
                       label="DNS name"
                       placeholder="_service._tcp.example"
+                      readOnly={isExisting}
                       {...register(`services.${idx}.dnsName`)}
                     />
                   )}

@@ -31,7 +31,7 @@ export function NodeImportPage() {
 
   const mutation = useMutation({
     mutationFn: (values: FormData) =>
-      api.post<{ imported: number }>(`/api/v1/sites/${siteId}/nodes/import-proxmox`, values),
+      api.post<{ imported: number }>(`/api/v1/sites/${siteId}/nodes/import`, values),
     onSuccess: (result) => {
       toast.success(`Imported ${result.imported} node(s)`);
       qc.invalidateQueries({ queryKey: keys.nodes(siteId!) });

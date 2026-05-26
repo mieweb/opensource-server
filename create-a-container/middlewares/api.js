@@ -12,11 +12,29 @@ const { doubleCsrf } = require('csrf-csrf');
 // Token lives in a cookie + must echo in X-CSRF-Token (or _csrf in body).
 // Skipped for Bearer-token API key requests (those are already cryptographically auth'd).
 const isProd = process.env.NODE_ENV === 'production';
+
+// Cached CSRF secret loaded from the SessionSecret table. The session
+// secret rotates centrally (see server.js getSessionSecrets) and is shared
+// across instances, so reusing it here gets us rotation + shared state
+// without a separate model. CSRF_SECRET env still wins when explicitly set.
+let _cachedCsrfSecret;
+async function loadCsrfSecret() {
+  if (process.env.CSRF_SECRET) return process.env.CSRF_SECRET;
+  const { SessionSecret } = require('../models');
+  const row = await SessionSecret.findOne({ order: [['createdAt', 'DESC']] });
+  if (row) return row.secret;
+  const crypto = require('crypto');
+  const newSecret = crypto.randomBytes(32).toString('hex');
+  await SessionSecret.create({ secret: newSecret });
+  return newSecret;
+}
+async function initCsrfSecret() {
+  _cachedCsrfSecret = await loadCsrfSecret();
+}
 const csrfSecret = () => {
-  const secret = process.env.CSRF_SECRET || process.env.SESSION_SECRET;
-  if (secret) return secret;
+  if (_cachedCsrfSecret) return _cachedCsrfSecret;
   if (isProd) {
-    throw new Error('CSRF_SECRET (or SESSION_SECRET) must be set in production');
+    throw new Error('CSRF secret not initialized — call initCsrfSecret() at startup');
   }
   return 'dev-csrf-secret-change-me';
 };
@@ -46,13 +64,20 @@ const {
     req.headers['x-csrf-token'] || (req.body && req.body._csrf),
 });
 
-// CSRF guard: enforce on state-changing methods, exempt Bearer-auth requests.
+// CSRF guard: enforce on state-changing methods. Only exempt requests that
+// are purely Bearer-authenticated (i.e., do NOT also carry a session cookie).
+// A session cookie is always sent by browsers, so a Bearer header alone
+// cannot be used by an attacker to bypass CSRF on a cookie-authenticated
+// session. Verifying the Bearer is left to apiAuth; the goal here is only
+// to deny the bypass to attackers who can't actually authenticate.
 function csrfGuard(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
     return next();
   }
   const auth = req.get('Authorization') || '';
-  if (auth.startsWith('Bearer ')) return next();
+  const hasBearer = auth.startsWith('Bearer ');
+  const hasSessionCookie = !!(req.session && req.session.user);
+  if (hasBearer && !hasSessionCookie) return next();
   return doubleCsrfProtection(req, res, next);
 }
 
@@ -158,6 +183,7 @@ module.exports = {
   apiAdmin,
   csrfGuard,
   generateCsrfToken,
+  initCsrfSecret,
   asyncHandler,
   ok,
   created,

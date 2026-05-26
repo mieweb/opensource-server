@@ -6,12 +6,14 @@
     ]
   },
   "scripts": {
-    "dev": "nodemon server.js",
+    "dev": "concurrently -n server,client -c blue,green \"nodemon server.js\" \"npm --prefix client run build:watch\"",
+    "dev:server": "nodemon server.js",
     "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
     "job-runner": "node job-runner.js",
     "client:install": "npm --prefix client install",
     "client:dev": "npm --prefix client run dev",
     "client:build": "npm --prefix client run build",
+    "client:build:watch": "npm --prefix client run build:watch",
     "client:preview": "npm --prefix client run preview",
     "client:type-check": "npm --prefix client run type-check"
   },
@@ -37,6 +39,7 @@
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "nodemon": "^3.1.10"
   }
 }

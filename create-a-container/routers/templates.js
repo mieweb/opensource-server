@@ -60,7 +60,20 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       as: 'externalDomains',
     }],
   });
-  if (!site) return res.status(404).send('Site not found');
+
+  // Bootstrap fallback: if the site does not exist yet, still render an
+  // empty nginx config so the manager API remains reachable (over TLS) to
+  // create the first site. Without this, bootstrapping would require
+  // plaintext HTTP access, which breaks our security requirements for
+  // registering nodes and creating the first site.
+  if (!site) {
+    res.set('Content-Type', 'text/plain');
+    return res.render('nginx-conf', {
+      httpServices: [],
+      streamServices: [],
+      externalDomains: [],
+    });
+  }
 
   const allServices = [];
   site?.nodes?.forEach((node) => {

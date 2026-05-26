@@ -73,12 +73,16 @@ export function useLoginMutation() {
         redirect: data.redirect || '/',
       };
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.kind === 'logged-in') {
         qc.setQueryData<SessionUser>(sessionKey, {
           user: result.user,
           isAdmin: result.isAdmin,
         });
+        // Refetch from the server so the cached session reflects the
+        // authoritative state (including pushNotificationUrl) before the
+        // caller navigates into a guarded route.
+        await qc.refetchQueries({ queryKey: sessionKey });
       }
     },
   });
@@ -129,11 +133,12 @@ export function useDevLoginMutation() {
   const qc = useQueryClient();
   return useMutation<DevLoginResponse, ApiError, DevLoginInput>({
     mutationFn: (input) => api.post<DevLoginResponse>('/api/v1/auth/dev', input),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       qc.setQueryData<SessionUser>(sessionKey, {
         user: data.user,
         isAdmin: data.isAdmin,
       });
+      await qc.refetchQueries({ queryKey: sessionKey });
     },
   });
 }

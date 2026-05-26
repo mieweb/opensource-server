@@ -59,56 +59,56 @@ async function activateSession(req, user) {
 
 // POST /api/v1/auth/dev — One-click dev login (non-production only).
 // Creates `dev-admin` or `dev-user` on first use and starts an authenticated
-// session. Disabled when NODE_ENV === 'production'.
-router.post(
-  '/dev',
-  asyncHandler(async (req, res) => {
-    if (process.env.NODE_ENV === 'production') {
-      throw new ApiError(404, 'not_found', 'Not found');
-    }
-    const isAdmin = req.body?.role === 'admin';
-    const uid = isAdmin ? 'dev-admin' : 'dev-user';
+// session. The route is not registered at all when NODE_ENV === 'production'
+// so it cannot be reached even by misconfiguration.
+if (process.env.NODE_ENV !== 'production') {
+  router.post(
+    '/dev',
+    asyncHandler(async (req, res) => {
+      const isAdmin = req.body?.role === 'admin';
+      const uid = isAdmin ? 'dev-admin' : 'dev-user';
 
-    let user = await User.findOne({
-      where: { uid },
-      include: [{ association: 'groups' }],
-    });
-
-    if (!user) {
-      user = await User.create({
-        uidNumber: await User.nextUidNumber(),
-        uid,
-        givenName: 'Dev',
-        sn: isAdmin ? 'Admin' : 'User',
-        cn: isAdmin ? 'Dev Admin' : 'Dev User',
-        mail: `${uid}@localhost`,
-        userPassword: 'dev-password-not-used',
-        status: 'active',
-        homeDirectory: `/home/${uid}`,
-      });
-
-      // The User afterCreate hook auto-adds the first user to sysadmins.
-      // Force group membership to match the requested role.
-      const adminGroup = await Group.findByPk(2000);
-      if (adminGroup) {
-        if (isAdmin) await user.addGroup(adminGroup);
-        else await user.removeGroup(adminGroup);
-      }
-
-      user = await User.findOne({
+      let user = await User.findOne({
         where: { uid },
         include: [{ association: 'groups' }],
       });
-    }
 
-    await activateSession(req, user);
-    return ok(res, {
-      user: user.uid,
-      isAdmin: req.session.isAdmin,
-      redirect: '/',
-    });
-  }),
-);
+      if (!user) {
+        user = await User.create({
+          uidNumber: await User.nextUidNumber(),
+          uid,
+          givenName: 'Dev',
+          sn: isAdmin ? 'Admin' : 'User',
+          cn: isAdmin ? 'Dev Admin' : 'Dev User',
+          mail: `${uid}@localhost`,
+          userPassword: 'dev-password-not-used',
+          status: 'active',
+          homeDirectory: `/home/${uid}`,
+        });
+
+        // The User afterCreate hook auto-adds the first user to sysadmins.
+        // Force group membership to match the requested role.
+        const adminGroup = await Group.findByPk(2000);
+        if (adminGroup) {
+          if (isAdmin) await user.addGroup(adminGroup);
+          else await user.removeGroup(adminGroup);
+        }
+
+        user = await User.findOne({
+          where: { uid },
+          include: [{ association: 'groups' }],
+        });
+      }
+
+      await activateSession(req, user);
+      return ok(res, {
+        user: user.uid,
+        isAdmin: req.session.isAdmin,
+        redirect: '/',
+      });
+    }),
+  );
+}
 
 // POST /api/v1/auth/login
 router.post(

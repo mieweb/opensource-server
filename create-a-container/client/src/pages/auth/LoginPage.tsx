@@ -21,9 +21,10 @@ import {
   EyeOff,
   Lock,
 } from 'lucide-react';
-import { useLoginMutation, useDevLoginMutation, useServerInfo, fetchChallenge, type ChallengeStatus } from '@/lib/auth';
+import { useLoginMutation, useDevLoginMutation, useServerInfo, fetchChallenge, sessionKey, type ChallengeStatus, type SessionUser } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { useQueryClient } from '@tanstack/react-query';
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -37,6 +38,7 @@ const POLL_MAX_MS = 5 * 60 * 1000;
 export function LoginPage() {
   useDocumentTitle('Sign in');
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [params] = useSearchParams();
   const redirect = params.get('redirect') || '/';
   const login = useLoginMutation();
@@ -70,6 +72,13 @@ export function LoginPage() {
         const status = await fetchChallenge(id);
         setChallenge(status);
         if (status.status === 'approved') {
+          if (status.user) {
+            qc.setQueryData<SessionUser>(sessionKey, {
+              user: status.user,
+              isAdmin: !!status.isAdmin,
+            });
+          }
+          await qc.refetchQueries({ queryKey: sessionKey });
           navigate(status.redirect && status.redirect !== '/' ? status.redirect : redirect, {
             replace: true,
           });

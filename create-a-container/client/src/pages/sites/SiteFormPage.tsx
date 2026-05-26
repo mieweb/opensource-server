@@ -107,7 +107,8 @@ export function SiteFormPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="DHCP range"
-            placeholder="10.0.0.100-10.0.0.200"
+            helperText="Comma-separated start,end (rendered into dnsmasq)"
+            placeholder="10.0.0.100,10.0.0.200"
             {...register('dhcpRange')}
           />
           <Input
@@ -126,7 +127,8 @@ export function SiteFormPage() {
           />
           <Input
             label="DNS forwarders"
-            placeholder="8.8.8.8 1.1.1.1"
+            helperText="Comma-separated upstream resolvers (rendered into dnsmasq)"
+            placeholder="8.8.8.8,1.1.1.1"
             {...register('dnsForwarders')}
           />
         </div>

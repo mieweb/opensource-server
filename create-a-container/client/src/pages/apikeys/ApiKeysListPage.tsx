@@ -70,7 +70,7 @@ export function ApiKeysListPage() {
             <div className="flex flex-col gap-2">
               <strong>{created.warning}</strong>
               <div className="flex items-center gap-2">
-                <code className="rounded bg-(--color-surface-2,#f5f5f5) px-2 py-1 font-mono text-sm break-all">
+                <code className="rounded bg-zinc-100 px-2 py-1 font-mono text-sm break-all text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
                   {created.key}
                 </code>
                 <Button
