@@ -20,6 +20,7 @@ import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { useSession } from '@/lib/auth';
+import { setCurrentSiteId } from '@/lib/currentSite';
 import type { Site } from '@/lib/types';
 
 export function SitesListPage() {
@@ -91,6 +92,7 @@ export function SitesListPage() {
                 <TableCell className="font-medium">
                   <Link
                     to={`/sites/${s.id}/containers`}
+                    onClick={() => setCurrentSiteId(s.id)}
                     className="hover:text-(--color-primary,#1d4ed8) hover:underline"
                   >
                     {s.name}

@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import {
+  Select,
   SidebarNav,
   SidebarNavItem,
   SidebarHeader,
@@ -23,6 +26,8 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useSession } from '@/lib/auth';
+import { keys, queries } from '@/lib/queries';
+import { useCurrentSiteId, setCurrentSiteId } from '@/lib/currentSite';
 
 function initialsOf(name: string | undefined) {
   if (!name) return '?';
@@ -67,7 +72,31 @@ export function AppSidebar() {
     isAdmin && session?.pushNotificationUrl ? `${session.pushNotificationUrl}/admin` : null;
 
   const siteMatch = location.pathname.match(/^\/sites\/(\d+)(?:\/|$)/);
-  const activeSiteId = siteMatch ? siteMatch[1] : null;
+  const urlSiteId = siteMatch ? siteMatch[1] : null;
+
+  const { data: sites } = useQuery({
+    queryKey: keys.sites(),
+    queryFn: queries.listSites,
+  });
+
+  const storedSiteId = useCurrentSiteId();
+
+  // When the URL points at a specific site, treat that as the current site so
+  // deep links and browser navigation keep the selector in sync.
+  useEffect(() => {
+    if (urlSiteId && urlSiteId !== storedSiteId) setCurrentSiteId(urlSiteId);
+  }, [urlSiteId, storedSiteId]);
+
+  // The current site persists across non-site pages. Validate the stored id
+  // still exists in the available sites before using it for navigation.
+  const currentSiteId =
+    storedSiteId && sites?.some((s) => String(s.id) === storedSiteId) ? storedSiteId : null;
+
+  const selectSite = (id: string) => {
+    if (!id) return;
+    setCurrentSiteId(id);
+    navigate(`/sites/${id}/containers`);
+  };
 
   // Treat the sidebar as compact only on desktop collapse; on mobile the off-canvas
   // panel is full-width and should always show labels.
@@ -99,20 +128,61 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarNav>{PRIMARY.map(renderLink)}</SidebarNav>
-        {activeSiteId && (
+        {compact || !sites || sites.length === 0 ? (
+          <SidebarNav>{PRIMARY.map(renderLink)}</SidebarNav>
+        ) : (
+          <div className="flex items-center gap-1 px-1">
+            <div className="shrink-0">
+              <SidebarNav>{PRIMARY.map(renderLink)}</SidebarNav>
+            </div>
+            <div className="min-w-0 flex-1">
+              <Select
+                label="Current site"
+                hideLabel
+                size="sm"
+                placeholder="Select a site"
+                value={currentSiteId ?? ''}
+                onValueChange={selectSite}
+                searchable={sites.length > 8}
+                aria-label="Current site"
+                options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+              />
+            </div>
+          </div>
+        )}
+        {!compact && currentSiteId && (
+          <div className="ml-5 mt-1 border-l border-border pl-2">
+            <SidebarNav>
+              {renderLink({
+                to: `/sites/${currentSiteId}/containers`,
+                label: 'Containers',
+                icon: <ContainerIcon className="size-4" />,
+                match: `/sites/${currentSiteId}/containers`,
+              })}
+              {isAdmin && renderLink({
+                to: `/sites/${currentSiteId}/nodes`,
+                label: 'Nodes',
+                icon: <Server className="size-4" />,
+                match: `/sites/${currentSiteId}/nodes`,
+              })}
+            </SidebarNav>
+          </div>
+        )}
+        {/* When collapsed there is no room for the indent/dropdown, so show the
+            site sub-links inline as a normal group. */}
+        {compact && currentSiteId && (
           <SidebarNav className="mt-2">
             {renderLink({
-              to: `/sites/${activeSiteId}/containers`,
+              to: `/sites/${currentSiteId}/containers`,
               label: 'Containers',
               icon: <ContainerIcon className="size-4" />,
-              match: `/sites/${activeSiteId}/containers`,
+              match: `/sites/${currentSiteId}/containers`,
             })}
             {isAdmin && renderLink({
-              to: `/sites/${activeSiteId}/nodes`,
+              to: `/sites/${currentSiteId}/nodes`,
               label: 'Nodes',
               icon: <Server className="size-4" />,
-              match: `/sites/${activeSiteId}/nodes`,
+              match: `/sites/${currentSiteId}/nodes`,
             })}
           </SidebarNav>
         )}
