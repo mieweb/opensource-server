@@ -122,6 +122,7 @@ export function ContainerFormPage() {
   const template = watch('template');
   const nvidiaRequested = watch('nvidiaRequested');
   const restart = watch('restart');
+  const hostname = watch('hostname');
 
   useEffect(() => {
     if (container && isEdit) {
@@ -161,11 +162,18 @@ export function ContainerFormPage() {
     mutationFn: (image: string) => queries.containerMetadata(siteId!, image),
     onSuccess: (meta: ContainerMetadata) => {
       let added = 0;
+      const baseHostname = hostname || '';
       (meta.httpServices || []).forEach((svc) => {
+        // External hostname defaults to the container hostname, or to
+        // "<hostname>-<suffix>" when the metadata label carries a
+        // hostnameSuffix (mirrors the legacy form behavior).
+        const externalHostname = svc.hostnameSuffix
+          ? `${baseHostname}-${svc.hostnameSuffix}`
+          : baseHostname;
         services.append({
           type: 'http' as FormData['services'][number]['type'],
           internalPort: String(svc.port),
-          externalHostname: '',
+          externalHostname,
           externalDomainId: defaultExternalDomainId,
           dnsName: '',
           authRequired: !!svc.requireAuth,
@@ -380,7 +388,7 @@ export function ContainerFormPage() {
                 services.append({
                   type: 'http',
                   internalPort: '',
-                  externalHostname: '',
+                  externalHostname: hostname || '',
                   externalDomainId: defaultExternalDomainId,
                   dnsName: '',
                   authRequired: false,
