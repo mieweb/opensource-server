@@ -72,9 +72,9 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 const COMMON_TEMPLATES = [
-  'ghcr.io/mieweb/opensource-server/base:latest',
-  'ghcr.io/mieweb/opensource-server/nodejs:latest',
-  'ghcr.io/mieweb/ozwell-studio:latest',
+  { value: 'ghcr.io/mieweb/opensource-server/base:latest', label: 'Debian 13' },
+  { value: 'ghcr.io/mieweb/opensource-server/nodejs:latest', label: 'NodeJS 24' },
+  { value: 'ghcr.io/mieweb/ozwell-studio:latest', label: 'Ozwell Studio' },
 ];
 
 const sectionCardClass = 'overflow-hidden shadow-sm';
@@ -299,7 +299,7 @@ export function ContainerFormPage() {
     bootstrap?.externalDomains.map((d) => ({ value: String(d.id), label: d.name })) || [];
   const templateOptions = [
     { value: '', label: 'Select a template' },
-    ...COMMON_TEMPLATES.map((t) => ({ value: t, label: t })),
+    ...COMMON_TEMPLATES.map((t) => ({ value: t.value, label: t.label })),
     { value: 'custom', label: 'Custom…' },
   ];
 
