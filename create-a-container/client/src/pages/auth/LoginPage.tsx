@@ -52,6 +52,7 @@ export function LoginPage() {
   const [capsLock, setCapsLock] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const pollStart = useRef<number>(0);
+  const approvedHandled = useRef(false);
 
   const {
     register,
@@ -67,26 +68,38 @@ export function LoginPage() {
 
   function startPolling(id: string) {
     pollStart.current = Date.now();
+    approvedHandled.current = false;
     const poll = async () => {
       try {
         const status = await fetchChallenge(id);
-        setChallenge(status);
         if (status.status === 'approved') {
+          // The challenge is single-use: the server activates the session and
+          // deletes the challenge on the first 'approved' response. Guard so a
+          // second in-flight poll can't re-run this (a repeat fetch would 404
+          // and surface as a spurious failure).
+          if (approvedHandled.current) return;
+          approvedHandled.current = true;
           // New authenticated session: drop any pre-login CSRF token so the
           // next mutation fetches one bound to it, avoiding a reactive 403.
           clearCsrfToken();
-          if (status.user) {
-            qc.setQueryData<SessionUser>(sessionKey, {
-              user: status.user,
-              isAdmin: !!status.isAdmin,
-            });
-          }
-          await qc.refetchQueries({ queryKey: sessionKey });
+          // The server has already saved the session, so seed the cache as the
+          // authoritative state. Navigate immediately — RequireAuth reads this
+          // cached session and lets us through. We intentionally do NOT block
+          // navigation on a refetch: a transient refetch failure/race must not
+          // bounce the now-authenticated user back to the login screen.
+          qc.setQueryData<SessionUser>(sessionKey, {
+            user: status.user || '',
+            isAdmin: !!status.isAdmin,
+          });
+          void qc.invalidateQueries({ queryKey: sessionKey });
           navigate(status.redirect && status.redirect !== '/' ? status.redirect : redirect, {
             replace: true,
           });
           return;
         }
+        // Only surface non-approved statuses (keeps an 'approved' status from
+        // ever rendering through the error/fallback view).
+        setChallenge(status);
         if (
           status.status === 'rejected' ||
           status.status === 'timeout' ||
@@ -101,6 +114,9 @@ export function LoginPage() {
         }
         pollTimer.current = window.setTimeout(poll, POLL_INTERVAL_MS);
       } catch (err) {
+        // If we've already handled approval and navigated, ignore late errors
+        // from any straggling poll (e.g. a 404 for the now-deleted challenge).
+        if (approvedHandled.current) return;
         setChallenge({
           status: 'failed',
           message: err instanceof ApiError ? err.message : 'Failed to check challenge',
