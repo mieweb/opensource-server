@@ -81,7 +81,7 @@ export function ContainerFormPage() {
     enabled: !!siteId,
   });
   const { data: container, isLoading: containerLoading } = useQuery({
-    queryKey: keys.container(siteId!, id ?? 'new'),
+    queryKey: keys.container(siteId!, id!),
     queryFn: () => queries.getContainer(siteId!, id!),
     enabled: isEdit,
   });
@@ -222,7 +222,11 @@ export function ContainerFormPage() {
     onSuccess: (result) => {
       const dnsWarnings = (result as { dnsWarnings?: string[] }).dnsWarnings;
       toast.success(isEdit ? 'Container updated' : 'Container queued for creation');
-      qc.invalidateQueries({ queryKey: keys.containers(siteId!) });
+      // exact:true so we only invalidate the list query and not its prefix
+      // descendants (e.g. the still-mounted containerBootstrap query keyed
+      // ['sites', siteId, 'containers', 'new']), which would otherwise refetch
+      // GET /containers/new on this form right before we navigate away.
+      qc.invalidateQueries({ queryKey: keys.containers(siteId!), exact: true });
       const jobId = (result as { jobId?: number | null }).jobId;
       if (jobId) {
         navigate(`/jobs/${jobId}`, { state: { dnsWarnings } });

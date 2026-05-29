@@ -193,8 +193,15 @@ router.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
+    // Guard against non-numeric ids (e.g. "undefined", "NaN"): parseInt would
+    // yield NaN and reach the DB as an invalid integer comparison, surfacing as
+    // a 500. Treat anything non-numeric as "not found".
+    const containerId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(containerId) || containerId <= 0) {
+      throw new ApiError(404, 'not_found', 'Container not found');
+    }
     const c = await Container.findOne({
-      where: { id: parseInt(req.params.id, 10), username: req.session.user },
+      where: { id: containerId, username: req.session.user },
       include: [
         {
           association: 'services',
