@@ -25,8 +25,11 @@ router.use(express.json({ limit: '1mb' }));
 router.use(express.urlencoded({ extended: true }));
 
 // Public token endpoint — clients call this before any state-changing request.
+// generateCsrfToken reuses the token already stored in the session when present
+// (overwrite defaults to false), so repeated calls return a stable token that
+// stays valid for the whole session.
 router.get('/csrf-token', (req, res) => {
-  const csrfToken = generateCsrfToken(req, res);
+  const csrfToken = generateCsrfToken(req);
   return ok(res, { csrfToken });
 });
 

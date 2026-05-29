@@ -6,61 +6,23 @@
  *   error:   { error: { code: string, message: string, fields?: { [name]: string } } }
  */
 
-const { doubleCsrf } = require('csrf-csrf');
+const { csrfSync } = require('csrf-sync');
 
-// --- CSRF (double-submit cookie) ----------------------------------------------------------
-// Token lives in a cookie + must echo in X-CSRF-Token (or _csrf in body).
+// --- CSRF (synchroniser token) ------------------------------------------------------------
+// Token is generated server-side, stored in the session (req.session.csrfToken),
+// and must be echoed back by the client in the X-CSRF-Token header (or _csrf in
+// the body). Because the token lives in the session it stays valid for the whole
+// session lifetime — it does not rotate per request — so the SPA can fetch it
+// once and reuse it for every mutation without ever provoking a 403 refresh loop.
 // Skipped for Bearer-token API key requests (those are already cryptographically auth'd).
-const isProd = process.env.NODE_ENV === 'production';
-
-// Cached CSRF secret loaded from the SessionSecret table. The session
-// secret rotates centrally (see server.js getSessionSecrets) and is shared
-// across instances, so reusing it here gets us rotation + shared state
-// without a separate model. CSRF_SECRET env still wins when explicitly set.
-let _cachedCsrfSecret;
-async function loadCsrfSecret() {
-  if (process.env.CSRF_SECRET) return process.env.CSRF_SECRET;
-  const { SessionSecret } = require('../models');
-  const row = await SessionSecret.findOne({ order: [['createdAt', 'DESC']] });
-  if (row) return row.secret;
-  const crypto = require('crypto');
-  const newSecret = crypto.randomBytes(32).toString('hex');
-  await SessionSecret.create({ secret: newSecret });
-  return newSecret;
-}
-async function initCsrfSecret() {
-  _cachedCsrfSecret = await loadCsrfSecret();
-}
-const csrfSecret = () => {
-  if (_cachedCsrfSecret) return _cachedCsrfSecret;
-  if (isProd) {
-    throw new Error('CSRF secret not initialized — call initCsrfSecret() at startup');
-  }
-  return 'dev-csrf-secret-change-me';
-};
-
-// __Host- prefix requires Secure + Path=/ + no Domain; browsers reject it on
-// plain HTTP (including dev), so fall back to a plain cookie name off-prod.
 
 const {
-  doubleCsrfProtection,
-  generateCsrfToken,
+  generateToken: generateCsrfToken,
+  csrfSynchronisedProtection,
   invalidCsrfTokenError,
-} = doubleCsrf({
-  getSecret: csrfSecret,
-  // Double-submit pattern is sufficient on its own; binding to req.session.id
-  // breaks for anon requests because saveUninitialized:false hands out a fresh
-  // session id every request until a user signs in.
-  getSessionIdentifier: (req) => (req.session && req.session.user && req.session.id) || req.ip || 'anonymous',
-  cookieName: isProd ? '__Host-csrf.token' : 'csrf.token',
-  cookieOptions: {
-    sameSite: 'lax',
-    path: '/',
-    secure: isProd,
-    httpOnly: true,
-  },
+} = csrfSync({
   size: 32,
-  getCsrfTokenFromRequest: (req) =>
+  getTokenFromRequest: (req) =>
     req.headers['x-csrf-token'] || (req.body && req.body._csrf),
 });
 
@@ -78,7 +40,7 @@ function csrfGuard(req, res, next) {
   const hasBearer = auth.startsWith('Bearer ');
   const hasSessionCookie = !!(req.session && req.session.user);
   if (hasBearer && !hasSessionCookie) return next();
-  return doubleCsrfProtection(req, res, next);
+  return csrfSynchronisedProtection(req, res, next);
 }
 
 // --- Auth ---------------------------------------------------------------------------------
@@ -183,7 +145,6 @@ module.exports = {
   apiAdmin,
   csrfGuard,
   generateCsrfToken,
-  initCsrfSecret,
   asyncHandler,
   ok,
   created,

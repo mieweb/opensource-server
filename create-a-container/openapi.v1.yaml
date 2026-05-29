@@ -14,7 +14,9 @@ info:
 
     ## CSRF (session auth only)
 
-    1. `GET /api/v1/csrf-token` → returns `{ "data": { "csrfToken": "..." } }` and sets `__Host-csrf.token` cookie.
+    Uses the synchroniser-token pattern (the token is stored in the session).
+
+    1. `GET /api/v1/csrf-token` → returns `{ "data": { "csrfToken": "..." } }`. The token is bound to your session and stays valid for its lifetime, so fetch it once and reuse it.
     2. Send the token in the `X-CSRF-Token` header on every `POST`/`PUT`/`PATCH`/`DELETE`.
 
     ## Response envelope

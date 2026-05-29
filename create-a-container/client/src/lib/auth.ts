@@ -75,6 +75,10 @@ export function useLoginMutation() {
     },
     onSuccess: async (result) => {
       if (result.kind === 'logged-in') {
+        // Drop any pre-login CSRF token so the next mutation fetches one bound
+        // to the authenticated session, proactively rather than reacting to a
+        // 403. Avoids forbidden responses that would trip backend rate limits.
+        clearCsrfToken();
         qc.setQueryData<SessionUser>(sessionKey, {
           user: result.user,
           isAdmin: result.isAdmin,
@@ -134,6 +138,7 @@ export function useDevLoginMutation() {
   return useMutation<DevLoginResponse, ApiError, DevLoginInput>({
     mutationFn: (input) => api.post<DevLoginResponse>('/api/v1/auth/dev', input),
     onSuccess: async (data) => {
+      clearCsrfToken();
       qc.setQueryData<SessionUser>(sessionKey, {
         user: data.user,
         isAdmin: data.isAdmin,

@@ -22,7 +22,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { useLoginMutation, useDevLoginMutation, useServerInfo, fetchChallenge, sessionKey, type ChallengeStatus, type SessionUser } from '@/lib/auth';
-import { ApiError } from '@/lib/api';
+import { ApiError, clearCsrfToken } from '@/lib/api';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -72,6 +72,9 @@ export function LoginPage() {
         const status = await fetchChallenge(id);
         setChallenge(status);
         if (status.status === 'approved') {
+          // New authenticated session: drop any pre-login CSRF token so the
+          // next mutation fetches one bound to it, avoiding a reactive 403.
+          clearCsrfToken();
           if (status.user) {
             qc.setQueryData<SessionUser>(sessionKey, {
               user: status.user,

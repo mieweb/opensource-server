@@ -1,9 +1,18 @@
 /**
  * Typed JSON client for /api/v1. Handles:
  *  - cookies (session)
- *  - CSRF double-submit token (fetched on demand, cached, refreshed on 403)
+ *  - CSRF synchroniser token (fetched once, cached, sent on every mutation)
  *  - `{ data }` / `{ error }` envelope unwrapping
  *  - 401 → optional auth-failure handler (router decides what to do)
+ *
+ * CSRF policy: the synchroniser token is stored server-side in the session and
+ * stays valid for the whole session lifetime. We fetch it exactly once and
+ * reuse it for every mutation. A mutation NEVER goes out without a valid token
+ * — if the cache is empty we await the token first. We deliberately do NOT
+ * refresh on a 403 response: relying on forbidden responses to recover would
+ * generate a stream of 4xx during failures and trip the backend rate limiter.
+ * The cache is instead cleared proactively on auth-state changes (login/logout)
+ * so the next mutation transparently fetches a token bound to the new session.
  */
 
 export interface ApiErrorPayload {
@@ -26,6 +35,7 @@ export class ApiError extends Error {
 }
 
 let csrfToken: string | null = null;
+let csrfTokenInFlight: Promise<string> | null = null;
 let onUnauthorized: (() => void) | null = null;
 
 export function setOnUnauthorized(fn: () => void) {
@@ -38,6 +48,21 @@ async function fetchCsrfToken(): Promise<string> {
   const body = (await res.json()) as { data: { csrfToken: string } };
   csrfToken = body.data.csrfToken;
   return csrfToken;
+}
+
+/**
+ * Resolve a valid CSRF token, returning the cached one when present. Concurrent
+ * callers share a single in-flight request so a burst of mutations triggers at
+ * most one token fetch rather than one per request.
+ */
+async function ensureCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (!csrfTokenInFlight) {
+    csrfTokenInFlight = fetchCsrfToken().finally(() => {
+      csrfTokenInFlight = null;
+    });
+  }
+  return csrfTokenInFlight;
 }
 
 export function clearCsrfToken() {
@@ -62,8 +87,12 @@ export async function apiRequest<T = unknown>(
   const method = options.method || 'GET';
   const isMutation = MUTATING_METHODS.has(method);
 
-  if (isMutation && !csrfToken) {
-    await fetchCsrfToken();
+  // A mutation must never leave the client without a valid CSRF token.
+  // ensureCsrfToken resolves the cached token or fetches one (deduplicated),
+  // so by the time we build the request the header is guaranteed to be set.
+  let token: string | null = null;
+  if (isMutation) {
+    token = await ensureCsrfToken();
   }
 
   const doFetch = async (): Promise<Response> => {
@@ -74,7 +103,7 @@ export async function apiRequest<T = unknown>(
     if (options.body !== undefined && !(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
-    if (isMutation && csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    if (isMutation && token) headers['X-CSRF-Token'] = token;
 
     return fetch(path.startsWith('/') ? path : `/api/v1/${path}`, {
       method,
@@ -90,16 +119,7 @@ export async function apiRequest<T = unknown>(
     });
   };
 
-  let response = await doFetch();
-
-  // CSRF token may have rotated; retry once.
-  if (response.status === 403 && isMutation) {
-    const text = await response.clone().text();
-    if (text.includes('csrf') || text.includes('CSRF')) {
-      await fetchCsrfToken();
-      response = await doFetch();
-    }
-  }
+  const response = await doFetch();
 
   if (response.status === 401) {
     if (onUnauthorized) onUnauthorized();
