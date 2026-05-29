@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -124,6 +124,7 @@ export function ContainerFormPage() {
   const nvidiaRequested = watch('nvidiaRequested');
   const restart = watch('restart');
   const hostname = watch('hostname');
+  const customTemplate = watch('customTemplate');
 
   useEffect(() => {
     if (container && isEdit) {
@@ -163,6 +164,10 @@ export function ContainerFormPage() {
   const metadataMutation = useMutation({
     mutationFn: (image: string) => queries.containerMetadata(siteId!, image),
     onSuccess: (meta: ContainerMetadata) => {
+      // Replace any services/env vars from a previous metadata load (or
+      // template switch) so re-fetching never duplicates entries.
+      services.replace([]);
+      envVars.replace([]);
       let added = 0;
       const baseHostname = hostname || '';
       (meta.httpServices || []).forEach((svc) => {
@@ -208,6 +213,17 @@ export function ContainerFormPage() {
     },
     onError: (err: ApiError) => setMetadataMsg(err.message),
   });
+
+  // Tracks the last image we auto-fetched so blurring the custom-image input
+  // without changing it doesn't trigger a redundant fetch.
+  const lastAutoFetchedImage = useRef<string | null>(null);
+  const handleCustomImageBlur = () => {
+    if (isEdit || template !== 'custom') return;
+    const img = (customTemplate || '').trim();
+    if (!img || img === lastAutoFetchedImage.current) return;
+    lastAutoFetchedImage.current = img;
+    metadataMutation.mutate(img);
+  };
 
   const mutation = useMutation({
     mutationFn: (values: FormData) => {
@@ -301,6 +317,12 @@ export function ContainerFormPage() {
           backTo={{ label: 'Back to containers', to: `/sites/${siteId}/containers` }}
         />
 
+        <fieldset
+          disabled={metadataMutation.isPending}
+          className={`flex flex-col gap-6 border-0 p-0 m-0 ${
+            metadataMutation.isPending ? 'pointer-events-none opacity-60' : ''
+          }`}
+        >
         <Card padding="none" className={sectionCardClass}>
           <CardHeader className={sectionHeaderClass}>
             <CardTitle className="text-base">Basics</CardTitle>
@@ -319,36 +341,60 @@ export function ContainerFormPage() {
             />
             {!isEdit && (
               <>
-                <Select
-                  label="Template"
-                  value={template || ''}
-                  onValueChange={(v) => setValue('template', v)}
-                  options={templateOptions}
-                />
-                {template === 'custom' && (
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <Input
-                        label="Custom image"
-                        helperText="Image reference, e.g. docker:org/image:tag or ghcr.io/org/image:tag"
-                        placeholder="docker:org/image:tag"
-                        {...register('customTemplate')}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      leftIcon={<Search className="size-4" />}
-                      isLoading={metadataMutation.isPending}
-                      onClick={() => {
-                        const img = watch('customTemplate');
-                        if (img) metadataMutation.mutate(img);
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Select
+                      label="Template"
+                      value={template || ''}
+                      disabled={metadataMutation.isPending}
+                      onValueChange={(v) => {
+                        setValue('template', v);
+                        setMetadataMsg(null);
+                        // Selecting a built-in template (anything other than the
+                        // empty placeholder or "custom") auto-loads its metadata,
+                        // reusing the same mutation as the Fetch metadata button.
+                        if (v && v !== 'custom') {
+                          metadataMutation.mutate(v);
+                        }
                       }}
-                    >
-                      Fetch metadata
-                    </Button>
+                      options={templateOptions}
+                    />
                   </div>
-                )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    leftIcon={<Search className="size-4" />}
+                    isLoading={metadataMutation.isPending}
+                    disabled={!(template === 'custom' ? customTemplate : template)}
+                    onClick={() => {
+                      const img = template === 'custom' ? customTemplate : template;
+                      if (img) {
+                        // Mark as fetched so the debounced custom-image effect
+                        // doesn't immediately fire a duplicate request.
+                        lastAutoFetchedImage.current = img.trim();
+                        metadataMutation.mutate(img);
+                      }
+                    }}
+                  >
+                    Fetch metadata
+                  </Button>
+                </div>
+                {template === 'custom' && (() => {
+                  const customReg = register('customTemplate');
+                  return (
+                    <Input
+                      label="Custom image"
+                      helperText="Image reference, e.g. docker:org/image:tag or ghcr.io/org/image:tag"
+                      placeholder="docker:org/image:tag"
+                      disabled={metadataMutation.isPending}
+                      {...customReg}
+                      onBlur={(e) => {
+                        customReg.onBlur(e);
+                        handleCustomImageBlur();
+                      }}
+                    />
+                  );
+                })()}
                 {metadataMsg && (
                   <p className="text-xs text-muted-foreground">{metadataMsg}</p>
                 )}
@@ -581,6 +627,7 @@ export function ContainerFormPage() {
             </Button>
           </CardFooter>
         </Card>
+        </fieldset>
 
         {mutation.error && (
           <Alert variant="danger">
