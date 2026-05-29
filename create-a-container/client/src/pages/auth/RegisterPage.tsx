@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -36,7 +36,11 @@ interface RegisterResponse {
 export function RegisterPage() {
   useDocumentTitle('Create account');
   const navigate = useNavigate();
-  const { token } = useParams<{ token?: string }>();
+  // The invite token may arrive as a path param (/register/invite/:token) or as
+  // a query string (/register?token=...), which is what invite emails use.
+  const { token: pathToken } = useParams<{ token?: string }>();
+  const [searchParams] = useSearchParams();
+  const token = pathToken ?? searchParams.get('token') ?? undefined;
   const [invite, setInvite] = useState<InviteData | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(!!token);
@@ -159,6 +163,7 @@ export function RegisterPage() {
         required
         autoComplete="email"
         readOnly={!!invite}
+        disabled={!!invite}
         error={formState.errors.mail?.message}
         hasError={!!formState.errors.mail}
         {...register('mail')}
