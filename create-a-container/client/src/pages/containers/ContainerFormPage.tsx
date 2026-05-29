@@ -17,6 +17,7 @@ import {
   Select,
   Spinner,
   Switch,
+  Tooltip,
   useToast,
 } from '@mieweb/ui';
 import { Container, Plus, Search, Trash2 } from 'lucide-react';
@@ -158,6 +159,7 @@ export function ContainerFormPage() {
   }, [container, isEdit, reset]);
 
   const [metadataMsg, setMetadataMsg] = useState<string | null>(null);
+  const [nvidiaTooltipOpen, setNvidiaTooltipOpen] = useState(false);
   const metadataMutation = useMutation({
     mutationFn: (image: string) => queries.containerMetadata(siteId!, image),
     onSuccess: (meta: ContainerMetadata) => {
@@ -357,14 +359,33 @@ export function ContainerFormPage() {
               placeholder="Override container entrypoint"
               {...register('entrypoint')}
             />
-            {bootstrap?.nvidiaAvailable && (
+            <div
+              className="flex w-fit items-center gap-3"
+              onMouseEnter={() => !bootstrap?.nvidiaAvailable && setNvidiaTooltipOpen(true)}
+              onMouseLeave={() => setNvidiaTooltipOpen(false)}
+              onFocus={() => !bootstrap?.nvidiaAvailable && setNvidiaTooltipOpen(true)}
+              onBlur={() => setNvidiaTooltipOpen(false)}
+            >
               <Switch
-                label="Request NVIDIA GPU"
-                description="Schedule on a node with a GPU and pass it through"
-                checked={!!nvidiaRequested}
+                id="nvidia-requested"
+                checked={!!bootstrap?.nvidiaAvailable && !!nvidiaRequested}
+                disabled={!bootstrap?.nvidiaAvailable}
                 onCheckedChange={(c) => setValue('nvidiaRequested', c)}
               />
-            )}
+              <Tooltip
+                content="No NVIDIA nodes are available in this site"
+                disabled={!!bootstrap?.nvidiaAvailable}
+                open={nvidiaTooltipOpen}
+                onOpenChange={setNvidiaTooltipOpen}
+              >
+                <label htmlFor="nvidia-requested" className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium leading-none">Request NVIDIA GPU</span>
+                  <span className="text-xs text-muted-foreground">
+                    Schedule on a node with a GPU and pass it through
+                  </span>
+                </label>
+              </Tooltip>
+            </div>
             {isEdit && (
               <Switch
                 label="Restart container after saving"
