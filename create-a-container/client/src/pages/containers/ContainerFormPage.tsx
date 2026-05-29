@@ -33,16 +33,28 @@ const SERVICE_TYPES = [
   { value: 'srv', label: 'DNS (SRV record)' },
 ];
 
-const serviceSchema = z.object({
-  id: z.number().optional(),
-  type: z.enum(['http', 'https', 'tcp', 'udp', 'srv']),
-  internalPort: z.string(),
-  externalHostname: z.string().optional(),
-  externalDomainId: z.string().optional(),
-  dnsName: z.string().optional(),
-  authRequired: z.boolean().optional(),
-  deleted: z.boolean().optional(),
-});
+const serviceSchema = z
+  .object({
+    id: z.number().optional(),
+    type: z.enum(['http', 'https', 'tcp', 'udp', 'srv']),
+    internalPort: z.string(),
+    externalHostname: z.string().optional(),
+    externalDomainId: z.string().optional(),
+    dnsName: z.string().optional(),
+    authRequired: z.boolean().optional(),
+    deleted: z.boolean().optional(),
+  })
+  .refine(
+    (s) =>
+      s.deleted ||
+      s.id !== undefined || // existing services are immutable here
+      (s.type !== 'http' && s.type !== 'https') ||
+      !!s.externalDomainId,
+    {
+      message: 'An external domain is required for HTTP services',
+      path: ['externalDomainId'],
+    },
+  );
 
 const envVarSchema = z.object({ key: z.string(), value: z.string() });
 
@@ -97,6 +109,16 @@ export function ContainerFormPage() {
   });
   const services = useFieldArray({ control, name: 'services' });
   const envVars = useFieldArray({ control, name: 'environmentVars' });
+
+  // Default external domain for new HTTP services. The bootstrap endpoint
+  // returns domains already sorted so the site's default domains come first,
+  // then the first domain overall — mirroring the legacy form's selection.
+  // An HTTP service must never render without a domain selected unless no
+  // external domains are defined at all (then this is '' and the select is
+  // empty + disabled).
+  const defaultExternalDomainId = bootstrap?.externalDomains?.[0]?.id
+    ? String(bootstrap.externalDomains[0].id)
+    : '';
   const template = watch('template');
   const nvidiaRequested = watch('nvidiaRequested');
   const restart = watch('restart');
@@ -144,7 +166,7 @@ export function ContainerFormPage() {
           type: 'http' as FormData['services'][number]['type'],
           internalPort: String(svc.port),
           externalHostname: '',
-          externalDomainId: '',
+          externalDomainId: defaultExternalDomainId,
           dnsName: '',
           authRequired: !!svc.requireAuth,
           deleted: false,
@@ -245,10 +267,10 @@ export function ContainerFormPage() {
     );
   }
 
-  const domainOptions = [
-    { value: '', label: '— None —' },
-    ...(bootstrap?.externalDomains.map((d) => ({ value: String(d.id), label: d.name })) || []),
-  ];
+  // No "— None —" option: an HTTP service must always have a domain selected
+  // when any external domains exist. If none are defined, the list is empty.
+  const domainOptions =
+    bootstrap?.externalDomains.map((d) => ({ value: String(d.id), label: d.name })) || [];
   const templateOptions = [
     { value: '', label: 'Select a template' },
     ...COMMON_TEMPLATES.map((t) => ({ value: t, label: t })),
@@ -359,7 +381,7 @@ export function ContainerFormPage() {
                   type: 'http',
                   internalPort: '',
                   externalHostname: '',
-                  externalDomainId: '',
+                  externalDomainId: defaultExternalDomainId,
                   dnsName: '',
                   authRequired: false,
                   deleted: false,
@@ -391,12 +413,20 @@ export function ContainerFormPage() {
                     <Select
                       label="Type"
                       value={svc.type}
-                      onValueChange={(v) =>
-                        setValue(
-                          `services.${idx}.type`,
-                          v as FormData['services'][number]['type'],
-                        )
-                      }
+                      onValueChange={(v) => {
+                        const next = v as FormData['services'][number]['type'];
+                        setValue(`services.${idx}.type`, next);
+                        // When switching to an HTTP type, ensure a domain is
+                        // selected (default to the site's first domain) so an
+                        // HTTP service is never shown without one.
+                        if (
+                          (next === 'http' || next === 'https') &&
+                          !svc.externalDomainId &&
+                          defaultExternalDomainId
+                        ) {
+                          setValue(`services.${idx}.externalDomainId`, defaultExternalDomainId);
+                        }
+                      }}
                       options={SERVICE_TYPES}
                       disabled={isExisting}
                     />
