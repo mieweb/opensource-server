@@ -18,7 +18,8 @@ This brings up:
 
 | Service | Purpose |
 |---|---|
-| `npm ci` job | Installs all Node.js dependencies in the mounted workspace |
+| `npm ci` job | Installs the Manager's Node.js dependencies in the mounted workspace |
+| `client` | Installs the React client's dependencies and rebuilds its production bundle on file changes |
 | `proxmox` | Virtualized Proxmox VE host |
 | Manager container | The Manager application, running as a CT (`100`) inside the virtualized Proxmox |
 | `zensical` | Rebuilds these docs on file changes |
@@ -39,6 +40,27 @@ The template download step checks your **local** Docker images first, so a local
 
     - Delete the cached tar file from the `local` volume, or
     - Recreate the volume (e.g., `docker compose down -v`).
+
+## Persistent State and Full Reset
+
+Proxmox state is persisted across container creation and destruction in two
+named volumes, so `docker compose down` followed by `docker compose up` keeps
+everything and starts back up quickly without re-bootstrapping:
+
+| Volume | Mount | Contents |
+|---|---|---|
+| `local` | `/var/lib/vz` | VM/CT disk images, volumes, and the cached Manager template |
+| `proxmox` | `/var/lib/pve-cluster` | Proxmox cluster state (the configuration database) |
+
+To wipe everything and start completely fresh, remove the named volumes:
+
+```bash
+docker compose down -v
+```
+
+This deletes the cached template tarball, all stored images/volumes, and the
+cluster state, so the next `docker compose up` re-downloads the Manager template
+and re-runs the bootstrap from scratch.
 
 ## Endpoints
 
@@ -77,10 +99,21 @@ The local git repository is mounted **read-only** into `/opt/opensource-server` 
 
 | Component | Reload behavior |
 |---|---|
-| Manager UI | Auto-reloaded by `nodemon` |
+| Manager server | Auto-restarted by `nodemon` |
+| Manager UI (React client) | Auto-rebuilt by the `client` service |
 | Documentation | Auto-rebuilt by the `zensical` service |
 | Job runner | Restart manually |
 | Database migrations | Run manually in the proper server context (see below) |
+
+### Frontend Rebuilds
+
+The Manager serves the compiled React app from `create-a-container/client/dist`; it does **not** run the Vite dev server. Because the repository is mounted **read-only** into the Manager container, Vite can't write build output from there. Instead, the dedicated `client` service mounts the repository **read-write** and runs `vite build --watch`, rebuilding `client/dist` on the host whenever the client source changes.
+
+The Manager container's read-only bind mount still reflects those host changes, so the running server picks up the new bundle on the next request — just refresh your browser. No `nodemon` restart is required for client-only changes.
+
+!!! note "First build on a fresh checkout"
+    The `client` service performs an initial build before Proxmox starts serving (the `proxmox` service waits for it to become healthy), so a bundle always exists even on a clean checkout where `client/dist` isn't present yet.
+
 
 ### Run Database Migrations
 
