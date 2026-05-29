@@ -39,6 +39,36 @@ services:
     working_dir: /opt/opensource-server/create-a-container
     command: npm ci --no-audit --no-fund
 
+  # Watches the React client and rebuilds the production bundle on change. The
+  # Manager LXC inside Proxmox serves create-a-container/client/dist statically
+  # (via `nodemon server.js`), but the repo is mounted into Proxmox read-only,
+  # so Vite can't write the build output from there. Instead this service mounts
+  # the repo read-write and rebuilds client/dist on the host; the read-only
+  # bind mount inside Proxmox still sees those updated files, so the running
+  # server picks them up on the next request (no nodemon restart needed).
+  #
+  # Like zensical, this is a development convenience and not a hard dependency:
+  # it does an initial build so a dist always exists, then watches for changes.
+  client:
+    image: node:24-trixie-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/create-a-container/client
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        npm ci --no-audit --no-fund
+        npm run build
+        exec npm run build:watch
+    # Healthy once an initial bundle exists, so Proxmox can wait for it on a
+    # fresh checkout (where client/dist isn't present yet) before serving.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /opt/opensource-server/create-a-container/client/dist/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
+
   # This service will watch the documentation for any changes and rebuild when
   # needed. Technically it's listening on port 8000, but we only care about the
   # HTML being placed in ./mie-opensource-landing/site which is shared with the
@@ -57,13 +87,13 @@ services:
       PROXMOX_URL: https://localhost:8006
       MANAGER_URL: https://manager.localhost
 
-  # This is the only long-running service in the stack. On startup it creates
+  # This is the only long-running service in the stack that isn't a development
+  # watcher (cf. zensical and client). On startup it creates
   # the manager container as CTID 100 (if it needs to) with the current
   # directory mounted over the /opt/opensource-server in the container so local
   # changes easily propogate inwards. `npm install` and the documentation build
   # should be managed by their respective services above so there's no questions
-  # about environment or permissions. TODO: make those services rebuild when
-  # there's changes to their directories. TODO: add a second Proxmox to test
+  # about environment or permissions. TODO: add a second Proxmox to test
   # multiple nodes. TODO: persist the manager in a volume so docker compose down
   # + docker compose up doesn't have to re-bootstrap every time.
   proxmox:
@@ -91,6 +121,8 @@ services:
         condition: service_completed_successfully
       node:
         condition: service_completed_successfully
+      client:
+        condition: service_healthy
 
   # After the Proxmox (which includes the manager LXC) is healthy we have to
   # bootstrap the Manager setup. The commands below were derived from doing a
