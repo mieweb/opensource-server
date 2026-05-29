@@ -384,8 +384,8 @@ export function ContainerFormPage() {
                   return (
                     <Input
                       label="Custom image"
-                      helperText="Image reference, e.g. docker:org/image:tag or ghcr.io/org/image:tag"
-                      placeholder="docker:org/image:tag"
+                      helperText="Image reference, e.g. ghcr.io/org/image:tag"
+                      placeholder="ghcr.io/org/image:tag"
                       disabled={metadataMutation.isPending}
                       {...customReg}
                       onBlur={(e) => {
