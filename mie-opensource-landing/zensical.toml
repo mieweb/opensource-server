@@ -94,6 +94,7 @@ accent = "green"
 icon = "material/brightness-4"
 name = "Switch to light mode"
 
+[project.markdown_extensions.zensical.extensions.macros]
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.superfences]

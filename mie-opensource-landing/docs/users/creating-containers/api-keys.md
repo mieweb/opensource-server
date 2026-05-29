@@ -40,4 +40,4 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
      https://your-server/apikeys
 ```
 
-For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the [interactive API documentation](https://manager.os.mieweb.org/api) at `/api` on your server.
+For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the [interactive API documentation]({{ manager_url }}/api) at `/api` on your server.

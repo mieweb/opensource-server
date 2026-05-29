@@ -6,17 +6,18 @@ External domains expose container HTTP services to the internet. Domains are glo
 ## Prerequisites
 
 - A registered domain with Cloudflare DNS (only supported provider)
-- Cloudflare API token with **Zone:DNS:Edit** permissions
+- Cloudflare account email and a User API Token for DNS management
 
 ## Domain Properties
 
 | Field | Description |
 |-------|-------------|
-| **Domain** | Top-level domain (e.g., `example.com`) |
-| **Default Site** | Optional — the site whose DNS is assumed pre-configured (e.g., wildcard A record) |
-| **ACME Email** | Certificate expiration notifications |
-| **ACME Directory** | CA endpoint (Let's Encrypt Production/Staging) |
-| **Cloudflare API Token** | For DNS-01 challenge authentication and cross-site DNS record management |
+| **Domain Name** | Top-level domain (e.g., `example.com`) |
+| **Default Site** | The site whose DNS is assumed pre-configured (e.g., wildcard A record). Selected explicitly when creating the domain. |
+| **ACME Email** | Certificate expiration notifications (currently unused) |
+| **ACME Directory** | CA endpoint, Let's Encrypt Production/Staging (currently unused) |
+| **Cloudflare API Email** | Cloudflare account email, sent as the `X-Auth-Email` header — optional unless using Cross-Site DNS |
+| **Cloudflare API Key** | Cloudflare **User API Token**, sent as `Authorization: Bearer <token>`. Despite the field name, this is *not* the legacy Global API Key. Optional unless using Cross-Site DNS. |
 | **Auth Server URL** | Optional — URL of an authentication server for NGINX `auth_request`. See [Authentication](#authentication) |
 
 !!! tip
@@ -25,12 +26,12 @@ External domains expose container HTTP services to the internet. Domains are glo
 ## Setup
 
 1. Add your domain to Cloudflare and update nameservers
-2. Create a Cloudflare API token with **Zone:DNS:Edit** permissions
-3. In the admin interface, navigate to **External Domains** → **Create New External Domain**
-4. Enter domain, ACME email, ACME directory, and Cloudflare API token
-5. Save — the system validates Cloudflare API access automatically
+2. (Optional, for Cross-Site DNS) Create a Cloudflare **User API Token** with `Zone:DNS:Edit` permission for the zone
+3. In the admin interface, navigate to **External Domains** → **New External Domain**
+4. Enter domain name, default site, ACME email, ACME directory, and Cloudflare email + API token (if used)
+5. Select **Create External Domain**
 
-The creating site is set as the domain's **default site**. Wildcard DNS (`*.example.com`) is assumed to point to the default site's IP.
+Wildcard DNS (`*.example.com`) is assumed to point to the default site's IP.
 
 ## SSL Certificate Provisioning
 
@@ -104,7 +105,7 @@ When creating a container service, users select an external domain and specify a
 
 ## Security
 
-- Store Cloudflare API tokens with minimal permissions (Zone:DNS:Edit only)
+- Issue Cloudflare User API Tokens with minimum scope (`Zone:DNS:Edit` for the target zone only)
 - Rotate tokens periodically; revoke immediately if compromised
 - Private keys never leave the cluster
 

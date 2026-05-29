@@ -157,7 +157,7 @@ jobs:
 
 ## Container Access
 
-After deployment, you'll receive access details located in your containers page on manager.os.mieweb.org including:
+After deployment, you'll receive access details located in your containers page on {{ manager_url }} including:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

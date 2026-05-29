@@ -1,0 +1,12 @@
+[Unit]
+Description=Initialize Manager LXC
+After=pve-cluster.service pvedaemon.service pvestatd.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+PassEnvironment=MANAGER_TAG
+ExecStart=/bin/bash /opt/opensource-server/images/proxmox-ve/create-manager.sh
+
+[Install]
+WantedBy=multi-user.target
