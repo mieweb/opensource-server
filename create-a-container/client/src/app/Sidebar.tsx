@@ -116,18 +116,18 @@ export function AppSidebar() {
             })}
           </SidebarNav>
         )}
-        {mfaAdminUrl && (
-          <SidebarNavItem
-            key="mfa-admin"
-            label="MFA Admin"
-            icon={<ShieldCheck className="size-4" />}
-            badge={compact ? undefined : <ExternalLink className="size-3" aria-hidden="true" />}
-            isActive={false}
-            onClick={() => window.open(mfaAdminUrl, '_blank', 'noopener,noreferrer')}
-          />
-        )}
         <SidebarNav className="mt-2">
           {ADMIN.filter((l) => !l.adminOnly || isAdmin).map(renderLink)}
+          {mfaAdminUrl && (
+            <SidebarNavItem
+              key="mfa-admin"
+              label="MFA Admin"
+              icon={<ShieldCheck className="size-4" />}
+              badge={compact ? undefined : <ExternalLink className="size-3" aria-hidden="true" />}
+              isActive={false}
+              onClick={() => window.open(mfaAdminUrl, '_blank', 'noopener,noreferrer')}
+            />
+          )}
         </SidebarNav>
       </SidebarContent>
       <SidebarFooter className="border-t border-neutral-200 p-2 dark:border-neutral-700">
