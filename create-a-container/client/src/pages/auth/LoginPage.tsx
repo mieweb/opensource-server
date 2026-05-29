@@ -21,7 +21,7 @@ import {
   EyeOff,
   Lock,
 } from 'lucide-react';
-import { useLoginMutation, useDevLoginMutation, useServerInfo, fetchChallenge, sessionKey, type ChallengeStatus, type SessionUser } from '@/lib/auth';
+import { useLoginMutation, useDevLoginMutation, useServerInfo, useSession, fetchChallenge, sessionKey, type ChallengeStatus, type SessionUser } from '@/lib/auth';
 import { ApiError, clearCsrfToken } from '@/lib/api';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { useQueryClient } from '@tanstack/react-query';
@@ -45,6 +45,7 @@ export function LoginPage() {
   const devLogin = useDevLoginMutation();
   const { data: serverInfo } = useServerInfo();
   const isDev = !!serverInfo?.isDev;
+  const { data: session, isLoading: sessionLoading } = useSession();
 
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challenge, setChallenge] = useState<ChallengeStatus | null>(null);
@@ -65,6 +66,15 @@ export function LoginPage() {
       if (pollTimer.current) window.clearTimeout(pollTimer.current);
     };
   }, []);
+
+  // Already-authenticated users shouldn't see the login form: send them to
+  // their intended destination (or home). Guarded by !challengeId so we don't
+  // pre-empt an in-progress 2FA flow on this page.
+  useEffect(() => {
+    if (!sessionLoading && session && !challengeId) {
+      navigate(redirect, { replace: true });
+    }
+  }, [session, sessionLoading, challengeId, redirect, navigate]);
 
   function startPolling(id: string) {
     pollStart.current = Date.now();
@@ -163,6 +173,16 @@ export function LoginPage() {
 
   if (challengeId && challenge) {
     return <ChallengeStatusView status={challenge} onCancel={() => setChallengeId(null)} />;
+  }
+
+  // Avoid flashing the form while we resolve the session / redirect an
+  // already-authenticated user.
+  if (sessionLoading || (session && !challengeId)) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   const passwordField = register('password');
