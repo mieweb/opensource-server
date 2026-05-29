@@ -1,0 +1,86 @@
+/**
+ * /api/v1 mount point. JSON-only API for the React SPA and external consumers.
+ * Co-exists with the legacy EJS routers during the React migration.
+ */
+
+const express = require('express');
+const path = require('path');
+const cookieParser = require('cookie-parser');
+const YAML = require('yamljs');
+const {
+  csrfGuard,
+  generateCsrfToken,
+  jsonErrorHandler,
+  apiAuth,
+  ok,
+} = require('../../../middlewares/api');
+
+const router = express.Router();
+
+// OpenAPI spec (loaded once at import time)
+const openapiSpec = YAML.load(path.join(__dirname, '..', '..', '..', 'openapi.v1.yaml'));
+
+router.use(cookieParser());
+router.use(express.json({ limit: '1mb' }));
+router.use(express.urlencoded({ extended: true }));
+
+// Public token endpoint — clients call this before any state-changing request.
+// generateCsrfToken reuses the token already stored in the session when present
+// (overwrite defaults to false), so repeated calls return a stable token that
+// stays valid for the whole session.
+router.get('/csrf-token', (req, res) => {
+  const csrfToken = generateCsrfToken(req);
+  return ok(res, { csrfToken });
+});
+
+// Health check (unauthenticated). Exposes `isDev` so the SPA can render
+// non-production helpers like one-click dev login buttons.
+router.get('/health', (_req, res) =>
+  ok(res, { status: 'ok', isDev: process.env.NODE_ENV !== 'production' }),
+);
+
+// OpenAPI v1 spec (unauthenticated)
+router.get('/openapi.json', (_req, res) => res.json(openapiSpec));
+router.get('/openapi.yaml', (_req, res) => {
+  res.type('text/yaml').sendFile(path.join(__dirname, '..', '..', '..', 'openapi.v1.yaml'));
+});
+
+// CSRF guard before any state-changing route below
+router.use(csrfGuard);
+
+// Auth routes (login/register/reset are intentionally outside apiAuth)
+router.use('/auth', require('./auth'));
+
+// Authenticated session check. Admins also receive `pushNotificationUrl` when
+// configured so the sidebar can render the MFA Admin link.
+router.get('/session', apiAuth, async (req, res) => {
+  const payload = {
+    user: req.session.user,
+    isAdmin: !!req.session.isAdmin,
+  };
+  if (req.session.isAdmin) {
+    try {
+      const { Setting } = require('../../../models');
+      const url = await Setting.get('push_notification_url');
+      payload.pushNotificationUrl = url?.trim() || '';
+    } catch (err) {
+      console.error('Failed to load pushNotificationUrl for session:', err);
+      payload.pushNotificationUrl = '';
+    }
+  }
+  return ok(res, payload);
+});
+
+// Resource routes — each sub-router applies its own apiAuth/apiAdmin
+router.use('/sites', require('./sites'));
+router.use('/external-domains', require('./external-domains'));
+router.use('/groups', require('./groups'));
+router.use('/users', require('./users'));
+router.use('/apikeys', require('./apikeys'));
+router.use('/settings', require('./settings'));
+router.use('/jobs', require('./jobs'));
+
+// Final error handler — must come after all routes
+router.use(jsonErrorHandler);
+
+module.exports = router;

@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+@import '@mieweb/ui/styles.css';
+@import '@mieweb/ui/brands/bluehive.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html,
+body,
+#root {
+  height: 100%;
+}

@@ -16,6 +16,7 @@ SYSTEMD_DIR := create-a-container/systemd
 SERVICES    := $(wildcard $(SYSTEMD_DIR)/*.service)
 install-create-container:
 	cd create-a-container && npm install --omit=dev
+	cd create-a-container/client && npm install && npm run build
 	install -m 644 -o root -g root $(SERVICES) /etc/systemd/system/
 	systemctl daemon-reload || true
 	@for service in $(notdir $(SERVICES)); do \
