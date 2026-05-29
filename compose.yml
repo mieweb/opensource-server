@@ -94,12 +94,12 @@ services:
   # changes easily propogate inwards. `npm install` and the documentation build
   # should be managed by their respective services above so there's no questions
   # about environment or permissions. TODO: add a second Proxmox to test
-  # multiple nodes. TODO: persist the manager in a volume so docker compose down
-  # + docker compose up doesn't have to re-bootstrap every time.
+  # multiple nodes.
   proxmox:
     <<: *proxmox-service
     volumes:
       - local:/var/lib/vz
+      - proxmox:/var/lib/pve-cluster
       - ./:/opt/opensource-server:ro
     privileged: true
     devices:
@@ -153,3 +153,4 @@ services:
 
 volumes:
   local:
+  proxmox:
