@@ -35,6 +35,24 @@ type FormData = z.infer<typeof schema>;
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_MS = 5 * 60 * 1000;
 
+// A redirect target is "external" when it parses as an absolute http(s) URL.
+// react-router's navigate() treats such strings as in-app paths and mangles
+// them (e.g. "/login/https:/host/..."), so we must hand external targets to
+// the browser via a full-page navigation instead. Only http/https schemes are
+// honored to avoid javascript:/data: style injection through ?redirect=.
+function asExternalUrl(target: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(target, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  // Same-origin targets stay in-app (let react-router handle them as paths).
+  if (url.origin === window.location.origin) return null;
+  return url.href;
+}
+
 export function LoginPage() {
   useDocumentTitle('Sign in');
   const navigate = useNavigate();
@@ -61,6 +79,18 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
+  // Send the user to their post-login destination. Cross-site absolute URLs
+  // (e.g. ?redirect=https://test-studio...) require a real browser navigation;
+  // same-origin paths are handled in-app by react-router.
+  const goTo = (target: string) => {
+    const external = asExternalUrl(target);
+    if (external) {
+      window.location.assign(external);
+    } else {
+      navigate(target, { replace: true });
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (pollTimer.current) window.clearTimeout(pollTimer.current);
@@ -72,9 +102,10 @@ export function LoginPage() {
   // pre-empt an in-progress 2FA flow on this page.
   useEffect(() => {
     if (!sessionLoading && session && !challengeId) {
-      navigate(redirect, { replace: true });
+      goTo(redirect);
     }
-  }, [session, sessionLoading, challengeId, redirect, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, sessionLoading, challengeId, redirect]);
 
   function startPolling(id: string) {
     pollStart.current = Date.now();
@@ -102,9 +133,7 @@ export function LoginPage() {
             isAdmin: !!status.isAdmin,
           });
           void qc.invalidateQueries({ queryKey: sessionKey });
-          navigate(status.redirect && status.redirect !== '/' ? status.redirect : redirect, {
-            replace: true,
-          });
+          goTo(status.redirect && status.redirect !== '/' ? status.redirect : redirect);
           return;
         }
         // Only surface non-approved statuses (keeps an 'approved' status from
@@ -142,9 +171,7 @@ export function LoginPage() {
     try {
       const result = await login.mutateAsync({ ...values, redirect });
       if (result.kind === 'logged-in') {
-        navigate(result.redirect && result.redirect !== '/' ? result.redirect : redirect, {
-          replace: true,
-        });
+        goTo(result.redirect && result.redirect !== '/' ? result.redirect : redirect);
       } else {
         setChallengeId(result.challengeId);
         setChallenge({ status: 'pending' });
@@ -158,7 +185,7 @@ export function LoginPage() {
   const onDevLogin = async (role: 'admin' | 'user') => {
     try {
       await devLogin.mutateAsync({ role });
-      navigate(redirect, { replace: true });
+      goTo(redirect);
     } catch {
       /* error handled via devLogin.error */
     }
