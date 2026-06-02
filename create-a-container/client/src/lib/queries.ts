@@ -8,12 +8,14 @@ import type {
   Container,
   ContainerMetadata,
   ContainerNewBootstrap,
+  EffectiveResources,
   ExternalDomain,
   Group,
   Job,
   JobStatusRow,
   Node,
   AppSettings,
+  ResourceRequest,
   Site,
   User,
 } from './types';
@@ -40,6 +42,10 @@ export const keys = {
   settings: () => ['settings'] as const,
   job: (id: number | string) => ['jobs', String(id)] as const,
   jobStatuses: (id: number | string) => ['jobs', String(id), 'statuses'] as const,
+  resourceRequests: (status?: string) => ['resource-requests', status || 'all'] as const,
+  resourceRequestCount: () => ['resource-requests', 'count'] as const,
+  effectiveResources: (siteId: number | string, hostname: string, username: string) =>
+    ['resource-requests', 'effective', String(siteId), hostname, username] as const,
 };
 
 export const queries = {
@@ -88,4 +94,16 @@ export const queries = {
   getJob: (id: number | string) => api.get<Job>(`/api/v1/jobs/${id}`),
   getJobStatuses: (id: number | string, offset = 0, limit = 1000) =>
     api.get<JobStatusRow[]>(`/api/v1/jobs/${id}/status?offset=${offset}&limit=${limit}`),
+
+  // Resource Requests
+  listResourceRequests: (status?: string) =>
+    api.get<ResourceRequest[]>(
+      `/api/v1/resource-requests${status ? `?status=${status}` : ''}`,
+    ),
+  getResourceRequestCount: () =>
+    api.get<{ count: number }>('/api/v1/resource-requests/count'),
+  getEffectiveResources: (siteId: number | string, hostname: string, username: string) =>
+    api.get<EffectiveResources>(
+      `/api/v1/resource-requests/effective/${siteId}/${encodeURIComponent(hostname)}/${encodeURIComponent(username)}`,
+    ),
 };

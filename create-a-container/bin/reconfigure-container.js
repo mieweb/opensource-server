@@ -4,13 +4,13 @@
  * 
  * Background job script that applies configuration changes and restarts a container.
  * This script is executed by the job-runner when environment variables or entrypoint
- * are changed on an existing container.
+ * are changed on an existing container, or when resource requests are approved.
  * 
- * Usage: node bin/reconfigure-container.js --container-id=<id>
+ * Usage: node bin/reconfigure-container.js --container-id=<id> [--memory=<MB>] [--cpus=<n>] [--swap=<MB>] [--rootfs=<GB>]
  * 
  * The script will:
  * 1. Load the container record from the database
- * 2. Apply env and entrypoint config via Proxmox API
+ * 2. Apply env, entrypoint, and/or resource config via Proxmox API
  * 3. Stop the container
  * 4. Start the container
  * 5. Update the container status to 'running'
@@ -90,6 +90,20 @@ async function main() {
       console.log('Configuration applied');
     } else {
       console.log('No configuration changes to apply');
+    }
+
+    // Apply resource changes if specified via CLI flags
+    const resourceConfig = {};
+    if (args.memory) resourceConfig.memory = parseInt(args.memory, 10);
+    if (args.cpus) resourceConfig.cores = parseInt(args.cpus, 10);
+    if (args.swap) resourceConfig.swap = parseInt(args.swap, 10);
+    if (args.rootfs) resourceConfig.rootfs = `local-lvm:${parseInt(args.rootfs, 10)}`;
+
+    if (Object.keys(resourceConfig).length > 0) {
+      console.log('Applying resource configuration...');
+      console.log('Resources:', JSON.stringify(resourceConfig, null, 2));
+      await client.updateLxcConfig(node.name, container.containerId, resourceConfig);
+      console.log('Resource configuration applied');
     }
     
     // Check container status before stop/start cycle

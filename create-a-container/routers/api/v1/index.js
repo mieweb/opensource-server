@@ -79,6 +79,7 @@ router.use('/users', require('./users'));
 router.use('/apikeys', require('./apikeys'));
 router.use('/settings', require('./settings'));
 router.use('/jobs', require('./jobs'));
+router.use('/resource-requests', require('./resource-requests'));
 
 // Final error handler — must come after all routes
 router.use(jsonErrorHandler);

@@ -24,6 +24,7 @@ import { Container, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { FormPageHeader } from '@/components/FormPageHeader';
+import { ResourcesSection } from './ResourcesSection';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 const SERVICE_TYPES = [
@@ -564,6 +565,15 @@ export function ContainerFormPage() {
             })}
           </CardContent>
         </Card>
+
+        <ResourcesSection
+          siteId={siteId!}
+          hostname={hostname || ''}
+          isNewContainer={!isEdit}
+          sectionCardClass={sectionCardClass}
+          sectionHeaderClass={sectionHeaderClass}
+          sectionContentClass={sectionContentClass}
+        />
 
         <Card padding="none" className={sectionCardClass}>
           <CardHeader className={sectionHeaderClass}>

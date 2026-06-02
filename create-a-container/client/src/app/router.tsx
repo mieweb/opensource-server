@@ -24,6 +24,7 @@ import { GroupsListPage } from '@/pages/groups/GroupsListPage';
 import { GroupFormPage } from '@/pages/groups/GroupFormPage';
 import { ApiKeysListPage } from '@/pages/apikeys/ApiKeysListPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { ResourceRequestsPage } from '@/pages/resource-requests/ResourceRequestsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 export const router = createBrowserRouter([
@@ -77,6 +78,8 @@ export const router = createBrowserRouter([
           { path: '/apikeys', element: <ApiKeysListPage /> },
 
           { path: '/settings', element: <SettingsPage /> },
+
+          { path: '/resource-requests', element: <ResourceRequestsPage /> },
 
           { path: '*', element: <NotFoundPage /> },
         ],
