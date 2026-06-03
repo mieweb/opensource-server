@@ -20,6 +20,7 @@ const {
   Group,
   Setting,
   Site,
+  Node,
   ExternalDomain,
   PasswordResetToken,
   InviteToken,
@@ -70,9 +71,26 @@ if (process.env.NODE_ENV !== 'production') {
       const uid = isAdmin ? 'dev-admin' : 'dev-user';
 
       // Ensure a localhost site exists to work with.
-      await Site.findOrCreate({
+      const [site] = await Site.findOrCreate({
         where: { name: 'localhost' },
         defaults: { internalDomain: 'localhost', externalIp: '127.0.0.1' },
+      });
+
+      // Ensure a local dev node exists so containers can be created without
+      // a real Proxmox host. `apiUrl: 'local'` marks it as the mock node;
+      // container creation short-circuits provisioning for it in dev.
+      await Node.findOrCreate({
+        where: { siteId: site.id, apiUrl: 'local' },
+        defaults: { name: 'local', tokenId: 'local', secret: 'local', ipv4Address: '127.0.0.1' },
+      });
+
+      // Ensure a default external domain exists so HTTP services (added
+      // automatically by image templates) have a domain to bind to. Without
+      // this the new-container form is unsubmittable for any image that
+      // exposes an HTTP port.
+      await ExternalDomain.findOrCreate({
+        where: { name: 'localhost' },
+        defaults: { siteId: site.id },
       });
 
       let user = await User.findOne({

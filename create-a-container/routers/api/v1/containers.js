@@ -347,6 +347,30 @@ router.post(
         }
       }
 
+      // Local dev: short-circuit Proxmox provisioning. The on-demand `local`
+      // node (apiUrl === 'local') has no real hypervisor, so mark the container
+      // running immediately with placeholder VMID/MAC/IP. This is the hook point
+      // where a real Docker-based local provisioner can plug in later.
+      if (process.env.NODE_ENV !== 'production' && node.apiUrl === 'local') {
+        const fakeVmid = 9000 + container.id;
+        const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0').toUpperCase();
+        await container.update(
+          {
+            containerId: fakeVmid,
+            macAddress: `BC:24:11:${hex()}:${hex()}:${hex()}`,
+            ipv4Address: `10.0.0.${100 + (container.id % 150)}`,
+            status: 'running',
+          },
+          { transaction: t },
+        );
+        await t.commit();
+        return created(res, {
+          containerId: container.id,
+          hostname: container.hostname,
+          status: 'running',
+        });
+      }
+
       const job = await Job.create(
         {
           command: `node bin/create-container.js --container-id=${container.id}`,
