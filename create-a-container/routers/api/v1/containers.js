@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const {
   Container,
   Service,
@@ -353,7 +354,7 @@ router.post(
       // where a real Docker-based local provisioner can plug in later.
       if (process.env.NODE_ENV !== 'production' && node.apiUrl === 'local') {
         const fakeVmid = 9000 + container.id;
-        const hex = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0').toUpperCase();
+        const hex = () => crypto.randomBytes(1)[0].toString(16).padStart(2, '0').toUpperCase();
         await container.update(
           {
             containerId: fakeVmid,
