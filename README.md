@@ -9,6 +9,7 @@ Full documentation lives in [`mie-opensource-landing/docs/`](mie-opensource-land
 | If you want to... | Read |
 |---|---|
 | Install and operate a production deployment | [Installation Guide](mie-opensource-landing/docs/admins/installation.md) |
+| Run just the Manager web app locally (`make dev`, SQLite) | [Run the Manager Locally](mie-opensource-landing/docs/developers/development-workflow.md#run-the-manager-locally-make-dev) |
 | Run the full stack locally to develop or contribute | [Development Workflow](mie-opensource-landing/docs/developers/development-workflow.md) |
 | Use a deployed cluster as an end user (create containers, etc.) | [User Getting Started](mie-opensource-landing/docs/users/getting-started.md) |
 | Contribute changes | [Contributing](mie-opensource-landing/docs/developers/contributing.md) |

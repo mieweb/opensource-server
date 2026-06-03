@@ -19,6 +19,7 @@ const {
   User,
   Group,
   Setting,
+  Site,
   ExternalDomain,
   PasswordResetToken,
   InviteToken,
@@ -67,6 +68,12 @@ if (process.env.NODE_ENV !== 'production') {
     asyncHandler(async (req, res) => {
       const isAdmin = req.body?.role === 'admin';
       const uid = isAdmin ? 'dev-admin' : 'dev-user';
+
+      // Ensure a localhost site exists to work with.
+      await Site.findOrCreate({
+        where: { name: 'localhost' },
+        defaults: { internalDomain: 'localhost', externalIp: '127.0.0.1' },
+      });
 
       let user = await User.findOne({
         where: { uid },

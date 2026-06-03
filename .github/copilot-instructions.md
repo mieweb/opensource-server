@@ -88,6 +88,12 @@
 - **Document relationships**: Specify all foreign keys and associations (hasMany, belongsTo, etc.)
 - **Explain patterns**: If using special patterns (STI, polymorphism, etc.), document the reasoning
 
+## Running the Manager Locally
+
+- **`make dev`**: Sets up and starts the Manager (`create-a-container`) against local SQLite — creates `.env`, installs deps, runs migrations, builds the client, and serves at `http://localhost:3000`. Use this for Manager web app changes.
+- **Full Docker stack**: Use `docker compose up -d` when you need Proxmox, provisioning, DNS, or reverse-proxy behavior.
+- **Single source of truth**: See [Development Workflow](../mie-opensource-landing/docs/developers/development-workflow.md). Do not duplicate these steps elsewhere — link to that doc instead.
+
 ## Working with GitHub Actions Workflows
 
 ### Development Philosophy

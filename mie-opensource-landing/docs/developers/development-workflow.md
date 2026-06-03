@@ -1,12 +1,39 @@
 # Development Workflow
 
+There are two ways to run the Manager locally:
+
+- **Manager only (`make dev`)** — fastest loop for working on the Manager web app. SQLite, no Docker, no Proxmox. Start here for UI/API changes.
+- **Full stack (Docker Compose)** — Proxmox, Manager, docs, and bootstrap together. Use when you need real container provisioning, DNS, or reverse-proxy behavior.
+
+## Run the Manager Locally (`make dev`)
+
+From the repository root:
+
+```bash
+make dev
+```
+
+This sets up and starts the Manager (`create-a-container`) against a local SQLite database:
+
+1. Creates `create-a-container/.env` with SQLite defaults and a random `SESSION_SECRET` (only if missing).
+2. Installs Manager and client dependencies.
+3. Runs database migrations.
+4. Builds the React client.
+5. Starts the server at <http://localhost:3000>.
+
+In development (`NODE_ENV=development`) the login page exposes **dev login** buttons that create `dev-user` / `dev-admin` on demand and ensure a `localhost` site exists — no seeding required.
+
+The SQLite database (`create-a-container/dev.sqlite`) is gitignored; delete it to reset local state.
+
+## Run the Full Stack (Docker Compose)
+
 The entire stack — Proxmox, Manager, docs, and bootstrap — runs locally inside Docker.
 
-## Prerequisites
+### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
-## Start the Stack
+### Start the Stack
 
 From the repository root:
 
@@ -25,7 +52,7 @@ This brings up:
 | `zensical` | Rebuilds these docs on file changes |
 | Bootstrap (one-shot) | Configures the Manager container to use the virtualized Proxmox |
 
-## Manager Image Selection
+### Manager Image Selection
 
 By default the compose stack deploys `ghcr.io/mieweb/opensource-server/manager:latest`. Override the tag by setting `MANAGER_TAG` in your environment or in a `.env` file alongside `compose.yml`:
 
@@ -41,7 +68,7 @@ The template download step checks your **local** Docker images first, so a local
     - Delete the cached tar file from the `local` volume, or
     - Recreate the volume (e.g., `docker compose down -v`).
 
-## Persistent State and Full Reset
+### Persistent State and Full Reset
 
 Proxmox state is persisted across container creation and destruction in two
 named volumes, so `docker compose down` followed by `docker compose up` keeps
@@ -62,7 +89,7 @@ This deletes the cached template tarball, all stored images/volumes, and the
 cluster state, so the next `docker compose up` re-downloads the Manager template
 and re-runs the bootstrap from scratch.
 
-## Endpoints
+### Endpoints
 
 | URL | Description |
 |---|---|
@@ -71,7 +98,7 @@ and re-runs the bootstrap from scratch.
 | `https://localhost` | Documentation site |
 | `https://manager.localhost` | Manager Web UI |
 
-## Credentials and Shell Access
+### Credentials and Shell Access
 
 **Proxmox Web UI:** `root` / `root`
 
@@ -93,7 +120,7 @@ docker compose exec -it proxmox pct enter 100
 docker compose exec -it proxmox pct exec 100 -- sudo -u postgres psql cluster_manager
 ```
 
-## Live Reload
+### Live Reload
 
 The local git repository is mounted **read-only** into `/opt/opensource-server` on the Manager container, so source changes on the host are visible immediately.
 
@@ -105,7 +132,7 @@ The local git repository is mounted **read-only** into `/opt/opensource-server` 
 | Job runner | Restart manually |
 | Database migrations | Run manually in the proper server context (see below) |
 
-### Frontend Rebuilds
+#### Frontend Rebuilds
 
 The Manager serves the compiled React app from `create-a-container/client/dist`; it does **not** run the Vite dev server. Because the repository is mounted **read-only** into the Manager container, Vite can't write build output from there. Instead, the dedicated `client` service mounts the repository **read-write** and runs `vite build --watch`, rebuilding `client/dist` on the host whenever the client source changes.
 
@@ -115,7 +142,7 @@ The Manager container's read-only bind mount still reflects those host changes, 
     The `client` service performs an initial build before Proxmox starts serving (the `proxmox` service waits for it to become healthy), so a bundle always exists even on a clean checkout where `client/dist` isn't present yet.
 
 
-### Run Database Migrations
+#### Run Database Migrations
 
 ```bash
 docker compose exec proxmox pct exec 100 -- \

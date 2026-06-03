@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"nodemon server.js\" \"npm --prefix client run build:watch\"",
     "dev:server": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
+    "db:migrate": "sequelize-cli db:migrate && sequelize-cli db:seed:all",
     "job-runner": "node job-runner.js",
     "client:install": "npm --prefix client install",
     "client:dev": "npm --prefix client run dev",
