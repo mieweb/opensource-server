@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -6,6 +7,8 @@ import {
   AlertTitle,
   Badge,
   Button,
+  Card,
+  CardTitle,
   PageHeader,
   Spinner,
   Table,
@@ -16,11 +19,25 @@ import {
   TableRow,
   useToast,
 } from '@mieweb/ui';
-import { Code2, Container as ContainerIcon, ExternalLink, Pencil, Plus, Terminal, Trash2 } from 'lucide-react';
+import {
+  Code2,
+  Container as ContainerIcon,
+  ExternalLink,
+  LayoutGrid,
+  Pencil,
+  Plus,
+  Rows3,
+  Server,
+  Terminal,
+  Trash2,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import type { Container } from '@/lib/types';
+
+type ViewMode = 'cards' | 'table';
+const VIEW_STORAGE_KEY = 'containers:view';
 
 function statusVariant(s: string): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
   switch (s) {
@@ -39,6 +56,143 @@ function statusVariant(s: string): 'default' | 'success' | 'warning' | 'danger' 
   }
 }
 
+const linkClass = 'text-(--color-primary,#1d4ed8) hover:underline';
+
+/** Shorten a full image ref to just its name+tag, e.g. ghcr.io/mieweb/base:latest -> base:latest */
+function templateTitle(template: string | null): string {
+  if (!template) return '—';
+  return template.split('/').pop() || template;
+}
+
+function NodeLink({ c }: { c: Container }) {
+  if (!c.nodeApiUrl) return <>{c.nodeName || '—'}</>;
+  return (
+    <a
+      href={`${c.nodeApiUrl}${c.containerId ? `/#v1:0:=lxc%2F${c.containerId}:4:::::::` : ''}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open node in Proxmox web UI"
+      className={linkClass}
+    >
+      {c.nodeName || c.nodeApiUrl}
+    </a>
+  );
+}
+
+function HttpLinks({ c, limit }: { c: Container; limit?: number }) {
+  if (c.httpEntries.length === 0) return <span className="text-muted-foreground">—</span>;
+  const entries = limit ? c.httpEntries.slice(0, limit) : c.httpEntries;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
+      {entries.map((h) =>
+        h.externalUrl ? (
+          <a
+            key={`${c.id}-${h.port}`}
+            href={h.externalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={`inline-flex items-center gap-1 text-xs ${linkClass}`}
+          >
+            <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+            <span className="break-all">{h.externalUrl.replace(/^https?:\/\//, '')}</span>
+          </a>
+        ) : (
+          <span key={`${c.id}-${h.port}`} className="text-xs">
+            :{h.port}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
+
+function SshLinks({ c, sessionUser }: { c: Container; sessionUser?: string }) {
+  if (!c.sshHost || !c.sshPort) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="inline-flex items-center gap-2 font-mono text-xs">
+      <span className="whitespace-nowrap">
+        {c.sshHost}:{c.sshPort}
+      </span>
+      {sessionUser && (
+        <>
+          <a
+            href={`vscode://vscode-remote/ssh-remote+${sessionUser}@${c.sshHost}:${c.sshPort}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open in VS Code"
+            aria-label={`Open SSH in VS Code for container ${c.hostname}`}
+            className={linkClass}
+          >
+            <Code2 className="size-4" aria-hidden="true" />
+          </a>
+          <a
+            href={`ssh://${sessionUser}@${c.sshHost}:${c.sshPort}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open SSH in terminal"
+            aria-label={`Open SSH terminal for container ${c.hostname}`}
+            className={linkClass}
+          >
+            <Terminal className="size-4" aria-hidden="true" />
+          </a>
+        </>
+      )}
+    </span>
+  );
+}
+
+function RowActions({
+  c,
+  siteId,
+  onDelete,
+  deleting,
+}: {
+  c: Container;
+  siteId?: string;
+  onDelete: (id: number) => void;
+  deleting: boolean;
+}) {
+  return (
+    <>
+      {c.creationJobId && (
+        <Link to={`/jobs/${c.creationJobId}`}>
+          <Button variant="ghost" size="sm">
+            Logs
+          </Button>
+        </Link>
+      )}
+      <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
+        <Button variant="ghost" size="sm" aria-label="Edit" leftIcon={<Pencil className="size-4" />}>
+          <span className="hidden sm:inline">Edit</span>
+        </Button>
+      </Link>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Delete"
+        leftIcon={<Trash2 className="size-4" />}
+        onClick={() => {
+          if (confirm(`Delete container "${c.hostname}"?`)) onDelete(c.id);
+        }}
+        disabled={deleting}
+      >
+        <span className="hidden sm:inline">Delete</span>
+      </Button>
+    </>
+  );
+}
+
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className="text-xs">{children}</span>
+    </span>
+  );
+}
+
 export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const qc = useQueryClient();
@@ -47,6 +201,19 @@ export function ContainersListPage() {
   const sessionUser = session?.user;
   const location = useLocation();
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
+
+  const [view, setView] = useState<ViewMode>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
+    return stored === 'table' ? 'table' : 'cards';
+  });
+  const changeView = (next: ViewMode) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      /* ignore storage failures */
+    }
+  };
 
   const { data: site } = useQuery({
     queryKey: keys.site(siteId!),
@@ -68,6 +235,8 @@ export function ContainersListPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
+  const hasContainers = !!data && data.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -75,13 +244,43 @@ export function ContainersListPage() {
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {hasContainers && (
+              <div
+                role="group"
+                aria-label="Container view"
+                className="inline-flex rounded-md border border-border p-0.5"
+              >
+                <Button
+                  variant={view === 'cards' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={view === 'cards'}
+                  aria-label="Card view"
+                  leftIcon={<LayoutGrid className="size-4" />}
+                  onClick={() => changeView('cards')}
+                >
+                  <span className="hidden sm:inline">Cards</span>
+                </Button>
+                <Button
+                  variant={view === 'table' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={view === 'table'}
+                  aria-label="Table view"
+                  leftIcon={<Rows3 className="size-4" />}
+                  onClick={() => changeView('table')}
+                >
+                  <span className="hidden sm:inline">Table</span>
+                </Button>
+              </div>
+            )}
             <Link to={`/sites/${siteId}/nodes`}>
-              <Button variant="ghost">Nodes</Button>
+              <Button variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
+                <span className="hidden sm:inline">Nodes</span>
+              </Button>
             </Link>
             <Link to={`/sites/${siteId}/containers/new`}>
-              <Button variant="primary" leftIcon={<Plus className="size-4" />}>
-                New container
+              <Button variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
+                <span className="hidden sm:inline">New container</span>
               </Button>
             </Link>
           </div>
@@ -117,7 +316,47 @@ export function ContainersListPage() {
         </Alert>
       )}
 
-      {data && data.length > 0 && (
+      {hasContainers && view === 'cards' && (
+        <div className="grid gap-2">
+          {data.map((c: Container) => (
+            <Card
+              key={c.id}
+              as="article"
+              padding="none"
+              orientation="horizontal"
+              className="flex w-full flex-row flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5"
+            >
+              <div className="flex min-w-0 items-center gap-2 lg:order-1">
+                <CardTitle as="h2" className="truncate text-sm font-semibold">
+                  {c.hostname}
+                </CardTitle>
+                <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+              </div>
+              <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
+                <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+              </div>
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:order-2 lg:w-auto lg:flex-1">
+                <Meta label="Node">
+                  <NodeLink c={c} />
+                </Meta>
+                <Meta label="Template">
+                  <span className="font-mono" title={c.template || undefined}>
+                    {templateTitle(c.template)}
+                  </span>
+                </Meta>
+                <Meta label="HTTP">
+                  <HttpLinks c={c} />
+                </Meta>
+                <Meta label="SSH">
+                  <SshLinks c={c} sessionUser={sessionUser} />
+                </Meta>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {hasContainers && view === 'table' && (
         <Table responsive>
           <TableHeader>
             <TableRow>
@@ -138,106 +377,19 @@ export function ContainersListPage() {
                   <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
                 </TableCell>
                 <TableCell>
-                  {c.nodeApiUrl ? (
-                    <a
-                      href={`${c.nodeApiUrl}${c.containerId ? `/#v1:0:=lxc%2F${c.containerId}:4:::::::` : ''}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Open node in Proxmox web UI"
-                      className="text-(--color-primary,#1d4ed8) hover:underline"
-                    >
-                      {c.nodeName || c.nodeApiUrl}
-                    </a>
-                  ) : (
-                    c.nodeName || '—'
-                  )}
+                  <NodeLink c={c} />
                 </TableCell>
-                <TableCell className="max-w-[18rem] truncate font-mono text-xs">
-                  {c.template || '—'}
+                <TableCell className="font-mono text-xs" title={c.template || undefined}>
+                  {templateTitle(c.template)}
                 </TableCell>
                 <TableCell>
-                  {c.httpEntries.length === 0 ? (
-                    '—'
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {c.httpEntries.slice(0, 2).map((h) =>
-                        h.externalUrl ? (
-                          <a
-                            key={`${c.id}-${h.port}`}
-                            href={h.externalUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 text-xs text-(--color-primary,#1d4ed8) hover:underline"
-                          >
-                            <ExternalLink className="size-3" />
-                            {h.externalUrl.replace(/^https?:\/\//, '')}
-                          </a>
-                        ) : (
-                          <span key={`${c.id}-${h.port}`} className="text-xs">
-                            :{h.port}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  )}
+                  <HttpLinks c={c} limit={2} />
                 </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {c.sshHost && c.sshPort ? (
-                    <div className="flex items-center gap-2">
-                      <span>{c.sshHost}:{c.sshPort}</span>
-                      {sessionUser && (
-                        <>
-                          <a
-                            href={`vscode://vscode-remote/ssh-remote+${sessionUser}@${c.sshHost}:${c.sshPort}/`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Open in VS Code"
-                            aria-label={`Open SSH in VS Code for container ${c.hostname}`}
-                            className="text-(--color-primary,#1d4ed8) hover:underline"
-                          >
-                            <Code2 className="size-4" aria-hidden="true" />
-                          </a>
-                          <a
-                            href={`ssh://${sessionUser}@${c.sshHost}:${c.sshPort}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Open SSH in terminal"
-                            aria-label={`Open SSH terminal for container ${c.hostname}`}
-                            className="text-(--color-primary,#1d4ed8) hover:underline"
-                          >
-                            <Terminal className="size-4" aria-hidden="true" />
-                          </a>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    '—'
-                  )}
+                <TableCell>
+                  <SshLinks c={c} sessionUser={sessionUser} />
                 </TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  {c.creationJobId && (
-                    <Link to={`/jobs/${c.creationJobId}`}>
-                      <Button variant="ghost" size="sm">
-                        Logs
-                      </Button>
-                    </Link>
-                  )}
-                  <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
-                    <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
-                      Edit
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    leftIcon={<Trash2 className="size-4" />}
-                    onClick={() => {
-                      if (confirm(`Delete container "${c.hostname}"?`)) del.mutate(c.id);
-                    }}
-                    disabled={del.isPending}
-                  >
-                    Delete
-                  </Button>
+                  <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
                 </TableCell>
               </TableRow>
             ))}
