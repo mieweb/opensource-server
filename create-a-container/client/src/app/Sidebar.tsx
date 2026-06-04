@@ -200,10 +200,19 @@ export function AppSidebar() {
           {isAdmin && (
             <SidebarNavItem
               key="resource-requests"
-              label={pendingCount > 0 ? `Open Requests (${pendingCount})` : 'Open Requests'}
+              label={pendingCount > 0 ? `Resource Requests (${pendingCount})` : 'Resource Requests'}
               icon={<ClipboardList className="size-4" />}
-              isActive={isActive({ to: '/resource-requests', label: 'Open Requests', icon: null })}
+              isActive={isActive({ to: '/resource-requests', label: 'Resource Requests', icon: null })}
               onClick={() => navigate('/resource-requests')}
+            />
+          )}
+          {!isAdmin && (
+            <SidebarNavItem
+              key="my-requests"
+              label="My Requests"
+              icon={<ClipboardList className="size-4" />}
+              isActive={isActive({ to: '/my-requests', label: 'My Requests', icon: null })}
+              onClick={() => navigate('/my-requests')}
             />
           )}
           {mfaAdminUrl && (

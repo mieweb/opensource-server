@@ -27,6 +27,15 @@ import { FormPageHeader } from '@/components/FormPageHeader';
 import { ResourcesSection } from './ResourcesSection';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
+function useDebouncedValue<T>(value: T, delay = 500): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
 const SERVICE_TYPES = [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS (backend TLS)' },
@@ -125,6 +134,7 @@ export function ContainerFormPage() {
   const nvidiaRequested = watch('nvidiaRequested');
   const restart = watch('restart');
   const hostname = watch('hostname');
+  const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
 
   useEffect(() => {
@@ -568,7 +578,7 @@ export function ContainerFormPage() {
 
         <ResourcesSection
           siteId={siteId!}
-          hostname={hostname || ''}
+          hostname={debouncedHostname}
           isNewContainer={!isEdit}
           sectionCardClass={sectionCardClass}
           sectionHeaderClass={sectionHeaderClass}

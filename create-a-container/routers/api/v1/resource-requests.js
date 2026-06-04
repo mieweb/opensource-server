@@ -5,12 +5,15 @@
  */
 
 const express = require('express');
+const { Op } = require('sequelize');
 const {
   ResourceRequest,
   Container,
   Site,
+  User,
   sequelize,
 } = require('../../../models');
+const { sendResourceRequestStatusEmail } = require('../../../utils/email');
 const {
   apiAuth,
   apiAdmin,
@@ -49,7 +52,11 @@ router.get(
       where.requestedBy = req.session.user;
     }
     if (req.query.status) {
-      where.status = req.query.status;
+      if (req.query.status === 'closed') {
+        where.status = { [Op.in]: ['approved', 'denied'] };
+      } else {
+        where.status = req.query.status;
+      }
     }
     if (req.query.siteId) {
       where.siteId = parseInt(req.query.siteId, 10);
@@ -150,6 +157,24 @@ router.put(
       throw new ApiError(409, 'already_reviewed', 'Request has already been reviewed');
     }
 
+    // Verify at least one provisioned container exists for this request before approving.
+    // A container is considered provisioned when it has a Proxmox VMID (containerId is not null).
+    const provisionedContainer = await Container.findOne({
+      where: {
+        siteId: request.siteId,
+        hostname: request.hostname,
+        username: request.username,
+        containerId: { [Op.ne]: null },
+      },
+    });
+    if (!provisionedContainer) {
+      throw new ApiError(
+        422,
+        'container_not_found',
+        `No provisioned container found for '${request.hostname}' : cannot apply resource changes.`,
+      );
+    }
+
     const { adminComment } = req.body || {};
 
     await request.update({
@@ -166,6 +191,11 @@ router.put(
       request.username,
       request.resourceType,
       request.value,
+    );
+
+    // Notify user — non-blocking
+    notifyRequestReviewed(request).catch((err) =>
+      console.warn('Failed to send resource request approval email:', err.message),
     );
 
     return ok(res, request);
@@ -192,9 +222,24 @@ router.put(
       adminComment: adminComment || null,
     });
 
+    // Notify user — non-blocking
+    notifyRequestReviewed(request).catch((err) =>
+      console.warn('Failed to send resource request denial email:', err.message),
+    );
+
     return ok(res, request);
   }),
 );
+
+/**
+ * Send an approval/denial email to the user who submitted the request.
+ * @param {ResourceRequest} request - The reviewed request record
+ */
+async function notifyRequestReviewed(request) {
+  const user = await User.findOne({ where: { uid: request.requestedBy } });
+  if (!user || !user.mail) return;
+  await sendResourceRequestStatusEmail(user.mail, user.uid, request);
+}
 
 /**
  * Apply a resource change to existing running containers matching the identity.
