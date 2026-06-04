@@ -10,7 +10,6 @@ const {
   ResourceRequest,
   Container,
   Site,
-  sequelize,
 } = require('../../../models');
 const {
   apiAuth,
@@ -18,7 +17,6 @@ const {
   asyncHandler,
   ok,
   created,
-  noContent,
   ApiError,
 } = require('../../../middlewares/api');
 
