@@ -19,7 +19,6 @@ const {
   asyncHandler,
   ok,
   created,
-  noContent,
   ApiError,
 } = require('../../../middlewares/api');
 
