@@ -12,7 +12,7 @@ const WAZUH_DEFAULTS = [
   {
     key: 'WAZUH_REGISTRATION_PASSWORD',
     value: '',
-    description: 'Enrollment password for Wazuh agent registration — deleted from /etc/environment inside the container immediately after first-boot enrollment completes'
+    description: 'Enrollment password for Wazuh agent registration'
   }
 ];
 
