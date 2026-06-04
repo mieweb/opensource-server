@@ -213,86 +213,9 @@ async function sendBulkEmail(recipients, subject, message) {
   return { sent: recipients, failed: [] };
 }
 
-/**
- * Send a resource request approval or denial notification to the requesting user.
- * @param {string} to - Recipient email address
- * @param {string} username - The user's uid
- * @param {object} request - The ResourceRequest record
- */
-async function sendResourceRequestStatusEmail(to, username, request) {
-  const settings = await Setting.getMultiple(['smtp_noreply_address']);
-  const from = settings.smtp_noreply_address;
-  if (!from || from.trim() === '') {
-    throw new Error('SMTP no-reply address is not configured');
-  }
-
-  const isApproved = request.status === 'approved';
-  const statusWord = isApproved ? 'Approved' : 'Denied';
-  const resourceLabel = {
-    memory: 'RAM',
-    swap: 'Swap',
-    cpus: 'CPU',
-    rootfs: 'Storage',
-  }[request.resourceType] || request.resourceType;
-
-  const adminNote = request.adminComment
-    ? `\n\nAdmin note: ${request.adminComment}`
-    : '';
-
-  const safeUsername = escapeHtml(username);
-  const safeHostname = escapeHtml(request.hostname);
-  const safeResource = escapeHtml(resourceLabel);
-  const safeValue = escapeHtml(String(request.value));
-  const safeAdminNote = request.adminComment
-    ? `<p><strong>Admin note:</strong> ${escapeHtml(request.adminComment)}</p>`
-    : '';
-
-  const transporter = await createTransport();
-  await transporter.sendMail({
-    from,
-    to,
-    subject: `Resource Request ${statusWord}: ${resourceLabel} for ${request.hostname}`,
-    text: `Hello ${username},
-
-Your resource request has been ${statusWord.toLowerCase()}.
-
-Container: ${request.hostname}
-Resource: ${resourceLabel}
-Requested value: ${request.value}${adminNote}
-
----
-Medical Informatics Engineering`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">Resource Request ${escapeHtml(statusWord)}</h2>
-        <p>Hello <strong>${safeUsername}</strong>,</p>
-        <p>Your resource request has been <strong>${escapeHtml(statusWord.toLowerCase())}</strong>.</p>
-        <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
-          <tr>
-            <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold; background: #f9f9f9;">Container</td>
-            <td style="padding: 8px 12px; border: 1px solid #ddd; font-family: monospace;">${safeHostname}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold; background: #f9f9f9;">Resource</td>
-            <td style="padding: 8px 12px; border: 1px solid #ddd;">${safeResource}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; border: 1px solid #ddd; font-weight: bold; background: #f9f9f9;">Requested Value</td>
-            <td style="padding: 8px 12px; border: 1px solid #ddd;">${safeValue}</td>
-          </tr>
-        </table>
-        ${safeAdminNote}
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-        <p style="color: #333; font-size: 14px;"><strong>Medical Informatics Engineering</strong></p>
-      </div>
-    `,
-  });
-}
-
 module.exports = {
   createTransport,
   sendPasswordResetEmail,
   sendInviteEmail,
   sendBulkEmail,
-  sendResourceRequestStatusEmail,
 };

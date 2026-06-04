@@ -191,7 +191,7 @@ async function main() {
   );
   const cores = approvedResources.cpus || 4;
   const memory = approvedResources.memory || 4096;
-  const swap = approvedResources.swap !== undefined ? approvedResources.swap : 0;
+  const swap = approvedResources.swap || 0;
   const rootfsSize = approvedResources.rootfs || 50;
   console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
 

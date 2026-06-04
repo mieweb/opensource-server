@@ -65,10 +65,6 @@ module.exports = (sequelize, DataTypes) => {
           notEmpty: true,
         },
       },
-      requestedBy: {
-        type: DataTypes.STRING(255),
-        allowNull: false,
-      },
       resourceType: {
         type: DataTypes.STRING(20),
         allowNull: false,

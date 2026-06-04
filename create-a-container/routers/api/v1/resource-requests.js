@@ -10,10 +10,8 @@ const {
   ResourceRequest,
   Container,
   Site,
-  User,
   sequelize,
 } = require('../../../models');
-const { sendResourceRequestStatusEmail } = require('../../../utils/email');
 const {
   apiAuth,
   apiAdmin,
@@ -49,7 +47,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const where = {};
     if (!req.session.isAdmin) {
-      where.requestedBy = req.session.user;
+      where.username = req.session.user;
     }
     if (req.query.status) {
       if (req.query.status === 'closed') {
@@ -128,7 +126,6 @@ router.post(
       siteId: site.id,
       hostname: hostname.trim().toLowerCase(),
       username,
-      requestedBy: username,
       resourceType,
       value: parsedValue,
       status: autoApprove ? 'approved' : 'pending',
@@ -193,11 +190,6 @@ router.put(
       request.value,
     );
 
-    // Notify user — non-blocking
-    notifyRequestReviewed(request).catch((err) =>
-      console.warn('Failed to send resource request approval email:', err.message),
-    );
-
     return ok(res, request);
   }),
 );
@@ -222,24 +214,9 @@ router.put(
       adminComment: adminComment || null,
     });
 
-    // Notify user — non-blocking
-    notifyRequestReviewed(request).catch((err) =>
-      console.warn('Failed to send resource request denial email:', err.message),
-    );
-
     return ok(res, request);
   }),
 );
-
-/**
- * Send an approval/denial email to the user who submitted the request.
- * @param {ResourceRequest} request - The reviewed request record
- */
-async function notifyRequestReviewed(request) {
-  const user = await User.findOne({ where: { uid: request.requestedBy } });
-  if (!user || !user.mail) return;
-  await sendResourceRequestStatusEmail(user.mail, user.uid, request);
-}
 
 /**
  * Apply a resource change to existing running containers matching the identity.

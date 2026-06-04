@@ -138,7 +138,7 @@ export function ResourceRequestsPage() {
                         return (
                           <tr key={req.id} className="border-b border-border last:border-0">
                             <td className="px-5 py-4 font-mono text-xs">{req.hostname}</td>
-                            <td className="px-5 py-4">{req.requestedBy}</td>
+                            <td className="px-5 py-4">{req.username}</td>
                             <td className="px-5 py-4">
                               <Badge variant="outline">
                                 {RESOURCE_LABELS[req.resourceType] || req.resourceType}
@@ -254,7 +254,7 @@ export function ResourceRequestsPage() {
                         return (
                           <tr key={req.id} className="border-b border-border last:border-0">
                             <td className="px-5 py-4 font-mono text-xs">{req.hostname}</td>
-                            <td className="px-5 py-4">{req.requestedBy}</td>
+                            <td className="px-5 py-4">{req.username}</td>
                             <td className="px-5 py-4">
                               <Badge variant="outline">
                                 {RESOURCE_LABELS[req.resourceType] || req.resourceType}

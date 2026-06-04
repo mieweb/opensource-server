@@ -176,7 +176,7 @@ export interface ResourceRequest {
   siteId: number;
   hostname: string;
   username: string;
-  requestedBy: string;
+  requestedBy?: never;
   resourceType: ResourceType;
   value: number;
   status: 'pending' | 'approved' | 'denied';
