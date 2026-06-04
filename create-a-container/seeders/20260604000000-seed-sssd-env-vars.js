@@ -18,37 +18,37 @@ const SSSD_DEFAULTS = [
   {
     key: 'SSSD_LDAP_SCHEMA',
     value: '',
-    description: 'LDAP schema type — leave blank to use the sssd builtin default'
+    description: 'LDAP schema type. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_LDAP_SEARCH_BASE',
     value: '',
-    description: 'Base DN for LDAP searches — leave blank to use the sssd builtin default'
+    description: 'Base DN for LDAP searches. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_LDAP_USER_SEARCH_BASE',
     value: '',
-    description: 'Base DN for LDAP user searches — leave blank to use the sssd builtin default'
+    description: 'Base DN for LDAP user searches. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_LDAP_GROUP_SEARCH_BASE',
     value: '',
-    description: 'Base DN for LDAP group searches — leave blank to use the sssd builtin default'
+    description: 'Base DN for LDAP group searches. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_LDAP_DEFAULT_BIND_DN',
     value: '',
-    description: 'DN used to bind to the LDAP server — leave blank to use the sssd builtin default'
+    description: 'DN used to bind to the LDAP server. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_DEFAULT_AUTHTOK_TYPE',
     value: '',
-    description: 'Type of the LDAP bind authentication token — leave blank to use the sssd builtin default'
+    description: 'Type of the LDAP bind authentication token. Leave blank to use the sssd builtin default'
   },
   {
     key: 'SSSD_DEFAULT_AUTHTOK',
     value: '',
-    description: 'LDAP bind authentication token — leave blank to use the sssd builtin default'
+    description: 'LDAP bind authentication token. Leave blank to use the sssd builtin default'
   }
 ];
 
