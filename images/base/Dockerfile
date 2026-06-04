@@ -23,7 +23,8 @@ RUN apt-get update && \
     pam-auth-update --enable mkhomedir && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-COPY --chmod=0440 sssd.conf /etc/sssd/sssd.conf
+COPY --chmod=0440 sssd.conf.template /etc/sssd/sssd.conf.template
+COPY --chmod=0440 50-sssd-conf-template.conf /etc/systemd/system/sssd.service.d/50-sssd-conf-template.conf
 COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 COPY --chmod=0644 ldap.conf /etc/ldap/ldap.conf
 COPY --chmod=0755 git-identity.sh /etc/profile.d/git-identity.sh
