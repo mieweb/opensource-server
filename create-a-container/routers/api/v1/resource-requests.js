@@ -11,7 +11,6 @@ const {
   Container,
   Site,
   User,
-  sequelize,
 } = require('../../../models');
 const { sendResourceRequestStatusEmail } = require('../../../utils/email');
 const {
