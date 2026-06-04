@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,21 +10,10 @@ import {
   Button,
   Input,
   Spinner,
-  usePrefersReducedMotion,
 } from '@mieweb/ui';
-import {
-  ShieldCheck,
-  Smartphone,
-  AlertTriangle,
-  XCircle,
-  Eye,
-  EyeOff,
-  Lock,
-} from 'lucide-react';
-import { useLoginMutation, useDevLoginMutation, useServerInfo, useSession, fetchChallenge, sessionKey, type ChallengeStatus, type SessionUser } from '@/lib/auth';
-import { ApiError, clearCsrfToken } from '@/lib/api';
+import { ShieldCheck, Eye, EyeOff, Lock } from 'lucide-react';
+import { useLoginMutation, useDevLoginMutation, useServerInfo, useSession } from '@/lib/auth';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
-import { useQueryClient } from '@tanstack/react-query';
 
 const schema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -32,8 +21,15 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_MS = 5 * 60 * 1000;
+// Human-readable messages for OIDC callback failures surfaced via ?oidc_error.
+const OIDC_ERROR_MESSAGES: Record<string, string> = {
+  expired: 'Your sign-in session expired before it completed. Please try again.',
+  exchange_failed: 'We could not complete sign-in with your identity provider. Please try again.',
+  provisioning_failed: 'Sign-in succeeded but your account could not be prepared. Contact an administrator.',
+  no_account: 'No matching account was found for your identity. Contact an administrator for access.',
+  missing_email: 'Your identity provider did not share an email address, which is required to sign in.',
+  account_inactive: 'Your account is not active. Contact an administrator.',
+};
 
 // A redirect target is "external" when it parses as an absolute http(s) URL.
 // react-router's navigate() treats such strings as in-app paths and mangles
@@ -56,22 +52,18 @@ function asExternalUrl(target: string): string | null {
 export function LoginPage() {
   useDocumentTitle('Sign in');
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const [params] = useSearchParams();
   const redirect = params.get('redirect') || '/';
+  const oidcError = params.get('oidc_error');
   const login = useLoginMutation();
   const devLogin = useDevLoginMutation();
-  const { data: serverInfo } = useServerInfo();
+  const { data: serverInfo, isLoading: serverInfoLoading } = useServerInfo();
   const isDev = !!serverInfo?.isDev;
+  const oidcEnabled = !!serverInfo?.oidcEnabled;
   const { data: session, isLoading: sessionLoading } = useSession();
 
-  const [challengeId, setChallengeId] = useState<string | null>(null);
-  const [challenge, setChallenge] = useState<ChallengeStatus | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const pollTimer = useRef<number | null>(null);
-  const pollStart = useRef<number>(0);
-  const approvedHandled = useRef(false);
 
   const {
     register,
@@ -91,92 +83,31 @@ export function LoginPage() {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (pollTimer.current) window.clearTimeout(pollTimer.current);
-    };
-  }, []);
-
   // Already-authenticated users shouldn't see the login form: send them to
-  // their intended destination (or home). Guarded by !challengeId so we don't
-  // pre-empt an in-progress 2FA flow on this page.
+  // their intended destination (or home).
   useEffect(() => {
-    if (!sessionLoading && session && !challengeId) {
+    if (!sessionLoading && session) {
       goTo(redirect);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, sessionLoading, challengeId, redirect]);
+  }, [session, sessionLoading, redirect]);
 
-  function startPolling(id: string) {
-    pollStart.current = Date.now();
-    approvedHandled.current = false;
-    const poll = async () => {
-      try {
-        const status = await fetchChallenge(id);
-        if (status.status === 'approved') {
-          // The challenge is single-use: the server activates the session and
-          // deletes the challenge on the first 'approved' response. Guard so a
-          // second in-flight poll can't re-run this (a repeat fetch would 404
-          // and surface as a spurious failure).
-          if (approvedHandled.current) return;
-          approvedHandled.current = true;
-          // New authenticated session: drop any pre-login CSRF token so the
-          // next mutation fetches one bound to it, avoiding a reactive 403.
-          clearCsrfToken();
-          // The server has already saved the session, so seed the cache as the
-          // authoritative state. Navigate immediately — RequireAuth reads this
-          // cached session and lets us through. We intentionally do NOT block
-          // navigation on a refetch: a transient refetch failure/race must not
-          // bounce the now-authenticated user back to the login screen.
-          qc.setQueryData<SessionUser>(sessionKey, {
-            user: status.user || '',
-            isAdmin: !!status.isAdmin,
-          });
-          void qc.invalidateQueries({ queryKey: sessionKey });
-          goTo(status.redirect && status.redirect !== '/' ? status.redirect : redirect);
-          return;
-        }
-        // Only surface non-approved statuses (keeps an 'approved' status from
-        // ever rendering through the error/fallback view).
-        setChallenge(status);
-        if (
-          status.status === 'rejected' ||
-          status.status === 'timeout' ||
-          status.status === 'failed' ||
-          status.status === 'unregistered'
-        ) {
-          return;
-        }
-        if (Date.now() - pollStart.current > POLL_MAX_MS) {
-          setChallenge({ status: 'timeout', message: 'Challenge expired' });
-          return;
-        }
-        pollTimer.current = window.setTimeout(poll, POLL_INTERVAL_MS);
-      } catch (err) {
-        // If we've already handled approval and navigated, ignore late errors
-        // from any straggling poll (e.g. a 404 for the now-deleted challenge).
-        if (approvedHandled.current) return;
-        setChallenge({
-          status: 'failed',
-          message: err instanceof ApiError ? err.message : 'Failed to check challenge',
-        });
-      }
-    };
-    poll();
-  }
+  // When an identity provider is configured, the login screen automatically
+  // redirects to it. We only auto-redirect once we know there's no active
+  // session and the previous attempt didn't fail (avoids a redirect loop).
+  const shouldAutoRedirectToIdp =
+    oidcEnabled && !oidcError && !sessionLoading && !session;
+  useEffect(() => {
+    if (shouldAutoRedirectToIdp) {
+      const url = `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(redirect)}`;
+      window.location.assign(url);
+    }
+  }, [shouldAutoRedirectToIdp, redirect]);
 
   const onSubmit = handleSubmit(async (values) => {
-    setChallenge(null);
-    setChallengeId(null);
     try {
       const result = await login.mutateAsync({ ...values, redirect });
-      if (result.kind === 'logged-in') {
-        goTo(result.redirect && result.redirect !== '/' ? result.redirect : redirect);
-      } else {
-        setChallengeId(result.challengeId);
-        setChallenge({ status: 'pending' });
-        startPolling(result.challengeId);
-      }
+      goTo(result.redirect && result.redirect !== '/' ? result.redirect : redirect);
     } catch {
       /* error handled via login.error */
     }
@@ -198,17 +129,56 @@ export function LoginPage() {
         ? 'Invalid username or password'
         : null;
 
-  if (challengeId && challenge) {
-    return <ChallengeStatusView status={challenge} onCancel={() => setChallengeId(null)} />;
-  }
-
-  // Avoid flashing the form while we resolve the session / redirect an
-  // already-authenticated user.
-  if (sessionLoading || (session && !challengeId)) {
+  // Avoid flashing the form while we resolve the session / server info, or
+  // while we hand off to the identity provider.
+  if (sessionLoading || serverInfoLoading || (session && !sessionLoading) || shouldAutoRedirectToIdp) {
     return (
       <div className="flex items-center justify-center p-8">
         <Spinner size="lg" />
       </div>
+    );
+  }
+
+  // OIDC is configured but we landed back here with an error (or after a
+  // failed attempt). Internal password login is disabled, so offer a retry.
+  if (oidcEnabled) {
+    return (
+      <section aria-labelledby="signin-heading" className="flex flex-col gap-6">
+        <header className="space-y-2">
+          <h1
+            id="signin-heading"
+            className="text-2xl font-semibold tracking-tight text-[var(--mieweb-foreground,#171717)] sm:text-3xl"
+          >
+            Sign in
+          </h1>
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
+            This site uses single sign-on through your identity provider.
+          </p>
+        </header>
+
+        {oidcError && (
+          <Alert variant="danger">
+            <AlertTitle>Sign in failed</AlertTitle>
+            <AlertDescription>
+              {OIDC_ERROR_MESSAGES[oidcError] || 'Sign-in could not be completed. Please try again.'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          fullWidth
+          onClick={() =>
+            window.location.assign(
+              `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(redirect)}`,
+            )
+          }
+        >
+          Continue with single sign-on
+        </Button>
+      </section>
     );
   }
 
@@ -361,104 +331,9 @@ export function LoginPage() {
       </form>
 
       <p className="text-center text-xs text-[var(--mieweb-muted-foreground,#64748b)]">
-        Protected by push-approved sign-in.{' '}
+        Secured by your organization&rsquo;s sign-in policy.{' '}
         <ShieldCheck className="-mt-0.5 inline size-3.5 text-[var(--mieweb-primary-700,#1786b3)]" />
       </p>
-    </section>
-  );
-}
-
-function ChallengeStatusView({
-  status,
-  onCancel,
-}: {
-  status: ChallengeStatus;
-  onCancel: () => void;
-}) {
-  const reduceMotion = usePrefersReducedMotion();
-  if (status.status === 'pending') {
-    return (
-      <section
-        aria-labelledby="challenge-heading"
-        aria-live="polite"
-        className="flex flex-col items-center gap-6 text-center"
-      >
-        <div className="relative">
-          {!reduceMotion && (
-            <span
-              aria-hidden="true"
-              className="absolute inset-0 animate-ping rounded-full bg-[var(--mieweb-primary-200,#80d5f0)] opacity-75"
-            />
-          )}
-          <span className="relative flex size-20 items-center justify-center rounded-full bg-[var(--mieweb-primary-50,#e6f7fc)] ring-1 ring-[var(--mieweb-primary-200,#80d5f0)]">
-            <Smartphone className="size-9 text-[var(--mieweb-primary-700,#1786b3)]" />
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <h2
-            id="challenge-heading"
-            className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]"
-          >
-            Approve sign-in on your device
-          </h2>
-          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
-            We sent a push notification to your registered device. Tap{' '}
-            <span className="font-medium text-[var(--mieweb-foreground,#171717)]">Approve</span> to
-            finish signing in.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-[var(--mieweb-muted-foreground,#64748b)]">
-          <Spinner size="sm" />
-          <span>Waiting for approval&hellip;</span>
-        </div>
-
-        <Button variant="ghost" onClick={onCancel}>
-          Cancel and try again
-        </Button>
-      </section>
-    );
-  }
-
-  if (status.status === 'unregistered') {
-    return (
-      <section className="flex flex-col gap-5" aria-live="polite">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="flex size-14 items-center justify-center rounded-full bg-[var(--mieweb-warning,#f59e0b)]/10 ring-1 ring-[var(--mieweb-warning,#f59e0b)]/30">
-            <AlertTriangle className="size-6 text-[var(--mieweb-warning,#f59e0b)]" />
-          </span>
-          <h2 className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]">
-            Device not registered
-          </h2>
-          <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
-            No device is enrolled for push 2FA on this account. Contact an administrator to receive
-            an enrollment invite.
-          </p>
-        </div>
-        <Button variant="primary" onClick={onCancel} fullWidth>
-          Back to sign in
-        </Button>
-      </section>
-    );
-  }
-
-  return (
-    <section className="flex flex-col gap-5" aria-live="assertive">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <span className="flex size-14 items-center justify-center rounded-full bg-[var(--mieweb-destructive,#dc2626)]/10 ring-1 ring-[var(--mieweb-destructive,#dc2626)]/30">
-          <XCircle className="size-6 text-[var(--mieweb-destructive,#dc2626)]" />
-        </span>
-        <h2 className="text-xl font-semibold text-[var(--mieweb-foreground,#171717)]">
-          Sign-in not completed
-        </h2>
-        <p className="text-sm text-[var(--mieweb-muted-foreground,#64748b)]">
-          {status.message || `Status: ${status.status}`}
-        </p>
-      </div>
-      <Button variant="primary" onClick={onCancel} fullWidth>
-        Try again
-      </Button>
     </section>
   );
 }
