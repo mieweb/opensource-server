@@ -48,6 +48,102 @@ module.exports = (sequelize, DataTypes) => {
       this.userPassword = plainPassword;
       await this.save();
     }
+
+    /**
+     * Generate a unique `uid` from a desired base, appending a numeric suffix
+     * if the base is already taken.
+     * @param {string} base - Desired username
+     * @returns {Promise<string>}
+     */
+    static async uniqueUid(base) {
+      const sanitized = (base || 'user')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]/g, '')
+        .replace(/^[._-]+/, '') || 'user';
+      let candidate = sanitized;
+      let suffix = 1;
+      // eslint-disable-next-line no-await-in-loop
+      while (await User.findOne({ where: { uid: candidate } })) {
+        candidate = `${sanitized}${suffix}`;
+        suffix += 1;
+      }
+      return candidate;
+    }
+
+    /**
+     * Resolve a local account from validated OIDC claims, optionally creating
+     * one when just-in-time provisioning is enabled.
+     *
+     * Matching order:
+     *   1. existing link by oidcSubject
+     *   2. existing local user by email (the OIDC identity is then linked)
+     *   3. JIT-provisioned new user (only when jitEnabled)
+     *
+     * @param {object} claims - Normalized claims from utils/oidc handleCallback
+     * @param {object} opts
+     * @param {boolean} opts.jitEnabled - Whether provisioning is permitted
+     * @returns {Promise<{user: User|null, code?: string}>}
+     */
+    static async findOrProvisionFromOidc(claims, { jitEnabled } = {}) {
+      const includeGroups = { include: [{ association: 'groups' }] };
+
+      if (claims.sub) {
+        const linked = await User.findOne({
+          where: { oidcSubject: claims.sub },
+          ...includeGroups,
+        });
+        if (linked) return { user: linked };
+      }
+
+      if (claims.email) {
+        const byEmail = await User.findOne({
+          where: { mail: claims.email },
+          ...includeGroups,
+        });
+        if (byEmail) {
+          // Link the OIDC identity to the existing local account.
+          if (!byEmail.oidcSubject && claims.sub) {
+            byEmail.oidcSubject = claims.sub;
+            byEmail.oidcIssuer = claims.issuer || null;
+            await byEmail.save();
+          }
+          return { user: byEmail };
+        }
+      }
+
+      if (!jitEnabled) {
+        return { user: null, code: 'no_account' };
+      }
+
+      if (!claims.email) {
+        return { user: null, code: 'missing_email' };
+      }
+
+      const crypto = require('crypto');
+      const base = claims.preferredUsername || claims.email.split('@')[0];
+      const uid = await User.uniqueUid(base);
+      const givenName = (claims.givenName || claims.name || uid).trim();
+      const familyName = (claims.familyName || '').trim() || givenName;
+
+      await User.create({
+        uidNumber: await User.nextUidNumber(),
+        uid,
+        givenName,
+        sn: familyName,
+        cn: claims.name?.trim() || `${givenName} ${familyName}`.trim(),
+        mail: claims.email,
+        // OIDC users authenticate via the IdP; store a random unusable secret
+        // so the NOT NULL password column is satisfied without a known password.
+        userPassword: crypto.randomBytes(32).toString('hex'),
+        status: 'active',
+        homeDirectory: `/home/${uid}`,
+        oidcSubject: claims.sub || null,
+        oidcIssuer: claims.issuer || null,
+      });
+
+      const created = await User.findOne({ where: { uid }, ...includeGroups });
+      return { user: created };
+    }
   }
   User.init({
     uidNumber: {
@@ -103,6 +199,15 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'pending'
+    },
+    oidcSubject: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      unique: true
+    },
+    oidcIssuer: {
+      type: DataTypes.STRING(255),
+      allowNull: true
     }
   }, {
     sequelize,
