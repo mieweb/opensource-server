@@ -28,7 +28,7 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, ResourceRequest } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
@@ -182,7 +182,19 @@ async function main() {
   console.log(`Node: ${node.name}`);
   console.log(`Site: ${site.name} (${site.internalDomain})`);
   console.log(`Template: ${container.template}`);
-  
+
+  // Look up approved resource requests for this container identity
+  const approvedResources = await ResourceRequest.getApprovedResources(
+    site.id,
+    container.hostname,
+    container.username,
+  );
+  const cores = approvedResources.cpus || 4;
+  const memory = approvedResources.memory || 4096;
+  const swap = approvedResources.swap || 0;
+  const rootfsSize = approvedResources.rootfs || 50;
+  console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
+
   const isDocker = isDockerImage(container.template);
   console.log(`Template type: ${isDocker ? 'Docker image' : 'Proxmox template'}`);
   
@@ -248,16 +260,16 @@ async function main() {
         hostname: container.hostname,
         ostemplate,
         description: `Created from Docker image ${container.template}`,
-        cores: 4,
+        cores,
         features: 'nesting=1,keyctl=1,fuse=1',
-        memory: 4096,
+        memory,
         net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
-        swap: 0,
+        swap,
         onboot: 1,
         tags: container.username,
         unprivileged: 1,
-        rootfs: `${rootfsStorage}:50`
+        rootfs: `${rootfsStorage}:${rootfsSize}`
       });
       console.log(`Create task started: ${createUpid}`);
       
@@ -298,12 +310,12 @@ async function main() {
       // Configure the container (Docker containers are configured at creation time)
       console.log('Configuring container...');
       await client.updateLxcConfig(node.name, vmid, {
-        cores: 4,
+        cores,
         features: 'nesting=1,keyctl=1,fuse=1',
-        memory: 4096,
+        memory,
         net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
-        swap: 0,
+        swap,
         onboot: 1,
         tags: container.username
       });

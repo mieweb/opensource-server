@@ -4,13 +4,13 @@
  * 
  * Background job script that applies configuration changes and restarts a container.
  * This script is executed by the job-runner when environment variables or entrypoint
- * are changed on an existing container.
+ * are changed on an existing container, or when resource requests are approved.
  * 
- * Usage: node bin/reconfigure-container.js --container-id=<id>
+ * Usage: node bin/reconfigure-container.js --container-id=<id> [--memory=<MB>] [--cpus=<n>] [--swap=<MB>] [--rootfs=<GB>]
  * 
  * The script will:
  * 1. Load the container record from the database
- * 2. Apply env and entrypoint config via Proxmox API
+ * 2. Apply env, entrypoint, and/or resource config via Proxmox API
  * 3. Stop the container
  * 4. Start the container
  * 5. Update the container status to 'running'
@@ -91,57 +91,83 @@ async function main() {
     } else {
       console.log('No configuration changes to apply');
     }
-    
+
+    // Apply resource changes if specified via CLI flags
+    const resourceConfig = {};
+    if (args.memory) resourceConfig.memory = parseInt(args.memory, 10);
+    if (args.cpus) resourceConfig.cores = parseInt(args.cpus, 10);
+    if (args.swap) resourceConfig.swap = parseInt(args.swap, 10);
+    if (args.rootfs) resourceConfig.rootfs = `local-lvm:${parseInt(args.rootfs, 10)}`;
+
+    if (Object.keys(resourceConfig).length > 0) {
+      console.log('Applying resource configuration...');
+      console.log('Resources:', JSON.stringify(resourceConfig, null, 2));
+      await client.updateLxcConfig(node.name, container.containerId, resourceConfig);
+      console.log('Resource configuration applied');
+    }
+
+    // Determine if a stop/start cycle is required.
+    // rootfs (disk) changes require a restart; memory/cpu/swap are applied live via cgroups.
+    // LXC env/entrypoint config changes (actual values being set, not just deletions) require a restart.
+    const hasEnvConfigChanges = Object.keys(lxcConfig).some(k => k !== 'delete');
+    const requiresRestart = !!args.rootfs || hasEnvConfigChanges;
+
     // Check container status before stop/start cycle
     const lxcStatus = await client.getLxcStatus(node.name, container.containerId);
     console.log(`Container current status: ${lxcStatus.status}`);
-    
-    // Only stop if the container is running
-    if (lxcStatus.status === 'running') {
-      console.log('Stopping container...');
-      const stopUpid = await client.stopLxc(node.name, container.containerId);
-      console.log(`Stop task started: ${stopUpid}`);
-      
-      // Wait for stop to complete (shorter timeout for stop/start)
-      await client.waitForTask(node.name, stopUpid, 2000, 60000);
-      console.log('Container stopped');
+
+    if (!requiresRestart) {
+      console.log('Resource changes applied live (no restart required)');
     } else {
-      console.log('Container not running, skipping stop');
+      // Only stop if the container is running
+      if (lxcStatus.status === 'running') {
+        console.log('Stopping container...');
+        const stopUpid = await client.stopLxc(node.name, container.containerId);
+        console.log(`Stop task started: ${stopUpid}`);
+
+        // Wait for stop to complete (shorter timeout for stop/start)
+        await client.waitForTask(node.name, stopUpid, 2000, 60000);
+        console.log('Container stopped');
+      } else {
+        console.log('Container not running, skipping stop');
+      }
+
+      // Start the container
+      console.log('Starting container...');
+      const startUpid = await client.startLxc(node.name, container.containerId);
+      console.log(`Start task started: ${startUpid}`);
+
+      // Wait for start to complete
+      await client.waitForTask(node.name, startUpid, 2000, 60000);
+      console.log('Container started');
     }
     
-    // Start the container
-    console.log('Starting container...');
-    const startUpid = await client.startLxc(node.name, container.containerId);
-    console.log(`Start task started: ${startUpid}`);
-    
-    // Wait for start to complete
-    await client.waitForTask(node.name, startUpid, 2000, 60000);
-    console.log('Container started');
-    
-    // Get MAC address from config (in case it wasn't captured during failed create)
-    const macAddress = await client.getLxcMacAddress(node.name, container.containerId);
-    
-    if (!macAddress) {
-      throw new Error('Could not get MAC address from container configuration');
+    if (requiresRestart) {
+      // Get MAC address from config (in case it wasn't captured during failed create)
+      const macAddress = await client.getLxcMacAddress(node.name, container.containerId);
+
+      if (!macAddress) {
+        throw new Error('Could not get MAC address from container configuration');
+      }
+
+      // Get IP address from Proxmox interfaces API
+      const ipv4Address = await client.getLxcIpAddress(node.name, container.containerId);
+
+      if (!ipv4Address) {
+        throw new Error('Could not get IP address from Proxmox interfaces API');
+      }
+
+      // Update container record with MAC/IP and running status
+      await container.update({
+        status: 'running',
+        macAddress,
+        ipv4Address
+      });
+
+      console.log('Status updated to: running');
+      console.log(`  MAC: ${macAddress}`);
+      console.log(`  IP: ${ipv4Address}`);
     }
-    
-    // Get IP address from Proxmox interfaces API
-    const ipv4Address = await client.getLxcIpAddress(node.name, container.containerId);
-    
-    if (!ipv4Address) {
-      throw new Error('Could not get IP address from Proxmox interfaces API');
-    }
-    
-    // Update container record with MAC/IP and running status
-    await container.update({
-      status: 'running',
-      macAddress,
-      ipv4Address
-    });
-    
-    console.log('Status updated to: running');
-    console.log(`  MAC: ${macAddress}`);
-    console.log(`  IP: ${ipv4Address}`);
     
     console.log('Container reconfiguration completed successfully!');
     process.exit(0);

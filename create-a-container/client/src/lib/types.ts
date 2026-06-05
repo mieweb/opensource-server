@@ -168,3 +168,30 @@ export interface AppSettings {
   smtpNoreplyAddress: string;
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
 }
+
+export type ResourceType = 'memory' | 'swap' | 'cpus' | 'rootfs';
+
+export interface ResourceRequest {
+  id: number;
+  siteId: number;
+  hostname: string;
+  username: string;
+  requestedBy?: never;
+  resourceType: ResourceType;
+  value: number;
+  status: 'pending' | 'approved' | 'denied';
+  comment: string | null;
+  adminComment: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  site?: { id: number; name: string };
+}
+
+export interface EffectiveResources {
+  memory: number;
+  swap: number;
+  cpus: number;
+  rootfs: number;
+}
