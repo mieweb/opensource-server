@@ -1,0 +1,214 @@
+context: {}
+entries:
+  - attrs:
+      authentication: none
+      background: ''
+      compatibility_mode: false
+      denied_action: message_continue
+      designation: authentication
+      layout: stacked
+      name: MIE Opensource SSO
+      policy_engine_mode: any
+      title: MIE Opensource SSO
+    conditions: []
+    id: opensource-authentication-flow
+    identifiers:
+      slug: opensource-authentication-flow
+    model: authentik_flows.flow
+    permissions: []
+    state: present
+  - attrs:
+      execution_logging: false
+      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+        \    return True\n# If the user does not have a backend attached to it, they\
+        \ haven't\n# been authenticated yet and we need the password stage\nreturn not\
+        \ hasattr(flow_plan.context.get(\"pending_user\"), \"backend\")"
+    conditions: []
+    id: opensource-authentication-flow-password-stage
+    identifiers:
+      name: opensource-authentication-flow-password-stage
+    model: authentik_policies_expression.expressionpolicy
+    permissions: []
+    state: present
+  - attrs:
+      execution_logging: false
+      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+        \    return True\n# if the authentication method is webauthn (passwordless),\
+        \ then we skip the authenticator\n# validation stage by returning false (true\
+        \ will execute the stage)\nreturn not (flow_plan.context.get(\"auth_method\"\
+        ) == \"auth_webauthn_pwl\")"
+    conditions: []
+    id: opensource-authentication-flow-authenticator-validate-stage
+    identifiers:
+      name: opensource-authentication-flow-authenticator-validate-stage
+    model: authentik_policies_expression.expressionpolicy
+    permissions: []
+    state: present
+  - attrs:
+      allow_show_password: true
+      backends:
+        - authentik.core.auth.InbuiltBackend
+        - authentik.sources.kerberos.auth.KerberosBackend
+        - authentik.sources.ldap.auth.LDAPBackend
+        - authentik.core.auth.TokenBackend
+      configure_flow: !Find [authentik_flows.flow, [slug, default-password-change]]
+      failed_attempts_before_cancel: 5
+    conditions: []
+    id: opensource-authentication-password
+    identifiers:
+      name: opensource-authentication-password
+    model: authentik_stages_password.passwordstage
+    permissions: []
+    state: present
+  - attrs:
+      configuration_stages:
+        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+      device_classes:
+        - static
+        - totp
+        - webauthn
+        - duo
+        - sms
+        - email
+      email_otp_throttling_factor: 1.0
+      last_auth_threshold: seconds=0
+      not_configured_action: configure
+      sms_otp_throttling_factor: 1.0
+      static_otp_throttling_factor: 1.0
+      totp_otp_throttling_factor: 1.0
+      webauthn_allowed_device_types: []
+      webauthn_hints: []
+      webauthn_user_verification: preferred
+    conditions: []
+    id: opensource-authentication-mfa-validation
+    identifiers:
+      name: opensource-authentication-mfa-validation
+    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    permissions: []
+    state: present
+  - attrs:
+      captcha_stage: null
+      case_insensitive_matching: true
+      enable_remember_me: true
+      enrollment_flow: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      password_stage: !KeyOf opensource-authentication-password
+      passwordless_flow: null
+      pretend_user_exists: true
+      recovery_flow: !Find [authentik_flows.flow, [slug, default-recovery-flow]]
+      show_matched_user: true
+      show_source_labels: false
+      sources: []
+      user_fields:
+        - email
+        - username
+      webauthn_stage: !KeyOf opensource-authentication-mfa-validation
+    conditions: []
+    id: opensource-authentication-identification
+    identifiers:
+      name: opensource-authentication-identification
+    model: authentik_stages_identification.identificationstage
+    permissions: []
+    state: present
+  - attrs:
+      geoip_binding: no_binding
+      network_binding: no_binding
+      remember_device: days=30
+      remember_me_offset: seconds=0
+      session_duration: seconds=0
+      terminate_other_sessions: false
+    conditions: []
+    id: opensource-authentication-login
+    identifiers:
+      name: opensource-authentication-login
+    model: authentik_stages_user_login.userloginstage
+    permissions: []
+    state: present
+  - attrs:
+      evaluate_on_plan: false
+      invalid_response_action: retry
+      policy_engine_mode: any
+      re_evaluate_policies: true
+    conditions: []
+    identifiers:
+      order: 10
+      stage: !KeyOf opensource-authentication-identification
+      target: !KeyOf opensource-authentication-flow
+    model: authentik_flows.flowstagebinding
+    permissions: []
+    state: present
+  - attrs:
+      evaluate_on_plan: false
+      invalid_response_action: retry
+      policy_engine_mode: any
+      re_evaluate_policies: true
+    conditions: []
+    id: opensource-authentication-password-stagebinding
+    identifiers:
+      order: 20
+      stage: !KeyOf opensource-authentication-password
+      target: !KeyOf opensource-authentication-flow
+    model: authentik_flows.flowstagebinding
+    permissions: []
+    state: present
+  - attrs:
+      evaluate_on_plan: false
+      invalid_response_action: retry
+      policy_engine_mode: any
+      re_evaluate_policies: true
+    conditions: []
+    id: opensource-authentication-mfa-validation-stagebinding
+    identifiers:
+      order: 30
+      stage: !KeyOf opensource-authentication-mfa-validation
+      target: !KeyOf opensource-authentication-flow
+    model: authentik_flows.flowstagebinding
+    permissions: []
+    state: present
+  - attrs:
+      evaluate_on_plan: false
+      invalid_response_action: retry
+      policy_engine_mode: any
+      re_evaluate_policies: true
+    conditions: []
+    identifiers:
+      order: 100
+      stage: !KeyOf opensource-authentication-login
+      target: !KeyOf opensource-authentication-flow
+    model: authentik_flows.flowstagebinding
+    permissions: []
+    state: present
+  - attrs:
+      enabled: true
+      failure_result: true
+      group: null
+      negate: false
+      timeout: 30
+      user: null
+    conditions: []
+    identifiers:
+      order: 10
+      policy: !KeyOf opensource-authentication-flow-password-stage
+      target: !KeyOf opensource-authentication-password-stagebinding
+    model: authentik_policies.policybinding
+    permissions: []
+    state: present
+  - attrs:
+      enabled: true
+      failure_result: true
+      group: null
+      negate: false
+      timeout: 30
+      user: null
+    conditions: []
+    identifiers:
+      order: 10
+      policy: !KeyOf opensource-authentication-flow-authenticator-validate-stage
+      target: !KeyOf opensource-authentication-mfa-validation-stagebinding
+    model: authentik_policies.policybinding
+    permissions: []
+    state: present
+    metadata:
+      labels:
+        blueprints.goauthentik.io/generated: 'true'
+      name: authentik Export - 2026-06-04 15:13:39.590416+00:00
+    version: 1
