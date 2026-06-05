@@ -36,7 +36,7 @@ entries:
       required: true
       placeholder: Password
       placeholder_expression: false
-      order: 0
+      order: 1
   - identifiers:
       name: default-enrollment-field-password-repeat
     id: prompt-field-password-repeat
@@ -48,7 +48,7 @@ entries:
       required: true
       placeholder: Password (repeat)
       placeholder_expression: false
-      order: 1
+      order: 2
   - identifiers:
       name: default-enrollment-field-name
     id: prompt-field-name
