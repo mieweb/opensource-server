@@ -40,6 +40,7 @@ nav = [
         { "Users and Groups" = "admins/core-concepts/users-and-groups.md" },
       ] },
       { "Settings" = "admins/settings.md" },
+      { "OIDC Single Sign-On" = "admins/oidc.md" },
       { "LDAP Authentication" = "admins/ldap-servers.md" },
       { "Deploying Agents" = "admins/deploying-agents.md" },
       { "Kernel Keyring" = "admins/kernel-keyring.md" },
