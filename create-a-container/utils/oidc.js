@@ -108,6 +108,9 @@ async function handleCallback(req, { codeVerifier, state, nonce, redirectUri }) 
 
   const claims = tokenSet.claims();
   return {
+    // Raw ID token, replayed as `id_token_hint` during RP-initiated logout so
+    // the IdP can identify (and end) the right session without re-prompting.
+    idToken: tokenSet.id_token || null,
     sub: claims.sub,
     issuer: claims.iss,
     email: claims.email ? String(claims.email).toLowerCase().trim() : null,
@@ -123,6 +126,32 @@ function getPostLogoutRedirectUri() {
   return (process.env.OIDC_POST_LOGOUT_REDIRECT_URI || '').trim() || null;
 }
 
+/**
+ * Build the IdP's RP-initiated logout URL (the `end_session_endpoint`) so the
+ * browser can be redirected there to terminate the IdP session — not just the
+ * local app session. Returns null when the IdP's discovery document does not
+ * advertise an end-session endpoint, in which case callers should fall back to
+ * a local-only logout.
+ *
+ * @param {object} [opts]
+ * @param {string|null} [opts.idTokenHint] Raw ID token from the login that is
+ *   being ended. Recommended by the spec; lets the IdP skip a logout prompt.
+ * @param {string|null} [opts.postLogoutRedirectUri] Where the IdP should send
+ *   the browser after logout. Must be registered with the IdP. Defaults to
+ *   OIDC_POST_LOGOUT_REDIRECT_URI.
+ */
+async function buildEndSessionUrl({ idTokenHint, postLogoutRedirectUri } = {}) {
+  const client = await getClient();
+  // openid-client throws if the issuer has no end_session_endpoint.
+  if (!client.issuer.metadata.end_session_endpoint) return null;
+
+  const redirect = postLogoutRedirectUri || getPostLogoutRedirectUri();
+  return client.endSessionUrl({
+    ...(idTokenHint ? { id_token_hint: idTokenHint } : {}),
+    ...(redirect ? { post_logout_redirect_uri: redirect } : {}),
+  });
+}
+
 module.exports = {
   CALLBACK_PATH,
   isOidcEnabled,
@@ -133,4 +162,5 @@ module.exports = {
   buildAuthorizationRequest,
   handleCallback,
   getPostLogoutRedirectUri,
+  buildEndSessionUrl,
 };

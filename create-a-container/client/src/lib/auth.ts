@@ -89,9 +89,29 @@ export function useLogoutMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await api.post('/api/v1/auth/logout');
+      // When OIDC SSO is enabled the server returns a `logoutUrl` pointing at
+      // the IdP's end-session endpoint. We must visit it to terminate the IdP
+      // session; otherwise the live IdP session signs the user straight back in.
+      const data = await api.post<{ loggedOut: boolean; logoutUrl?: string | null }>(
+        '/api/v1/auth/logout',
+      );
+
+      // If we have an IdP logout URL, hand off to the browser *before* touching
+      // the query cache. Clearing the cache here would synchronously re-render
+      // guarded views and bounce the user to /login, whose own effect kicks off
+      // a fresh SSO redirect — racing (and beating) this navigation. Assigning
+      // first makes RP-initiated logout the only navigation that happens.
+      if (data?.logoutUrl) {
+        window.location.assign(data.logoutUrl);
+        // Block further React work this tick; the page is being replaced.
+        await new Promise(() => {});
+      }
+
+      return data;
     },
-    onSettled: () => {
+    onSettled: (data) => {
+      // Reached only for the local-only logout path (no IdP end-session URL).
+      if (data?.logoutUrl) return;
       clearCsrfToken();
       qc.setQueryData<SessionUser | null>(sessionKey, null);
       qc.clear();

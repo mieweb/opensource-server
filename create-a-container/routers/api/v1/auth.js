@@ -27,6 +27,7 @@ const {
   isJitProvisioningEnabled,
   buildAuthorizationRequest,
   handleCallback,
+  buildEndSessionUrl,
 } = require('../../../utils/oidc');
 const { asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
 
@@ -190,21 +191,52 @@ router.get(
     if (user.status !== 'active') return fail('account_inactive');
 
     await activateSession(req, user);
+    // Remember the ID token so logout can perform RP-initiated logout against
+    // the IdP (`id_token_hint`). Without this, "Sign out" only clears the local
+    // session and the live IdP session immediately signs the user back in.
+    req.session.oidcIdToken = claims.idToken || null;
+    await new Promise((resolve, reject) =>
+      req.session.save((err) => (err ? reject(err) : resolve())),
+    );
     return res.redirect(pending.redirect || '/');
   }),
 );
 
 // POST /api/v1/auth/logout
+// Always clears the local session. When OIDC SSO is enabled, also returns a
+// `logoutUrl` pointing at the IdP's end-session endpoint so the client can
+// redirect there and terminate the IdP session too — otherwise the live IdP
+// session would immediately sign the user back in. Falls back to a local-only
+// logout when the IdP advertises no end-session endpoint.
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
+    let logoutUrl = null;
+    if (isOidcEnabled()) {
+      const idTokenHint = req.session?.oidcIdToken || null;
+      // Where the IdP returns the browser after logout. Land on a page that
+      // will NOT auto-redirect back into SSO. Defaults to this app's login page
+      // with a flag; an explicit OIDC_POST_LOGOUT_REDIRECT_URI takes precedence
+      // (and must be registered with the IdP).
+      const postLogoutRedirectUri =
+        (process.env.OIDC_POST_LOGOUT_REDIRECT_URI || '').trim() ||
+        `${req.protocol}://${req.get('host')}/login?logged_out=1`;
+      try {
+        logoutUrl = await buildEndSessionUrl({ idTokenHint, postLogoutRedirectUri });
+      } catch (err) {
+        // Discovery/endpoint issues shouldn't block local logout.
+        console.error('OIDC end-session URL error:', err);
+        logoutUrl = null;
+      }
+    }
+
     await new Promise((resolve) =>
       req.session.destroy(() => {
         res.clearCookie('connect.sid');
         resolve();
       }),
     );
-    return ok(res, { loggedOut: true });
+    return ok(res, { loggedOut: true, logoutUrl });
   }),
 );
 

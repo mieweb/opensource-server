@@ -55,6 +55,10 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const redirect = params.get('redirect') || '/';
   const oidcError = params.get('oidc_error');
+  // Set when the user just signed out (locally, or via the IdP's post-logout
+  // redirect). Suppresses the automatic SSO redirect so logout doesn't loop
+  // straight back into a new sign-in.
+  const loggedOut = params.get('logged_out') !== null;
   const login = useLoginMutation();
   const devLogin = useDevLoginMutation();
   const { data: serverInfo, isLoading: serverInfoLoading } = useServerInfo();
@@ -94,9 +98,10 @@ export function LoginPage() {
 
   // When an identity provider is configured, the login screen automatically
   // redirects to it. We only auto-redirect once we know there's no active
-  // session and the previous attempt didn't fail (avoids a redirect loop).
+  // session and the previous attempt didn't fail (avoids a redirect loop), and
+  // not immediately after an explicit logout (so sign-out doesn't loop back in).
   const shouldAutoRedirectToIdp =
-    oidcEnabled && !oidcError && !sessionLoading && !session;
+    oidcEnabled && !oidcError && !loggedOut && !sessionLoading && !session;
   useEffect(() => {
     if (shouldAutoRedirectToIdp) {
       const url = `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(redirect)}`;
@@ -161,6 +166,15 @@ export function LoginPage() {
             <AlertTitle>Sign in failed</AlertTitle>
             <AlertDescription>
               {OIDC_ERROR_MESSAGES[oidcError] || 'Sign-in could not be completed. Please try again.'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!oidcError && loggedOut && (
+          <Alert variant="success">
+            <AlertTitle>Signed out</AlertTitle>
+            <AlertDescription>
+              You have been signed out. Use single sign-on to sign back in.
             </AlertDescription>
           </Alert>
         )}
