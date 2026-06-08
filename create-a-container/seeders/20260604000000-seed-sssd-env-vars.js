@@ -1,18 +1,54 @@
 'use strict';
 
-// Variables seeded into the default_container_env_vars setting.
-// Add future cross-container variables here and create a new seeder
-// that calls the same merge logic.
-const WAZUH_DEFAULTS = [
+// Variables seeded into the default_container_env_vars setting for the
+// base/sssd.conf.template. Only SSSD_LDAP_URI and SSSD_LDAP_TLS_REQCERT
+// carry default values; the remaining variables are intentionally left
+// blank so that sssd falls back to its builtin defaults.
+const SSSD_DEFAULTS = [
   {
-    key: 'WAZUH_MANAGER',
-    value: '',
-    description: 'Hostname of the Wazuh manager for agent enrollment (e.g. wazuh.example.com)'
+    key: 'SSSD_LDAP_URI',
+    value: 'ldaps://ldap1:636, ldaps://ldap2:636',
+    description: 'Comma-separated list of LDAP server URIs sssd connects to'
   },
   {
-    key: 'WAZUH_REGISTRATION_PASSWORD',
+    key: 'SSSD_LDAP_TLS_REQCERT',
+    value: 'allow',
+    description: 'TLS certificate validation policy for LDAP connections (e.g. never, allow, try, demand)'
+  },
+  {
+    key: 'SSSD_LDAP_SCHEMA',
     value: '',
-    description: 'Enrollment password for Wazuh agent registration'
+    description: 'LDAP schema type. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_LDAP_SEARCH_BASE',
+    value: '',
+    description: 'Base DN for LDAP searches. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_LDAP_USER_SEARCH_BASE',
+    value: '',
+    description: 'Base DN for LDAP user searches. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_LDAP_GROUP_SEARCH_BASE',
+    value: '',
+    description: 'Base DN for LDAP group searches. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_LDAP_DEFAULT_BIND_DN',
+    value: '',
+    description: 'DN used to bind to the LDAP server. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_DEFAULT_AUTHTOK_TYPE',
+    value: '',
+    description: 'Type of the LDAP bind authentication token. Leave blank to use the sssd builtin default'
+  },
+  {
+    key: 'SSSD_DEFAULT_AUTHTOK',
+    value: '',
+    description: 'LDAP bind authentication token. Leave blank to use the sssd builtin default'
   }
 ];
 
@@ -39,7 +75,7 @@ module.exports = {
     }
 
     const existingKeys = new Set(existing.map(e => e.key));
-    const toAdd = WAZUH_DEFAULTS.filter(e => !existingKeys.has(e.key));
+    const toAdd = SSSD_DEFAULTS.filter(e => !existingKeys.has(e.key));
     if (toAdd.length === 0) return; // all keys already present
 
     const merged = [...existing, ...toAdd];
@@ -74,7 +110,7 @@ module.exports = {
       return;
     }
 
-    const keysToRemove = new Set(WAZUH_DEFAULTS.map(e => e.key));
+    const keysToRemove = new Set(SSSD_DEFAULTS.map(e => e.key));
     const reverted = existing.filter(e => !keysToRemove.has(e.key));
 
     await queryInterface.sequelize.query(

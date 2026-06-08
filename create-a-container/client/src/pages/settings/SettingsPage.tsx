@@ -11,6 +11,12 @@ import {
   PageHeader,
   Spinner,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   useToast,
 } from '@mieweb/ui';
 import { Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react';
@@ -75,7 +81,7 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" icon={<SettingsIcon className="size-6" />} bordered />
-      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="grid max-w-3xl gap-8">
+      <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="grid w-full gap-8">
         <section className="grid gap-4">
           <h2 className="text-lg font-semibold">Push notifications</h2>
           <Switch
@@ -117,16 +123,40 @@ export function SettingsPage() {
             </Button>
           </div>
           {fields.length === 0 && <p className="text-sm text-(--color-muted,#6b7280)">No defaults defined.</p>}
-          {fields.map((f, idx) => (
-            <div key={f.id} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
-              <Input label="Key" hideLabel={idx !== 0} placeholder="KEY" autoCapitalize="characters" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.key`)} />
-              <Input label="Value" hideLabel={idx !== 0} placeholder="value" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.value`)} />
-              <Input label="Description" hideLabel={idx !== 0} placeholder="optional" {...register(`defaultContainerEnvVars.${idx}.description`)} />
-              <Button type="button" variant="ghost" size="sm" leftIcon={<Trash2 className="size-4" />} onClick={() => remove(idx)} aria-label="Remove variable">
-                <span className="sm:sr-only">Remove</span>
-              </Button>
-            </div>
-          ))}
+          {fields.length > 0 && (
+            <Table responsive>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-1/4">Key</TableHead>
+                  <TableHead className="w-1/4">Value</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-px text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fields.map((f, idx) => (
+                  <TableRow key={f.id}>
+                    <TableCell>
+                      <Input label="Key" hideLabel placeholder="KEY" autoCapitalize="characters" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.key`)} />
+                    </TableCell>
+                    <TableCell>
+                      <Input label="Value" hideLabel placeholder="value" autoCorrect="off" spellCheck={false} {...register(`defaultContainerEnvVars.${idx}.value`)} />
+                    </TableCell>
+                    <TableCell>
+                      <Input label="Description" hideLabel placeholder="optional" {...register(`defaultContainerEnvVars.${idx}.description`)} />
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
+                      <Button type="button" variant="ghost" size="sm" leftIcon={<Trash2 className="size-4" />} onClick={() => remove(idx)} aria-label="Remove variable">
+                        <span className="sr-only">Remove</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </section>
 
         {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
