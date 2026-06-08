@@ -5,6 +5,16 @@ CTID="${CTID:-100}"
 BRIDGE="${BRIDGE:-vmbr0}"
 MANAGER_TAG="${MANAGER_TAG:-latest}"
 
+# Leave the Manager CT unpinned by default. In nested Docker/WSL2,
+# forcing a cores value can cause LXC to generate an invalid empty
+# lxc.cgroup.cpuset.cpus line. Set MANAGER_CORES=4 to opt in.
+MANAGER_CORES="${MANAGER_CORES:-}"
+MANAGER_CORE_ARGS=()
+
+if [ -n "$MANAGER_CORES" ]; then
+    MANAGER_CORE_ARGS+=(--cores="${MANAGER_CORES}")
+fi
+
 # Wait for pve-cluster.service to mount the Proxmox cluster filesystem
 until [ -d /etc/pve/local ]; do
     sleep 0.5
@@ -32,7 +42,7 @@ fi
 # `container-creator-init.service` attempting to bootstrap the database before
 # we're ready for it.
 pct create 100 "local:vztmpl/manager_${MANAGER_TAG}.tar" \
-    --cores=4 \
+    "${MANAGER_CORE_ARGS[@]}" \
     --features=nesting=1 \
     --hostname=manager \
     --memory=8192 \
@@ -69,8 +79,11 @@ pct push 100 \
 # sorts of AppArmor and userns problems due to the nested Proxmox-in-Docker.
 pct shutdown 100
 pct set 100 \
-    --mp0=/opt/opensource-server,mp=/opt/opensource-server \
-    --entrypoint=/sbin/init
+    --mp0=/opt/opensource-server,mp=/opt/opensource-server
+
+# Remove the temporary emergency entrypoint before the final start so the
+# Manager CT boots to the default target with networking and services enabled.
+pct set 100 --delete entrypoint || true
 
 # Finally we start the container back up completing this service run.
 pct start 100
