@@ -163,7 +163,15 @@ router.get(
       throw new ApiError(404, 'oidc_disabled', 'OIDC is not configured');
     }
     const pending = req.session.oidc;
-    const fail = (code) => res.redirect(`/login?oidc_error=${encodeURIComponent(code)}`);
+    // Preserve the user's intended post-login destination across a failed
+    // attempt so retrying still lands them where they were headed. `pending`
+    // is absent for the expired case, so guard the access.
+    const fail = (code) => {
+      const params = new URLSearchParams({ oidc_error: code });
+      const redirect = pending?.redirect;
+      if (redirect && redirect !== '/') params.set('redirect', redirect);
+      return res.redirect(`/login?${params.toString()}`);
+    };
 
     if (!pending) return fail('expired');
     delete req.session.oidc;

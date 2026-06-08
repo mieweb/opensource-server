@@ -51,8 +51,15 @@ function getRedirectUri(req) {
 }
 
 // Lazily discover the issuer and build a Client. Cached after first success.
+//
+// The client is intentionally NOT bound to a specific `redirect_uris`: the
+// redirect URI is passed explicitly on every authorization and token-exchange
+// call instead. Binding it here would freeze whatever host served the first
+// request, breaking deployments reached via multiple hosts/protocols (e.g.
+// behind a proxy) when OIDC_REDIRECT_URI is unset. Issuer + credentials are
+// host-independent, so a single cached client is safe to reuse everywhere.
 let cachedClient = null;
-async function getClient(redirectUri) {
+async function getClient() {
   if (!isOidcEnabled()) {
     throw new Error('OIDC is not configured');
   }
@@ -61,7 +68,6 @@ async function getClient(redirectUri) {
     cachedClient = new issuer.Client({
       client_id: process.env.OIDC_CLIENT_ID,
       client_secret: process.env.OIDC_CLIENT_SECRET,
-      redirect_uris: redirectUri ? [redirectUri] : undefined,
       response_types: ['code'],
     });
   }
@@ -74,7 +80,7 @@ async function getClient(redirectUri) {
  */
 async function buildAuthorizationRequest(req) {
   const redirectUri = getRedirectUri(req);
-  const client = await getClient(redirectUri);
+  const client = await getClient();
 
   const codeVerifier = generators.codeVerifier();
   const codeChallenge = generators.codeChallenge(codeVerifier);
@@ -98,7 +104,7 @@ async function buildAuthorizationRequest(req) {
  * Returns the normalized identity claims.
  */
 async function handleCallback(req, { codeVerifier, state, nonce, redirectUri }) {
-  const client = await getClient(redirectUri);
+  const client = await getClient();
   const params = client.callbackParams(req);
   const tokenSet = await client.callback(redirectUri, params, {
     code_verifier: codeVerifier,

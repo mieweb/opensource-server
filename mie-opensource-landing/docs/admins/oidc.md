@@ -111,16 +111,18 @@ pct restart 100
 
 After a successful sign-in, the Manager resolves a local account from the ID token claims in this order:
 
-1. **By OIDC subject** — an existing user previously linked to this IdP identity (`oidcSubject` = the token's `sub`).
-2. **By email** — an existing local user whose email matches the token's `email` claim. The OIDC identity is then linked to that account so future logins match by subject.
+1. **By OIDC identity** — an existing user previously linked to this IdP identity, matched on the `(issuer, subject)` pair (`oidcIssuer` + `oidcSubject`). Subjects are only unique within an issuer, so matching is always scoped to the issuer.
+2. **By email** — an existing local user whose email matches the token's `email` claim, **only if that account is not already linked to a different OIDC identity**. A previously unlinked account is linked so future logins match by identity; an account already linked elsewhere is rejected with `account_conflict` to prevent takeover via a reused or mutable email.
 3. **Just-in-time provisioning** — if no match is found and `OIDC_JIT_PROVISION=true`, a new local user is created from the claims.
 
 ```mermaid
 graph TD
-    A[Validated ID token claims] --> B{Linked by<br/>oidcSubject?}
+    A[Validated ID token claims] --> B{Linked by<br/>issuer + subject?}
     B -- yes --> Z[Sign in]
     B -- no --> C{Local user<br/>with same email?}
-    C -- yes --> D[Link OIDC identity] --> Z
+    C -- yes --> J{Linked to a<br/>different identity?}
+    J -- yes --> K[Reject: account_conflict]
+    J -- no --> D[Link OIDC identity] --> Z
     C -- no --> E{JIT provisioning<br/>enabled?}
     E -- no --> F[Reject: no_account]
     E -- yes --> G{Email present<br/>in claims?}
@@ -201,6 +203,7 @@ If the IdP redirects back to the Manager but sign-in fails, the login page shows
 | `exchange_failed` | The authorization-code exchange or ID-token validation failed. | Check client ID/secret, redirect URI mismatch, and IdP/Manager clock skew. Review Manager logs. |
 | `provisioning_failed` | An unexpected error occurred while creating/linking the local account. | Review Manager logs; check database connectivity. |
 | `no_account` | No matching local user and JIT provisioning is disabled. | Pre-create the user, or set `OIDC_JIT_PROVISION=true`. |
+| `account_conflict` | A local account with the same email is already linked to a *different* OIDC identity (issuer/subject). | Reconcile the accounts; an admin can clear or correct the stored OIDC link on the existing user. |
 | `missing_email` | JIT provisioning is enabled but the IdP did not return an `email` claim. | Request the `email` scope and ensure the IdP releases the email claim. |
 | `account_inactive` | A matching account exists but its status is not `active`. | Activate the account under [Users & Groups](core-concepts/users-and-groups.md). |
 
@@ -208,4 +211,4 @@ Other checks:
 
 - **Discovery fails on startup / first login** — verify `OIDC_ISSUER_URL` is reachable from the Manager container and that `${OIDC_ISSUER_URL}/.well-known/openid-configuration` returns valid JSON.
 - **Stuck on the password form** — confirm all three required variables are set and the container was restarted; check `oidcEnabled` via `GET /api/v1/health`.
-- **Redirect loop or "redirect URI mismatch" from the IdP** — ensure the callback URL registered with the IdP exactly matches `OIDC_REDIRECT_URI` (or the derived `${protocol}://${host}/api/v1/auth/oidc/callback`).
+- **Redirect loop or "redirect URI mismatch" from the IdP** — ensure the callback URL registered with the IdP exactly matches `OIDC_REDIRECT_URI` (or the derived `${protocol}://${host}/api/v1/auth/oidc/callback`). When the Manager is reachable via more than one host or protocol (for example behind a proxy), set `OIDC_REDIRECT_URI` explicitly so the callback URL is stable.

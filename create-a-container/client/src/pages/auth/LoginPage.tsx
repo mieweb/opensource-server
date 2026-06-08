@@ -27,6 +27,7 @@ const OIDC_ERROR_MESSAGES: Record<string, string> = {
   exchange_failed: 'We could not complete sign-in with your identity provider. Please try again.',
   provisioning_failed: 'Sign-in succeeded but your account could not be prepared. Contact an administrator.',
   no_account: 'No matching account was found for your identity. Contact an administrator for access.',
+  account_conflict: 'An account with your email address is already linked to a different identity. Contact an administrator.',
   missing_email: 'Your identity provider did not share an email address, which is required to sign in.',
   account_inactive: 'Your account is not active. Contact an administrator.',
 };
@@ -136,7 +137,7 @@ export function LoginPage() {
 
   // Avoid flashing the form while we resolve the session / server info, or
   // while we hand off to the identity provider.
-  if (sessionLoading || serverInfoLoading || (session && !sessionLoading) || shouldAutoRedirectToIdp) {
+  if (sessionLoading || serverInfoLoading || session || shouldAutoRedirectToIdp) {
     return (
       <div className="flex items-center justify-center p-8">
         <Spinner size="lg" />
