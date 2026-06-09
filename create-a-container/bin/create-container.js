@@ -34,6 +34,7 @@ const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting } =
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
+const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -480,7 +481,23 @@ async function main() {
       const warnings = await manageDnsRecords(httpServices, site);
       for (const w of warnings) console.warn(`[DNS WARNING] ${w}`);
     }
-    
+
+    // Register the container in NetBox if the integration is configured
+    await withNetbox(Setting, async (baseUrl, token) => {
+      console.log(`Registering container in NetBox (cluster: ${site.name})...`);
+      try {
+        await createVirtualMachine(baseUrl, token, {
+          hostname: container.hostname,
+          clusterName: site.name,
+          ipv4Address,
+          createdBy: container.username,
+        });
+        console.log(`NetBox: VM "${container.hostname}" created`);
+      } catch (err) {
+        console.warn(`NetBox: VM creation failed (non-fatal): ${err.message}`);
+      }
+    });
+
     process.exit(0);
   } catch (err) {
     console.error('Container creation failed:', err.message);
