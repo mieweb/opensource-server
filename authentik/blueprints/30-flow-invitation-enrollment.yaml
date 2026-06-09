@@ -110,16 +110,6 @@ entries:
         - !KeyOf prompt-field-name
         - !KeyOf prompt-field-email
 
-  # Example group for demonstrating group assignment
-  - identifiers:
-      name: ldapusers
-    id: ldapusers-group
-    model: authentik_core.group
-    attrs:
-      is_superuser: false
-      attributes:
-        gidNumber: 2001
-
   # User write stage for internal users with group assignment
   - identifiers:
       name: invitation-enrollment-user-write
@@ -129,7 +119,8 @@ entries:
       user_creation_mode: always_create
       user_type: internal
       user_path_template: users/internal
-      create_users_group: !KeyOf ldapusers-group
+      # The ldapusers group is defined in 10-opensource-ldap-identity.yaml.
+      create_users_group: !Find [authentik_core.group, [name, ldapusers]]
 
   # User login stage
   - identifiers:

@@ -160,7 +160,11 @@ entries:
   - attrs:
       evaluate_on_plan: false
       invalid_response_action: retry
-      policy_engine_mode: any
+      # Use `all` so that every bound policy/binding must pass for the MFA stage
+      # to run. This allows the negated user binding for the LDAP proxyuser (see
+      # 40-opensource-ldap.yaml) to skip 2FA for that single service account while
+      # still enforcing MFA for everyone else.
+      policy_engine_mode: all
       re_evaluate_policies: true
     conditions: []
     id: opensource-authentication-mfa-validation-stagebinding
@@ -210,6 +214,30 @@ entries:
     identifiers:
       order: 10
       policy: !KeyOf opensource-authentication-flow-authenticator-validate-stage
+      target: !KeyOf opensource-authentication-mfa-validation-stagebinding
+    model: authentik_policies.policybinding
+    permissions: []
+    state: present
+  # 2FA exception for the LDAP proxyuser.
+  #
+  # This binding references the proxyuser directly (via the `user` field) and is
+  # negated, so it passes for every user EXCEPT the proxyuser. Because the MFA
+  # stage binding uses policy_engine_mode `all`, every bound policy must pass for
+  # the MFA stage to run; for the proxyuser this negated binding fails, so MFA is
+  # skipped and it can bind without 2FA. All other users still go through MFA.
+  #
+  # The proxyuser is defined in 10-opensource-ldap-identity.yaml (imported first),
+  # so it is resolved here via !Find.
+  - attrs:
+      enabled: true
+      failure_result: true
+      group: null
+      negate: true
+      timeout: 30
+    conditions: []
+    identifiers:
+      order: 20
+      user: !Find [authentik_core.user, [username, ldap-proxyuser]]
       target: !KeyOf opensource-authentication-mfa-validation-stagebinding
     model: authentik_policies.policybinding
     permissions: []

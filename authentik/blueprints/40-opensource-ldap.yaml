@@ -1,0 +1,84 @@
+version: 1
+metadata:
+  name: Opensource - LDAP Application & Provider
+context:
+  # The Base DN under which the LDAP directory is served is injected from the
+  # environment so that no environment-specific value is committed to the
+  # blueprint.
+  ldap_base_dn: !Env [AUTHENTIK_LDAP_BASE_DN, "DC=ldap,DC=goauthentik,DC=io"]
+entries:
+  # ---------------------------------------------------------------------------
+  # LDAP provider.
+  #
+  # The bind flow is the opensource authentication flow (defined in
+  # 20-opensource-authentication-flow.yaml and resolved here via !Find), which
+  # enforces password + code-based MFA for everyone except the proxyuser.
+  # mfa_support is enabled so that ldapusers can append their TOTP code to the
+  # bind password (i.e. "password;123456").
+  #
+  # Only the proxyuser is granted the `search_full_directory` permission (so it
+  # can search the whole directory on behalf of downstream services). This is
+  # read-only search access - the LDAP provider does not expose any write/edit
+  # capability - and no other user is granted it, so regular users can still only
+  # read their own object.
+  # ---------------------------------------------------------------------------
+  - id: ldap-provider
+    model: authentik_providers_ldap.ldapprovider
+    state: present
+    identifiers:
+      name: opensource-ldap
+    attrs:
+      name: opensource-ldap
+      # LDAP outposts use authorization_flow as the bind flow.
+      authorization_flow:
+        !Find [authentik_flows.flow, [slug, opensource-authentication-flow]]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
+      base_dn: !Context ldap_base_dn
+      bind_mode: cached
+      search_mode: cached
+      mfa_support: true
+      uid_start_number: 2000
+      gid_start_number: 4000
+    permissions:
+      # Allow the proxyuser to search the full LDAP directory. The proxyuser is
+      # defined in 10-opensource-ldap-identity.yaml and resolved via !Find.
+      - permission: authentik_providers_ldap.search_full_directory
+        user: !Find [authentik_core.user, [username, ldap-proxyuser]]
+
+  # ---------------------------------------------------------------------------
+  # LDAP application.
+  #
+  # The provider is attached directly (the LDAP outpost reads the application via
+  # the provider's assigned application). It is hidden from the user dashboard
+  # since LDAP has no launch URL and is not user-facing.
+  # ---------------------------------------------------------------------------
+  - id: ldap-application
+    model: authentik_core.application
+    state: present
+    identifiers:
+      slug: opensource-ldap
+    attrs:
+      name: Opensource LDAP
+      policy_engine_mode: any
+      provider: !KeyOf ldap-provider
+      meta_hide: true
+
+  # ---------------------------------------------------------------------------
+  # Access restriction: only members of the ldapusers group may bind.
+  #
+  # Binding against the LDAP provider requires access to this application. By
+  # binding the ldapusers group to the application, only users in that group
+  # (including the proxyuser) are able to bind. The ldapusers group is defined in
+  # 10-opensource-ldap-identity.yaml and resolved here via !Find.
+  # ---------------------------------------------------------------------------
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf ldap-application
+      group: !Find [authentik_core.group, [name, ldapusers]]
+      order: 0
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
