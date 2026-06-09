@@ -61,8 +61,20 @@ entries:
     permissions: []
     state: present
   - attrs:
+      friendly_name: Push Notification
+      client_id: !Env OPENSOURCE_PUSH_MFA_CLIENT_ID
+      client_secret: !Env OPENSOURCE_PUSH_MFA_CLIENT_SECRET
+      api_hostname: !Env OPENSOURCE_PUSH_MFA_HOSTNAME
+      admin_integration_key: !Env OPENSOURCE_PUSH_MFA_ADMIN_ID
+      admin_secret_key: !Env OPENSOURCE_PUSH_MFA_ADMIN_SECRET
+    id: opensource-authenticator-duo-setup
+    identifiers:
+      name: opensource-authenticator-duo-setup
+    model: authentik_stages_authenticator_duo.authenticatorduostage
+    state: present
+  - attrs:
       configuration_stages:
-        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
+        - !KeyOf opensource-authenticator-duo-setup
       device_classes:
         - static
         - totp
@@ -207,8 +219,8 @@ entries:
     model: authentik_policies.policybinding
     permissions: []
     state: present
-    metadata:
-      labels:
-        blueprints.goauthentik.io/generated: 'true'
-      name: authentik Export - 2026-06-04 15:13:39.590416+00:00
-    version: 1
+metadata:
+  labels:
+    blueprints.goauthentik.io/generated: 'true'
+  name: authentik Export - 2026-06-04 15:13:39.590416+00:00
+version: 1
