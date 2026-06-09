@@ -4,17 +4,6 @@ metadata:
     blueprints.goauthentik.io/instantiate: "false"
   name: Example - Invitation-based Enrollment
 entries:
-  # Flow definition for internal users
-  - identifiers:
-      slug: invitation-enrollment-flow-internal
-    model: authentik_flows.flow
-    id: flow-internal
-    attrs:
-      name: Invitation Enrollment Flow (Internal Users)
-      title: Welcome! Complete your enrollment
-      designation: enrollment
-      authentication: require_unauthenticated
-
   # Flow definition for internal users with group assignment
   - identifiers:
       slug: invitation-enrollment-flow-internal-engineering
@@ -25,14 +14,6 @@ entries:
       title: Welcome to the Engineering Team!
       designation: enrollment
       authentication: require_unauthenticated
-
-  # Invitation Stage for internal users
-  - identifiers:
-      name: invitation-enrollment-invitation-internal
-    id: invitation-stage-internal
-    model: authentik_stages_invitation.invitationstage
-    attrs:
-      continue_flow_without_invitation: false
 
   # Invitation Stage for internal engineering users
   - identifiers:
@@ -129,16 +110,6 @@ entries:
         - !KeyOf prompt-field-name
         - !KeyOf prompt-field-email
 
-  # User write stage for internal users
-  - identifiers:
-      name: invitation-enrollment-user-write-internal
-    id: user-write-stage-internal
-    model: authentik_stages_user_write.userwritestage
-    attrs:
-      user_creation_mode: always_create
-      user_type: internal
-      user_path_template: users/internal
-
   # Example group for demonstrating group assignment
   - identifiers:
       name: engineering-team
@@ -163,40 +134,6 @@ entries:
       name: invitation-enrollment-user-login
     id: user-login-stage
     model: authentik_stages_user_login.userloginstage
-
-  # Flow stage bindings for INTERNAL users flow
-  - identifiers:
-      target: !KeyOf flow-internal
-      stage: !KeyOf invitation-stage-internal
-      order: 5
-    model: authentik_flows.flowstagebinding
-    attrs:
-      evaluate_on_plan: true
-      re_evaluate_policies: true
-
-  - identifiers:
-      target: !KeyOf flow-internal
-      stage: !KeyOf prompt-stage-credentials
-      order: 10
-    model: authentik_flows.flowstagebinding
-
-  - identifiers:
-      target: !KeyOf flow-internal
-      stage: !KeyOf prompt-stage-details
-      order: 15
-    model: authentik_flows.flowstagebinding
-
-  - identifiers:
-      target: !KeyOf flow-internal
-      stage: !KeyOf user-write-stage-internal
-      order: 20
-    model: authentik_flows.flowstagebinding
-
-  - identifiers:
-      target: !KeyOf flow-internal
-      stage: !KeyOf user-login-stage
-      order: 100
-    model: authentik_flows.flowstagebinding
 
   # Flow stage bindings for INTERNAL ENGINEERING users flow (with group assignment)
   - identifiers:
@@ -231,55 +168,3 @@ entries:
       stage: !KeyOf user-login-stage
       order: 100
     model: authentik_flows.flowstagebinding
-
-  # Example invitations
-
-  # INTERNAL USER INVITATIONS
-
-  # Example 3: Single-use invitation for internal user with pre-filled fields
-  - identifiers:
-      name: example-internal-prefilled-invitation
-    model: authentik_stages_invitation.invitation
-    id: invitation-internal-prefilled
-    attrs:
-      flow: !KeyOf flow-internal
-      single_use: true
-      expires: "2028-12-31T23:59:59Z"
-      fixed_data:
-        name: "Jane Smith"
-        email: "jane.smith@company.com"
-
-  # Example 4: Long-term multi-use invitation for internal department
-  - identifiers:
-      name: example-internal-department-invitation
-    model: authentik_stages_invitation.invitation
-    id: invitation-internal-department
-    attrs:
-      flow: !KeyOf flow-internal
-      single_use: false
-      expires:  "2028-12-31T23:59:59Z"
-      fixed_data:
-        attributes:
-          department: "Engineering"
-          team: "Backend"
-
-  # Example 5: Invitation with automatic group assignment
-  - identifiers:
-      name: example-engineering-team-invitation
-    model: authentik_stages_invitation.invitation
-    id: invitation-engineering-team
-    attrs:
-      flow: !KeyOf flow-internal-engineering
-      single_use: false
-      expires: "2028-12-31T23:59:59Z"
-      fixed_data:
-        attributes:
-          department: "Engineering"
-
-  # Note: Group assignment works by using a flow with a UserWriteStage that has
-  # 'create_users_group' configured. See example 5 above - users enrolling via
-  # the 'invitation-enrollment-flow-internal-engineering' flow will automatically
-  # be added to the 'engineering-team' group.
-  #
-  # Groups cannot be set directly in invitation fixed_data because they require
-  # database relationships that must be established after user creation.
