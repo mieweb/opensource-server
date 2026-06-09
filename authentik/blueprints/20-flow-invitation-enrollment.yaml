@@ -17,7 +17,7 @@ entries:
 
   # Invitation Stage for internal engineering users
   - identifiers:
-      name: invitation-enrollment-invitation-internal-engineering
+      name: invitation-enrollment-invitation
     id: invitation-stage
     model: authentik_stages_invitation.invitationstage
     attrs:
