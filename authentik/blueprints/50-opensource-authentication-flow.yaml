@@ -2,7 +2,7 @@ context: {}
 entries:
   - attrs:
       authentication: none
-      background: ''
+      background: ""
       compatibility_mode: false
       denied_action: message_continue
       designation: authentication
@@ -19,7 +19,8 @@ entries:
     state: present
   - attrs:
       execution_logging: false
-      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      expression:
+        "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
         \    return True\n# If the user does not have a backend attached to it, they\
         \ haven't\n# been authenticated yet and we need the password stage\nreturn not\
         \ hasattr(flow_plan.context.get(\"pending_user\"), \"backend\")"
@@ -32,7 +33,8 @@ entries:
     state: present
   - attrs:
       execution_logging: false
-      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      expression:
+        "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
         \    return True\n# if the authentication method is webauthn (passwordless),\
         \ then we skip the authenticator\n# validation stage by returning false (true\
         \ will execute the stage)\nreturn not (flow_plan.context.get(\"auth_method\"\
@@ -51,7 +53,8 @@ entries:
         - authentik.sources.kerberos.auth.KerberosBackend
         - authentik.sources.ldap.auth.LDAPBackend
         - authentik.core.auth.TokenBackend
-      configure_flow: !Find [authentik_flows.flow, [slug, default-password-change]]
+      configure_flow:
+        !Find [authentik_flows.flow, [slug, default-password-change]]
       failed_attempts_before_cancel: 5
     conditions: []
     id: opensource-authentication-password
@@ -62,7 +65,10 @@ entries:
     state: present
   - attrs:
       configuration_stages:
-        - !Find [authentik_stages_authenticator_duo.authenticatorduostage, [name, opensource-authenticator-duo-setup]]
+        - !Find [
+            authentik_stages_authenticator_duo.authenticatorduostage,
+            [name, opensource-authenticator-duo-setup],
+          ]
       device_classes:
         - static
         - totp
@@ -90,7 +96,8 @@ entries:
       captcha_stage: null
       case_insensitive_matching: true
       enable_remember_me: true
-      enrollment_flow: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      enrollment_flow:
+        !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
       password_stage: !KeyOf opensource-authentication-password
       passwordless_flow: null
       pretend_user_exists: true
@@ -209,6 +216,6 @@ entries:
     state: present
 metadata:
   labels:
-    blueprints.goauthentik.io/generated: 'true'
+    blueprints.goauthentik.io/generated: "true"
   name: authentik Export - 2026-06-04 15:13:39.590416+00:00
 version: 1
