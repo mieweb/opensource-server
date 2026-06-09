@@ -165,6 +165,13 @@ entries:
       order: 20
     model: authentik_flows.flowstagebinding
 
+  # Force the user to setup or validate an authenticator before logging in
+  - identifiers:
+      target: !KeyOf flow
+      stage: !Find [authentik_stages_authenticator_validate.authenticatorvalidatestage, [name, opensource-authentication-mfa-validation]]
+      order: 30
+    model: authentik_flows.flowstagebinding
+
   - identifiers:
       target: !KeyOf flow
       stage: !KeyOf user-login-stage
