@@ -35,7 +35,10 @@ entries:
       invalidation_flow:
         !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
       base_dn: !Context ldap_base_dn
-      bind_mode: cached
+      # bind_mode must be `direct` so the bind flow (and its MFA check) runs on
+      # every bind. `cached` would cache the bind result and effectively bypass
+      # 2FA for the cache duration after the first successful bind.
+      bind_mode: direct
       search_mode: cached
       mfa_support: true
       uid_start_number: 2000
