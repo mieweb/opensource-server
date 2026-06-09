@@ -2,23 +2,23 @@ version: 1
 metadata:
   labels:
     blueprints.goauthentik.io/instantiate: "false"
-  name: Example - Invitation-based Enrollment
+  name: Opensource - Invitation-based Enrollment
 entries:
   # Flow definition for internal users with group assignment
   - identifiers:
-      slug: invitation-enrollment-flow-internal-engineering
+      slug: invitation-enrollment-flow
     model: authentik_flows.flow
-    id: flow-internal-engineering
+    id: flow
     attrs:
-      name: Invitation Enrollment Flow (Internal - Engineering Team)
-      title: Welcome to the Engineering Team!
+      name: Opensource Invitation Enrollment Flow
+      title: Welcome to MIE Opensource!
       designation: enrollment
       authentication: require_unauthenticated
 
   # Invitation Stage for internal engineering users
   - identifiers:
       name: invitation-enrollment-invitation-internal-engineering
-    id: invitation-stage-internal-engineering
+    id: invitation-stage
     model: authentik_stages_invitation.invitationstage
     attrs:
       continue_flow_without_invitation: false
@@ -112,22 +112,24 @@ entries:
 
   # Example group for demonstrating group assignment
   - identifiers:
-      name: engineering-team
-    id: group-engineering
+      name: ldapusers
+    id: ldapusers-group
     model: authentik_core.group
     attrs:
       is_superuser: false
+      attributes:
+        gidNumber: 2001
 
   # User write stage for internal users with group assignment
   - identifiers:
-      name: invitation-enrollment-user-write-internal-engineering
-    id: user-write-stage-internal-engineering
+      name: invitation-enrollment-user-write
+    id: user-write-stage
     model: authentik_stages_user_write.userwritestage
     attrs:
       user_creation_mode: always_create
       user_type: internal
-      user_path_template: users/internal/engineering
-      create_users_group: !KeyOf group-engineering
+      user_path_template: users/internal
+      create_users_group: !KeyOf ldapusers-group
 
   # User login stage
   - identifiers:
@@ -137,8 +139,8 @@ entries:
 
   # Flow stage bindings for INTERNAL ENGINEERING users flow (with group assignment)
   - identifiers:
-      target: !KeyOf flow-internal-engineering
-      stage: !KeyOf invitation-stage-internal-engineering
+      target: !KeyOf flow
+      stage: !KeyOf invitation-stage
       order: 5
     model: authentik_flows.flowstagebinding
     attrs:
@@ -146,25 +148,25 @@ entries:
       re_evaluate_policies: true
 
   - identifiers:
-      target: !KeyOf flow-internal-engineering
+      target: !KeyOf flow
       stage: !KeyOf prompt-stage-credentials
       order: 10
     model: authentik_flows.flowstagebinding
 
   - identifiers:
-      target: !KeyOf flow-internal-engineering
+      target: !KeyOf flow
       stage: !KeyOf prompt-stage-details
       order: 15
     model: authentik_flows.flowstagebinding
 
   - identifiers:
-      target: !KeyOf flow-internal-engineering
-      stage: !KeyOf user-write-stage-internal-engineering
+      target: !KeyOf flow
+      stage: !KeyOf user-write-stage
       order: 20
     model: authentik_flows.flowstagebinding
 
   - identifiers:
-      target: !KeyOf flow-internal-engineering
+      target: !KeyOf flow
       stage: !KeyOf user-login-stage
       order: 100
     model: authentik_flows.flowstagebinding
