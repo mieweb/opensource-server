@@ -249,10 +249,12 @@ two changes:
 - The **username is read-only** — it is displayed but cannot be edited, and the
   prompt stage enforces this server-side (read-only fields are reset to their
   original value before the user-write stage).
-- A new **SSH public key** field writes to the user's `sshPublicKey` attribute.
-  The LDAP provider exposes this attribute, SSSD maps it with
+- A new **SSH public keys** field (one key per line) writes to the user's
+  `sshPublicKey` attribute as a **list**. The LDAP provider exposes this as a
+  multi-valued attribute, SSSD maps it with
   `ldap_user_ssh_public_key = sshPublicKey`, and sshd serves it via
-  `sss_ssh_authorizedkeys`, enabling SSH public-key login on managed hosts.
+  `sss_ssh_authorizedkeys`, enabling SSH public-key login on managed hosts with
+  any of the user's keys.
 
 ```mermaid
 sequenceDiagram
@@ -264,16 +266,17 @@ sequenceDiagram
     Browser->>authentik: Start opensource-user-settings-flow
 
     Note over authentik: Stage 20 — Prompt (profile)
-    authentik-->>Browser: Show username (read-only), name, email,<br/>locale, SSH public key
-    User->>Browser: Edit name / email / locale / SSH key
+    authentik-->>Browser: Show username (read-only), name, email,<br/>locale, SSH public keys
+    User->>Browser: Edit name / email / locale / SSH keys
     Browser->>authentik: Submit
 
     Note over authentik: Validation policy
     authentik->>authentik: Enforce name/email change permissions
     authentik->>authentik: Force username back to its current value
 
-    Note over authentik: Stage 100 — User write
-    authentik->>authentik: Persist changes (incl. sshPublicKey attribute)
+    Note over authentik: Stage 100 — User write (re-evaluated policy)
+    authentik->>authentik: Normalize SSH keys into a list (one per line)
+    authentik->>authentik: Persist changes (incl. sshPublicKey list attribute)
     authentik-->>Browser: Settings saved
 ```
 
