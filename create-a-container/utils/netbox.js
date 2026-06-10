@@ -53,6 +53,38 @@ async function nbFetch(baseUrl, token, path, options = {}) {
 }
 
 /**
+ * Look up a NetBox site by name. Returns null if not found.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} siteName
+ * @returns {Promise<number|null>} Site ID or null
+ */
+async function findSiteId(baseUrl, token, siteName) {
+  const data = await nbFetch(
+    baseUrl,
+    token,
+    `/dcim/sites/?name=${encodeURIComponent(siteName)}&limit=1`,
+  );
+  return data?.results?.[0]?.id ?? null;
+}
+
+/**
+ * Look up a NetBox device by name. Returns null if not found.
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} deviceName
+ * @returns {Promise<number|null>} Device ID or null
+ */
+async function findDeviceId(baseUrl, token, deviceName) {
+  const data = await nbFetch(
+    baseUrl,
+    token,
+    `/dcim/devices/?name=${encodeURIComponent(deviceName)}&limit=1`,
+  );
+  return data?.results?.[0]?.id ?? null;
+}
+
+/**
  * Look up a NetBox cluster by name.
  * @param {string} baseUrl
  * @param {string} token
@@ -89,22 +121,31 @@ async function findClusterId(baseUrl, token, clusterName) {
  * @param {string} opts.clusterName - Site name used to resolve the NetBox cluster
  * @param {string} opts.ipv4Address - Container IPv4 address (CIDR or bare IP)
  * @param {string} [opts.createdBy] - Username of the person who created the container
+ * @param {string} [opts.nodeName]  - Proxmox node name; mapped to the NetBox device within the cluster
  * @returns {Promise<object>} The created NetBox VM object
  */
-async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv4Address, createdBy }) {
-  const clusterId = await findClusterId(baseUrl, token, clusterName);
+async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv4Address, createdBy, nodeName }) {
+  const [clusterId, siteId, deviceId] = await Promise.all([
+    findClusterId(baseUrl, token, clusterName),
+    findSiteId(baseUrl, token, clusterName),
+    nodeName ? findDeviceId(baseUrl, token, nodeName) : Promise.resolve(null),
+  ]);
   const comment = createdBy
     ? `${NETBOX_COMMENT}\nCreated by: ${createdBy}`
     : NETBOX_COMMENT;
 
+  const vmBody = {
+    name: hostname,
+    cluster: clusterId,
+    status: 'active',
+    comments: comment,
+    ...(siteId !== null && { site: siteId }),
+    ...(deviceId !== null && { device: deviceId }),
+  };
+
   const vm = await nbFetch(baseUrl, token, '/virtualization/virtual-machines/', {
     method: 'POST',
-    body: JSON.stringify({
-      name: hostname,
-      cluster: clusterId,
-      status: 'active',
-      comments: comment,
-    }),
+    body: JSON.stringify(vmBody),
   });
 
   const iface = await nbFetch(baseUrl, token, '/virtualization/interfaces/', {

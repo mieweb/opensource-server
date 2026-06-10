@@ -491,6 +491,7 @@ async function main() {
           clusterName: site.name,
           ipv4Address,
           createdBy: container.username,
+          nodeName: container.node?.name,
         });
         console.log(`NetBox: VM "${container.hostname}" created`);
       } catch (err) {
