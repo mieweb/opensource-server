@@ -16,6 +16,10 @@ ldap_group_search_base = ${SSSD_LDAP_GROUP_SEARCH_BASE}
 ldap_user_name = ${SSSD_LDAP_USER_NAME}
 ldap_user_gecos = ${SSSD_LDAP_USER_GECOS}
 
+# Expose the user's SSH public key (stored on the LDAP `sshPublicKey` attribute)
+# so it can be served to sshd via `sss_ssh_authorizedkeys`.
+ldap_user_ssh_public_key = sshPublicKey
+
 ldap_access_order = filter
 ldap_access_filter = ${SSSD_LDAP_ACCESS_FILTER}
 

@@ -35,6 +35,7 @@ required import order — later files reference objects created by earlier ones
 | 11 | `11-opensource-mfa-validation-stage.yaml` | Shared 2FA validation stage (`opensource-authentication-mfa-validation`) |
 | 12 | `12-flows-enrollment-email-verification.yaml` | `default-enrollment-flow` (self-service registration) |
 | 20 | `20-opensource-authentication-flow.yaml` | `opensource-authentication-flow` (login/bind) + proxyuser 2FA exception |
+| 20 | `20-opensource-user-settings-flow.yaml` | `opensource-user-settings-flow` (profile + SSH key, read-only username) |
 | 30 | `30-flow-invitation-enrollment.yaml` | `invitation-enrollment-flow` (invite-only onboarding) |
 | 30 | `30-opensource-brand.yaml` | Brand: title, logos, and default flows |
 | 40 | `40-opensource-ldap.yaml` | LDAP provider + application + access restriction |
@@ -237,6 +238,43 @@ sequenceDiagram
     Push-->>authentik: Device enrolled
     authentik->>authentik: Attach authenticator to user
     authentik-->>Browser: Return to originating flow
+```
+
+### User settings flow
+
+`opensource-user-settings-flow` is the brand's user-settings flow (reachable from
+the user dropdown). It is based on authentik's `default-user-settings-flow` with
+two changes:
+
+- The **username is read-only** — it is displayed but cannot be edited, and the
+  prompt stage enforces this server-side (read-only fields are reset to their
+  original value before the user-write stage).
+- A new **SSH public key** field writes to the user's `sshPublicKey` attribute.
+  The LDAP provider exposes this attribute, SSSD maps it with
+  `ldap_user_ssh_public_key = sshPublicKey`, and sshd serves it via
+  `sss_ssh_authorizedkeys`, enabling SSH public-key login on managed hosts.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant authentik
+
+    User->>Browser: Open user settings
+    Browser->>authentik: Start opensource-user-settings-flow
+
+    Note over authentik: Stage 20 — Prompt (profile)
+    authentik-->>Browser: Show username (read-only), name, email,<br/>locale, SSH public key
+    User->>Browser: Edit name / email / locale / SSH key
+    Browser->>authentik: Submit
+
+    Note over authentik: Validation policy
+    authentik->>authentik: Enforce name/email change permissions
+    authentik->>authentik: Force username back to its current value
+
+    Note over authentik: Stage 100 — User write
+    authentik->>authentik: Persist changes (incl. sshPublicKey attribute)
+    authentik-->>Browser: Settings saved
 ```
 
 ### LDAP bind flow

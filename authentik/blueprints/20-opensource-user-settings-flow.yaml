@@ -1,0 +1,182 @@
+version: 1
+metadata:
+  name: Opensource - User settings flow
+entries:
+  # Based on authentik's default-user-settings-flow, with two changes:
+  #   1. The username field is read-only (users cannot change their username).
+  #   2. A new sshPublicKey field writes to the user's `sshPublicKey` attribute,
+  #      which SSSD exposes to SSH via ldap_user_ssh_public_key.
+  - attrs:
+      designation: stage_configuration
+      name: Opensource User settings
+      title: Update your info
+      authentication: require_authenticated
+    identifiers:
+      slug: opensource-user-settings-flow
+    model: authentik_flows.flow
+    id: flow
+
+  # Username — read-only. Shown for reference but cannot be edited, and because a
+  # read-only field is not submitted, it is never written back.
+  - attrs:
+      order: 200
+      placeholder: Username
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.username
+        except:
+            return ''
+      initial_value_expression: true
+      required: false
+      type: text_read_only
+      field_key: username
+      label: Username
+    identifiers:
+      name: opensource-user-settings-field-username
+    id: prompt-field-username
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 201
+      placeholder: Name
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.name
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: text
+      field_key: name
+      label: Name
+    identifiers:
+      name: opensource-user-settings-field-name
+    id: prompt-field-name
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 202
+      placeholder: Email
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.email
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: email
+      field_key: email
+      label: Email
+    identifiers:
+      name: opensource-user-settings-field-email
+    id: prompt-field-email
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 203
+      placeholder: Locale
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.attributes.get("settings", {}).get("locale", "")
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: ak-locale
+      field_key: attributes.settings.locale
+      label: Locale
+    identifiers:
+      name: opensource-user-settings-field-locale
+    id: prompt-field-locale
+    model: authentik_stages_prompt.prompt
+
+  # New: SSH public key. Stored on the user's `sshPublicKey` attribute, which the
+  # LDAP provider exposes and SSSD reads (ldap_user_ssh_public_key = sshPublicKey)
+  # so the key can be used for SSH public-key authentication on managed hosts.
+  - attrs:
+      order: 204
+      placeholder: "ssh-ed25519 AAAA... user@host"
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.attributes.get("sshPublicKey", "")
+        except:
+            return ''
+      initial_value_expression: true
+      required: false
+      type: text_area
+      field_key: attributes.sshPublicKey
+      label: SSH Public Key
+      sub_text: Used for SSH public-key authentication on Opensource hosts.
+    identifiers:
+      name: opensource-user-settings-field-ssh-public-key
+    id: prompt-field-ssh-public-key
+    model: authentik_stages_prompt.prompt
+
+  # Authorization policy: enforces authentik's name/email change permissions.
+  # The username check from the upstream flow is intentionally omitted because the
+  # username field is read-only and is never submitted.
+  - attrs:
+      expression: |
+        from authentik.core.models import (
+            USER_ATTRIBUTE_CHANGE_EMAIL,
+            USER_ATTRIBUTE_CHANGE_NAME,
+        )
+        prompt_data = request.context.get("prompt_data")
+
+        if not request.user.group_attributes(request.http_request).get(
+            USER_ATTRIBUTE_CHANGE_EMAIL, request.http_request.tenant.default_user_change_email
+        ):
+            if prompt_data.get("email") != request.user.email:
+                ak_message("Not allowed to change email address.")
+                return False
+
+        if not request.user.group_attributes(request.http_request).get(
+            USER_ATTRIBUTE_CHANGE_NAME, request.http_request.tenant.default_user_change_name
+        ):
+            if prompt_data.get("name") != request.user.name:
+                ak_message("Not allowed to change name.")
+                return False
+
+        return True
+    identifiers:
+      name: opensource-user-settings-authorization
+    id: opensource-user-settings-authorization
+    model: authentik_policies_expression.expressionpolicy
+
+  - identifiers:
+      name: opensource-user-settings-write
+    attrs:
+      user_creation_mode: never_create
+    id: opensource-user-settings-write
+    model: authentik_stages_user_write.userwritestage
+
+  - attrs:
+      fields:
+        - !KeyOf prompt-field-username
+        - !KeyOf prompt-field-name
+        - !KeyOf prompt-field-email
+        - !KeyOf prompt-field-locale
+        - !KeyOf prompt-field-ssh-public-key
+      validation_policies:
+        - !KeyOf opensource-user-settings-authorization
+    identifiers:
+      name: opensource-user-settings
+    id: opensource-user-settings
+    model: authentik_stages_prompt.promptstage
+
+  - identifiers:
+      order: 20
+      stage: !KeyOf opensource-user-settings
+      target: !KeyOf flow
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      order: 100
+      stage: !KeyOf opensource-user-settings-write
+      target: !KeyOf flow
+    model: authentik_flows.flowstagebinding

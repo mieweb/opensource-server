@@ -19,7 +19,7 @@ entries:
       branding_favicon: icon.svg
       flow_authentication: !Find [authentik_flows.flow, [slug, opensource-authentication-flow]]
       flow_invalidation: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
-      flow_user_settings: !Find [authentik_flows.flow, [slug, default-user-settings-flow]]
+      flow_user_settings: !Find [authentik_flows.flow, [slug, opensource-user-settings-flow]]
     identifiers:
       domain: opensource-default
     state: present
