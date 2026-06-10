@@ -29,3 +29,6 @@ ldap_default_authtok = ${SSSD_DEFAULT_AUTHTOK}
 
 # set a timeout long enough for a push notification to be responded to
 ldap_opt_timeout = 60
+
+fallback_homedir = /home/%u
+default_shell = /bin/bash
