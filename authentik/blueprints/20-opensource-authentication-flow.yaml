@@ -64,35 +64,6 @@ entries:
     permissions: []
     state: present
   - attrs:
-      configuration_stages:
-        - !Find [
-            authentik_stages_authenticator_duo.authenticatorduostage,
-            [name, opensource-authenticator-duo-setup],
-          ]
-      device_classes:
-        - static
-        - totp
-        - webauthn
-        - duo
-        - sms
-        - email
-      email_otp_throttling_factor: 1.0
-      last_auth_threshold: seconds=0
-      not_configured_action: configure
-      sms_otp_throttling_factor: 1.0
-      static_otp_throttling_factor: 1.0
-      totp_otp_throttling_factor: 1.0
-      webauthn_allowed_device_types: []
-      webauthn_hints: []
-      webauthn_user_verification: preferred
-    conditions: []
-    id: opensource-authentication-mfa-validation
-    identifiers:
-      name: opensource-authentication-mfa-validation
-    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
-    permissions: []
-    state: present
-  - attrs:
       captcha_stage: null
       case_insensitive_matching: true
       enable_remember_me: true
@@ -108,7 +79,13 @@ entries:
       user_fields:
         - email
         - username
-      webauthn_stage: !KeyOf opensource-authentication-mfa-validation
+      # The shared MFA validation stage is defined in
+      # 11-opensource-mfa-validation-stage.yaml.
+      webauthn_stage:
+        !Find [
+          authentik_stages_authenticator_validate.authenticatorvalidatestage,
+          [name, opensource-authentication-mfa-validation],
+        ]
     conditions: []
     id: opensource-authentication-identification
     identifiers:
@@ -170,7 +147,11 @@ entries:
     id: opensource-authentication-mfa-validation-stagebinding
     identifiers:
       order: 30
-      stage: !KeyOf opensource-authentication-mfa-validation
+      stage:
+        !Find [
+          authentik_stages_authenticator_validate.authenticatorvalidatestage,
+          [name, opensource-authentication-mfa-validation],
+        ]
       target: !KeyOf opensource-authentication-flow
     model: authentik_flows.flowstagebinding
     permissions: []

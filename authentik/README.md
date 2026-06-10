@@ -29,17 +29,23 @@ required import order — later files reference objects created by earlier ones
 
 | Order | File | Creates |
 |---|---|---|
-| 10 | `10-flows-enrollment-email-verification.yaml` | `default-enrollment-flow` (self-service registration) |
 | 10 | `10-flows-recovery-email-mfa-verification.yaml` | `default-recovery-flow` (password reset) |
 | 10 | `10-opensource-authenticator-duo-setup.yaml` | Push-notification authenticator + its setup flow |
 | 10 | `10-opensource-ldap-identity.yaml` | `ldapusers` group and the `ldap-proxyuser` service account |
+| 11 | `11-opensource-mfa-validation-stage.yaml` | Shared 2FA validation stage (`opensource-authentication-mfa-validation`) |
+| 12 | `12-flows-enrollment-email-verification.yaml` | `default-enrollment-flow` (self-service registration) |
 | 20 | `20-opensource-authentication-flow.yaml` | `opensource-authentication-flow` (login/bind) + proxyuser 2FA exception |
 | 30 | `30-flow-invitation-enrollment.yaml` | `invitation-enrollment-flow` (invite-only onboarding) |
 | 30 | `30-opensource-brand.yaml` | Brand: title, logos, and default flows |
 | 40 | `40-opensource-ldap.yaml` | LDAP provider + application + access restriction |
 
-> The `10-flows-*` files are upstream authentik examples
-> (`blueprints.goauthentik.io/instantiate: "false"`) used as the enrollment and
+> The shared 2FA stage is defined once in `11-...` and referenced (via `!Find`)
+> by the registration, authentication, and invitation flows so every interactive
+> flow enforces identical 2FA behaviour. It must be imported before those flows,
+> and after the push-notification authenticator it depends on.
+>
+> The `1x-flows-*` files are based on upstream authentik examples
+> (`blueprints.goauthentik.io/instantiate: "false"`), used as the enrollment and
 > recovery flows referenced by the identification stage.
 
 ### Required environment variables
@@ -160,7 +166,8 @@ sequenceDiagram
 
 `default-enrollment-flow` is the self-service registration flow linked from the
 identification stage. Users are created **inactive** and must confirm via email
-before the account is activated and logged in.
+before the account is activated. After verification they are required to set up
+the push-notification authenticator (2FA) before the login stage completes.
 
 ```mermaid
 sequenceDiagram
@@ -168,6 +175,7 @@ sequenceDiagram
     participant Browser
     participant authentik
     participant Email as Email Server
+    participant Push as Push Notification Service
 
     User->>Browser: Click "Sign up" on login page
     Browser->>authentik: Start default-enrollment-flow
@@ -192,14 +200,18 @@ sequenceDiagram
     Browser->>authentik: Verify token
     authentik->>authentik: Activate user
 
+    Note over authentik: Stage 40 — Authenticator setup (2FA)<br/>required before login
+    authentik-->>Browser: Require push-notification enrollment
+    User->>Push: Enroll device
+    Push-->>authentik: Device registered + approved
+
     Note over authentik: Stage 100 — User login
     authentik->>authentik: Create session
     authentik-->>Browser: Logged in
 ```
 
 > Self-registered users are not added to the `ldapusers` group and therefore
-> cannot bind to LDAP. They also still complete 2FA on their next login via the
-> authentication flow.
+> cannot bind to LDAP.
 
 ### Push-notification authenticator setup
 

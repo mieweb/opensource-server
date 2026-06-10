@@ -129,6 +129,14 @@ entries:
       stage: !KeyOf default-enrollment-email-verification
       order: 30
     model: authentik_flows.flowstagebinding
+  # Force the user to set up an authenticator (2FA) before logging in. Reuses the
+  # shared MFA validation stage defined in 11-opensource-mfa-validation-stage.yaml
+  # (not_configured_action: configure forces push-notification enrollment).
+  - identifiers:
+      target: !KeyOf flow
+      stage: !Find [authentik_stages_authenticator_validate.authenticatorvalidatestage, [name, opensource-authentication-mfa-validation]]
+      order: 40
+    model: authentik_flows.flowstagebinding
   - identifiers:
       target: !KeyOf flow
       stage: !KeyOf default-enrollment-user-login
