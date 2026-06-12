@@ -4,3 +4,4 @@
 /create-a-container/.env
 /mie-opensource-landing/build
 */node_modules
+**/node_modules

@@ -31,6 +31,8 @@ const schema = z.object({
   smtpUrl: z.string(),
   smtpNoreplyAddress: z.string(),
   defaultContainerEnvVars: z.array(envVarSchema),
+  netboxUrl: z.string(),
+  netboxToken: z.string(),
 }).refine(
   (v) => !v.pushNotificationEnabled || v.pushNotificationUrl.trim() !== '',
   { path: ['pushNotificationUrl'], message: 'URL is required when push notifications are enabled' },
@@ -51,6 +53,8 @@ export function SettingsPage() {
       smtpUrl: '',
       smtpNoreplyAddress: '',
       defaultContainerEnvVars: [],
+      netboxUrl: '',
+      netboxToken: '',
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'defaultContainerEnvVars' });
@@ -129,6 +133,28 @@ export function SettingsPage() {
           ))}
         </section>
 
+        <section className="grid gap-4">
+          <h2 className="text-lg font-semibold">NetBox</h2>
+          <Input
+            label="NetBox URL"
+            placeholder="https://netbox.example.com"
+            helperText="Base URL of your NetBox instance"
+            {...register('netboxUrl')}
+          />
+          <Input
+            label="NetBox API token"
+            type="password"
+            autoComplete="off"
+            helperText="API token with write access to IPAM and Virtualization"
+            {...register('netboxToken')}
+          />
+        </section>
+
+        {mutation.isSuccess && (
+          <Alert variant="success" role="status" aria-live="polite">
+            <AlertDescription>Your settings have been saved successfully.</AlertDescription>
+          </Alert>
+        )}
         {mutation.error && <Alert variant="danger"><AlertDescription>{(mutation.error as ApiError).message}</AlertDescription></Alert>}
 
         <div className="flex flex-wrap justify-end gap-2">

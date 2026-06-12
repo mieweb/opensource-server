@@ -166,5 +166,7 @@ export interface AppSettings {
   pushNotificationApiKey: string;
   smtpUrl: string;
   smtpNoreplyAddress: string;
+  netboxUrl: string;
+  netboxToken: string;
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
 }

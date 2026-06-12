@@ -492,6 +492,9 @@ async function main() {
           ipv4Address,
           createdBy: container.username,
           nodeName: container.node?.name,
+          vcpus: 4,
+          memoryMb: 4096,
+          diskGb: 50,
         });
         console.log(`NetBox: VM "${container.hostname}" created`);
       } catch (err) {

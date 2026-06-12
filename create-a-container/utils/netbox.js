@@ -122,9 +122,12 @@ async function findClusterId(baseUrl, token, clusterName) {
  * @param {string} opts.ipv4Address - Container IPv4 address (CIDR or bare IP)
  * @param {string} [opts.createdBy] - Username of the person who created the container
  * @param {string} [opts.nodeName]  - Proxmox node name; mapped to the NetBox device within the cluster
+ * @param {number} [opts.vcpus]     - Number of virtual CPUs
+ * @param {number} [opts.memoryMb]  - RAM in megabytes
+ * @param {number} [opts.diskGb]    - Disk size in gigabytes
  * @returns {Promise<object>} The created NetBox VM object
  */
-async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv4Address, createdBy, nodeName }) {
+async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv4Address, createdBy, nodeName, vcpus, memoryMb, diskGb }) {
   const [clusterId, siteId, deviceId] = await Promise.all([
     findClusterId(baseUrl, token, clusterName),
     findSiteId(baseUrl, token, clusterName),
@@ -141,6 +144,9 @@ async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv
     comments: comment,
     ...(siteId !== null && { site: siteId }),
     ...(deviceId !== null && { device: deviceId }),
+    ...(vcpus != null && { vcpus }),
+    ...(memoryMb != null && { memory: memoryMb }),
+    ...(diskGb != null && { disk: diskGb }),
   };
 
   const vm = await nbFetch(baseUrl, token, '/virtualization/virtual-machines/', {
@@ -174,6 +180,48 @@ async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv
   });
 
   return vm;
+}
+
+/**
+ * Update resource fields on an existing NetBox VM record by hostname.
+ *
+ * Non-throwing: logs errors but never propagates them.
+ *
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} hostname - Container hostname
+ * @param {object} resources
+ * @param {number} [resources.vcpus]    - Number of virtual CPUs
+ * @param {number} [resources.memoryMb] - RAM in megabytes
+ * @param {number} [resources.diskGb]   - Disk size in gigabytes
+ * @returns {Promise<void>}
+ */
+async function updateVirtualMachine(baseUrl, token, hostname, { vcpus, memoryMb, diskGb } = {}) {
+  try {
+    const data = await nbFetch(
+      baseUrl,
+      token,
+      `/virtualization/virtual-machines/?name=${encodeURIComponent(hostname)}&limit=1`,
+    );
+    if (!data?.results?.length) {
+      console.log(`NetBox: no VM found for "${hostname}", skipping resource update`);
+      return;
+    }
+    const vm = data.results[0];
+    const patch = {
+      ...(vcpus != null && { vcpus }),
+      ...(memoryMb != null && { memory: memoryMb }),
+      ...(diskGb != null && { disk: diskGb }),
+    };
+    if (Object.keys(patch).length === 0) return;
+    await nbFetch(baseUrl, token, `/virtualization/virtual-machines/${vm.id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    console.log(`NetBox: VM "${hostname}" resources updated`);
+  } catch (err) {
+    console.error(`NetBox: failed to update VM "${hostname}" resources: ${err.message}`);
+  }
 }
 
 /**
@@ -241,4 +289,4 @@ async function withNetbox(Setting, fn) {
   return fn(baseUrl, token);
 }
 
-module.exports = { createVirtualMachine, deleteVirtualMachine, withNetbox };
+module.exports = { createVirtualMachine, updateVirtualMachine, deleteVirtualMachine, withNetbox };
