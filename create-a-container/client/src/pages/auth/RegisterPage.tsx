@@ -30,7 +30,6 @@ interface RegisterResponse {
   uid: string;
   status: 'active' | 'pending';
   message: string;
-  twoFactor?: { enrollmentToken?: string; warning?: string };
 }
 
 export function RegisterPage() {
@@ -86,8 +85,6 @@ export function RegisterPage() {
           uid: res.uid,
           status: res.status,
           message: res.message,
-          enrollmentToken: res.twoFactor?.enrollmentToken,
-          warning: res.twoFactor?.warning,
         },
       });
     } catch (err) {

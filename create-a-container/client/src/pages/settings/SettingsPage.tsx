@@ -10,7 +10,6 @@ import {
   Input,
   PageHeader,
   Spinner,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -31,18 +30,12 @@ const envVarSchema = z.object({
 });
 
 const schema = z.object({
-  pushNotificationEnabled: z.boolean(),
-  pushNotificationUrl: z.string(),
-  pushNotificationApiKey: z.string(),
   smtpUrl: z.string(),
   smtpNoreplyAddress: z.string(),
   defaultContainerEnvVars: z.array(envVarSchema),
   netboxUrl: z.string(),
   netboxToken: z.string(),
-}).refine(
-  (v) => !v.pushNotificationEnabled || v.pushNotificationUrl.trim() !== '',
-  { path: ['pushNotificationUrl'], message: 'URL is required when push notifications are enabled' },
-);
+});
 type FormData = z.infer<typeof schema>;
 
 export function SettingsPage() {
@@ -50,12 +43,9 @@ export function SettingsPage() {
   const toast = useToast();
   const { data, isLoading, error } = useQuery({ queryKey: keys.settings(), queryFn: queries.getSettings });
 
-  const { register, handleSubmit, reset, control, watch, setValue, formState } = useForm<FormData>({
+  const { register, handleSubmit, reset, control } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      pushNotificationEnabled: false,
-      pushNotificationUrl: '',
-      pushNotificationApiKey: '',
       smtpUrl: '',
       smtpNoreplyAddress: '',
       defaultContainerEnvVars: [],
@@ -64,7 +54,6 @@ export function SettingsPage() {
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'defaultContainerEnvVars' });
-  const pushEnabled = watch('pushNotificationEnabled');
 
   useEffect(() => {
     if (data) reset(data);
@@ -86,28 +75,6 @@ export function SettingsPage() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" icon={<SettingsIcon className="size-6" />} bordered />
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="grid w-full gap-8">
-        <section className="grid gap-4">
-          <h2 className="text-lg font-semibold">Push notifications</h2>
-          <Switch
-            label="Enable push notifications"
-            checked={pushEnabled}
-            onCheckedChange={(c) => setValue('pushNotificationEnabled', c)}
-          />
-          <Input
-            label="Push notification URL"
-            placeholder="https://push.example.com/notify"
-            error={formState.errors.pushNotificationUrl?.message}
-            hasError={!!formState.errors.pushNotificationUrl}
-            {...register('pushNotificationUrl')}
-          />
-          <Input
-            label="Push notification API key"
-            type="password"
-            autoComplete="off"
-            {...register('pushNotificationApiKey')}
-          />
-        </section>
-
         <section className="grid gap-4">
           <h2 className="text-lg font-semibold">SMTP</h2>
           <Input

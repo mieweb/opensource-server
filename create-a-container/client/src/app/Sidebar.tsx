@@ -17,12 +17,10 @@ import {
   Building2,
   ClipboardList,
   Container as ContainerIcon,
-  ExternalLink,
   Globe,
   KeyRound,
   Server,
   Settings,
-  ShieldCheck,
   Users,
   UsersRound,
 } from 'lucide-react';
@@ -77,8 +75,6 @@ export function AppSidebar() {
     refetchInterval: 30000,
   });
   const pendingCount = requestCountData?.count || 0;
-  const mfaAdminUrl =
-    isAdmin && session?.pushNotificationUrl ? `${session.pushNotificationUrl}/admin` : null;
 
   const siteMatch = location.pathname.match(/^\/sites\/(\d+)(?:\/|$)/);
   const urlSiteId = siteMatch ? siteMatch[1] : null;
@@ -213,16 +209,6 @@ export function AppSidebar() {
               icon={<ClipboardList className="size-4" />}
               isActive={isActive({ to: '/my-requests', label: 'My Requests', icon: null })}
               onClick={() => navigate('/my-requests')}
-            />
-          )}
-          {mfaAdminUrl && (
-            <SidebarNavItem
-              key="mfa-admin"
-              label="MFA Admin"
-              icon={<ShieldCheck className="size-4" />}
-              badge={compact ? undefined : <ExternalLink className="size-3" aria-hidden="true" />}
-              isActive={false}
-              onClick={() => window.open(mfaAdminUrl, '_blank', 'noopener,noreferrer')}
             />
           )}
         </SidebarNav>

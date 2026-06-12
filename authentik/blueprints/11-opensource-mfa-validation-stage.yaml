@@ -1,0 +1,50 @@
+version: 1
+metadata:
+  name: Opensource - MFA Validation Stage
+entries:
+  # ---------------------------------------------------------------------------
+  # Shared authenticator validation (2FA) stage.
+  #
+  # This is the single MFA validation stage used by every interactive flow:
+  #   - the authentication / LDAP bind flow (20-opensource-authentication-flow)
+  #   - the invitation enrollment flow (30-flow-invitation-enrollment)
+  #   - the self-service registration flow (12-flows-enrollment-email-verification)
+  #
+  # It is defined in its own blueprint so it can be imported before all of those
+  # flows and referenced from each via !Find, keeping a single definition of the
+  # 2FA behaviour.
+  #
+  # not_configured_action: configure forces users without an authenticator to
+  # enroll one (via the push-notification setup flow) before they can proceed.
+  # It depends on the push-notification authenticator defined in
+  # 10-opensource-authenticator-duo-setup.yaml, which must be imported first.
+  # ---------------------------------------------------------------------------
+  - attrs:
+      configuration_stages:
+        - !Find [
+            authentik_stages_authenticator_duo.authenticatorduostage,
+            [name, opensource-authenticator-duo-setup],
+          ]
+      device_classes:
+        - static
+        - totp
+        - webauthn
+        - duo
+        - sms
+        - email
+      email_otp_throttling_factor: 1.0
+      last_auth_threshold: seconds=0
+      not_configured_action: configure
+      sms_otp_throttling_factor: 1.0
+      static_otp_throttling_factor: 1.0
+      totp_otp_throttling_factor: 1.0
+      webauthn_allowed_device_types: []
+      webauthn_hints: []
+      webauthn_user_verification: preferred
+    conditions: []
+    id: opensource-authentication-mfa-validation
+    identifiers:
+      name: opensource-authentication-mfa-validation
+    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
+    permissions: []
+    state: present

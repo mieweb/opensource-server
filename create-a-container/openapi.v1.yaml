@@ -169,7 +169,7 @@ paths:
   /auth/login:
     post:
       tags: [Auth]
-      summary: Username/password login (may require 2FA)
+      summary: Username/password login (disabled when OIDC SSO is enabled)
       security: []
       requestBody:
         required: true
@@ -183,20 +183,30 @@ paths:
                 password: { type: string, format: password }
                 redirect: { type: string }
       responses:
-        '200': { description: Logged in OR 2FA challenge issued }
+        '200': { description: Logged in }
         '401': { description: Invalid credentials }
-  /auth/login/challenge/{id}:
+        '403': { description: 'OIDC enabled (code: oidc_enabled) — use SSO instead' }
+  /auth/oidc/login:
     get:
       tags: [Auth]
-      summary: Poll 2FA challenge status
+      summary: Begin OIDC single sign-on (redirects to the identity provider)
       security: []
       parameters:
-        - in: path
-          name: id
-          required: true
+        - in: query
+          name: redirect
+          required: false
           schema: { type: string }
       responses:
-        '200': { description: status -> pending|approved|rejected|timeout|failed|unregistered }
+        '302': { description: Redirect to the identity provider authorization endpoint }
+        '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/oidc/callback:
+    get:
+      tags: [Auth]
+      summary: OIDC authorization-code callback (completes SSO and starts a session)
+      security: []
+      responses:
+        '302': { description: 'Redirect to the post-login destination on success, or /login?oidc_error=<code> on failure' }
+        '404': { description: 'OIDC not configured (code: oidc_disabled)' }
   /auth/logout:
     post:
       tags: [Auth]
@@ -227,12 +237,6 @@ paths:
       security: []
       parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
       responses: { '200': { description: Invite valid, returns email } }
-  /auth/register/2fa-qr/{token}:
-    get:
-      tags: [Auth]
-      security: []
-      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
-      responses: { '200': { description: QR code data URI for push-notification enrollment } }
   /auth/password-reset/request:
     post:
       tags: [Auth]
