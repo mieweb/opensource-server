@@ -20,10 +20,11 @@ import {
   Tooltip,
   useToast,
 } from '@mieweb/ui';
-import { Container, Plus, Search, Trash2 } from 'lucide-react';
+import { Container, Dices, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { FormPageHeader } from '@/components/FormPageHeader';
+import { randomHostname } from '@/lib/randomHostname';
 import { ResourcesSection } from './ResourcesSection';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
@@ -339,17 +340,33 @@ export function ContainerFormPage() {
             <CardTitle className="text-base">Basics</CardTitle>
           </CardHeader>
           <CardContent className={sectionContentClass}>
-            <Input
-              label="Hostname"
-              required
-              disabled={isEdit}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              error={formState.errors.hostname?.message}
-              hasError={!!formState.errors.hostname}
-              {...register('hostname')}
-            />
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label="Hostname"
+                  required
+                  disabled={isEdit}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  error={formState.errors.hostname?.message}
+                  hasError={!!formState.errors.hostname}
+                  {...register('hostname')}
+                />
+              </div>
+              {!isEdit && (
+                <Tooltip content="Generate random hostname">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-label="Generate random hostname"
+                    onClick={() => setValue('hostname', randomHostname())}
+                  >
+                    <Dices className="size-4" />
+                  </Button>
+                </Tooltip>
+              )}
+            </div>
             {!isEdit && (
               <>
                 <div className="flex items-end gap-2">
