@@ -74,12 +74,8 @@ export function UserFormPage() {
         ? api.put<User>(`/api/v1/users/${uid}`, payload)
         : api.post<User>('/api/v1/users', payload);
     },
-    onSuccess: (result) => {
-      if (result.twoFactorWarning) {
-        toast.warning(`User saved, but 2FA invite failed: ${result.twoFactorWarning}`);
-      } else {
-        toast.success(isEdit ? 'User updated' : 'User created');
-      }
+    onSuccess: () => {
+      toast.success(isEdit ? 'User updated' : 'User created');
       qc.invalidateQueries({ queryKey: keys.users() });
       navigate('/users');
     },

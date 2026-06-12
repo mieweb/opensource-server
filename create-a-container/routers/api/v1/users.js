@@ -5,7 +5,6 @@
 const express = require('express');
 const { User, Group, InviteToken, Setting } = require('../../../models');
 const { sendInviteEmail, sendBulkEmail } = require('../../../utils/email');
-const { sendPushNotificationInvite } = require('../../../utils/push-notification-invite');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
 
@@ -89,7 +88,6 @@ router.put(
     const { uid, givenName, sn, mail, userPassword, status, groupIds } = req.body || {};
     const trimmedGiven = (givenName || '').trim();
     const trimmedSn = (sn || '').trim();
-    const previousStatus = user.status;
 
     user.uid = uid ?? user.uid;
     user.givenName = trimmedGiven || user.givenName;
@@ -103,18 +101,11 @@ router.put(
     }
     await user.save();
 
-    let twoFactorWarning;
-    if (previousStatus !== 'active' && user.status === 'active') {
-      const inviteResult = await sendPushNotificationInvite(user);
-      if (inviteResult && !inviteResult.success) {
-        twoFactorWarning = inviteResult.error;
-      }
-    }
     if (Array.isArray(groupIds)) {
       const groups = await Group.findAll({ where: { gidNumber: groupIds } });
       await user.setGroups(groups);
     }
-    return ok(res, { ...serialize(user), ...(twoFactorWarning ? { twoFactorWarning } : {}) });
+    return ok(res, serialize(user));
   }),
 );
 
