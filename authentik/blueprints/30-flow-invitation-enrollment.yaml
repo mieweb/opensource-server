@@ -1,0 +1,170 @@
+version: 1
+metadata:
+  labels:
+    blueprints.goauthentik.io/instantiate: "false"
+  name: Opensource - Invitation-based Enrollment
+entries:
+  # Flow definition for internal users with group assignment
+  - identifiers:
+      slug: invitation-enrollment-flow
+    model: authentik_flows.flow
+    id: flow
+    attrs:
+      name: Opensource Invitation Enrollment Flow
+      title: Welcome to MIE Opensource!
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  # Invitation Stage for internal engineering users
+  - identifiers:
+      name: invitation-enrollment-invitation
+    id: invitation-stage
+    model: authentik_stages_invitation.invitationstage
+    attrs:
+      continue_flow_without_invitation: false
+
+  # Prompt fields for user information
+  - id: prompt-field-username
+    model: authentik_stages_prompt.prompt
+    identifiers:
+      name: invitation-enrollment-field-username
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Username
+      placeholder_expression: false
+      order: 0
+
+  - identifiers:
+      name: invitation-enrollment-field-password
+    id: prompt-field-password
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      placeholder_expression: false
+      order: 1
+
+  - identifiers:
+      name: invitation-enrollment-field-password-repeat
+    id: prompt-field-password-repeat
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      placeholder_expression: false
+      order: 2
+
+  - identifiers:
+      name: invitation-enrollment-field-name
+    id: prompt-field-name
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: name
+      label: Name
+      type: text
+      required: true
+      placeholder: Name
+      placeholder_expression: false
+      order: 0
+
+  - identifiers:
+      name: invitation-enrollment-field-email
+    id: prompt-field-email
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      placeholder_expression: false
+      order: 1
+
+  # Prompt stage for credentials
+  - identifiers:
+      name: invitation-enrollment-prompt-credentials
+    id: prompt-stage-credentials
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields:
+        - !KeyOf prompt-field-username
+        - !KeyOf prompt-field-password
+        - !KeyOf prompt-field-password-repeat
+
+  # Prompt stage for user details
+  - identifiers:
+      name: invitation-enrollment-prompt-details
+    id: prompt-stage-details
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields:
+        - !KeyOf prompt-field-name
+        - !KeyOf prompt-field-email
+
+  # User write stage for internal users with group assignment
+  - identifiers:
+      name: invitation-enrollment-user-write
+    id: user-write-stage
+    model: authentik_stages_user_write.userwritestage
+    attrs:
+      user_creation_mode: always_create
+      user_type: internal
+      user_path_template: users/internal
+      # The ldapusers group is defined in 10-opensource-ldap-identity.yaml.
+      create_users_group: !Find [authentik_core.group, [name, ldapusers]]
+
+  # User login stage
+  - identifiers:
+      name: invitation-enrollment-user-login
+    id: user-login-stage
+    model: authentik_stages_user_login.userloginstage
+
+  # Flow stage bindings for INTERNAL ENGINEERING users flow (with group assignment)
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf invitation-stage
+      order: 5
+    model: authentik_flows.flowstagebinding
+    attrs:
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf prompt-stage-credentials
+      order: 10
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf prompt-stage-details
+      order: 15
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf user-write-stage
+      order: 20
+    model: authentik_flows.flowstagebinding
+
+  # Force the user to setup or validate an authenticator before logging in
+  - identifiers:
+      target: !KeyOf flow
+      stage: !Find [authentik_stages_authenticator_validate.authenticatorvalidatestage, [name, opensource-authentication-mfa-validation]]
+      order: 30
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf flow
+      stage: !KeyOf user-login-stage
+      order: 100
+    model: authentik_flows.flowstagebinding

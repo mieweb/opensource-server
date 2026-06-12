@@ -1,0 +1,52 @@
+version: 1
+metadata:
+  name: Opensource - LDAP Identity (group & proxyuser)
+context:
+  # The proxyuser password is injected from the environment so that no secret is
+  # committed to the blueprint.
+  ldap_proxyuser_password: !Env [AUTHENTIK_LDAP_PROXYUSER_PASSWORD, null]
+entries:
+  # ---------------------------------------------------------------------------
+  # Group that is allowed to bind against LDAP.
+  #
+  # This group is defined here (and referenced via !Find by the enrollment flow
+  # in 30-flow-invitation-enrollment.yaml and the LDAP provider/application in
+  # 40-opensource-ldap.yaml). It has no dependencies, so it is created early.
+  # ---------------------------------------------------------------------------
+  - id: ldapusers-group
+    model: authentik_core.group
+    state: present
+    identifiers:
+      name: ldapusers
+    attrs:
+      is_superuser: false
+      attributes:
+        gidNumber: 2001
+
+  # ---------------------------------------------------------------------------
+  # Dedicated proxyuser service account.
+  #
+  # This account is used by downstream services to bind to LDAP. It is a member
+  # of the ldapusers group (so it is permitted to bind) and is granted an
+  # exception from 2FA in the bind flow (the policy binding lives alongside the
+  # authentication flow in 20-opensource-authentication-flow.yaml, which is why
+  # this identity must be imported before that flow).
+  #
+  # NOTE: This account is intentionally granted the "Search full LDAP directory"
+  # permission so it can resolve any user/group on behalf of downstream services.
+  # This is read-only search access only; the LDAP provider exposes no write/edit
+  # capability, and no other user is granted it. The permission itself is defined
+  # alongside the LDAP provider in 40-opensource-ldap.yaml.
+  # ---------------------------------------------------------------------------
+  - id: ldap-proxyuser
+    model: authentik_core.user
+    state: present
+    identifiers:
+      username: ldap-proxyuser
+    attrs:
+      name: LDAP Proxy User
+      type: service_account
+      path: users/service-accounts
+      password: !Context ldap_proxyuser_password
+      groups:
+        - !KeyOf ldapusers-group

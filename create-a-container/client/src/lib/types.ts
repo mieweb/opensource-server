@@ -136,7 +136,6 @@ export interface User {
   status: 'pending' | 'active' | 'disabled';
   groups?: { gidNumber: number; cn: string; isAdmin: boolean }[];
   isAdmin: boolean;
-  twoFactorWarning?: string;
 }
 
 export interface Group {
@@ -161,9 +160,6 @@ export interface ApiKeyCreated extends ApiKey {
 }
 
 export interface AppSettings {
-  pushNotificationUrl: string;
-  pushNotificationEnabled: boolean;
-  pushNotificationApiKey: string;
   smtpUrl: string;
   smtpNoreplyAddress: string;
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];

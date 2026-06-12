@@ -4,13 +4,13 @@ import { api, ApiError, clearCsrfToken } from './api';
 export interface SessionUser {
   user: string;
   isAdmin: boolean;
-  /** Configured push-notification service URL (admins only, empty if unset). */
-  pushNotificationUrl?: string;
 }
 
 export interface ServerInfo {
   status: string;
   isDev: boolean;
+  /** True when an OIDC identity provider is configured for SSO. */
+  oidcEnabled: boolean;
 }
 
 export const sessionKey = ['session'] as const;
@@ -47,15 +47,12 @@ export interface LoginInput {
 }
 
 export type LoginResult =
-  | { kind: 'logged-in'; user: string; isAdmin: boolean; redirect: string }
-  | { kind: '2fa'; challengeId: string };
+  | { kind: 'logged-in'; user: string; isAdmin: boolean; redirect: string };
 
 interface LoginResponse {
   user?: string;
   isAdmin?: boolean;
   redirect?: string;
-  challengeId?: string;
-  requires2FA?: boolean;
 }
 
 export function useLoginMutation() {
@@ -63,9 +60,6 @@ export function useLoginMutation() {
   return useMutation<LoginResult, ApiError, LoginInput>({
     mutationFn: async (input) => {
       const data = await api.post<LoginResponse>('/api/v1/auth/login', input);
-      if (data.requires2FA && data.challengeId) {
-        return { kind: '2fa', challengeId: data.challengeId };
-      }
       return {
         kind: 'logged-in',
         user: data.user || input.username,
@@ -84,34 +78,40 @@ export function useLoginMutation() {
           isAdmin: result.isAdmin,
         });
         // Refetch from the server so the cached session reflects the
-        // authoritative state (including pushNotificationUrl) before the
-        // caller navigates into a guarded route.
+        // authoritative state before the caller navigates into a guarded route.
         await qc.refetchQueries({ queryKey: sessionKey });
       }
     },
   });
 }
 
-export interface ChallengeStatus {
-  status: 'pending' | 'approved' | 'rejected' | 'timeout' | 'failed' | 'unregistered';
-  user?: string;
-  isAdmin?: boolean;
-  redirect?: string;
-  message?: string;
-  registrationUrl?: string;
-}
-
-export async function fetchChallenge(id: string): Promise<ChallengeStatus> {
-  return api.get<ChallengeStatus>(`/api/v1/auth/login/challenge/${encodeURIComponent(id)}`);
-}
-
 export function useLogoutMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await api.post('/api/v1/auth/logout');
+      // When OIDC SSO is enabled the server returns a `logoutUrl` pointing at
+      // the IdP's end-session endpoint. We must visit it to terminate the IdP
+      // session; otherwise the live IdP session signs the user straight back in.
+      const data = await api.post<{ loggedOut: boolean; logoutUrl?: string | null }>(
+        '/api/v1/auth/logout',
+      );
+
+      // If we have an IdP logout URL, hand off to the browser *before* touching
+      // the query cache. Clearing the cache here would synchronously re-render
+      // guarded views and bounce the user to /login, whose own effect kicks off
+      // a fresh SSO redirect — racing (and beating) this navigation. Assigning
+      // first makes RP-initiated logout the only navigation that happens.
+      if (data?.logoutUrl) {
+        window.location.assign(data.logoutUrl);
+        // Block further React work this tick; the page is being replaced.
+        await new Promise(() => {});
+      }
+
+      return data;
     },
-    onSettled: () => {
+    onSettled: (data) => {
+      // Reached only for the local-only logout path (no IdP end-session URL).
+      if (data?.logoutUrl) return;
       clearCsrfToken();
       qc.setQueryData<SessionUser | null>(sessionKey, null);
       qc.clear();
