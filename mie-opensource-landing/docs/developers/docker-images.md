@@ -41,7 +41,7 @@ images/
 ├── docker-bake.hcl          # Build config with dependency ordering
 ├── base/
 │   ├── Dockerfile
-│   ├── sssd.conf
+│   ├── sssd.conf.template
 │   └── ldapusers
 ├── nodejs/
 │   └── Dockerfile           # Extends base image

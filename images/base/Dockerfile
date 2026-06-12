@@ -5,7 +5,7 @@ FROM debian:13 AS builder
 RUN apt-get update && apt-get install -y \
     curl tar zstd
 ARG URL=http://download.proxmox.com/images/system/debian-13-standard_13.1-2_amd64.tar.zst
-RUN mkdir /rootfs && curl "$URL" | tar --zstd -x -C /rootfs
+RUN mkdir /rootfs && curl -fsSL --retry 10 "$URL" | tar --zstd -x -C /rootfs
 
 # Stage 2 of the build uses the root filesystem built in stage 1. The rest of
 # the Dockerfile builds from there.
@@ -23,7 +23,8 @@ RUN apt-get update && \
     pam-auth-update --enable mkhomedir && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-COPY --chmod=0440 sssd.conf /etc/sssd/sssd.conf
+COPY --chmod=0440 sssd.conf.template /etc/sssd/sssd.conf.template
+COPY --chmod=0440 50-sssd-conf-template.conf /etc/systemd/system/sssd.service.d/50-sssd-conf-template.conf
 COPY --chmod=0440 ldapusers /etc/sudoers.d/ldapusers
 COPY --chmod=0644 ldap.conf /etc/ldap/ldap.conf
 COPY --chmod=0755 git-identity.sh /etc/profile.d/git-identity.sh

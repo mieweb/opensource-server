@@ -1,0 +1,68 @@
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    volumes:
+      - database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${PG_DB:-authentik}
+      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
+      POSTGRES_USER: ${PG_USER:-authentik}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      test:
+        - CMD-SHELL
+        - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
+      timeout: 5s
+  server:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+      - ./custom-templates:/templates
+      - /etc/ssl/certs/ca-certificates.crt:/ak-root/.venv/lib/python3.14/site-packages/duo_client/ca_certs.pem
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
+    env_file:
+      - .env
+    ports:
+      - '${COMPOSE_PORT_HTTP:-9000}:9000'
+      - '${COMPOSE_PORT_HTTPS:-9443}:9443'
+    command: server
+    restart: unless-stopped
+    shm_size: 512mb
+  worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data
+      - ./certs:/certs
+      - ./custom-templates:/templates
+    environment:
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
+    env_file:
+      - .env
+    command: worker
+    restart: unless-stopped
+    user: root
+    shm_size: 512mb
+volumes:
+  database:
+    driver: local

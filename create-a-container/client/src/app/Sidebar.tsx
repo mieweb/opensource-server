@@ -15,6 +15,7 @@ import {
 import {
   Box,
   Building2,
+  ClipboardList,
   Container as ContainerIcon,
   ExternalLink,
   Globe,
@@ -68,6 +69,14 @@ export function AppSidebar() {
   const { data: session } = useSession();
   const { isCollapsed, isMobileViewport } = useSidebar();
   const isAdmin = !!session?.isAdmin;
+
+  const { data: requestCountData } = useQuery({
+    queryKey: keys.resourceRequestCount(),
+    queryFn: queries.getResourceRequestCount,
+    enabled: isAdmin,
+    refetchInterval: 30000,
+  });
+  const pendingCount = requestCountData?.count || 0;
   const mfaAdminUrl =
     isAdmin && session?.pushNotificationUrl ? `${session.pushNotificationUrl}/admin` : null;
 
@@ -188,6 +197,24 @@ export function AppSidebar() {
         )}
         <SidebarNav className="mt-2">
           {ADMIN.filter((l) => !l.adminOnly || isAdmin).map(renderLink)}
+          {isAdmin && (
+            <SidebarNavItem
+              key="resource-requests"
+              label={pendingCount > 0 ? `Resource Requests (${pendingCount})` : 'Resource Requests'}
+              icon={<ClipboardList className="size-4" />}
+              isActive={isActive({ to: '/resource-requests', label: 'Resource Requests', icon: null })}
+              onClick={() => navigate('/resource-requests')}
+            />
+          )}
+          {!isAdmin && (
+            <SidebarNavItem
+              key="my-requests"
+              label="My Requests"
+              icon={<ClipboardList className="size-4" />}
+              isActive={isActive({ to: '/my-requests', label: 'My Requests', icon: null })}
+              onClick={() => navigate('/my-requests')}
+            />
+          )}
           {mfaAdminUrl && (
             <SidebarNavItem
               key="mfa-admin"
