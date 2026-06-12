@@ -175,8 +175,8 @@ entries:
   # returns True; it normalizes the value and never blocks the stage.
   - attrs:
       expression: |
-        attributes = context["prompt_data"]["attributes"]
-        value = attributes["sshPublicKey"]
+        attributes = context["prompt_data"].get("attributes", {})
+        value = attributes.get("sshPublicKey", [])
 
         if not isinstance(value, list):
             keys = []
