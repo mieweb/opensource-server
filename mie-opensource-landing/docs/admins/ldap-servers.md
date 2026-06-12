@@ -22,6 +22,7 @@ domains = default
 [domain/default]
 id_provider = ldap
 auth_provider = ldap
+access_provider = ldap
 ldap_uri = ${SSSD_LDAP_URI}
 ldap_tls_reqcert = ${SSSD_LDAP_TLS_REQCERT}
 
@@ -30,9 +31,13 @@ ldap_search_base = ${SSSD_LDAP_SEARCH_BASE}
 ldap_user_search_base = ${SSSD_LDAP_USER_SEARCH_BASE}
 ldap_group_search_base = ${SSSD_LDAP_GROUP_SEARCH_BASE}
 
-# Map the LDAP cn attribute to the NSS gecos field so tools like getent,
-# finger, and the git-identity profile script can read the user's full name.
-ldap_user_gecos = cn
+ldap_user_name = ${SSSD_LDAP_USER_NAME}
+ldap_user_gecos = ${SSSD_LDAP_USER_GECOS}
+
+# Which users may log in. The default filter matches every entry, so all
+# directory users are allowed; set a stricter filter to restrict access.
+ldap_access_order = filter
+ldap_access_filter = ${SSSD_LDAP_ACCESS_FILTER}
 
 ldap_default_bind_dn = ${SSSD_LDAP_DEFAULT_BIND_DN}
 ldap_default_authtok_type = ${SSSD_DEFAULT_AUTHTOK_TYPE}
@@ -43,7 +48,10 @@ ldap_opt_timeout = 60
 ```
 
 !!! note
-    Any `SSSD_*` variable left blank is substituted as an empty value, and SSSD falls back to its built-in default (for example, auto-detecting the search base from the directory's RootDSE). Only set the variables your directory actually requires.
+    Most `SSSD_*` variables left blank are substituted as an empty value, and SSSD falls back to its built-in default (for example, auto-detecting the search base from the directory's RootDSE). Only set the variables your directory actually requires.
+
+!!! warning "Do not blank out `SSSD_LDAP_ACCESS_FILTER`"
+    `SSSD_LDAP_ACCESS_FILTER` is the exception to the rule above. Because the container uses `access_provider = ldap` with `ldap_access_order = filter`, an **empty** access filter causes SSSD to **deny every user**. It is seeded with the permissive default `(objectClass=*)` so that all directory users can log in out of the box. Replace it with a narrower filter to restrict access — but never leave it blank.
 
 ## Configuring the Connection
 
@@ -59,6 +67,9 @@ In the admin UI: **Settings** → **Default Container Environment Variables**. T
 | `SSSD_LDAP_SEARCH_BASE` | *(blank)* | No | Base DN for all searches (e.g. `dc=example,dc=com`). Leave blank to let SSSD auto-detect it from the RootDSE. |
 | `SSSD_LDAP_USER_SEARCH_BASE` | *(blank)* | No | Base DN for user searches. Overrides `SSSD_LDAP_SEARCH_BASE` for users (e.g. `ou=people,dc=example,dc=com`). |
 | `SSSD_LDAP_GROUP_SEARCH_BASE` | *(blank)* | No | Base DN for group searches (e.g. `ou=groups,dc=example,dc=com`). |
+| `SSSD_LDAP_USER_NAME` | *(blank)* | No | LDAP attribute mapped to the user's login name. Leave blank for the SSSD default (`uid`); set to `sAMAccountName` for Active Directory. |
+| `SSSD_LDAP_USER_GECOS` | `cn` | No | LDAP attribute mapped to the NSS gecos (full name) field, read by `getent`, `finger`, and the git-identity script. |
+| `SSSD_LDAP_ACCESS_FILTER` | `(objectClass=*)` | Yes | LDAP filter deciding **who may log in**. The default matches every entry, so all directory users are allowed. Restrict access with a stricter filter, e.g. `(memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com)`. Must not be blank — an empty filter denies everyone. |
 | `SSSD_LDAP_DEFAULT_BIND_DN` | *(blank)* | No | DN used to bind for lookups. Leave blank for anonymous bind; set it if your directory disallows anonymous searches (e.g. `cn=svc-sssd,ou=services,dc=example,dc=com`). |
 | `SSSD_DEFAULT_AUTHTOK_TYPE` | *(blank)* | No | Type of the bind credential, typically `password`. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |
 | `SSSD_DEFAULT_AUTHTOK` | *(blank)* | No | The bind credential (password) for the bind DN. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |

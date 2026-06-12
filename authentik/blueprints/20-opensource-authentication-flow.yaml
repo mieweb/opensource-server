@@ -2,7 +2,7 @@ context: {}
 entries:
   - attrs:
       authentication: none
-      background: ''
+      background: ""
       compatibility_mode: false
       denied_action: message_continue
       designation: authentication
@@ -19,7 +19,8 @@ entries:
     state: present
   - attrs:
       execution_logging: false
-      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      expression:
+        "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
         \    return True\n# If the user does not have a backend attached to it, they\
         \ haven't\n# been authenticated yet and we need the password stage\nreturn not\
         \ hasattr(flow_plan.context.get(\"pending_user\"), \"backend\")"
@@ -32,7 +33,8 @@ entries:
     state: present
   - attrs:
       execution_logging: false
-      expression: "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
+      expression:
+        "flow_plan = request.context.get(\"flow_plan\")\nif not flow_plan:\n\
         \    return True\n# if the authentication method is webauthn (passwordless),\
         \ then we skip the authenticator\n# validation stage by returning false (true\
         \ will execute the stage)\nreturn not (flow_plan.context.get(\"auth_method\"\
@@ -51,7 +53,8 @@ entries:
         - authentik.sources.kerberos.auth.KerberosBackend
         - authentik.sources.ldap.auth.LDAPBackend
         - authentik.core.auth.TokenBackend
-      configure_flow: !Find [authentik_flows.flow, [slug, default-password-change]]
+      configure_flow:
+        !Find [authentik_flows.flow, [slug, default-password-change]]
       failed_attempts_before_cancel: 5
     conditions: []
     id: opensource-authentication-password
@@ -61,36 +64,11 @@ entries:
     permissions: []
     state: present
   - attrs:
-      configuration_stages:
-        - !Find [authentik_stages_authenticator_totp.authenticatortotpstage, [name, default-authenticator-totp-setup]]
-      device_classes:
-        - static
-        - totp
-        - webauthn
-        - duo
-        - sms
-        - email
-      email_otp_throttling_factor: 1.0
-      last_auth_threshold: seconds=0
-      not_configured_action: configure
-      sms_otp_throttling_factor: 1.0
-      static_otp_throttling_factor: 1.0
-      totp_otp_throttling_factor: 1.0
-      webauthn_allowed_device_types: []
-      webauthn_hints: []
-      webauthn_user_verification: preferred
-    conditions: []
-    id: opensource-authentication-mfa-validation
-    identifiers:
-      name: opensource-authentication-mfa-validation
-    model: authentik_stages_authenticator_validate.authenticatorvalidatestage
-    permissions: []
-    state: present
-  - attrs:
       captcha_stage: null
       case_insensitive_matching: true
       enable_remember_me: true
-      enrollment_flow: !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
+      enrollment_flow:
+        !Find [authentik_flows.flow, [slug, default-enrollment-flow]]
       password_stage: !KeyOf opensource-authentication-password
       passwordless_flow: null
       pretend_user_exists: true
@@ -101,7 +79,13 @@ entries:
       user_fields:
         - email
         - username
-      webauthn_stage: !KeyOf opensource-authentication-mfa-validation
+      # The shared MFA validation stage is defined in
+      # 11-opensource-mfa-validation-stage.yaml.
+      webauthn_stage:
+        !Find [
+          authentik_stages_authenticator_validate.authenticatorvalidatestage,
+          [name, opensource-authentication-mfa-validation],
+        ]
     conditions: []
     id: opensource-authentication-identification
     identifiers:
@@ -153,13 +137,21 @@ entries:
   - attrs:
       evaluate_on_plan: false
       invalid_response_action: retry
-      policy_engine_mode: any
+      # Use `all` so that every bound policy/binding must pass for the MFA stage
+      # to run. This allows the negated user binding for the LDAP proxyuser (see
+      # 40-opensource-ldap.yaml) to skip 2FA for that single service account while
+      # still enforcing MFA for everyone else.
+      policy_engine_mode: all
       re_evaluate_policies: true
     conditions: []
     id: opensource-authentication-mfa-validation-stagebinding
     identifiers:
       order: 30
-      stage: !KeyOf opensource-authentication-mfa-validation
+      stage:
+        !Find [
+          authentik_stages_authenticator_validate.authenticatorvalidatestage,
+          [name, opensource-authentication-mfa-validation],
+        ]
       target: !KeyOf opensource-authentication-flow
     model: authentik_flows.flowstagebinding
     permissions: []
@@ -207,8 +199,32 @@ entries:
     model: authentik_policies.policybinding
     permissions: []
     state: present
-    metadata:
-      labels:
-        blueprints.goauthentik.io/generated: 'true'
-      name: authentik Export - 2026-06-04 15:13:39.590416+00:00
-    version: 1
+  # 2FA exception for the LDAP proxyuser.
+  #
+  # This binding references the proxyuser directly (via the `user` field) and is
+  # negated, so it passes for every user EXCEPT the proxyuser. Because the MFA
+  # stage binding uses policy_engine_mode `all`, every bound policy must pass for
+  # the MFA stage to run; for the proxyuser this negated binding fails, so MFA is
+  # skipped and it can bind without 2FA. All other users still go through MFA.
+  #
+  # The proxyuser is defined in 10-opensource-ldap-identity.yaml (imported first),
+  # so it is resolved here via !Find.
+  - attrs:
+      enabled: true
+      failure_result: true
+      group: null
+      negate: true
+      timeout: 30
+    conditions: []
+    identifiers:
+      order: 20
+      user: !Find [authentik_core.user, [username, ldap-proxyuser]]
+      target: !KeyOf opensource-authentication-mfa-validation-stagebinding
+    model: authentik_policies.policybinding
+    permissions: []
+    state: present
+metadata:
+  labels:
+    blueprints.goauthentik.io/generated: "true"
+  name: authentik Export - 2026-06-04 15:13:39.590416+00:00
+version: 1

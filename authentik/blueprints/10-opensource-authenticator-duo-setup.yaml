@@ -1,0 +1,37 @@
+version: 1
+metadata:
+  name: Opensource - DUO Authenticator Setup Flow
+entries:
+  - attrs:
+      authentication: require_authenticated
+      designation: stage_configuration
+      layout: stacked
+      name: opensource-authenticator-duo-setup
+      policy_engine_mode: any
+      title: Set up Push Notifications
+    conditions: []
+    id: flow
+    identifiers:
+      slug: opensource-authenticator-duo-setup
+    model: authentik_flows.flow
+    permissions: []
+    state: present
+  - attrs:
+      friendly_name: Push Notification
+      client_id: !Env OPENSOURCE_PUSH_MFA_CLIENT_ID
+      client_secret: !Env OPENSOURCE_PUSH_MFA_CLIENT_SECRET
+      api_hostname: !Env OPENSOURCE_PUSH_MFA_HOSTNAME
+      admin_integration_key: !Env OPENSOURCE_PUSH_MFA_ADMIN_ID
+      admin_secret_key: !Env OPENSOURCE_PUSH_MFA_ADMIN_SECRET
+      configure_flow: !KeyOf flow
+    id: opensource-authenticator-duo-setup
+    identifiers:
+      name: opensource-authenticator-duo-setup
+    model: authentik_stages_authenticator_duo.authenticatorduostage
+    state: present
+  - identifiers:
+      order: 0
+      stage: !KeyOf opensource-authenticator-duo-setup
+      target: !KeyOf flow
+    model: authentik_flows.flowstagebinding
+    state: present
