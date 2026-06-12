@@ -277,6 +277,19 @@ async function deleteVirtualMachine(baseUrl, token, hostname) {
  * Load NetBox credentials from the Settings model and invoke a callback.
  * Returns null without calling fn if NetBox is not configured.
  *
+ * Design note: why standalone functions + a callback instead of a NetBoxApi
+ * class (as used for Proxmox via `node.api()`):
+ *   1. Stateless auth. NetBox uses a static `Authorization: Token` header, so
+ *      there is no per-session state (cookie, CSRF token, ticket expiry) worth
+ *      holding on an instance. ProxmoxApi is a class precisely because its
+ *      ticket/CSRF auth IS stateful and benefits from a long-lived object.
+ *   2. Credentials are global, not per-entity. Proxmox creds live on each Node
+ *      row, so `node.api()` reads naturally as an instance method. NetBox creds
+ *      are a single system-wide pair in the Settings key/value table there is
+ *      no domain object to anchor an `.api()` method to.
+ * A NetBoxApi class would also have been reasonable; this exception to the
+ * class-based convention is deliberate and documented here for that reason.
+ *
  * @param {object} Setting - Sequelize Setting model
  * @param {function(string, string): Promise<*>} fn - Called with (baseUrl, token)
  * @returns {Promise<*|null>}
