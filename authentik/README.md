@@ -79,8 +79,10 @@ used as the LDAP **bind** flow. Stages:
 2. **Password** (order 20) — skipped if the user already has an authentication
    backend attached (e.g. arrived passwordless).
 3. **Authenticator validation** (order 30) — the push-notification 2FA check.
-   The binding uses `policy_engine_mode: all`, and the stage is skipped only
-   when every bound policy passes — used to exempt the LDAP proxyuser.
+   The binding uses `policy_engine_mode: all`, so the stage runs only when
+   every bound policy passes. A negated user binding for the LDAP proxyuser
+   fails for that account, so the stage is skipped for it (exempting the
+   proxyuser from 2FA) while every other user still gets the check.
 4. **User login** (order 100) — creates the session.
 
 ```mermaid

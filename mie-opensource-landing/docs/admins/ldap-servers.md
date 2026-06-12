@@ -69,7 +69,7 @@ In the admin UI: **Settings** → **Default Container Environment Variables**. T
 | `SSSD_LDAP_GROUP_SEARCH_BASE` | *(blank)* | No | Base DN for group searches (e.g. `ou=groups,dc=example,dc=com`). |
 | `SSSD_LDAP_USER_NAME` | *(blank)* | No | LDAP attribute mapped to the user's login name. Leave blank for the SSSD default (`uid`); set to `sAMAccountName` for Active Directory. |
 | `SSSD_LDAP_USER_GECOS` | `cn` | No | LDAP attribute mapped to the NSS gecos (full name) field, read by `getent`, `finger`, and the git-identity script. |
-| `SSSD_LDAP_ACCESS_FILTER` | `(objectClass=*)` | Yes | LDAP filter deciding **who may log in**. The default matches every entry, so all directory users are allowed. Restrict access with a stricter filter, e.g. `memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com`. Must not be blank — an empty filter denies everyone. |
+| `SSSD_LDAP_ACCESS_FILTER` | `(objectClass=*)` | Yes | LDAP filter deciding **who may log in**. The default matches every entry, so all directory users are allowed. Restrict access with a stricter filter, e.g. `(memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com)`. Must not be blank — an empty filter denies everyone. |
 | `SSSD_LDAP_DEFAULT_BIND_DN` | *(blank)* | No | DN used to bind for lookups. Leave blank for anonymous bind; set it if your directory disallows anonymous searches (e.g. `cn=svc-sssd,ou=services,dc=example,dc=com`). |
 | `SSSD_DEFAULT_AUTHTOK_TYPE` | *(blank)* | No | Type of the bind credential, typically `password`. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |
 | `SSSD_DEFAULT_AUTHTOK` | *(blank)* | No | The bind credential (password) for the bind DN. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |

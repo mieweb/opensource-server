@@ -32,8 +32,11 @@ entries:
   # authentication flow in 20-opensource-authentication-flow.yaml, which is why
   # this identity must be imported before that flow).
   #
-  # NOTE: This account is intentionally NOT granted the "Search full LDAP
-  # directory" permission, so even the proxyuser can only read its own object.
+  # NOTE: This account is intentionally granted the "Search full LDAP directory"
+  # permission so it can resolve any user/group on behalf of downstream services.
+  # This is read-only search access only; the LDAP provider exposes no write/edit
+  # capability, and no other user is granted it. The permission itself is defined
+  # alongside the LDAP provider in 40-opensource-ldap.yaml.
   # ---------------------------------------------------------------------------
   - id: ldap-proxyuser
     model: authentik_core.user

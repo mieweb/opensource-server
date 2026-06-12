@@ -14,7 +14,7 @@
 // in. This is deliberate: with access_provider=ldap and
 // ldap_access_order=filter, an EMPTY ldap_access_filter denies ALL users, so
 // the value must not be left blank. Admins restrict access by setting a more
-// specific filter, e.g. memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com.
+// specific filter, e.g. (memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com).
 const NEW_SSSD_DEFAULTS = [
   {
     key: 'SSSD_LDAP_USER_NAME',
@@ -29,7 +29,7 @@ const NEW_SSSD_DEFAULTS = [
   {
     key: 'SSSD_LDAP_ACCESS_FILTER',
     value: '(objectClass=*)',
-    description: 'LDAP access filter; users matching it may log in. Defaults to (objectClass=*) so all directory users are allowed. Set a stricter filter (e.g. memberOf=cn=allowedusers,...) to restrict access. Must not be blank, which would deny everyone.'
+    description: 'LDAP access filter; users matching it may log in. Defaults to (objectClass=*) so all directory users are allowed. Set a stricter filter (e.g. (memberOf=cn=allowedusers,ou=Groups,dc=example,dc=com)) to restrict access. Must not be blank, which would deny everyone.'
   }
 ];
 
