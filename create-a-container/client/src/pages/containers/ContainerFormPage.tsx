@@ -71,7 +71,13 @@ const serviceSchema = z
 const envVarSchema = z.object({ key: z.string(), value: z.string() });
 
 const schema = z.object({
-  hostname: z.string().min(1, 'Required'),
+  hostname: z
+    .string()
+    .min(1, 'Required')
+    .regex(
+      /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/,
+      'Only lowercase letters, digits, and hyphens; must start and end with a letter or digit (max 63 chars)',
+    ),
   template: z.string().optional(),
   customTemplate: z.string().optional(),
   entrypoint: z.string().optional(),
@@ -294,7 +300,16 @@ export function ContainerFormPage() {
         navigate(`/sites/${siteId}/containers`, { state: { dnsWarnings } });
       }
     },
-    onError: (err: ApiError) => toast.error(err.message),
+    onError: (err: ApiError) => {
+      if (err.fields && Object.keys(err.fields).length > 0) {
+        const detail = Object.entries(err.fields)
+          .map(([f, m]) => `${f}: ${m}`)
+          .join('; ');
+        toast.error(`${err.message} — ${detail}`);
+      } else {
+        toast.error(err.message);
+      }
+    },
   });
 
   if ((isEdit && containerLoading) || bootstrapLoading) {

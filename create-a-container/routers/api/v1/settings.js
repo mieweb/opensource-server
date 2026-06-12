@@ -14,6 +14,8 @@ const KEYS = [
   'smtp_url',
   'smtp_noreply_address',
   'default_container_env_vars',
+  'netbox_url',
+  'netbox_token',
 ];
 
 router.get(
@@ -30,6 +32,8 @@ router.get(
       smtpUrl: settings.smtp_url || '',
       smtpNoreplyAddress: settings.smtp_noreply_address || '',
       defaultContainerEnvVars,
+      netboxUrl: settings.netbox_url || '',
+      netboxToken: settings.netbox_token || '',
     });
   }),
 );
@@ -41,6 +45,8 @@ router.put(
       smtpUrl,
       smtpNoreplyAddress,
       defaultContainerEnvVars,
+      netboxUrl,
+      netboxToken,
     } = req.body || {};
 
     const envVars = [];
@@ -59,6 +65,8 @@ router.put(
     await Setting.set('smtp_url', smtpUrl || '');
     await Setting.set('smtp_noreply_address', smtpNoreplyAddress || '');
     await Setting.set('default_container_env_vars', JSON.stringify(envVars));
+    await Setting.set('netbox_url', netboxUrl || '');
+    await Setting.set('netbox_token', netboxToken || '');
 
     return ok(res, { saved: true });
   }),

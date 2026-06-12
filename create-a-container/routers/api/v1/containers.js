@@ -14,11 +14,13 @@ const {
   Site,
   ExternalDomain,
   Job,
+  Setting,
   Sequelize,
   sequelize,
 } = require('../../../models');
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../../../utils/docker-registry');
 const { manageDnsRecords } = require('../../../utils/cloudflare-dns');
+const { deleteVirtualMachine, withNetbox } = require('../../../utils/netbox');
 const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
 
 const router = express.Router({ mergeParams: true });
@@ -581,6 +583,12 @@ router.delete(
       }
     }
     await container.destroy();
+
+    // Remove the VM from NetBox if the integration is configured
+    await withNetbox(Setting, (baseUrl, token) =>
+      deleteVirtualMachine(baseUrl, token, container.hostname),
+    );
+
     return ok(res, { deleted: true, dnsWarnings });
   }),
 );

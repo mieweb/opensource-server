@@ -162,6 +162,8 @@ export interface ApiKeyCreated extends ApiKey {
 export interface AppSettings {
   smtpUrl: string;
   smtpNoreplyAddress: string;
+  netboxUrl: string;
+  netboxToken: string;
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
 }
 

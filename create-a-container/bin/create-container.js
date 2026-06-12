@@ -34,6 +34,7 @@ const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, Re
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
+const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -47,6 +48,23 @@ function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
+}
+
+/**
+ * Parse the disk size in gigabytes from a Proxmox LXC `rootfs` config value.
+ * Example input: "local-lvm:vm-123-disk-0,size=50G" → 50
+ * Supports T/G/M/K suffixes; defaults to gigabytes when no suffix is present.
+ * @param {string} [rootfs] - The rootfs config string from lxcConfig
+ * @returns {number|null} Disk size rounded to whole gigabytes, or null if unparseable
+ */
+function parseRootfsSizeGb(rootfs) {
+  if (!rootfs) return null;
+  const match = /size=(\d+(?:\.\d+)?)([TGMK])?/i.exec(rootfs);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  const unit = (match[2] || 'G').toUpperCase();
+  const gb = { T: value * 1024, G: value, M: value / 1024, K: value / (1024 * 1024) }[unit];
+  return Number.isFinite(gb) ? Math.round(gb) : null;
 }
 
 /**
@@ -434,6 +452,13 @@ async function main() {
     const config = await client.lxcConfig(node.name, vmid);
     const actualEntrypoint = config['entrypoint'] || null;
     const actualEnv = config['env'] || null;
+
+    // Read back the actual provisioned resources so downstream systems
+    // (e.g. NetBox) mirror what the container really has rather than assuming
+    // the values requested at creation time.
+    const actualCores = config['cores'] != null ? parseInt(config['cores'], 10) : null;
+    const actualMemoryMb = config['memory'] != null ? parseInt(config['memory'], 10) : null;
+    const actualDiskGb = parseRootfsSizeGb(config['rootfs']);
     
     // Parse NUL-separated env string back to JSON object
     let environmentVars = {};
@@ -492,7 +517,27 @@ async function main() {
       const warnings = await manageDnsRecords(httpServices, site);
       for (const w of warnings) console.warn(`[DNS WARNING] ${w}`);
     }
-    
+
+    // Register the container in NetBox if the integration is configured
+    await withNetbox(Setting, async (baseUrl, token) => {
+      console.log(`Registering container in NetBox (cluster: ${site.name})...`);
+      try {
+        await createVirtualMachine(baseUrl, token, {
+          hostname: container.hostname,
+          clusterName: site.name,
+          ipv4Address,
+          createdBy: container.username,
+          nodeName: container.node?.name,
+          vcpus: actualCores,
+          memoryMb: actualMemoryMb,
+          diskGb: actualDiskGb,
+        });
+        console.log(`NetBox: VM "${container.hostname}" created`);
+      } catch (err) {
+        console.warn(`NetBox: VM creation failed (non-fatal): ${err.message}`);
+      }
+    });
+
     process.exit(0);
   } catch (err) {
     console.error('Container creation failed:', err.message);
