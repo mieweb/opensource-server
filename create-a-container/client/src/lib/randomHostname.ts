@@ -29,10 +29,16 @@ const ADJECTIVES_2 = [
 ];
 
 const NOUNS = [
-  'fortress', 'gateway', 'tower', 'harbor', 'valley', 'bridge', 'station', 'beacon',
-  'summit', 'canyon', 'island', 'delta', 'pinnacle', 'sentinel', 'citadel', 'archive',
-  'nexus', 'vault', 'atlas', 'compass', 'anchor', 'reef', 'realm', 'domain', 'ridge',
-  'plateau', 'haven', 'peak', 'grove',
+  // animals
+  'badger', 'falcon', 'ferret', 'otter', 'raven', 'gecko', 'panda', 'jaguar', 'narwhal',
+  'quokka', 'axolotl', 'capybara', 'wombat', 'dingo', 'lemur', 'marmot', 'tapir', 'viper',
+  // objects / tools
+  'anvil', 'lantern', 'compass', 'sextant', 'pendulum', 'prism', 'dynamo', 'turbine',
+  'wrench', 'chisel', 'piston', 'sprocket', 'pulley', 'bellows', 'lathe',
+  // celestial / scientific
+  'comet', 'photon', 'neutron', 'quasar', 'nebula', 'pulsar', 'proton', 'cyclone',
+  // whimsical / abstract
+  'riddle', 'fable', 'cipher', 'totem', 'sigil', 'emblem', 'omen', 'mantra', 'lore',
 ];
 
 function pick<T>(arr: T[]): T {
