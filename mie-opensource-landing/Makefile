@@ -50,3 +50,4 @@ apk:
 
 clean:
 	rm -rf $(STAGE) site .venv
+	rm -f *.deb *.rpm *.apk

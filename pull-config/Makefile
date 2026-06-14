@@ -59,3 +59,4 @@ apk:
 
 clean:
 	rm -rf $(STAGE)
+	rm -f *.deb *.rpm *.apk

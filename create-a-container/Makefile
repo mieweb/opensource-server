@@ -103,3 +103,4 @@ apk:
 
 clean:
 	rm -rf $(STAGE) node_modules client/node_modules client/dist
+	rm -f *.deb *.rpm *.apk

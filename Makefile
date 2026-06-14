@@ -23,11 +23,20 @@ MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
 
 .PHONY: deps build install dev deb rpm apk clean $(COMPONENTS)
 
-deps build install clean:
+deps build install:
 	@for c in $(COMPONENTS); do \
 		echo "==> $$c: $@"; \
 		$(MAKE) -C $$c $@ $(MAKE_VARS) || exit $$?; \
 	done
+
+# Clean each component (which removes its built packages) and the dist/
+# collection directory.
+clean:
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: clean"; \
+		$(MAKE) -C $$c clean $(MAKE_VARS) || exit $$?; \
+	done
+	rm -rf dist
 
 # Package every component, then collect the artifacts into ./dist.
 deb rpm apk:
