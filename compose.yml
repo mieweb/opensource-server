@@ -32,6 +32,8 @@ services:
   # node_modules are populated in the user's create-a-container directory. This
   # is usually handled by the manager's Dockerfile, but we're mounting over that
   # directory so we need to be sure the user has them.
+  #
+  # Mirrors create-a-container's `make deps` (the slim image has no make).
   node:
     image: node:24-trixie-slim
     volumes:
@@ -40,8 +42,8 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        apt-get update && apt-get install -y --no-install-recommends make git
-        exec make deps
+        npm ci --omit=dev --no-audit --no-fund
+        exec npm --prefix client ci --no-audit --no-fund
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically
@@ -53,18 +55,19 @@ services:
   #
   # Like zensical, this is a development convenience and not a hard dependency:
   # it does an initial build so a dist always exists, then watches for changes.
-  # The server itself runs inside Proxmox, so this only runs the client watcher
-  # (create-a-container's `make dev-client`).
+  # The server itself runs inside Proxmox, so this only runs the client watcher.
+  # Mirrors create-a-container's `make dev-client` (the slim image has no make).
   client:
     image: node:24-trixie-slim
     volumes:
       - ./:/opt/opensource-server
-    working_dir: /opt/opensource-server/create-a-container
+    working_dir: /opt/opensource-server/create-a-container/client
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        apt-get update && apt-get install -y --no-install-recommends make git
-        exec make dev-client
+        npm ci --no-audit --no-fund
+        npm run build
+        exec npm run build:watch
     # Healthy once an initial bundle exists, so Proxmox can wait for it on a
     # fresh checkout (where client/dist isn't present yet) before serving.
     healthcheck:
@@ -81,16 +84,14 @@ services:
   # direct dependency on this because it's meant to be a development convenience
   # not a hard dependency. The Proxmox service works just fine if the docs are
   # not getting rebuilt or even if they were never built in the first place.
+  #
+  # Mirrors mie-opensource-landing's `make dev` (the uv image has no make).
   zensical:
     image: astral/uv:0.11.14-trixie-slim
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/mie-opensource-landing
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        apt-get update && apt-get install -y --no-install-recommends make git
-        exec make dev
+    command: uv run --active zensical serve
     environment:
       VIRTUAL_ENV: /opt/zensical
       PROXMOX_URL: https://localhost:8006
