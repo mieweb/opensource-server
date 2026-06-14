@@ -7,9 +7,14 @@
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
-# v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234 ;
-# no tags reachable (e.g. shallow checkout) -> 0.0.0+g<sha> (always a valid,
-# digit-leading package version).
+# Version derived from the nearest git tag, as a plain semver string. nfpm
+# renders the correct per-format version from it (deb/rpm use ~rc1, apk uses
+# _rc1, etc.), so no separator translation happens here:
+#   v2026.6.3                 -> 2026.6.3
+#   v2026.6.3-rc1             -> 2026.6.3-rc1
+#   v2026.6.3-15-gabc1234     -> 2026.6.3+15.gabc1234        (snapshot metadata)
+#   v2026.6.3-rc1-15-gabc1234 -> 2026.6.3-rc1+15.gabc1234
+# no tag reachable (e.g. shallow checkout) -> 0.0.0+g<sha>.
 VERSION ?= $(shell d=$$(git describe --tags 2>/dev/null); if [ -n "$$d" ]; then echo "$$d" | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/'; else echo "0.0.0+g$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"; fi)
 
 PKG_NAME := opensource-docs
