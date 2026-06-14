@@ -71,6 +71,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/base
           bake-target: base
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
@@ -84,6 +87,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/nodejs
           bake-target: nodejs
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
@@ -97,6 +103,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/docs
           bake-target: docs
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
@@ -110,6 +119,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/agent
           bake-target: agent
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
@@ -122,6 +134,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/manager
           bake-target: manager
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
@@ -134,6 +149,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/proxmox-ve
           bake-target: proxmox-ve
+          # Disable auto-latest (fires for type=ref,event=tag); :latest is
+          # controlled solely by the explicit type=raw rule below.
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
