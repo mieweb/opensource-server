@@ -3,6 +3,11 @@
 # `make apk`, which stage the component into ./build-root first and pass
 # VERSION through the environment.
 #
+# /etc files are declared explicitly as config so admin edits survive upgrades;
+# the rest of the staged tree is packaged per top-level directory. This avoids
+# any overlap between the tree and the config entries (nfpm rejects a file that
+# appears in both), so `make install` and `make package` never fight.
+#
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
 name: opensource-server
 arch: amd64
@@ -34,15 +39,17 @@ suggests:
   - postgresql
 
 contents:
-  # Everything staged by `make install DESTDIR=./build-root`, except the
-  # logrotate drop-in which `make package` removes from the staged tree so it
-  # can be added here as a config file (preserving admin edits on upgrade).
-  - src: ./build-root
-    dst: /
-    type: tree
-  - src: ./nfpm/opensource-server.logrotate
+  # Config files first, declared explicitly so they are tagged as conffiles.
+  - src: ./build-root/etc/logrotate.d/opensource-server
     dst: /etc/logrotate.d/opensource-server
     type: config
+  # Everything else, packaged per top-level directory (no /etc overlap).
+  - src: ./build-root/opt
+    dst: /opt
+    type: tree
+  - src: ./build-root/usr
+    dst: /usr
+    type: tree
 
 scripts:
   postinstall: ./nfpm/postinstall.sh

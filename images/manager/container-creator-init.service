@@ -1,6 +1,12 @@
 [Unit]
 Description=Initialize PostgreSQL for Container Creator
+# This unit provisions a *local* PostgreSQL database for the manager. It is
+# part of the manager image (which installs PostgreSQL), not the
+# opensource-server package — the package only suggests postgresql and works
+# equally with a remote database. Hence postgresql is a hard requirement here.
+Requires=postgresql.service
 After=postgresql.service
+Before=container-creator.service
 ConditionPathExists=!/etc/default/container-creator
 
 [Service]

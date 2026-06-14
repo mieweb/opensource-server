@@ -5,11 +5,15 @@
 #   build    (default) compile the component; depends on deps
 #   install  stage built files into DESTDIR; depends on build
 #   dev      run the development watch loop; depends on deps
-#   deb/rpm/apk  package the staged tree with nfpm; depend on install
+#   deb/rpm/apk  package the staged build-root with nfpm; depend on install
 #
 # PREFIX is the vendor install prefix every runtime reference in the project
 # expects (systemd units, the manager-rendered nginx config). DESTDIR is the
 # staging root. VERSION is derived from git but can be overridden.
+#
+# Packaging stages into ./build-root (a normal DESTDIR install) and points
+# nfpm at it. The staged tree is reused across packagers; run `make clean`
+# first for a guaranteed-pristine package.
 
 .DEFAULT_GOAL := build
 
@@ -18,7 +22,6 @@ DESTDIR ?= /
 # v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/')
 
-PKG_NAME := opensource-server
 DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
@@ -57,6 +60,10 @@ dev-client: deps
 	npm run client:build
 	npm run client:build:watch
 
+# Stage built files into DESTDIR. container-creator-init.service is NOT
+# installed here: provisioning a local PostgreSQL is an image/environment
+# choice (the package only suggests postgresql), so that unit lives in the
+# manager image.
 install: build
 	$(INSTALL) -d $(DESTBIN)
 	$(INSTALL_DATA) $(APP_FILES) $(DESTBIN)/
@@ -68,22 +75,21 @@ install: build
 	# systemd units (enabled by the package postinstall script)
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) systemd/container-creator.service $(UNIT_DIR)/
-	$(INSTALL_DATA) systemd/container-creator-init.service $(UNIT_DIR)/
 	$(INSTALL_DATA) systemd/job-runner.service $(UNIT_DIR)/
 	# logrotate for the morgan access log
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
 	$(INSTALL_DATA) nfpm/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
 
-# Package the staged tree with nfpm. Staged into a clean root so the package
-# contains only this component's files.
+# Package the staged build-root with nfpm. nfpm trees the non-/etc paths and
+# declares /etc files as config explicitly (see nfpm.yaml), so staging and
+# packaging never fight over conffile tagging.
 PACKAGER ?= deb
-package:
-	rm -rf build-root
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
-	# The logrotate drop-in is added by nfpm.yaml as a config file from source,
-	# so drop the staged copy to avoid a content collision with the tree.
-	rm -f build-root/etc/logrotate.d/opensource-server
+package: install-buildroot
 	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
+
+.PHONY: install-buildroot
+install-buildroot:
+	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
 
 deb:
 	$(MAKE) package PACKAGER=deb

@@ -2,7 +2,7 @@
 # postinstall for opensource-server: enable the manager systemd units.
 set -e
 
-UNITS="container-creator-init.service container-creator.service job-runner.service"
+UNITS="container-creator.service job-runner.service"
 
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
@@ -16,9 +16,9 @@ for unit in $UNITS; do
 done
 
 # If systemd is running, (re)start the long-running services so an upgrade
-# picks up new code. The init service is oneshot and gated on its conditions.
+# picks up new code.
 if [ -d /run/systemd/system ]; then
-    systemctl restart container-creator.service job-runner.service || true
+    systemctl restart $UNITS || true
 fi
 
 exit 0

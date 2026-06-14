@@ -2,7 +2,7 @@
 # preremove for opensource-server: stop and disable the manager systemd units.
 set -e
 
-UNITS="container-creator.service job-runner.service container-creator-init.service"
+UNITS="container-creator.service job-runner.service"
 
 # $1 is "remove"/"purge" (deb) or the remaining-version count (rpm: 0 on final
 # removal). Only act on a real removal, not an upgrade.
