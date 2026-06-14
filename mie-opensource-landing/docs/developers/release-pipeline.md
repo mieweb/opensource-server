@@ -39,9 +39,11 @@ Variables (overridable):
 | `DESTDIR` | `/` | Staging root for `install` |
 | `VERSION` | derived from `git describe` | Package version |
 
-`VERSION` is computed inline from git tags: an exact tag `v2026.6.2` becomes
-`2026.6.2`; commits after a tag become `2026.6.2+<n>.g<sha>` (valid semver build
-metadata that sorts above the tag and below the next release).
+`VERSION` is computed inline from git tags: an exact tag `2026.6.2` is used
+as-is; commits after a tag become `2026.6.2+<n>.g<sha>` (valid semver build
+metadata that sorts above the tag and below the next release); a prerelease tag
+`2026.6.3-rc1` sorts below the eventual `2026.6.3`. Tags are unprefixed semver
+(no leading `v`).
 
 ```bash
 # Build and stage a component anywhere:
@@ -118,8 +120,9 @@ whole build; a missing release is a non-fatal `apt update` warning (hence the
 
 ## Releases
 
-To cut a release, **publish a GitHub release** (full or prerelease) for a
-`vX.Y.Z` tag. Publishing the release triggers
+To cut a release, **publish a GitHub release** (full or prerelease) for an
+unprefixed semver tag (e.g. `2026.6.3`, or `2026.6.3-rc1` for a prerelease).
+Publishing the release triggers
 [`release.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/release.yml),
 which builds the packages, generates flat APT repository metadata (`Packages`,
 `Packages.gz`) with `dpkg-scanpackages`, and uploads the debs and metadata to
@@ -135,7 +138,7 @@ deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/do
 Image tagging follows the same rule: `:latest` is published only when a
 **non-prerelease** release is published, keeping the `:latest` image channel
 aligned with the `releases/latest` package channel. Pre-releases publish their
-own assets and `:vX.Y.Z` image tags without moving `:latest`.
+own assets and `:X.Y.Z` image tags without moving `:latest`.
 
 ## Installing and updating on a host
 
