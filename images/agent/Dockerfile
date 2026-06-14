@@ -1,11 +1,21 @@
+# syntax=docker/dockerfile:1
 FROM nodejs
 
+# Stage the release APT source so `apt upgrade` pulls future releases of the
+# opensource-* packages automatically. A missing release (e.g. during image
+# builds) is a non-fatal `apt update` warning, so the source can live here for
+# the whole build.
+COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
+
 # Install the agent package (and its dependencies: nginx with stream +
-# ModSecurity modules, dnsmasq, cron, ...) built by the builder image.
-COPY --from=builder /dist/opensource-agent_*.deb /tmp/debs/
-RUN apt-get update && \
-    apt-get install -y /tmp/debs/*.deb && \
-    rm -rf /tmp/debs && \
+# ModSecurity modules, dnsmasq, cron, ...) built by the builder image. The
+# package is bind-mounted from the builder stage rather than copied so it does
+# not add an image layer. `apt-get update` is allowed to fail because the
+# release APT source may 404 during a build (the release being built may not
+# exist yet); the install uses cached indices.
+RUN --mount=from=builder,source=/dist,target=/dist \
+    { apt-get update || true; } && \
+    apt-get install -y /dist/opensource-agent_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -38,11 +48,6 @@ RUN sed -i \
 # Install acme.sh for ACME certificate management
 RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
-
-# Stage the release APT source so `apt upgrade` pulls future releases of the
-# opensource-* packages automatically. Added last so it is never consulted by
-# an `apt update` during this build (the release may not exist yet).
-COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Tag the exposed ports for services handled by the container
 # NGINX (http, https, quic)
