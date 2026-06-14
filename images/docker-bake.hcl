@@ -13,11 +13,21 @@ target "nodejs" {
     }
 }
 
+# Builds the three Debian packages consumed by the docs, agent and manager
+# images. Not part of the default group: built on demand as a dependency, and
+# exported by CI with `docker buildx bake builder --set
+# builder.output=type=local,dest=dist`.
+target "builder" {
+    context = "../"
+    dockerfile = "images/builder/Dockerfile"
+}
+
 target "docs" {
     context = "../"
     dockerfile = "images/docs/Dockerfile"
     contexts = {
         base = "target:base"
+        builder = "target:builder"
     }
 }
 
@@ -26,6 +36,7 @@ target "agent" {
     dockerfile = "images/agent/Dockerfile"
     contexts = {
         nodejs = "target:nodejs"
+        builder = "target:builder"
     }
 }
 
@@ -34,6 +45,7 @@ target "manager" {
     dockerfile = "images/manager/Dockerfile"
     contexts = {
         agent = "target:agent"
+        builder = "target:builder"
     }
 }
 

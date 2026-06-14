@@ -1,16 +1,17 @@
 FROM nodejs
 
-# Install all APT packages
+# Install the agent package (and its dependencies: nginx with stream +
+# ModSecurity modules, dnsmasq, cron, ...) built by the builder image.
+COPY --from=builder /dist/opensource-agent_*.deb /tmp/debs/
 RUN apt-get update && \
-    apt-get install -y \
-        libnginx-mod-stream \
-        libnginx-mod-http-modsecurity \
-        ssl-cert \
-        make \
-        dnsmasq \
-    && \
+    apt-get install -y /tmp/debs/*.deb && \
+    rm -rf /tmp/debs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Everything below is image-level environment configuration that the package
+# does not own because it edits conffiles belonging to other packages
+# (nginx, modsecurity-crs, dnsmasq).
 
 # configure nginx ModSecurity defaults
 RUN sed -i \
@@ -18,9 +19,6 @@ RUN sed -i \
         /etc/nginx/modsecurity_includes.conf \
     && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
     && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine DetectionOnly/' /etc/nginx/modsecurity.conf
-
-# Create the auth cache directory for NGINX forward auth
-RUN mkdir -p /var/cache/nginx/auth_cache
 
 # Logrotate overrides for NGINX and ModSecurity to work around a logrotate
 # repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
@@ -31,7 +29,7 @@ COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
 COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
 COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
-# Install DNSMasq and configure it to only get it's config from our pull-config
+# Configure DNSMasq to only get its config from our pull-config
 RUN sed -i \
     -e 's/^CONFIG_DIR=\(.*\)$/#CONFIG_DIR=\1/' \
     -e 's/^#IGNORE_RESOLVCONF=\(.*\)$/IGNORE_RESOLVCONF=\1/' \
@@ -41,17 +39,10 @@ RUN sed -i \
 RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
 
-# Install uv for building the docs
-ARG UV_VERSION=0.11.14
-RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar -xzf - --strip-components=1 -C /usr/local/bin \
-      uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
-
-# Install the software. We include the .git directory so that the software can
-# update itself without replacing the entire container.
-COPY . /opt/opensource-server
-RUN cd /opt/opensource-server \
-    && make install-pull-config
+# Stage the release APT source so `apt upgrade` pulls future releases of the
+# opensource-* packages automatically. Added last so it is never consulted by
+# an `apt update` during this build (the release may not exist yet).
+COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Tag the exposed ports for services handled by the container
 # NGINX (http, https, quic)

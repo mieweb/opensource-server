@@ -1,20 +1,16 @@
 FROM base
 
-# Install prerequisites
+# Install nginx and the docs package built by the builder image. The package
+# ships content only; serving it is this image's concern.
+COPY --from=builder /dist/opensource-docs_*.deb /tmp/debs/
 RUN apt-get update && \
-    apt-get install -y make nginx && \
+    apt-get install -y nginx /tmp/debs/*.deb && \
+    rm -rf /tmp/debs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv for building the docs
-ARG UV_VERSION=0.11.6
-RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar -xzf - --strip-components=1 -C /usr/local/bin \
-      uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
-
-# Build docs
-COPY . /opt/opensource-server
-RUN cd /opt/opensource-server && make install-docs
+# Stage the release APT source so `apt upgrade` pulls future releases.
+COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Replace the default nginx site with our docs config
 COPY ./images/docs/docs-site.conf /etc/nginx/sites-enabled/default
