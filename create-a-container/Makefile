@@ -11,9 +11,10 @@
 # expects (systemd units, the manager-rendered nginx config). DESTDIR is the
 # staging root. VERSION is derived from git but can be overridden.
 #
-# Packaging stages into a dedicated .pkg-root (never a user-supplied DESTDIR)
-# and runs nfpm from there, so nfpm.yaml's content sources are relative to the
-# staging root and work for any DESTDIR.
+# Packaging stages into a dedicated .nfpm/buildroot (never a user-supplied DESTDIR)
+# and runs nfpm from the component directory; nfpm.yaml interpolates the
+# staging path via ${DESTDIR} (expand: true), so it stays DRY and works for
+# any DESTDIR.
 
 .DEFAULT_GOAL := build
 
@@ -26,7 +27,7 @@ DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
 # Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-STAGE := $(CURDIR)/.pkg-root
+STAGE := $(CURDIR)/.nfpm/buildroot
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -77,22 +78,21 @@ install: build
 	cp -a client/dist $(DESTBIN)/client/
 	# systemd units (enabled by the package postinstall script)
 	$(INSTALL) -d $(UNIT_DIR)
-	$(INSTALL_DATA) systemd/container-creator.service $(UNIT_DIR)/
-	$(INSTALL_DATA) systemd/job-runner.service $(UNIT_DIR)/
+	$(INSTALL_DATA) contrib/systemd/container-creator.service $(UNIT_DIR)/
+	$(INSTALL_DATA) contrib/systemd/job-runner.service $(UNIT_DIR)/
 	# logrotate for the morgan access log
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
-	$(INSTALL_DATA) nfpm/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
+	$(INSTALL_DATA) contrib/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
 
-# Package the staged tree with nfpm. nfpm runs from the staging root so the
-# content sources in nfpm.yaml are relative to it; the maintainer scripts are
-# staged under .nfpm/ (outside the packaged contents) for the same reason.
+# Package the staged tree with nfpm. Files are staged into a dedicated
+# .nfpm/buildroot (never a user-supplied DESTDIR); nfpm.yaml interpolates that
+# path via ${DESTDIR}, so nfpm runs from the component directory (where its
+# contrib/ maintainer scripts live) and packaging never mutates the staged tree.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	$(INSTALL) -d $(STAGE)/.nfpm
-	$(INSTALL) -m 0755 nfpm/postinstall.sh nfpm/preremove.sh $(STAGE)/.nfpm/
-	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
+	DESTDIR=$(STAGE) VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb

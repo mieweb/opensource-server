@@ -1,7 +1,8 @@
 # nfpm configuration for the opensource-server package (create-a-container).
 # See https://nfpm.goreleaser.com. `make deb/rpm/apk` stage the component into
-# a staging root and run nfpm from there, so content/script sources are
-# relative to the staging root and VERSION is passed via the environment.
+# a staging root (DESTDIR) and run nfpm from the component directory; the
+# content sources below interpolate ${DESTDIR} via `expand: true`, and VERSION
+# is passed through the environment.
 #
 # /etc files are declared explicitly as config so admin edits survive upgrades;
 # the rest of the staged tree is packaged per top-level directory. This avoids
@@ -38,22 +39,26 @@ depends:
 suggests:
   - postgresql
 
-# Sources are relative to the staging root (nfpm runs from DESTDIR).
+# Sources are taken from the staging root via ${DESTDIR} (expand: true tells
+# nfpm to interpolate environment variables in the path).
 contents:
   # Config files first, declared explicitly so they are tagged as conffiles.
-  - src: etc/logrotate.d/opensource-server
+  - src: ${DESTDIR}/etc/logrotate.d/opensource-server
     dst: /etc/logrotate.d/opensource-server
     type: config
+    expand: true
   # Everything else, packaged per top-level directory (no /etc overlap).
-  - src: opt
+  - src: ${DESTDIR}/opt
     dst: /opt
     type: tree
-  - src: usr
+    expand: true
+  - src: ${DESTDIR}/usr
     dst: /usr
     type: tree
+    expand: true
 
-# Maintainer scripts are staged into the staging root under .nfpm/ (outside
-# the packaged contents) so they resolve relative to nfpm's working directory.
+# Maintainer scripts are referenced relative to nfpm's working directory (the
+# component directory, where `make` runs nfpm).
 scripts:
-  postinstall: .nfpm/postinstall.sh
-  preremove: .nfpm/preremove.sh
+  postinstall: ./contrib/postinstall.sh
+  preremove: ./contrib/preremove.sh

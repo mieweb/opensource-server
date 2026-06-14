@@ -13,14 +13,13 @@ case "${1:-}" in
         ;;
 esac
 
-if [ -d /run/systemd/system ]; then
-    for unit in $UNITS; do
-        systemctl stop "$unit" >/dev/null 2>&1 || true
-    done
-fi
+# Nothing to do without systemctl (non-systemd container/chroot).
+command -v systemctl >/dev/null 2>&1 || exit 0
 
-for unit in $UNITS; do
-    systemctl disable "$unit" >/dev/null 2>&1 || true
-done
+# Stopping needs a running systemd; disabling (symlink removal) does not.
+if [ -d /run/systemd/system ]; then
+    systemctl stop $UNITS
+fi
+systemctl disable $UNITS
 
 exit 0

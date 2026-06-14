@@ -3,7 +3,7 @@ node_modules
 data/
 
 # packaging build artifacts
-/.pkg-root/
+/.nfpm/buildroot/
 /*.deb
 /*.rpm
 /*.apk
