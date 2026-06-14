@@ -29,7 +29,7 @@ The default goal is `build`.
 | `build` | Compile the component (default goal); depends on `deps` |
 | `install` | Stage built files into `DESTDIR` at their final paths; depends on `build` |
 | `dev` | Run the development watch loop; depends on `deps` |
-| `deb` / `rpm` / `apk` | Stage and package with [nfpm](https://nfpm.goreleaser.com); depend on `install` |
+| `deb` / `rpm` / `apk` | Stage and package with [fpm](https://fpm.readthedocs.io/); depend on `install` |
 
 Variables (overridable):
 
@@ -74,34 +74,38 @@ uses these same targets: the `client` service runs `make dev-client` (the
 server runs inside the Proxmox container) and the `zensical` service runs
 `make dev`.
 
-## Packaging with nfpm
+## Packaging with fpm
 
-Each component has an `nfpm.yaml` that packages the staged tree (`type: tree`)
-plus any config files and maintainer scripts. nfpm produces deb, rpm, and apk
-from the same definition, so `make rpm` and `make apk` also work.
+Each component has a `.fpm` options file holding the static package metadata
+(name, architecture, dependencies, description, scripts, config files). The
+Makefile's `package` target stages the component into a `.pkg/buildroot` and
+runs [fpm](https://fpm.readthedocs.io/) with the dynamic options on the command
+line — output type, version (composed per format by `./package-version`), and
+the staging dir. fpm's `dir` input copies the staged tree verbatim from
+`-C .pkg/buildroot`, preserving symlinks (e.g. `node_modules/.bin/sequelize`)
+and the directory layout. The same definition produces deb, rpm, and apk, so
+`make rpm` and `make apk` also work.
 
 - `opensource-server` ships the `container-creator` and `job-runner` systemd
-  units and enables them via an nfpm `postinstall` script (`preremove` disables
-  them on real removal). The log directory is created on demand by the unit's
-  `LogsDirectory`, not shipped in the package. The logrotate drop-in is a config
-  file. The `container-creator-init` unit (which provisions a *local*
-  PostgreSQL) is **not** in the package — it is part of the manager image, since
-  the package only suggests postgresql and works with a remote database too.
-- `opensource-agent` ships the pull-config instances and cron schedule as
-  config files so admin customizations survive upgrades.
+  units and enables them via an `after-install` script (`before-remove`
+  disables them on real removal). The log directory is created on demand by the
+  unit's `LogsDirectory`, not shipped in the package. The logrotate drop-in is
+  the only config file (`--config-files`). The `container-creator-init` unit
+  (which provisions a *local* PostgreSQL) is **not** in the package — it is part
+  of the manager image, since the package only suggests postgresql and works
+  with a remote database too.
+- `opensource-agent` ships the pull-config engine, instances, cron schedule and
+  the static error pages. These are program code, not configuration (runtime
+  config comes from `/etc/environment`), so nothing is marked as a config file.
 - `opensource-docs` ships content only.
 
-Each `nfpm.yaml` declares its `/etc` files explicitly as `config` and packages
-the rest of the staged tree per top-level directory (`/opt`, `/usr`, `/var`).
-This keeps conffile tagging without any file appearing in both a `tree` and a
-`config` entry (which nfpm rejects), so `make install` and `make package` never
-fight. `make package` reuses the `DESTDIR` install in `build-root` rather than
-mutating it — run `make clean` first for a guaranteed-pristine package.
+Config files are marked explicitly with `--config-files`; `--deb-no-default-config-files`
+stops fpm/dpkg from auto-marking everything under `/etc` as a conffile.
 
 ## Container images
 
 The [`builder`](https://github.com/mieweb/opensource-server/blob/main/images/builder/Dockerfile)
-image runs `make deb` (Node.js, uv, and nfpm) to produce all three packages,
+image runs `make deb` (Node.js, uv, and fpm) to produce all three packages,
 exported as an artifact-only stage. The `docs`, `agent`, and `manager` images
 install those packages via a Docker Bake `builder` context instead of copying
 the repository. The packages are bind-mounted (no extra image layer):
