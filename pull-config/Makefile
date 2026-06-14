@@ -1,0 +1,62 @@
+# pull-config — Makefile (opensource-agent package)
+#
+# Standard component contract (see create-a-container/Makefile for details).
+# pull-config is plain bash, so deps/build/dev are no-ops; install stages the
+# engine, instances, cron schedule and the shared error pages.
+
+.DEFAULT_GOAL := build
+
+PREFIX  ?= /opt/opensource-server
+DESTDIR ?= /
+# v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234
+VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/')
+
+PKG_NAME := opensource-agent
+
+INSTALL      := install
+INSTALL_DATA := $(INSTALL) -m 0644
+INSTALL_PROG := $(INSTALL) -m 0755
+
+# The static error pages live at the repository root and are referenced by the
+# manager-rendered nginx config; they ship with the agent package.
+ERROR_PAGES := ../error-pages
+
+.PHONY: deps build dev install deb rpm apk package clean
+
+# Plain bash; nothing to install, compile, or watch.
+deps:
+build: deps
+dev: deps
+
+install: build
+	# pull-config engine — instances exec this absolute path.
+	$(INSTALL) -D -m 0755 bin/pull-config $(DESTDIR)$(PREFIX)/pull-config/bin/pull-config
+	# pull-config instances (admin-customizable) + cron schedule.
+	$(INSTALL) -d $(DESTDIR)/etc/pull-config.d
+	$(INSTALL_PROG) etc/pull-config.d/* $(DESTDIR)/etc/pull-config.d/
+	$(INSTALL) -D -m 0644 etc/cron.d/pull-config $(DESTDIR)/etc/cron.d/pull-config
+	# Static error pages referenced by the manager-rendered nginx config.
+	$(INSTALL) -d $(DESTDIR)$(PREFIX)/error-pages
+	$(INSTALL_DATA) $(ERROR_PAGES)/* $(DESTDIR)$(PREFIX)/error-pages/
+	# Forward-auth cache directory used by the manager-rendered nginx config.
+	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
+
+PACKAGER ?= deb
+package:
+	rm -rf build-root
+	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
+	# Conffiles are added by nfpm.yaml as config files from source, so drop the
+	# staged copies to avoid content collisions with the tree.
+	rm -f build-root/etc/cron.d/pull-config
+	rm -rf build-root/etc/pull-config.d
+	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
+
+deb:
+	$(MAKE) package PACKAGER=deb
+rpm:
+	$(MAKE) package PACKAGER=rpm
+apk:
+	$(MAKE) package PACKAGER=apk
+
+clean:
+	rm -rf build-root

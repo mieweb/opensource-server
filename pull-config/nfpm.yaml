@@ -1,0 +1,65 @@
+# nfpm configuration for the opensource-agent package (pull-config).
+# See https://nfpm.goreleaser.com. Packaged via `make deb` / `make rpm` /
+# `make apk`, which stage the component into ./build-root first.
+#
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
+name: opensource-agent
+arch: all
+platform: linux
+version: ${VERSION}
+section: admin
+priority: optional
+maintainer: "Medical Informatics Engineering <helpdesk@mieweb.com>"
+description: |
+  MIE opensource-server edge agent (pull-config).
+  Cron-driven distribution of nginx and dnsmasq configuration to edge nodes:
+  each instance fetches its rendered config from the cluster manager with
+  ETag caching, validates it and reloads the service on change. Also ships
+  the static error pages referenced by the manager-rendered nginx config.
+homepage: "https://github.com/mieweb/opensource-server"
+license: "Apache-2.0"
+
+depends:
+  - nginx
+  - libnginx-mod-stream
+  - libnginx-mod-http-modsecurity
+  - modsecurity-crs
+  - ssl-cert
+  - dnsmasq
+  - curl
+  - cron
+
+contents:
+  # Everything staged by `make install`, minus the conffiles which `make
+  # package` removes from the staged tree so they can be added here as config
+  # files (preserving admin customizations on upgrade).
+  - src: ./build-root
+    dst: /
+    type: tree
+  - src: ./etc/cron.d/pull-config
+    dst: /etc/cron.d/pull-config
+    type: config
+  - src: ./etc/pull-config.d/nginx
+    dst: /etc/pull-config.d/nginx
+    type: config
+    file_info: { mode: 0755 }
+  - src: ./etc/pull-config.d/dnsmasq-conf
+    dst: /etc/pull-config.d/dnsmasq-conf
+    type: config
+    file_info: { mode: 0755 }
+  - src: ./etc/pull-config.d/dnsmasq-dhcp-hosts
+    dst: /etc/pull-config.d/dnsmasq-dhcp-hosts
+    type: config
+    file_info: { mode: 0755 }
+  - src: ./etc/pull-config.d/dnsmasq-dhcp-opts
+    dst: /etc/pull-config.d/dnsmasq-dhcp-opts
+    type: config
+    file_info: { mode: 0755 }
+  - src: ./etc/pull-config.d/dnsmasq-hosts
+    dst: /etc/pull-config.d/dnsmasq-hosts
+    type: config
+    file_info: { mode: 0755 }
+  - src: ./etc/pull-config.d/dnsmasq-servers
+    dst: /etc/pull-config.d/dnsmasq-servers
+    type: config
+    file_info: { mode: 0755 }
