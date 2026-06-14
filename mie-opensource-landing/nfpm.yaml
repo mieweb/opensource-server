@@ -9,6 +9,8 @@ name: opensource-docs
 arch: all
 platform: linux
 version: ${VERSION}
+# The Makefile composes a format-specific version string; use it verbatim.
+version_schema: none
 section: doc
 priority: optional
 maintainer: "Medical Informatics Engineering <helpdesk@mieweb.com>"
