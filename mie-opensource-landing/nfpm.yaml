@@ -1,0 +1,27 @@
+# nfpm configuration for the opensource-docs package (mie-opensource-landing).
+# See https://nfpm.goreleaser.com. Packaged via `make deb` / `make rpm` /
+# `make apk`, which stage the prebuilt site into ./build-root first.
+#
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
+name: opensource-docs
+arch: all
+platform: linux
+version: ${VERSION}
+section: doc
+priority: optional
+maintainer: "Medical Informatics Engineering <helpdesk@mieweb.com>"
+description: |
+  MIE opensource-server documentation site (static content).
+  Ships the prebuilt site under /opt/opensource-server/mie-opensource-landing.
+  Serving it is a deployment concern: the docs image adds an nginx vhost and
+  the cluster manager serves it via its rendered nginx configuration.
+homepage: "https://github.com/mieweb/opensource-server"
+license: "Apache-2.0"
+
+suggests:
+  - nginx
+
+contents:
+  - src: ./build-root
+    dst: /
+    type: tree
