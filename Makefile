@@ -1,30 +1,50 @@
-.PHONY: install install-create-container install-pull-config install-docs help
+# opensource-server — top-level Makefile
+#
+# Delegates the standard component contract to each component's own Makefile:
+#   create-a-container   -> opensource-server
+#   mie-opensource-landing -> opensource-docs
+#   pull-config          -> opensource-agent
+#
+# Each component supports: deps, build (default), install, dev, deb/rpm/apk.
+# Variables pass straight through:
+#   PREFIX   vendor install prefix (default /opt/opensource-server)
+#   DESTDIR  staging root for `install` (default /)
+#   VERSION  package version (default derived from git tags)
 
-help:
-	@echo "opensource-server installation"
-	@echo ""
-	@echo "Available targets:"
-	@echo "  make install                - Install all components"
-	@echo "  make install-create-container - Install create-a-container web application"
-	@echo "  make install-pull-config    - Install pull-config system"
-	@echo "  make install-docs           - Install documentation server"
-	@echo ""
+.DEFAULT_GOAL := build
 
-install: install-create-container install-pull-config install-docs
+COMPONENTS := pull-config mie-opensource-landing create-a-container
+PACKAGER   ?= deb
 
-SYSTEMD_DIR := create-a-container/systemd
-SERVICES    := $(wildcard $(SYSTEMD_DIR)/*.service)
-install-create-container:
-	cd create-a-container && npm install --omit=dev
-	cd create-a-container/client && npm install && npm run build
-	install -m 644 -o root -g root $(SERVICES) /etc/systemd/system/
-	systemctl daemon-reload || true
-	@for service in $(notdir $(SERVICES)); do \
-		systemctl enable $$service; \
+# Forwarded to every component Makefile.
+MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
+            $(if $(DESTDIR),DESTDIR=$(DESTDIR),) \
+            $(if $(VERSION),VERSION=$(VERSION),)
+
+.PHONY: deps build install dev deb rpm apk clean $(COMPONENTS)
+
+deps build install clean:
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: $@"; \
+		$(MAKE) -C $$c $@ $(MAKE_VARS) || exit $$?; \
 	done
 
-install-pull-config:
-	cd pull-config && bash install.sh
+# Package every component, then collect the artifacts into ./dist.
+deb rpm apk:
+	@mkdir -p dist
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: $@"; \
+		$(MAKE) -C $$c $@ $(MAKE_VARS) || exit $$?; \
+		cp -f $$c/*.$@ dist/ 2>/dev/null || true; \
+	done
+	@echo ""
+	@echo "Packages collected in dist/:"
+	@ls -1 dist/
 
-install-docs:
-	cd mie-opensource-landing && uv run zensical build
+# `make dev` isn't meaningful for the whole repo (each watcher is long-running);
+# run it per component, e.g. `make -C create-a-container dev`.
+dev:
+	@echo "Run 'dev' per component, e.g.:"
+	@echo "  make -C create-a-container dev        # server + client watch"
+	@echo "  make -C create-a-container dev-client # client watch only"
+	@echo "  make -C mie-opensource-landing dev    # docs live server"
