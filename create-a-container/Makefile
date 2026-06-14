@@ -5,15 +5,15 @@
 #   build    (default) compile the component; depends on deps
 #   install  stage built files into DESTDIR; depends on build
 #   dev      run the development watch loop; depends on deps
-#   deb/rpm/apk  package the staged build-root with nfpm; depend on install
+#   deb/rpm/apk  package the staged tree with nfpm; depend on install
 #
 # PREFIX is the vendor install prefix every runtime reference in the project
 # expects (systemd units, the manager-rendered nginx config). DESTDIR is the
 # staging root. VERSION is derived from git but can be overridden.
 #
-# Packaging stages into ./build-root (a normal DESTDIR install) and points
-# nfpm at it. The staged tree is reused across packagers; run `make clean`
-# first for a guaranteed-pristine package.
+# Packaging stages into a dedicated .pkg-root (never a user-supplied DESTDIR)
+# and runs nfpm from there, so nfpm.yaml's content sources are relative to the
+# staging root and work for any DESTDIR.
 
 .DEFAULT_GOAL := build
 
@@ -24,6 +24,9 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e
 
 DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
+
+# Dedicated staging directory for packaging (never a user-supplied DESTDIR).
+STAGE := $(CURDIR)/.pkg-root
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -80,16 +83,16 @@ install: build
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
 	$(INSTALL_DATA) nfpm/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
 
-# Package the staged build-root with nfpm. nfpm trees the non-/etc paths and
-# declares /etc files as config explicitly (see nfpm.yaml), so staging and
-# packaging never fight over conffile tagging.
+# Package the staged tree with nfpm. nfpm runs from the staging root so the
+# content sources in nfpm.yaml are relative to it; the maintainer scripts are
+# staged under .nfpm/ (outside the packaged contents) for the same reason.
 PACKAGER ?= deb
-package: install-buildroot
-	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
-
-.PHONY: install-buildroot
-install-buildroot:
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
+package:
+	rm -rf $(STAGE)
+	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
+	$(INSTALL) -d $(STAGE)/.nfpm
+	$(INSTALL) -m 0755 nfpm/postinstall.sh nfpm/preremove.sh $(STAGE)/.nfpm/
+	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb
@@ -99,4 +102,4 @@ apk:
 	$(MAKE) package PACKAGER=apk
 
 clean:
-	rm -rf build-root node_modules client/node_modules client/dist
+	rm -rf $(STAGE) node_modules client/node_modules client/dist

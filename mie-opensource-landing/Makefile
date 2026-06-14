@@ -13,6 +13,9 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e
 PKG_NAME := opensource-docs
 SITE_DEST := $(DESTDIR)$(PREFIX)/mie-opensource-landing/site
 
+# Dedicated staging directory for packaging (never a user-supplied DESTDIR).
+STAGE := $(CURDIR)/.pkg-root
+
 .PHONY: deps build dev install deb rpm apk package clean
 
 deps:
@@ -30,15 +33,13 @@ install: build
 	install -d $(SITE_DEST)
 	cp -a site/. $(SITE_DEST)/
 
-# Package the staged build-root with nfpm. The staged tree is reused across
-# packagers; run `make clean` first for a guaranteed-pristine package.
+# Stage into a clean dedicated root and package it. nfpm runs from the staging
+# root so the content sources in nfpm.yaml are relative to it.
 PACKAGER ?= deb
-package: install-buildroot
-	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
-
-.PHONY: install-buildroot
-install-buildroot:
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
+package:
+	rm -rf $(STAGE)
+	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
+	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb
@@ -48,4 +49,4 @@ apk:
 	$(MAKE) package PACKAGER=apk
 
 clean:
-	rm -rf build-root site .venv
+	rm -rf $(STAGE) site .venv

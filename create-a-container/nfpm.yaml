@@ -1,12 +1,12 @@
 # nfpm configuration for the opensource-server package (create-a-container).
-# See https://nfpm.goreleaser.com. Packaged via `make deb` / `make rpm` /
-# `make apk`, which stage the component into ./build-root first and pass
-# VERSION through the environment.
+# See https://nfpm.goreleaser.com. `make deb/rpm/apk` stage the component into
+# a staging root and run nfpm from there, so content/script sources are
+# relative to the staging root and VERSION is passed via the environment.
 #
 # /etc files are declared explicitly as config so admin edits survive upgrades;
 # the rest of the staged tree is packaged per top-level directory. This avoids
 # any overlap between the tree and the config entries (nfpm rejects a file that
-# appears in both), so `make install` and `make package` never fight.
+# appears in both), so install and packaging never fight.
 #
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
 name: opensource-server
@@ -38,19 +38,22 @@ depends:
 suggests:
   - postgresql
 
+# Sources are relative to the staging root (nfpm runs from DESTDIR).
 contents:
   # Config files first, declared explicitly so they are tagged as conffiles.
-  - src: ./build-root/etc/logrotate.d/opensource-server
+  - src: etc/logrotate.d/opensource-server
     dst: /etc/logrotate.d/opensource-server
     type: config
   # Everything else, packaged per top-level directory (no /etc overlap).
-  - src: ./build-root/opt
+  - src: opt
     dst: /opt
     type: tree
-  - src: ./build-root/usr
+  - src: usr
     dst: /usr
     type: tree
 
+# Maintainer scripts are staged into the staging root under .nfpm/ (outside
+# the packaged contents) so they resolve relative to nfpm's working directory.
 scripts:
-  postinstall: ./nfpm/postinstall.sh
-  preremove: ./nfpm/preremove.sh
+  postinstall: .nfpm/postinstall.sh
+  preremove: .nfpm/preremove.sh
