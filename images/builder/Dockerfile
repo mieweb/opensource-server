@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Builds the three opensource-server Debian packages with the component
-# Makefiles + nfpm. The final stage contains only the built .deb artifacts so
+# Makefiles + fpm. The final stage contains only the built .deb artifacts so
 # the runtime images can install them with:
 #
 #   COPY --from=builder /dist/*.deb /tmp/debs/
@@ -11,14 +11,17 @@
 FROM debian:13 AS build
 
 # Build toolchain: make/git for the component Makefiles, Node.js (with npm)
-# from NodeSource for the manager build, uv for the docs build, and nfpm for
-# packaging.
+# from NodeSource for the manager build, uv for the docs build, and fpm (a Ruby
+# gem) for packaging.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
         make \
+        ruby \
+        ruby-dev \
+        build-essential \
     && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -35,14 +38,8 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
     | tar -xzf - --strip-components=1 -C /usr/local/bin \
       uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
 
-ARG NFPM_VERSION=2.46.3
-RUN curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_amd64.deb" \
-      -o /tmp/nfpm.deb && \
-    apt-get update && \
-    apt-get install -y /tmp/nfpm.deb && \
-    rm /tmp/nfpm.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+ARG FPM_VERSION=1.16.0
+RUN gem install --no-document fpm -v "${FPM_VERSION}"
 
 COPY . /usr/src/opensource-server
 WORKDIR /usr/src/opensource-server
