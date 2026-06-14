@@ -1,0 +1,58 @@
+name: Release Packages
+
+# On a vX.Y.Z tag, build the three Debian packages and attach them to the
+# GitHub release together with flat APT repository metadata (Packages,
+# Packages.gz) so the release can be used directly as an apt source:
+#
+#   deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/download/ ./
+#
+# The release URLs (releases/latest/download/<file>) serve the flat repo; the
+# images ship this source so `apt upgrade` tracks future releases.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history so `git describe` (the version source) works.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build packages
+        uses: docker/bake-action@v5
+        with:
+          workdir: ./images
+          targets: builder
+          files: |
+            ./docker-bake.hcl
+          set: |
+            builder.output=type=local,dest=../dist
+
+      - name: Generate flat APT repository metadata
+        run: |
+          cd dist/dist
+          dpkg-scanpackages --multiversion . > Packages
+          gzip -k9f Packages
+          ls -l
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dist/*.deb
+            dist/dist/Packages
+            dist/dist/Packages.gz
+          fail_on_unmatched_files: true

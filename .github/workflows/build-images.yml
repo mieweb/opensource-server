@@ -8,14 +8,24 @@ on:
       - '**'
     paths:
       - 'images/**'
+      - 'create-a-container/**'
       - 'mie-opensource-landing/**'
-      - 'Makefile'
+      - 'pull-config/**'
+      - 'error-pages/**'
+      - '**/Makefile'
+      - '**/nfpm.yaml'
+      - '.dockerignore'
   pull_request:
     types: [opened, synchronize, reopened, closed]
     paths:
       - 'images/**'
+      - 'create-a-container/**'
       - 'mie-opensource-landing/**'
-      - 'Makefile'
+      - 'pull-config/**'
+      - 'error-pages/**'
+      - '**/Makefile'
+      - '**/nfpm.yaml'
+      - '.dockerignore'
   schedule:
     # Run weekly on Sunday at 11:00 PM UTC (Sunday-Monday night depending on timezone)
     - cron: '0 23 * * 0'
