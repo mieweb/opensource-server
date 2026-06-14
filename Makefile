@@ -5,13 +5,13 @@
 #   mie-opensource-landing -> opensource-docs
 #   pull-config          -> opensource-agent
 #
-# Each component supports: deps, build (default), install, dev, deb/rpm/apk.
-# Variables pass straight through:
+# Each component supports: deps, build, install, dev, deb/rpm/apk. Run `make
+# help` for details. Variables pass straight through:
 #   PREFIX   vendor install prefix (default /opt/opensource-server)
 #   DESTDIR  staging root for `install` (default /)
 # The package version is derived from git by ./package-version.
 
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := help
 
 COMPONENTS := pull-config mie-opensource-landing create-a-container
 PACKAGER   ?= deb
@@ -20,7 +20,24 @@ PACKAGER   ?= deb
 MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
             $(if $(DESTDIR),DESTDIR=$(DESTDIR),)
 
-.PHONY: deps build install dev deb rpm apk clean $(COMPONENTS)
+.PHONY: help deps build install dev deb rpm apk clean $(COMPONENTS)
+
+help:
+	@echo "opensource-server — delegates to each component's Makefile."
+	@echo ""
+	@echo "Targets (run across all components):"
+	@echo "  deps     install build/runtime dependencies"
+	@echo "  build    build all components"
+	@echo "  install  stage component files into DESTDIR (default /)"
+	@echo "  deb      build .deb packages, collected into ./dist"
+	@echo "  rpm      build .rpm packages, collected into ./dist"
+	@echo "  apk      build .apk packages, collected into ./dist"
+	@echo "  clean    remove build artifacts, staging, packages and ./dist"
+	@echo "  dev      print the per-component dev commands"
+	@echo "  help     show this message"
+	@echo ""
+	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
+	@echo "The package version is derived from git by ./package-version."
 
 deps build install:
 	@for c in $(COMPONENTS); do \

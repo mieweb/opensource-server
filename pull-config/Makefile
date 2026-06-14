@@ -4,7 +4,7 @@
 # pull-config is plain bash, so deps/build/dev are no-ops; install stages the
 # engine, instances, cron schedule and the shared error pages.
 
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := help
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
@@ -19,7 +19,22 @@ INSTALL_PROG := $(INSTALL) -m 0755
 
 ERROR_PAGES := ../error-pages
 
-.PHONY: deps build dev install deb rpm apk package clean
+.PHONY: help deps build dev install deb rpm apk package clean
+
+help:
+	@echo "pull-config — builds the opensource-agent package."
+	@echo ""
+	@echo "Targets:"
+	@echo "  deps     install dependencies (none; plain bash)"
+	@echo "  build    build the component (nothing to compile)"
+	@echo "  install  stage files into DESTDIR (default /)"
+	@echo "  deb      build the .deb package"
+	@echo "  rpm      build the .rpm package"
+	@echo "  apk      build the .apk package"
+	@echo "  clean    remove the staging dir and built packages"
+	@echo "  help     show this message"
+	@echo ""
+	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
 
 # Plain bash; nothing to install, compile, or watch.
 deps:
