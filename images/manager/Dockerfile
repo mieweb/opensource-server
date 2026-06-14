@@ -11,22 +11,14 @@ ENV MANAGER_URL=http://localhost:3000
 # we don't have to make our own. The opensource-server package only suggests
 # postgresql (a remote database is equally valid); this image opts into a
 # local one.
-#
-# The PGDG setup script runs its own strict `apt-get update`, which would fail
-# on the inherited release APT source if that release lacks a Packages index
-# (e.g. during a build). Temporarily move the source aside for just this layer
-# (restored before the layer ends, so it adds no image layer and stays present
-# in the final image).
-RUN mv /etc/apt/sources.list.d/opensource-server.sources /tmp/oss.sources \
-    && apt-get update && apt-get -y install postgresql-common \
+RUN apt-get update && apt-get -y install postgresql-common \
     && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
     && apt-get -y install postgresql-18 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && echo 'hostssl all all 0.0.0.0/0 scram-sha-256' >>/etc/postgresql/18/main/pg_hba.conf \
     && echo "listen_addresses = '*'" >>/etc/postgresql/18/main/conf.d/opensource-server.conf \
-    && mkdir -p /etc/systemd/system/postgresql@.service.d \
-    && mv /tmp/oss.sources /etc/apt/sources.list.d/opensource-server.sources
+    && mkdir -p /etc/systemd/system/postgresql@.service.d
 
 # Proxmox injects a service which regenerates the snakeoil cert. This systemd
 # override prevents a race condition at boot. It is environment-specific, so
@@ -45,8 +37,8 @@ COPY images/manager/container-creator-init.service /usr/lib/systemd/system/conta
 # service. The package postinstall enables the manager units, and systemd
 # LogsDirectory creates /var/log/opensource-server on demand.
 RUN --mount=from=builder,source=/dist,target=/dist \
-    { apt-get update || true; } && \
+    apt-get update && \
     apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-server_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    systemctl enable container-creator-init.service || true
+    systemctl enable container-creator-init.service

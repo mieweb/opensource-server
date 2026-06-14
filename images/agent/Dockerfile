@@ -2,19 +2,17 @@
 FROM nodejs
 
 # Stage the release APT source so `apt upgrade` pulls future releases of the
-# opensource-* packages automatically. A missing release (e.g. during image
-# builds) is a non-fatal `apt update` warning, so the source can live here for
-# the whole build.
+# opensource-* packages automatically. Every release (including the bootstrap
+# one) carries flat-repo metadata (an empty Packages index is enough), so
+# `apt-get update` against it succeeds throughout the build.
 COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Install the agent package (and its dependencies: nginx with stream +
 # ModSecurity modules, dnsmasq, cron, ...) built by the builder image. The
 # package is bind-mounted from the builder stage rather than copied so it does
-# not add an image layer. `apt-get update` is allowed to fail because the
-# release APT source may 404 during a build (the release being built may not
-# exist yet); the install uses cached indices.
+# not add an image layer.
 RUN --mount=from=builder,source=/dist,target=/dist \
-    { apt-get update || true; } && \
+    apt-get update && \
     apt-get install -y /dist/opensource-agent_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
