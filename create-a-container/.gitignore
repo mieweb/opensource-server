@@ -1,3 +1,9 @@
 .env
 node_modules
 data/
+
+# packaging build artifacts
+/build-root/
+/*.deb
+/*.rpm
+/*.apk
