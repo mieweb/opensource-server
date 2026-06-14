@@ -78,13 +78,23 @@ Each component has an `nfpm.yaml` that packages the staged tree (`type: tree`)
 plus any config files and maintainer scripts. nfpm produces deb, rpm, and apk
 from the same definition, so `make rpm` and `make apk` also work.
 
-- `opensource-server` ships the three systemd units and enables them via an
-  nfpm `postinstall` script (`preremove` disables them on real removal). The
-  log directory is created on demand by the unit's `LogsDirectory`, not shipped
-  in the package. The logrotate drop-in is a config file.
+- `opensource-server` ships the `container-creator` and `job-runner` systemd
+  units and enables them via an nfpm `postinstall` script (`preremove` disables
+  them on real removal). The log directory is created on demand by the unit's
+  `LogsDirectory`, not shipped in the package. The logrotate drop-in is a config
+  file. The `container-creator-init` unit (which provisions a *local*
+  PostgreSQL) is **not** in the package — it is part of the manager image, since
+  the package only suggests postgresql and works with a remote database too.
 - `opensource-agent` ships the pull-config instances and cron schedule as
   config files so admin customizations survive upgrades.
 - `opensource-docs` ships content only.
+
+Each `nfpm.yaml` declares its `/etc` files explicitly as `config` and packages
+the rest of the staged tree per top-level directory (`/opt`, `/usr`, `/var`).
+This keeps conffile tagging without any file appearing in both a `tree` and a
+`config` entry (which nfpm rejects), so `make install` and `make package` never
+fight. `make package` reuses the `DESTDIR` install in `build-root` rather than
+mutating it — run `make clean` first for a guaranteed-pristine package.
 
 ## Container images
 
@@ -92,16 +102,19 @@ The [`builder`](https://github.com/mieweb/opensource-server/blob/main/images/bui
 image runs `make deb` (Node.js, uv, and nfpm) to produce all three packages,
 exported as an artifact-only stage. The `docs`, `agent`, and `manager` images
 install those packages via a Docker Bake `builder` context instead of copying
-the repository:
+the repository. The packages are bind-mounted (no extra image layer):
 
 ```dockerfile
-COPY --from=builder /dist/opensource-agent_*.deb /tmp/debs/
-RUN apt-get update && apt-get install -y /tmp/debs/*.deb && rm -rf /tmp/debs
+RUN --mount=from=builder,source=/dist,target=/dist \
+    { apt-get update || true; } && \
+    apt-get install -y /dist/opensource-agent_*.deb
 ```
 
 Each leaf image also stages the release APT source
 (`/etc/apt/sources.list.d/opensource-server.sources`) so a running container
-picks up future releases with `apt upgrade`.
+picks up future releases with `apt upgrade`. The source stays in place for the
+whole build; a missing release is a non-fatal `apt update` warning (hence the
+`|| true`).
 
 ## Releases
 
