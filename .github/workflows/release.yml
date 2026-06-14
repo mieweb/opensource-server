@@ -1,18 +1,20 @@
 name: Release Packages
 
-# On a vX.Y.Z tag, build the three Debian packages and attach them to the
-# GitHub release together with flat APT repository metadata (Packages,
-# Packages.gz) so the release can be used directly as an apt source:
+# Triggered by publishing a GitHub release (full or prerelease). Builds the
+# three Debian packages and uploads them to the release that triggered the
+# workflow, together with flat APT repository metadata (Packages, Packages.gz)
+# so the release can be used directly as an apt source:
 #
 #   deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/download/ ./
 #
 # The release URLs (releases/latest/download/<file>) serve the flat repo; the
-# images ship this source so `apt upgrade` tracks future releases.
+# images ship this source so `apt upgrade` tracks future releases. This
+# workflow never creates or modifies the release itself — create the release
+# (and choose full vs prerelease) in GitHub first, then this attaches assets.
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -24,7 +26,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Full history so `git describe` (the version source) works.
+          # The release tag, with full history so `git describe` (the version
+          # source) sees it. Falls back to the dispatch ref for manual runs.
+          ref: ${{ github.event.release.tag_name || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -55,11 +59,15 @@ jobs:
           done
           ls -l
 
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/dist/*.deb
-            dist/dist/Packages
-            dist/dist/Packages.gz
-          fail_on_unmatched_files: true
+      - name: Upload assets to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$TAG" \
+            dist/dist/*.deb \
+            dist/dist/Packages \
+            dist/dist/Packages.gz \
+            --repo "${{ github.repository }}" \
+            --clobber

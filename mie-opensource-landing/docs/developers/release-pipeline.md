@@ -118,12 +118,15 @@ whole build; a missing release is a non-fatal `apt update` warning (hence the
 
 ## Releases
 
-On a `vX.Y.Z` tag,
-[`release.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/release.yml)
-builds the packages, generates flat APT repository metadata (`Packages`,
-`Packages.gz`) with `dpkg-scanpackages`, and attaches the debs and metadata to
-the GitHub release. Because GitHub serves `releases/latest/download/<file>` for
-the newest non-prerelease release, the release doubles as an apt source:
+To cut a release, **publish a GitHub release** (full or prerelease) for a
+`vX.Y.Z` tag. Publishing the release triggers
+[`release.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/release.yml),
+which builds the packages, generates flat APT repository metadata (`Packages`,
+`Packages.gz`) with `dpkg-scanpackages`, and uploads the debs and metadata to
+that release. The workflow never creates or modifies the release itself — you
+choose full vs prerelease when creating it. Because GitHub serves
+`releases/latest/download/<file>` for the newest non-prerelease release, the
+release doubles as an apt source:
 
 ```text
 deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/download/ ./
