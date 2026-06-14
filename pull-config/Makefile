@@ -41,15 +41,16 @@ install: build
 	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
+# Package the staged build-root with nfpm. /etc files are declared as config
+# in nfpm.yaml and the rest is packaged per top-level directory, so staging and
+# packaging never fight. Run `make clean` first for a pristine package.
 PACKAGER ?= deb
-package:
-	rm -rf build-root
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
-	# Conffiles are added by nfpm.yaml as config files from source, so drop the
-	# staged copies to avoid content collisions with the tree.
-	rm -f build-root/etc/cron.d/pull-config
-	rm -rf build-root/etc/pull-config.d
+package: install-buildroot
 	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
+
+.PHONY: install-buildroot
+install-buildroot:
+	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
 
 deb:
 	$(MAKE) package PACKAGER=deb

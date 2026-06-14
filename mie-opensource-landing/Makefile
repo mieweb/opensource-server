@@ -30,11 +30,15 @@ install: build
 	install -d $(SITE_DEST)
 	cp -a site/. $(SITE_DEST)/
 
+# Package the staged build-root with nfpm. The staged tree is reused across
+# packagers; run `make clean` first for a guaranteed-pristine package.
 PACKAGER ?= deb
-package:
-	rm -rf build-root
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
+package: install-buildroot
 	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
+
+.PHONY: install-buildroot
+install-buildroot:
+	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
 
 deb:
 	$(MAKE) package PACKAGER=deb

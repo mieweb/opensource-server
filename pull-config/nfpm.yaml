@@ -2,6 +2,11 @@
 # See https://nfpm.goreleaser.com. Packaged via `make deb` / `make rpm` /
 # `make apk`, which stage the component into ./build-root first.
 #
+# /etc files are declared explicitly as config so admin customizations survive
+# upgrades; the rest of the staged tree is packaged per top-level directory.
+# This avoids any overlap between the tree and the config entries, so
+# `make install` and `make package` never fight over conffile tagging.
+#
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
 name: opensource-agent
 arch: all
@@ -30,36 +35,38 @@ depends:
   - cron
 
 contents:
-  # Everything staged by `make install`, minus the conffiles which `make
-  # package` removes from the staged tree so they can be added here as config
-  # files (preserving admin customizations on upgrade).
-  - src: ./build-root
-    dst: /
-    type: tree
-  - src: ./etc/cron.d/pull-config
+  # Config files first, declared explicitly so they are tagged as conffiles.
+  - src: ./build-root/etc/cron.d/pull-config
     dst: /etc/cron.d/pull-config
     type: config
-  - src: ./etc/pull-config.d/nginx
+  - src: ./build-root/etc/pull-config.d/nginx
     dst: /etc/pull-config.d/nginx
     type: config
     file_info: { mode: 0755 }
-  - src: ./etc/pull-config.d/dnsmasq-conf
+  - src: ./build-root/etc/pull-config.d/dnsmasq-conf
     dst: /etc/pull-config.d/dnsmasq-conf
     type: config
     file_info: { mode: 0755 }
-  - src: ./etc/pull-config.d/dnsmasq-dhcp-hosts
+  - src: ./build-root/etc/pull-config.d/dnsmasq-dhcp-hosts
     dst: /etc/pull-config.d/dnsmasq-dhcp-hosts
     type: config
     file_info: { mode: 0755 }
-  - src: ./etc/pull-config.d/dnsmasq-dhcp-opts
+  - src: ./build-root/etc/pull-config.d/dnsmasq-dhcp-opts
     dst: /etc/pull-config.d/dnsmasq-dhcp-opts
     type: config
     file_info: { mode: 0755 }
-  - src: ./etc/pull-config.d/dnsmasq-hosts
+  - src: ./build-root/etc/pull-config.d/dnsmasq-hosts
     dst: /etc/pull-config.d/dnsmasq-hosts
     type: config
     file_info: { mode: 0755 }
-  - src: ./etc/pull-config.d/dnsmasq-servers
+  - src: ./build-root/etc/pull-config.d/dnsmasq-servers
     dst: /etc/pull-config.d/dnsmasq-servers
     type: config
     file_info: { mode: 0755 }
+  # Everything else, packaged per top-level directory (no /etc overlap).
+  - src: ./build-root/opt
+    dst: /opt
+    type: tree
+  - src: ./build-root/var
+    dst: /var
+    type: tree
