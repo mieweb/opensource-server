@@ -9,21 +9,14 @@
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
 
-# Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-# Not named ".fpm" — fpm treats a file/dir of that name as an rc options file.
+# Staging directory for packaging. Not named ".fpm" — fpm reads a file of that
+# name as an rc options file.
 STAGE := $(CURDIR)/.pkg/buildroot
-
-# Package metadata not in the .fpm file. ARCH=all (arch-independent payload).
-# FPM_DIRS are the top-level directories under the staging root to package.
-ARCH     := all
-FPM_DIRS := etc opt var
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
 INSTALL_PROG := $(INSTALL) -m 0755
 
-# The static error pages live at the repository root and are referenced by the
-# manager-rendered nginx config; they ship with the agent package.
 ERROR_PAGES := ../error-pages
 
 .PHONY: deps build dev install deb rpm apk package clean
@@ -46,18 +39,12 @@ install: build
 	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
-# Stage into a dedicated .fpm/buildroot and build the package with fpm. Static
-# options live in opensource-agent.fpm; the version (composed per format by
-# ../package-version), output type, arch and staging dir are passed here.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	fpm --fpm-options-file opensource-agent.fpm \
-		-s dir -t $(PACKAGER) -a $(ARCH) \
-		-v "$$(../package-version $(PACKAGER))" \
-		-C $(STAGE) -p $(CURDIR) -f \
-		$(FPM_DIRS)
+	fpm -s dir -t $(PACKAGER) -v "$$(../package-version $(PACKAGER))" \
+		-C $(STAGE) -p $(CURDIR) -f
 
 deb:
 	$(MAKE) package PACKAGER=deb

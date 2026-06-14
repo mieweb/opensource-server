@@ -1,10 +1,13 @@
 --name opensource-server
+--architecture amd64
 --license Apache-2.0
 --maintainer "Medical Informatics Engineering <helpdesk@mieweb.com>"
 --vendor "Medical Informatics Engineering"
 --url "https://github.com/mieweb/opensource-server"
 --category admin
 --description "MIE opensource-server cluster manager (create-a-container): web UI and REST API for self-service LXC container hosting on Proxmox VE, with automated DNS and reverse-proxy configuration, LDAP authentication and ACME TLS orchestration."
+--depends opensource-agent
+--depends opensource-docs
 --depends nodejs
 --depends sudo
 --depends libc6

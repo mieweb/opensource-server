@@ -1,4 +1,5 @@
 --name opensource-docs
+--architecture all
 --license Apache-2.0
 --maintainer "Medical Informatics Engineering <helpdesk@mieweb.com>"
 --vendor "Medical Informatics Engineering"
