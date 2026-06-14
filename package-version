@@ -28,7 +28,7 @@ case "$packager" in
         ;;
 esac
 
-# --- parse version parts from git ------------------------------------------
+# parse version parts from git
 describe=$(git describe --tags --long --dirty 2>/dev/null || true)
 
 dirty=0
@@ -63,7 +63,7 @@ else
     hash=""
 fi
 
-# --- compose the format-specific version string ----------------------------
+# compose the format-specific version string
 case "$packager" in
     deb)
         v=$version
@@ -86,8 +86,8 @@ case "$packager" in
         fi
         ;;
     apk)
-        # apk grammar is restrictive: digits(.digits)*[_suffix[digits]]* — it
-        # cannot embed the commit hash, so snapshots use _git<commits>.
+        # apk grammar is restrictive: digits(.digits)*[_suffix[digits]]* since it
+        # can't embed the commit hash snapshots use _git<commits>.
         v=$version
         [ -n "$prerelease" ] && v="${v}_$prerelease"
         [ "$commits" != "0" ] && v="${v}_git$commits"

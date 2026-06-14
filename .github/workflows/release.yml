@@ -26,9 +26,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # The release tag, with full history so `git describe` (the version
-          # source) sees it. Falls back to the dispatch ref for manual runs.
-          ref: ${{ github.event.release.tag_name || github.ref }}
           fetch-depth: 0
           persist-credentials: false
 

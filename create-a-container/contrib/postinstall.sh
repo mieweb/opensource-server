@@ -1,5 +1,4 @@
 #!/bin/sh
-# postinstall for opensource-server: enable the manager systemd units.
 set -e
 
 UNITS="container-creator.service job-runner.service"
@@ -8,7 +7,7 @@ UNITS="container-creator.service job-runner.service"
 command -v systemctl >/dev/null 2>&1 || exit 0
 
 # `systemctl enable` only creates static symlinks, so it works during an image
-# build too (no running systemd required) — the units come up on first boot.
+# build too
 systemctl enable $UNITS
 
 # daemon-reload and restart need a running systemd; skip them at build time.

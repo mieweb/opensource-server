@@ -1,16 +1,8 @@
-# pull-config — Makefile (opensource-agent package)
-#
-# Standard component contract (see create-a-container/Makefile for details).
-# pull-config is plain bash, so deps/build/dev are no-ops; install stages the
-# engine, instances, cron schedule and the shared error pages.
-
 .DEFAULT_GOAL := help
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
 
-# Staging directory for packaging. Not named ".fpm" — fpm reads a file of that
-# name as an rc options file.
 STAGE := $(CURDIR)/.pkg/buildroot
 
 INSTALL      := install
@@ -42,16 +34,12 @@ build: deps
 dev: deps
 
 install: build
-	# pull-config engine — instances exec this absolute path.
 	$(INSTALL) -D -m 0755 bin/pull-config $(DESTDIR)$(PREFIX)/pull-config/bin/pull-config
-	# pull-config instances (program code) + cron schedule.
 	$(INSTALL) -d $(DESTDIR)/etc/pull-config.d
 	$(INSTALL_PROG) etc/pull-config.d/* $(DESTDIR)/etc/pull-config.d/
 	$(INSTALL) -D -m 0644 etc/cron.d/pull-config $(DESTDIR)/etc/cron.d/pull-config
-	# Static error pages referenced by the manager-rendered nginx config.
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/error-pages
 	$(INSTALL_DATA) $(ERROR_PAGES)/* $(DESTDIR)$(PREFIX)/error-pages/
-	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
 PACKAGER ?= deb

@@ -1,5 +1,4 @@
 #!/bin/sh
-# preremove for opensource-server: stop and disable the manager systemd units.
 set -e
 
 UNITS="container-creator.service job-runner.service"
@@ -13,7 +12,7 @@ case "${1:-}" in
         ;;
 esac
 
-# Nothing to do without systemctl (non-systemd container/chroot).
+# Nothing to do without systemctl
 command -v systemctl >/dev/null 2>&1 || exit 0
 
 # Stopping needs a running systemd; disabling (symlink removal) does not.

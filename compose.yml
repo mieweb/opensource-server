@@ -32,8 +32,6 @@ services:
   # node_modules are populated in the user's create-a-container directory. This
   # is usually handled by the manager's Dockerfile, but we're mounting over that
   # directory so we need to be sure the user has them.
-  #
-  # Mirrors create-a-container's `make deps` (the slim image has no make).
   node:
     image: node:24-trixie-slim
     volumes:
@@ -56,7 +54,6 @@ services:
   # Like zensical, this is a development convenience and not a hard dependency:
   # it does an initial build so a dist always exists, then watches for changes.
   # The server itself runs inside Proxmox, so this only runs the client watcher.
-  # Mirrors create-a-container's `make dev-client` (the slim image has no make).
   client:
     image: node:24-trixie-slim
     volumes:
@@ -84,8 +81,6 @@ services:
   # direct dependency on this because it's meant to be a development convenience
   # not a hard dependency. The Proxmox service works just fine if the docs are
   # not getting rebuilt or even if they were never built in the first place.
-  #
-  # Mirrors mie-opensource-landing's `make dev` (the uv image has no make).
   zensical:
     image: astral/uv:0.11.14-trixie-slim
     volumes:

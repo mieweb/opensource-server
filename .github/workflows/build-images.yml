@@ -2,39 +2,14 @@ name: Build and Push Images
 
 on:
   push:
-    branches:
-      - '**'
-    tags:
-      - '**'
-    paths:
-      - 'images/**'
-      - 'create-a-container/**'
-      - 'mie-opensource-landing/**'
-      - 'pull-config/**'
-      - 'error-pages/**'
-      - '**/Makefile'
-      - '**/nfpm.yaml'
-      - '.dockerignore'
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    paths:
-      - 'images/**'
-      - 'create-a-container/**'
-      - 'mie-opensource-landing/**'
-      - 'pull-config/**'
-      - 'error-pages/**'
-      - '**/Makefile'
-      - '**/nfpm.yaml'
-      - '.dockerignore'
   schedule:
     # Run weekly on Sunday at 11:00 PM UTC (Sunday-Monday night depending on timezone)
     - cron: '0 23 * * 0'
   workflow_dispatch:
-  # Images are tagged :latest only from release events for non-prerelease
-  # releases. "released" additionally covers a pre-release later being
-  # promoted to a full release.
   release:
-    types: [published, released]
+    types: [published]
 
 env:
   REGISTRY: ghcr.io
@@ -50,8 +25,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Full history + tags so the builder image's `git describe` derives
-          # the package version.
           fetch-depth: 0
           persist-credentials: false
 
@@ -71,8 +44,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/base
           bake-target: base
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha
@@ -87,8 +58,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/nodejs
           bake-target: nodejs
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha
@@ -103,8 +72,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/docs
           bake-target: docs
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha
@@ -119,8 +86,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/agent
           bake-target: agent
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha
@@ -134,8 +99,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/manager
           bake-target: manager
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha
@@ -149,8 +112,6 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/proxmox-ve
           bake-target: proxmox-ve
-          # Disable auto-latest (fires for type=ref,event=tag); :latest is
-          # controlled solely by the explicit type=raw rule below.
           flavor: latest=false
           tags: |
             type=sha

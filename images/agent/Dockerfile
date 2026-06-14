@@ -2,24 +2,16 @@
 FROM nodejs
 
 # Stage the release APT source so `apt upgrade` pulls future releases of the
-# opensource-* packages automatically. Every release (including the bootstrap
-# one) carries flat-repo metadata (an empty Packages index is enough), so
-# `apt-get update` against it succeeds throughout the build.
+# opensource-* packages automatically
 COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Install the agent package (and its dependencies: nginx with stream +
-# ModSecurity modules, dnsmasq, cron, ...) built by the builder image. The
-# package is bind-mounted from the builder stage rather than copied so it does
-# not add an image layer.
+# ModSecurity modules, dnsmasq, cron, ...) built by the builder image.
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
     apt-get install -y /dist/opensource-agent_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Everything below is image-level environment configuration that the package
-# does not own because it edits conffiles belonging to other packages
-# (nginx, modsecurity-crs, dnsmasq).
 
 # configure nginx ModSecurity defaults
 RUN sed -i \

@@ -4,9 +4,7 @@ FROM base
 # Stage the release APT source so `apt upgrade` pulls future releases.
 COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
-# Install nginx and the docs package built by the builder image. The package
-# ships content only; serving it is this image's concern. Bind-mounted from
-# the builder stage so it does not add an image layer.
+# Install nginx and the docs package built by the builder image
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
     apt-get install -y nginx /dist/opensource-docs_*.deb && \

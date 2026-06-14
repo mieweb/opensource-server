@@ -11,8 +11,8 @@
 FROM debian:13 AS build
 
 # Build toolchain: make/git for the component Makefiles, Node.js (with npm)
-# from NodeSource for the manager build, uv for the docs build, and fpm (a Ruby
-# gem) for packaging.
+# from NodeSource for the manager build, uv for the docs build, and fpm for
+# packaging.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -43,10 +43,6 @@ RUN gem install --no-document fpm -v "${FPM_VERSION}"
 
 COPY . /usr/src/opensource-server
 WORKDIR /usr/src/opensource-server
-
-# git marks the COPYed tree as foreign-owned; allow it so `git describe` (the
-# version source) works.
-RUN git config --global --add safe.directory /usr/src/opensource-server
 
 # Build all three packages into ./dist.
 RUN make deb

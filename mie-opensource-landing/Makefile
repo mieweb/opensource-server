@@ -1,8 +1,3 @@
-# mie-opensource-landing — Makefile
-#
-# Standard component contract (see create-a-container/Makefile for details):
-#   deps / build / install / dev / deb / rpm / apk
-
 .DEFAULT_GOAL := help
 
 PREFIX  ?= /opt/opensource-server
@@ -11,8 +6,6 @@ DESTDIR ?= /
 PKG_NAME := opensource-docs
 SITE_DEST := $(DESTDIR)$(PREFIX)/mie-opensource-landing/site
 
-# Staging directory for packaging. Not named ".fpm" — fpm reads a file of that
-# name as an rc options file.
 STAGE := $(CURDIR)/.pkg/buildroot
 
 .PHONY: help deps build dev install deb rpm apk package clean
@@ -39,8 +32,6 @@ deps:
 build: deps
 	uv run --frozen zensical build
 
-# Live-reloading docs server. Honors VIRTUAL_ENV when set (compose sets
-# VIRTUAL_ENV=/opt/zensical); otherwise uses the project .venv from `deps`.
 dev: deps
 	uv run zensical serve
 

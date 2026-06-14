@@ -21,8 +21,7 @@ pull-config/
 │       ├── dnsmasq-hosts
 │       ├── dnsmasq-dhcp-opts
 │       └── dnsmasq-servers
-├── Makefile                # Builds the opensource-agent package (see Release Pipeline)
-└── install.sh              # Legacy direct installer (superseded by the package)
+└── Makefile                # Builds the opensource-agent package (see Release Pipeline)
 ```
 
 ## Environment Variables

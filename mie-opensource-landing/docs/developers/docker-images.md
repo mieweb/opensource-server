@@ -22,17 +22,13 @@ Extends base with Node.js 24 from NodeSource. Inherits LDAP authentication.
 
 ### Agent (`agent`)
 
-Extends nodejs with the `opensource-agent` package (pull-config, nginx with
-ModSecurity/OWASP CRS, dnsmasq) and [acme.sh](https://github.com/acmesh-official/acme.sh)
-for ACME certificate management. Used as the networking layer for each site —
-handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
+Extends nodejs with the `opensource-agent` package (pull-config, nginx with ModSecurity/OWASP CRS, dnsmasq) and [acme.sh](https://github.com/acmesh-official/acme.sh) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
 
 **Registry:** `ghcr.io/mieweb/opensource-server/agent` · **Source:** [`images/agent/`](https://github.com/mieweb/opensource-server/tree/main/images/agent)
 
 ### Manager (`manager`)
 
-Extends agent with PostgreSQL 18 and the `opensource-server` + `opensource-docs`
-packages. Runs the full management application. See [Installation Guide](../admins/installation.md).
+Extends agent with PostgreSQL 18 and the `opensource-server` + `opensource-docs` packages. Runs the full management application. See [Installation Guide](../admins/installation.md).
 
 **Registry:** `ghcr.io/mieweb/opensource-server/manager` · **Source:** [`images/manager/`](https://github.com/mieweb/opensource-server/tree/main/images/manager)
 
@@ -40,11 +36,7 @@ packages. Runs the full management application. See [Installation Guide](../admi
 
 Images use **Docker Bake** (`docker buildx bake`) with [`images/docker-bake.hcl`](https://github.com/mieweb/opensource-server/blob/main/images/docker-bake.hcl) defining build order and dependencies. The `contexts` attribute ensures proper ordering (e.g., nodejs depends on base).
 
-The application payloads are **not** copied into the images. Instead, the
-`builder` target compiles the three Debian packages (`opensource-server`,
-`opensource-docs`, `opensource-agent`) and the docs/agent/manager images
-install them via a `builder` context. See [Release Pipeline](release-pipeline.md)
-for the packaging details.
+The application payloads are **not** copied into the images. Instead, the `builder` target compiles the three Debian packages (`opensource-server`, `opensource-docs`, `opensource-agent`) and the docs/agent/manager images install them via a `builder` context. See [Release Pipeline](release-pipeline.md) for the packaging details.
 
 ```
 images/
