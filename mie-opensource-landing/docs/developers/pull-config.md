@@ -21,7 +21,8 @@ pull-config/
 │       ├── dnsmasq-hosts
 │       ├── dnsmasq-dhcp-opts
 │       └── dnsmasq-servers
-└── install.sh               # Copies scripts to /etc/
+├── Makefile                # Builds the opensource-agent package (see Release Pipeline)
+└── install.sh              # Legacy direct installer (superseded by the package)
 ```
 
 ## Environment Variables

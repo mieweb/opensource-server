@@ -44,8 +44,15 @@ jobs:
       - name: Generate flat APT repository metadata
         run: |
           cd dist/dist
+          # Scan only the versioned packages so the apt index has no duplicates.
           dpkg-scanpackages --multiversion . > Packages
           gzip -k9f Packages
+          # Stable-name aliases for one-off downloads (the _latest URLs resolve
+          # via releases/latest/download for the newest non-prerelease release).
+          for pkg in opensource-server opensource-docs opensource-agent; do
+            f=$(ls ${pkg}_*.deb | head -1)
+            [ -n "$f" ] && cp -f "$f" "${pkg}_latest.deb"
+          done
           ls -l
 
       - name: Upload release assets

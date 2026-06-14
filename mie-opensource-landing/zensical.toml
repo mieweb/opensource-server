@@ -51,6 +51,7 @@ nav = [
       { "Core Technologies" = "developers/core-technologies.md" },
       { "Development Workflow" = "developers/development-workflow.md" },
       { "Docker Images" = "developers/docker-images.md" },
+      { "Release Pipeline" = "developers/release-pipeline.md" },
       { "Database Schema" = "developers/database-schema.md" },
       { "Pull Config" = "developers/pull-config.md" },
       { "Contributing" = "developers/contributing.md" },
