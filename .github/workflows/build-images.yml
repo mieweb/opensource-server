@@ -50,9 +50,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Full history + tags so the builder image's `git describe` derives a
-          # proper package version (otherwise a shallow checkout yields a bare
-          # SHA, which is not a valid Debian version).
+          # Full history + tags so the builder image's `git describe` derives
+          # the package version.
           fetch-depth: 0
           persist-credentials: false
 
