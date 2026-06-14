@@ -1,0 +1,97 @@
+#!/bin/sh
+# Print the package version string for a given packaging format, derived from
+# the current git state.
+#
+# Usage: ./package-version <deb|rpm|apk>
+#
+# The version is parsed from `git describe --tags --long --dirty`:
+#   VERSION     base version, leading 'v' stripped, 0.0.0 if there is no tag
+#   PRERELEASE  prerelease label (e.g. rc1), empty otherwise
+#   COMMITS     commits since the tag (0 on an exact tag)
+#   HASH        short commit hash (g<sha>)
+#   DIRTY       whether the working tree has uncommitted changes
+#
+# Each format has a different version grammar, so the separators differ:
+#   prerelease : deb/rpm use ~<pre> (sorts below the release); apk uses _<pre>
+#   snapshot   : deb uses +<commits>.<hash> (build metadata); rpm uses
+#                ^<commits>.<hash> (post-release, sorts above); apk uses
+#                _git<commits> (apk cannot carry the hash)
+#   dirty      : appended as .dirty for deb/rpm; ignored for apk
+set -eu
+
+packager=${1:-}
+case "$packager" in
+    deb | rpm | apk) ;;
+    *)
+        echo "usage: $0 <deb|rpm|apk>" >&2
+        exit 2
+        ;;
+esac
+
+# --- parse version parts from git ------------------------------------------
+describe=$(git describe --tags --long --dirty 2>/dev/null || true)
+
+dirty=0
+case "$describe" in
+    *-dirty)
+        dirty=1
+        describe=${describe%-dirty}
+        ;;
+esac
+
+if [ -n "$describe" ]; then
+    # describe is <tag>-<commits>-g<hash>
+    hash=${describe##*-}            # g<sha>
+    rest=${describe%-*}             # <tag>-<commits>
+    commits=${rest##*-}            # <commits>
+    tag=${rest%-*}                 # <tag>
+    base=${tag#v}                  # strip a leading v
+    case "$base" in
+        *-*)
+            version=${base%%-*}
+            prerelease=${base#*-}
+            ;;
+        *)
+            version=$base
+            prerelease=""
+            ;;
+    esac
+else
+    version="0.0.0"
+    prerelease=""
+    commits=0
+    hash=""
+fi
+
+# --- compose the format-specific version string ----------------------------
+case "$packager" in
+    deb)
+        v=$version
+        [ -n "$prerelease" ] && v="$v~$prerelease"
+        if [ "$commits" != "0" ]; then
+            v="$v+$commits.$hash"
+            [ "$dirty" = "1" ] && v="$v.dirty"
+        elif [ "$dirty" = "1" ]; then
+            v="$v+dirty"
+        fi
+        ;;
+    rpm)
+        v=$version
+        [ -n "$prerelease" ] && v="$v~$prerelease"
+        if [ "$commits" != "0" ]; then
+            v="$v^$commits.$hash"
+            [ "$dirty" = "1" ] && v="$v.dirty"
+        elif [ "$dirty" = "1" ]; then
+            v="$v^dirty"
+        fi
+        ;;
+    apk)
+        # apk grammar is restrictive: digits(.digits)*[_suffix[digits]]* — it
+        # cannot embed the commit hash, so snapshots use _git<commits>.
+        v=$version
+        [ -n "$prerelease" ] && v="${v}_$prerelease"
+        [ "$commits" != "0" ] && v="${v}_git$commits"
+        ;;
+esac
+
+printf '%s\n' "$v"

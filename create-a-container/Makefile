@@ -20,25 +20,6 @@
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
-# Version parts parsed from git. `git describe --tags --long --dirty` yields
-# <tag>-<count>-g<hash>[-dirty]; we split it into the pieces below and let
-# scripts/nfpm-version.sh compose a format-specific string at package time.
-#   VERSION     base version, leading 'v' stripped, 0.0.0 if no tag
-#   PRERELEASE  prerelease label (e.g. rc1), empty otherwise
-#   COMMITS     commits since the tag (0 on an exact tag)
-#   HASH        short commit hash (g<sha>)
-#   DIRTY       1 if the working tree has uncommitted changes, else 0
-GIT_DESCRIBE := $(shell git describe --tags --long --dirty 2>/dev/null)
-DIRTY        := $(if $(filter %-dirty,$(GIT_DESCRIBE)),1,0)
-_DESC        := $(GIT_DESCRIBE:%-dirty=%)
-HASH         := $(if $(_DESC),$(lastword $(subst -, ,$(_DESC))),)
-_REST        := $(_DESC:%-$(HASH)=%)
-COMMITS      := $(if $(_DESC),$(lastword $(subst -, ,$(_REST))),0)
-_TAG         := $(_REST:%-$(COMMITS)=%)
-_BASE        := $(patsubst v%,%,$(_TAG))
-VERSION      := $(if $(_BASE),$(firstword $(subst -, ,$(_BASE))),0.0.0)
-PRERELEASE   := $(if $(findstring -,$(_BASE)),$(patsubst $(VERSION)-%,%,$(_BASE)),)
-
 DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
@@ -109,7 +90,7 @@ package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
 	DESTDIR=$(STAGE) \
-	VERSION="$$(../scripts/nfpm-version.sh $(PACKAGER) '$(VERSION)' '$(PRERELEASE)' '$(COMMITS)' '$(HASH)' '$(DIRTY)')" \
+	VERSION="$$(../package-version $(PACKAGER))" \
 	nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:

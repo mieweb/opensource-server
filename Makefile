@@ -9,7 +9,7 @@
 # Variables pass straight through:
 #   PREFIX   vendor install prefix (default /opt/opensource-server)
 #   DESTDIR  staging root for `install` (default /)
-#   VERSION  package version (default derived from git tags)
+# The package version is derived from git by ./package-version.
 
 .DEFAULT_GOAL := build
 
@@ -18,8 +18,7 @@ PACKAGER   ?= deb
 
 # Forwarded to every component Makefile.
 MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
-            $(if $(DESTDIR),DESTDIR=$(DESTDIR),) \
-            $(if $(VERSION),VERSION=$(VERSION),)
+            $(if $(DESTDIR),DESTDIR=$(DESTDIR),)
 
 .PHONY: deps build install dev deb rpm apk clean $(COMPONENTS)
 
