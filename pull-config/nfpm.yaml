@@ -1,7 +1,8 @@
 # nfpm configuration for the opensource-agent package (pull-config).
 # See https://nfpm.goreleaser.com. `make deb/rpm/apk` stage the component into
-# a DESTDIR and run nfpm from there, so content sources are relative to the
-# staging root (DESTDIR) and VERSION is passed via the environment.
+# a staging root (DESTDIR) and run nfpm from the component directory; the
+# content sources below interpolate ${DESTDIR} via `expand: true`, and VERSION
+# is passed via the environment.
 #
 # The pull-config engine and instance scripts are program code, not
 # configuration — runtime configuration is supplied via /etc/environment, which
@@ -34,14 +35,16 @@ depends:
   - curl
   - cron
 
-# Sources are relative to the staging root (nfpm runs from DESTDIR).
 contents:
-  - src: etc
+  - src: ${DESTDIR}/etc
     dst: /etc
     type: tree
-  - src: opt
+    expand: true
+  - src: ${DESTDIR}/opt
     dst: /opt
     type: tree
-  - src: var
+    expand: true
+  - src: ${DESTDIR}/var
     dst: /var
     type: tree
+    expand: true

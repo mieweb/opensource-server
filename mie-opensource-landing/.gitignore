@@ -16,7 +16,7 @@ __pycache__/
 tmp/
 
 # packaging build artifacts
-/.pkg-root/
+/.nfpm/buildroot/
 /*.deb
 /*.rpm
 /*.apk

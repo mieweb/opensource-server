@@ -12,7 +12,7 @@ DESTDIR ?= /
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/')
 
 # Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-STAGE := $(CURDIR)/.pkg-root
+STAGE := $(CURDIR)/.nfpm/buildroot
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -42,13 +42,13 @@ install: build
 	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
-# Stage into a clean dedicated root and package it. nfpm runs from the staging
-# root so the content sources in nfpm.yaml are relative to it.
+# Stage into a dedicated .nfpm/buildroot and package it; nfpm.yaml interpolates the
+# staging path via ${DESTDIR}.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
+	DESTDIR=$(STAGE) VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb

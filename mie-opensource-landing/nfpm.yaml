@@ -1,7 +1,8 @@
 # nfpm configuration for the opensource-docs package (mie-opensource-landing).
 # See https://nfpm.goreleaser.com. `make deb/rpm/apk` stage the prebuilt site
-# into a staging root and run nfpm from there, so content sources are relative
-# to the staging root and VERSION is passed via the environment.
+# into a staging root (DESTDIR) and run nfpm from the component directory; the
+# content source below interpolates ${DESTDIR} via `expand: true`, and VERSION
+# is passed via the environment.
 #
 # yaml-language-server: $schema=https://nfpm.goreleaser.com/static/schema.json
 name: opensource-docs
@@ -22,8 +23,8 @@ license: "Apache-2.0"
 suggests:
   - nginx
 
-# Sources are relative to the staging root (nfpm runs from DESTDIR).
 contents:
-  - src: opt
+  - src: ${DESTDIR}/opt
     dst: /opt
     type: tree
+    expand: true

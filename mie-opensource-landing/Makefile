@@ -14,7 +14,7 @@ PKG_NAME := opensource-docs
 SITE_DEST := $(DESTDIR)$(PREFIX)/mie-opensource-landing/site
 
 # Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-STAGE := $(CURDIR)/.pkg-root
+STAGE := $(CURDIR)/.nfpm/buildroot
 
 .PHONY: deps build dev install deb rpm apk package clean
 
@@ -33,13 +33,13 @@ install: build
 	install -d $(SITE_DEST)
 	cp -a site/. $(SITE_DEST)/
 
-# Stage into a clean dedicated root and package it. nfpm runs from the staging
-# root so the content sources in nfpm.yaml are relative to it.
+# Stage into a dedicated .nfpm/buildroot and package it; nfpm.yaml interpolates the
+# staging path via ${DESTDIR}.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
+	DESTDIR=$(STAGE) VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb
