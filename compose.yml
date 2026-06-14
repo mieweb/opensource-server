@@ -37,7 +37,11 @@ services:
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container
-    command: npm ci --no-audit --no-fund
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apt-get update && apt-get install -y --no-install-recommends make git
+        exec make deps
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically
@@ -49,17 +53,18 @@ services:
   #
   # Like zensical, this is a development convenience and not a hard dependency:
   # it does an initial build so a dist always exists, then watches for changes.
+  # The server itself runs inside Proxmox, so this only runs the client watcher
+  # (create-a-container's `make dev-client`).
   client:
     image: node:24-trixie-slim
     volumes:
       - ./:/opt/opensource-server
-    working_dir: /opt/opensource-server/create-a-container/client
+    working_dir: /opt/opensource-server/create-a-container
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        npm ci --no-audit --no-fund
-        npm run build
-        exec npm run build:watch
+        apt-get update && apt-get install -y --no-install-recommends make git
+        exec make dev-client
     # Healthy once an initial bundle exists, so Proxmox can wait for it on a
     # fresh checkout (where client/dist isn't present yet) before serving.
     healthcheck:
@@ -81,7 +86,11 @@ services:
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/mie-opensource-landing
-    command: uv run --active zensical serve
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apt-get update && apt-get install -y --no-install-recommends make git
+        exec make dev
     environment:
       VIRTUAL_ENV: /opt/zensical
       PROXMOX_URL: https://localhost:8006
