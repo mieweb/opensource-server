@@ -1,5 +1,5 @@
 # packaging build artifacts
-/build-root/
+/.pkg-root/
 /*.deb
 /*.rpm
 /*.apk

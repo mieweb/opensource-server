@@ -11,7 +11,8 @@ DESTDIR ?= /
 # v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/')
 
-PKG_NAME := opensource-agent
+# Dedicated staging directory for packaging (never a user-supplied DESTDIR).
+STAGE := $(CURDIR)/.pkg-root
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -31,7 +32,7 @@ dev: deps
 install: build
 	# pull-config engine — instances exec this absolute path.
 	$(INSTALL) -D -m 0755 bin/pull-config $(DESTDIR)$(PREFIX)/pull-config/bin/pull-config
-	# pull-config instances (admin-customizable) + cron schedule.
+	# pull-config instances (program code) + cron schedule.
 	$(INSTALL) -d $(DESTDIR)/etc/pull-config.d
 	$(INSTALL_PROG) etc/pull-config.d/* $(DESTDIR)/etc/pull-config.d/
 	$(INSTALL) -D -m 0644 etc/cron.d/pull-config $(DESTDIR)/etc/cron.d/pull-config
@@ -41,16 +42,13 @@ install: build
 	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
-# Package the staged build-root with nfpm. /etc files are declared as config
-# in nfpm.yaml and the rest is packaged per top-level directory, so staging and
-# packaging never fight. Run `make clean` first for a pristine package.
+# Stage into a clean dedicated root and package it. nfpm runs from the staging
+# root so the content sources in nfpm.yaml are relative to it.
 PACKAGER ?= deb
-package: install-buildroot
-	VERSION=$(VERSION) nfpm package -f nfpm.yaml -p $(PACKAGER)
-
-.PHONY: install-buildroot
-install-buildroot:
-	$(MAKE) install DESTDIR=$(CURDIR)/build-root PREFIX=$(PREFIX)
+package:
+	rm -rf $(STAGE)
+	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
+	cd $(STAGE) && VERSION=$(VERSION) nfpm package -f $(CURDIR)/nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
 
 deb:
 	$(MAKE) package PACKAGER=deb
@@ -60,4 +58,4 @@ apk:
 	$(MAKE) package PACKAGER=apk
 
 clean:
-	rm -rf build-root
+	rm -rf $(STAGE)
