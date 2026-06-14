@@ -10,7 +10,13 @@ PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
 
 # Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-STAGE := $(CURDIR)/.nfpm/buildroot
+# Not named ".fpm" — fpm treats a file/dir of that name as an rc options file.
+STAGE := $(CURDIR)/.pkg/buildroot
+
+# Package metadata not in the .fpm file. ARCH=all (arch-independent payload).
+# FPM_DIRS are the top-level directories under the staging root to package.
+ARCH     := all
+FPM_DIRS := etc opt var
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -40,17 +46,18 @@ install: build
 	# Forward-auth cache directory used by the manager-rendered nginx config.
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
 
-# Stage into a dedicated .nfpm/buildroot and package it. The version string is
-# composed for the target format from the git parts above; nfpm.yaml sets
-# version_schema: none so nfpm uses it verbatim. nfpm.yaml interpolates the
-# staging path via ${DESTDIR}.
+# Stage into a dedicated .fpm/buildroot and build the package with fpm. Static
+# options live in opensource-agent.fpm; the version (composed per format by
+# ../package-version), output type, arch and staging dir are passed here.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	DESTDIR=$(STAGE) \
-	VERSION="$$(../package-version $(PACKAGER))" \
-	nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
+	fpm --fpm-options-file opensource-agent.fpm \
+		-s dir -t $(PACKAGER) -a $(ARCH) \
+		-v "$$(../package-version $(PACKAGER))" \
+		-C $(STAGE) -p $(CURDIR) -f \
+		$(FPM_DIRS)
 
 deb:
 	$(MAKE) package PACKAGER=deb

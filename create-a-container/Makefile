@@ -24,7 +24,13 @@ DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
 # Dedicated staging directory for packaging (never a user-supplied DESTDIR).
-STAGE := $(CURDIR)/.nfpm/buildroot
+# Not named ".fpm" — fpm treats a file/dir of that name as an rc options file.
+STAGE := $(CURDIR)/.pkg/buildroot
+
+# amd64: ships prebuilt native node addons (argon2, sqlite3).
+# FPM_DIRS are the top-level staged dirs.
+ARCH     := amd64
+FPM_DIRS := etc opt usr
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
@@ -81,17 +87,23 @@ install: build
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
 	$(INSTALL_DATA) contrib/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
 
-# Package the staged tree with nfpm. Files are staged into a dedicated
-# .nfpm/buildroot (never a user-supplied DESTDIR); nfpm.yaml interpolates that
-# path via ${DESTDIR}, so nfpm runs from the component directory (where its
-# contrib/ maintainer scripts live) and packaging never mutates the staged tree.
+# Stage into a dedicated .pkg/buildroot and build the package with fpm. Static
+# options live in opensource-server.fpm; the version (composed per format by
+# ../package-version), output type, arch, staging dir and the version-pinned
+# inter-package dependencies (opensource-agent/-docs of the same version, which
+# provide the error pages and docs site the manager's nginx config references)
+# are passed here.
 PACKAGER ?= deb
 package:
 	rm -rf $(STAGE)
 	$(MAKE) install DESTDIR=$(STAGE) PREFIX=$(PREFIX)
-	DESTDIR=$(STAGE) \
-	VERSION="$$(../package-version $(PACKAGER))" \
-	nfpm package -f nfpm.yaml -p $(PACKAGER) -t $(CURDIR)
+	ver="$$(../package-version $(PACKAGER))"; \
+	fpm --fpm-options-file opensource-server.fpm \
+		-s dir -t $(PACKAGER) -a $(ARCH) -v "$$ver" \
+		--depends "opensource-agent = $$ver" \
+		--depends "opensource-docs = $$ver" \
+		-C $(STAGE) -p $(CURDIR) -f \
+		$(FPM_DIRS)
 
 deb:
 	$(MAKE) package PACKAGER=deb

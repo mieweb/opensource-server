@@ -1,5 +1,5 @@
 # packaging build artifacts
-/.nfpm/buildroot/
+/.pkg/
 /*.deb
 /*.rpm
 /*.apk
