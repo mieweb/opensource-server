@@ -20,8 +20,10 @@
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
-# v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234
-VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/')
+# v2026.6.2 -> 2026.6.2 ; v2026.6.2-15-gabc1234 -> 2026.6.2+15.gabc1234 ;
+# no tags reachable (e.g. shallow checkout) -> 0.0.0+g<sha> (always a valid,
+# digit-leading package version).
+VERSION ?= $(shell d=$$(git describe --tags 2>/dev/null); if [ -n "$$d" ]; then echo "$$d" | sed -e 's/^v//' -e 's/-\([0-9]\+\)-g/+\1.g/'; else echo "0.0.0+g$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"; fi)
 
 DESTBIN  := $(DESTDIR)$(PREFIX)/create-a-container
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
