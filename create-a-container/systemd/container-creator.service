@@ -12,6 +12,10 @@ Restart=on-failure
 Environment=NODE_ENV=production
 Environment=ACCESS_LOG=/var/log/opensource-server/access.log
 EnvironmentFile=/etc/default/container-creator
+# Create and manage /var/log/opensource-server on demand instead of shipping
+# an empty directory in the package.
+LogDirectory=opensource-server
+LogDirectoryMode=0755
 
 [Install]
 WantedBy=multi-user.target
