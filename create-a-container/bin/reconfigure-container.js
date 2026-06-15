@@ -80,8 +80,16 @@ async function main() {
     const client = await node.api();
     console.log('Proxmox API client initialized');
     
-    // Build config from environment variables and entrypoint
-    const lxcConfig = container.buildLxcEnvConfig();
+    // Merge admin-defined default environment variables at configure-time rather
+    // than storing them in the container's DB record. Precedence (lowest to
+    // highest): system defaults < NVIDIA defaults < user-defined values.
+    // (NVIDIA and user-defined are applied inside buildLxcEnvConfig.)
+    // Image-provided defaults are submitted by the UI as user-defined values, so
+    // they are already part of container.environmentVars and not handled here.
+    const systemDefaultEnvVars = await Container.getSystemDefaultEnvVars();
+
+    // Build config from environment variables and entrypoint, merging defaults
+    const lxcConfig = container.buildLxcEnvConfig(systemDefaultEnvVars);
     
     if (Object.keys(lxcConfig).length > 0) {
       console.log('Applying LXC configuration...');

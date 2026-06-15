@@ -21,37 +21,100 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
-     * Build LXC config object for environment variables and entrypoint
-     * Returns config suitable for Proxmox API updateLxcConfig
+     * Load the admin-defined system default environment variables from the
+     * Settings table, flattened to a { KEY: value } object. Descriptions are
+     * metadata only and are not included. Returns an empty object if the
+     * setting is missing or malformed.
+     * @returns {Promise<object>} Flat object of { KEY: value } system defaults
+     */
+    static async getSystemDefaultEnvVars() {
+      const Setting = this.sequelize.models.Setting;
+      const defaults = {};
+      try {
+        const entries = await Setting.getDefaultContainerEnvVars();
+        for (const entry of entries) {
+          if (entry.key && entry.key.trim()) {
+            defaults[entry.key.trim()] = entry.value || '';
+          }
+        }
+      } catch (_) {
+        console.warn('Could not load default_container_env_vars from settings, skipping');
+      }
+      return defaults;
+    }
+
+    /**
+     * Parse the container's user-defined environment variables.
+     * The database record only ever stores the variables the user explicitly
+     * provided — admin/system, image, and NVIDIA defaults are merged in at
+     * configure-time (see buildLxcEnvConfig) and are intentionally NOT persisted.
+     * @returns {object} Flat object of { KEY: value } user-defined env vars
+     */
+    parseEnvironmentVars() {
+      if (!this.environmentVars) return {};
+      try {
+        const parsed = JSON.parse(this.environmentVars);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (err) {
+        console.error('Failed to parse environment variables JSON:', err.message);
+        return {};
+      }
+    }
+
+    /**
+     * Environment variables implied by this container's configuration that are
+     * applied as defaults but never stored in the DB record. Currently this is
+     * the NVIDIA GPU passthrough defaults, applied when nvidiaRequested is set.
+     * @returns {object} Flat object of { KEY: value } defaults
+     */
+    nvidiaDefaultEnvVars() {
+      if (!this.nvidiaRequested) return {};
+      return {
+        NVIDIA_VISIBLE_DEVICES: 'all',
+        NVIDIA_DRIVER_CAPABILITIES: 'utility compute'
+      };
+    }
+
+    /**
+     * Build LXC config object for environment variables and entrypoint.
+     * Returns config suitable for Proxmox API updateLxcConfig.
+     *
+     * Default environment variables are merged in here, at configure-time,
+     * rather than being baked into the container's DB record. User-defined
+     * variables take precedence over any provided defaults.
+     *
+     * @param {object} [defaults={}] - Flat object of default env vars, e.g. the
+     *   admin-defined system defaults. User-defined values and this container's
+     *   own NVIDIA defaults override these.
      * @returns {object} Config object with 'env' and 'entrypoint' properties
      */
-    buildLxcEnvConfig() {
+    buildLxcEnvConfig(defaults = {}) {
       const config = {};
       const deleteList = [];
-      
-      // Parse environment variables from JSON and format as NUL-separated list
-      // Format: KEY1=value1\0KEY2=value2\0KEY3=value3
-      if (this.environmentVars) {
-        try {
-          const envObj = JSON.parse(this.environmentVars);
-          const envPairs = [];
-          for (const [key, value] of Object.entries(envObj)) {
-            if (key && value !== undefined) {
-              envPairs.push(`${key}=${value}`);
-            }
-          }
-          if (envPairs.length > 0) {
-            config['env'] = envPairs.join('\0');
-          } else {
-            deleteList.push('env');
-          }
-        } catch (err) {
-          console.error('Failed to parse environment variables JSON:', err.message);
+
+      // Merge precedence (lowest to highest):
+      //   provided defaults (admin-defined system defaults) < NVIDIA defaults
+      //   < user-defined values
+      const userEnvVars = this.parseEnvironmentVars();
+      const mergedEnvVars = {
+        ...(defaults && typeof defaults === 'object' ? defaults : {}),
+        ...this.nvidiaDefaultEnvVars(),
+        ...userEnvVars
+      };
+
+      // Format as NUL-separated list: KEY1=value1\0KEY2=value2\0KEY3=value3
+      const envPairs = [];
+      for (const [key, value] of Object.entries(mergedEnvVars)) {
+        if (key && value !== undefined) {
+          envPairs.push(`${key}=${value}`);
         }
+      }
+      if (envPairs.length > 0) {
+        config['env'] = envPairs.join('\0');
       } else {
         deleteList.push('env');
       }
-      
+
       // Set entrypoint command
       if (this.entrypoint && this.entrypoint.trim()) {
         config['entrypoint'] = this.entrypoint.trim();

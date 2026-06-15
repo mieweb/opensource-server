@@ -340,62 +340,21 @@ async function main() {
       console.log('Container configured');
     }
     
-    // Apply environment variables and entrypoint
-    // First read defaults from the image, then merge with user-specified values
-    const defaultConfig = await client.lxcConfig(node.name, vmid);
-    const defaultEntrypoint = defaultConfig['entrypoint'] || null;
-    const defaultEnvStr = defaultConfig['env'] || null;
-    
-    // Parse default env vars
-    let mergedEnvVars = {};
-    if (defaultEnvStr) {
-      const pairs = defaultEnvStr.split('\0');
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf('=');
-        if (eqIndex > 0) {
-          mergedEnvVars[pair.substring(0, eqIndex)] = pair.substring(eqIndex + 1);
-        }
-      }
-    }
-    
-    // Merge user-specified env vars (user values override defaults)
-    const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
+    // Apply environment variables and entrypoint.
+    // Admin-defined system defaults are merged in here, at configure-time, and are
+    // intentionally NOT written back into the container's DB record (see below).
+    // Precedence (lowest to highest): system defaults < NVIDIA defaults < user values.
+    // Image-provided env/entrypoint defaults are submitted by the UI as user values,
+    // so they already live in container.environmentVars / container.entrypoint.
+    const systemDefaultEnvVars = await Container.getSystemDefaultEnvVars();
+    const userEnvVars = container.parseEnvironmentVars();
+    const envConfig = container.buildLxcEnvConfig(systemDefaultEnvVars);
+    // buildLxcEnvConfig may add a 'delete' key to unset env/entrypoint; on a fresh
+    // container there is nothing to delete, so drop it to avoid a no-op API param.
+    delete envConfig.delete;
 
-    // Load system-wide default env vars from Settings.
-    // Descriptions are metadata only and are not passed into the container.
-    let systemDefaultEnvVars = {};
-    try {
-      const entries = await Setting.getDefaultContainerEnvVars();
-      for (const entry of entries) {
-        if (entry.key && entry.key.trim()) {
-          systemDefaultEnvVars[entry.key.trim()] = entry.value || '';
-        }
-      }
-    } catch (_) {
-      console.warn('Could not load default_container_env_vars from settings, skipping');
-    }
-
-    // Merge priority: image defaults < system defaults < per-container user values
-    mergedEnvVars = { ...mergedEnvVars, ...systemDefaultEnvVars, ...userEnvVars };
-    
-    // Use user entrypoint if specified, otherwise keep default
-    const finalEntrypoint = container.entrypoint || defaultEntrypoint;
-    
-    // Build config to apply
-    const envConfig = {};
-    if (finalEntrypoint) {
-      envConfig.entrypoint = finalEntrypoint;
-    }
-    if (Object.keys(mergedEnvVars).length > 0) {
-      envConfig.env = Object.entries(mergedEnvVars)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\0');
-    }
-    
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
-      if (defaultEntrypoint) console.log(`Default entrypoint: ${defaultEntrypoint}`);
-      if (defaultEnvStr) console.log(`Image default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length - Object.keys(systemDefaultEnvVars).length}`);
       if (Object.keys(systemDefaultEnvVars).length > 0) console.log(`System default env vars: ${Object.keys(systemDefaultEnvVars).length} from settings`);
       if (Object.keys(userEnvVars).length > 0) console.log(`Per-container env vars: ${Object.keys(userEnvVars).length}`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
@@ -447,11 +406,9 @@ async function main() {
       throw new Error('Could not extract MAC address from container configuration');
     }
     
-    // Read back entrypoint and environment variables from config
+    // Read back configuration from Proxmox.
     console.log('Querying container configuration...');
     const config = await client.lxcConfig(node.name, vmid);
-    const actualEntrypoint = config['entrypoint'] || null;
-    const actualEnv = config['env'] || null;
 
     // Read back the actual provisioned resources so downstream systems
     // (e.g. NetBox) mirror what the container really has rather than assuming
@@ -459,28 +416,7 @@ async function main() {
     const actualCores = config['cores'] != null ? parseInt(config['cores'], 10) : null;
     const actualMemoryMb = config['memory'] != null ? parseInt(config['memory'], 10) : null;
     const actualDiskGb = parseRootfsSizeGb(config['rootfs']);
-    
-    // Parse NUL-separated env string back to JSON object
-    let environmentVars = {};
-    if (actualEnv) {
-      const pairs = actualEnv.split('\0');
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf('=');
-        if (eqIndex > 0) {
-          const key = pair.substring(0, eqIndex);
-          const value = pair.substring(eqIndex + 1);
-          environmentVars[key] = value;
-        }
-      }
-    }
-    
-    if (actualEntrypoint) {
-      console.log(`Entrypoint: ${actualEntrypoint}`);
-    }
-    if (Object.keys(environmentVars).length > 0) {
-      console.log(`Environment variables: ${Object.keys(environmentVars).length} vars`);
-    }
-    
+
     // Get IP address from Proxmox interfaces API
     const ipv4Address = await client.getLxcIpAddress(node.name, vmid);
     
@@ -488,13 +424,15 @@ async function main() {
       throw new Error('Could not get IP address from Proxmox interfaces API');
     }
     
-    // Update the container record
+    // Update the container record. Note: environmentVars and entrypoint are NOT
+    // written back from the live config — the DB record stores only the values
+    // the user supplied. Admin-defined system defaults (and NVIDIA defaults) are
+    // merged in at configure-time and must not be persisted here, otherwise they
+    // would be frozen into the record and exposed in the edit UI.
     console.log('Updating container record...');
     await container.update({
       macAddress,
       ipv4Address,
-      entrypoint: actualEntrypoint,
-      environmentVars: JSON.stringify(environmentVars),
       status: 'running'
     });
     
