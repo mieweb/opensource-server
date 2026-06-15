@@ -160,14 +160,13 @@ async function main() {
         throw new Error('Could not get IP address from Proxmox interfaces API');
       }
 
-      // Update container record with MAC/IP and running status
+      // Update container record with MAC/IP (status is no longer persisted)
       await container.update({
-        status: 'running',
         macAddress,
         ipv4Address
       });
 
-      console.log('Status updated to: running');
+      console.log('Reconfiguration applied; container running');
       console.log(`  MAC: ${macAddress}`);
       console.log(`  IP: ${ipv4Address}`);
     }
@@ -181,15 +180,9 @@ async function main() {
     if (err.response?.data) {
       console.error('API Error Details:', JSON.stringify(err.response.data, null, 2));
     }
-    
-    // Update status to failed
-    try {
-      await container.update({ status: 'failed' });
-      console.log('Status updated to: failed');
-    } catch (updateErr) {
-      console.error('Failed to update container status:', updateErr.message);
-    }
-    
+
+    // Container status is no longer persisted. The job-runner records this job as
+    // 'failure'; live status is derived from Proxmox + job state on read.
     process.exit(1);
   }
 }

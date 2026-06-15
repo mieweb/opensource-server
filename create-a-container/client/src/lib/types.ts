@@ -75,7 +75,7 @@ export interface Container {
   hostname: string;
   ipv4Address: string | null;
   macAddress: string | null;
-  status: string;
+  status: ContainerStatus;
   template: string | null;
   creationJobId: number | null;
   entrypoint: string | null;
@@ -90,11 +90,29 @@ export interface Container {
   createdAt: string;
 }
 
+/**
+ * Live container status resolved from Proxmox + job state + config drift.
+ * Returned by GET /sites/:id/containers/:id/status and embedded on Container.
+ */
+export type ContainerStatus =
+  | 'running'
+  | 'offline'
+  | 'creating'
+  | 'restarting'
+  | 'failed'
+  | 'missing'
+  | 'out-of-sync'
+  | 'unknown';
+
+export interface ContainerStatusResult {
+  status: ContainerStatus;
+}
+
 export interface ContainerCreateResult {
   containerId: number;
   jobId: number;
   hostname: string;
-  status: string;
+  status: ContainerStatus;
 }
 
 export interface ContainerNewBootstrap {

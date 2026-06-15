@@ -89,7 +89,7 @@ components:
         id: { type: integer }
         hostname: { type: string }
         containerId: { type: integer, nullable: true }
-        status: { type: string }
+        status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
         ipv4Address: { type: string, nullable: true }
         macAddress: { type: string, nullable: true }
@@ -104,6 +104,28 @@ components:
         services:
           type: array
           items: { type: object }
+    ContainerStatus:
+      type: string
+      description: >-
+        Live container status, resolved on read from Proxmox presence/run-state,
+        active jobs, and configuration drift.
+        running = online in Proxmox;
+        offline = exists in Proxmox but stopped;
+        creating = no Proxmox VM yet, active create job;
+        restarting = active reconfigure job;
+        failed = no Proxmox VM, last create job failed;
+        missing = no Proxmox VM, create succeeded or no create job;
+        out-of-sync = exists in Proxmox but config differs from expectation;
+        unknown = Proxmox unreachable / no node credentials.
+      enum:
+        - running
+        - offline
+        - creating
+        - restarting
+        - failed
+        - missing
+        - out-of-sync
+        - unknown
     Node:
       type: object
       properties:
@@ -338,6 +360,26 @@ paths:
     get: { tags: [Containers], responses: { '200': { description: Container } } }
     put: { tags: [Containers], responses: { '200': { description: Updated, optional restart job } } }
     delete: { tags: [Containers], responses: { '200': { description: Deleted, with DNS cleanup warnings } } }
+  /sites/{siteId}/containers/{id}/status:
+    get:
+      tags: [Containers]
+      summary: Live container status (computed from Proxmox + jobs + config drift)
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Resolved container status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { $ref: '#/components/schemas/ContainerStatus' }
+        '404': { description: Container not found }
 
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]

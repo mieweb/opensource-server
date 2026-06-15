@@ -1,8 +1,18 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
 const { requireLocalhostOrAdmin } = require('../middlewares');
 
 const router = express.Router();
+
+// A container is eligible for routing/DNS config once it has been provisioned,
+// i.e. it has a Proxmox VMID and an assigned IPv4 address. The old code filtered
+// on the (now-removed) static status column; presence of an IP/VMID is the stable,
+// Proxmox-independent proxy for "this container is live enough to route to".
+const PROVISIONED_CONTAINER_WHERE = {
+  containerId: { [Op.ne]: null },
+  ipv4Address: { [Op.ne]: null },
+};
 
 async function loadDnsmasqSite(siteId) {
   return Site.findByPk(siteId, {
@@ -12,7 +22,7 @@ async function loadDnsmasqSite(siteId) {
       include: [{
         model: Container,
         as: 'containers',
-        where: { status: 'running' },
+        where: PROVISIONED_CONTAINER_WHERE,
         required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
       }],
@@ -40,7 +50,7 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       include: [{
         model: Container,
         as: 'containers',
-        where: { status: 'running' },
+        where: PROVISIONED_CONTAINER_WHERE,
         required: false,
         include: [{
           model: Service,

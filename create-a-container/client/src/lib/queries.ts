@@ -8,6 +8,7 @@ import type {
   Container,
   ContainerMetadata,
   ContainerNewBootstrap,
+  ContainerStatusResult,
   EffectiveResources,
   ExternalDomain,
   Group,
@@ -29,6 +30,8 @@ export const keys = {
   containers: (siteId: number | string) => ['sites', String(siteId), 'containers'] as const,
   container: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'containers', String(id)] as const,
+  containerStatus: (siteId: number | string, id: number | string) =>
+    ['sites', String(siteId), 'containers', String(id), 'status'] as const,
   containerBootstrap: (siteId: number | string) =>
     ['sites', String(siteId), 'containers', 'new'] as const,
   containerMetadata: (image: string) => ['container-metadata', image] as const,
@@ -64,6 +67,8 @@ export const queries = {
     api.get<Container[]>(`/api/v1/sites/${siteId}/containers`),
   getContainer: (siteId: number | string, id: number | string) =>
     api.get<Container>(`/api/v1/sites/${siteId}/containers/${id}`),
+  getContainerStatus: (siteId: number | string, id: number | string) =>
+    api.get<ContainerStatusResult>(`/api/v1/sites/${siteId}/containers/${id}/status`),
   containerBootstrap: (siteId: number | string) =>
     api.get<ContainerNewBootstrap>(`/api/v1/sites/${siteId}/containers/new`),
   containerMetadata: (siteId: number | string, image: string) =>

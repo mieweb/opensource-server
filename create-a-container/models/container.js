@@ -268,11 +268,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       allowNull: false
     },
-    status: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: 'pending'
-    },
     template: {
       type: DataTypes.STRING(255),
       allowNull: true

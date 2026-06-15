@@ -21,6 +21,11 @@ const {
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../../../utils/docker-registry');
 const { manageDnsRecords } = require('../../../utils/cloudflare-dns');
 const { deleteVirtualMachine, withNetbox } = require('../../../utils/netbox');
+const {
+  computeContainerStatus,
+  computeContainerStatuses,
+  STATUS,
+} = require('../../../utils/container-status');
 const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
 
 const router = express.Router({ mergeParams: true });
@@ -86,7 +91,7 @@ async function loadSite(req) {
   return site;
 }
 
-function serializeContainer(c, site) {
+function serializeContainer(c, site, status) {
   const services = c.services || [];
   const ssh = services.find(
     (s) =>
@@ -110,7 +115,9 @@ function serializeContainer(c, site) {
     hostname: c.hostname,
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
-    status: c.status,
+    // Live status computed from Proxmox + jobs + config (see utils/container-status).
+    // Kept on every container payload so existing consumers remain non-breaking.
+    status: status || STATUS.UNKNOWN,
     template: c.template,
     creationJobId: c.creationJobId,
     entrypoint: c.entrypoint,
@@ -202,10 +209,41 @@ router.get(
             { association: 'dnsService' },
           ],
         },
-        { association: 'node', attributes: ['id', 'name', 'apiUrl'] },
+        // Full node record (incl. credentials) is required to query live Proxmox status.
+        { association: 'node' },
       ],
     });
-    return ok(res, rows.map((c) => serializeContainer(c, site)));
+    // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
+    // per node (shared), rather than N independent round-trips from the browser.
+    const statuses = await computeContainerStatuses(rows, Job);
+    return ok(
+      res,
+      rows.map((c) => serializeContainer(c, site, statuses.get(c.id))),
+    );
+  }),
+);
+
+// GET /containers/:id/status — live status for a single container
+router.get(
+  '/:id/status',
+  asyncHandler(async (req, res) => {
+    const site = await loadSite(req);
+    const containerId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(containerId) || containerId <= 0) {
+      throw new ApiError(404, 'not_found', 'Container not found');
+    }
+    const c = await Container.findOne({
+      where: { id: containerId, username: req.session.user },
+      include: [
+        { association: 'node' },
+        { association: 'creationJob' },
+      ],
+    });
+    if (!c || !c.node || c.node.siteId !== site.id) {
+      throw new ApiError(404, 'not_found', 'Container not found');
+    }
+    const status = await computeContainerStatus({ container: c, Job });
+    return ok(res, { status });
   }),
 );
 
@@ -233,12 +271,14 @@ router.get(
           ],
         },
         { association: 'node' },
+        { association: 'creationJob' },
       ],
     });
     if (!c || !c.node || c.node.siteId !== site.id) {
       throw new ApiError(404, 'not_found', 'Container not found');
     }
-    return ok(res, serializeContainer(c, site));
+    const status = await computeContainerStatus({ container: c, Job });
+    return ok(res, serializeContainer(c, site, status));
   }),
 );
 
@@ -296,7 +336,6 @@ router.post(
         {
           hostname,
           username: req.session.user,
-          status: 'pending',
           template: templateName,
           nodeId: node.id,
           siteId: site.id,
@@ -371,7 +410,9 @@ router.post(
         containerId: container.id,
         jobId: job.id,
         hostname: container.hostname,
-        status: 'pending',
+        // A create job was just enqueued and there is no Proxmox VMID yet, so the
+        // live status resolver would report 'creating' — return it directly.
+        status: STATUS.CREATING,
       });
     } catch (err) {
       await t.rollback();
@@ -414,16 +455,15 @@ router.put(
     const dnsWarnings = [];
     await sequelize.transaction(async (t) => {
       if (envChanged || entrypointChanged) {
+        // Persist the new desired config only. The "restarting" state is no
+        // longer stored — it is derived from the active reconfigure job below.
         await container.update(
           {
             environmentVars: envVarsJson,
             entrypoint: newEntrypoint,
-            status: needsRestart && container.containerId ? 'restarting' : container.status,
           },
           { transaction: t },
         );
-      } else if (forceRestart && container.containerId) {
-        await container.update({ status: 'restarting' }, { transaction: t });
       }
       if (needsRestart && container.containerId) {
         restartJob = await Job.create(
