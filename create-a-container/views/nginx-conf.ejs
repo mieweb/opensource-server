@@ -216,7 +216,17 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
     
+    # All error_page mappings for this server are declared here, once. Keep
+    # them at server scope (not inside a location) so a location-level
+    # error_page can never replace the inherited list — see the auth-enabled
+    # `location /` below, which relies on inheriting these.
     error_page 403 @403;
+    error_page 502 @502;
+    <%_ if (authRequired && authServer) { _%>
+    error_page 401 = @oauth2_signin;
+    <%_ } else if (authRequired && !authServer) { _%>
+    error_page 503 @auth_unavailable;
+    <%_ } _%>
 
     location @403 {
       rewrite ^ /403.html break;
@@ -225,8 +235,6 @@ http {
       proxy_set_header Content-Length "";
       proxy_pass http://error_pages;
     }
-
-    error_page 502 @502;
 
     location @502 {
       rewrite ^ /502.html break;
@@ -280,7 +288,6 @@ http {
     }
 
     location / {
-      error_page 503 @auth_unavailable;
       return 503;
     }
     <%_ } else { _%>
@@ -288,13 +295,6 @@ http {
     location / {
       <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
-      error_page 401 = @oauth2_signin;
-      # A location-level error_page replaces (does not merge with) the
-      # server-level error_page list, so the @403/@502 handlers defined above
-      # must be re-declared here or this location would fall back to nginx's
-      # default error pages.
-      error_page 403 @403;
-      error_page 502 @502;
 
       # Capture identity from the auth subrequest and forward it to the backend.
       auth_request_set $auth_user   $upstream_http_x_auth_request_user;
