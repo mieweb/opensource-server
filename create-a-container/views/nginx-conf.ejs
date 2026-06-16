@@ -268,11 +268,6 @@ http {
       return 302 /oauth2/sign_in?rd=$scheme://$host$request_uri;
     }
 
-    auth_request_set $auth_user  $upstream_http_x_auth_request_user;
-    auth_request_set $auth_email $upstream_http_x_auth_request_email;
-    auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
-    auth_request_set $auth_token $upstream_http_x_auth_request_access_token;
-
     <%_ } _%>
     <%_ if (authRequired && !authServer) { _%>
     # Authentication required but no oauth2-proxy URL configured for this domain
@@ -295,7 +290,16 @@ http {
       auth_request /oauth2/auth;
       error_page 401 = @oauth2_signin;
 
-      # Forward user identity from auth subrequest to backend
+      # Capture identity from the auth subrequest and forward it to the backend.
+      # These auth_request_set directives must live here (alongside auth_request),
+      # not at server scope — otherwise nginx evaluates them for error_page
+      # locations like @502 that have no auth subrequest, which breaks those
+      # internal redirects.
+      auth_request_set $auth_user   $upstream_http_x_auth_request_user;
+      auth_request_set $auth_email  $upstream_http_x_auth_request_email;
+      auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
+      auth_request_set $auth_token  $upstream_http_x_auth_request_access_token;
+
       proxy_set_header X-User         $auth_user;
       proxy_set_header X-Email        $auth_email;
       proxy_set_header X-Groups       $auth_groups;

@@ -143,6 +143,18 @@ Because NGINX proxies straight to oauth2-proxy (nothing sits in front of it from
 
 See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
 
+!!! warning "Large session cookies"
+    With the default **cookie** session store, oauth2-proxy packs the entire encrypted session (access, refresh, and ID tokens plus claims) into the `_oauth2_proxy` cookie, sent on every request. This easily exceeds 4&nbsp;KB and can trip NGINX header-buffer limits (e.g. a `502` on the `/oauth2/callback` response).
+
+    Use the **Redis** session store so only a small ticket is stored in the cookie:
+
+    ```
+    --session-store-type=redis
+    --redis-connection-url=redis://<host>:6379
+    ```
+
+    If you cannot run Redis, reduce what the cookie carries instead: drop `--pass-access-token` / `--set-authorization-header` if you do not need the token downstream, and request only the scopes you use. See the [session storage docs](https://oauth2-proxy.github.io/oauth2-proxy/configuration/session_storage/).
+
 ### Identity Headers
 
 When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Request-*` response headers and forwards them to the backend under a **stable header contract** (so the backend sees the same names regardless of the auth provider):
