@@ -148,7 +148,7 @@ sequenceDiagram
 
 When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests against an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process before proxying. The domain's `authServer` is the address of that process, e.g. `http://127.0.0.1:4180` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). The manager itself no longer provides forward-auth — administrators run and configure oauth2-proxy.
 
-NGINX proxies the whole `/oauth2/*` subtree (and the `auth_request` check at `/oauth2/auth`) straight to `authServer` in a **single hop**, passing the app's own `Host` through. Because oauth2-proxy terminates these requests directly, it builds redirect URIs and cookies against the correct app hostname and needs no `--reverse-proxy` / `X-Forwarded-*` handling. If the admin wants oauth2-proxy behind the same load-balancer IP, they expose its port via an L4 (`stream {}`) passthrough; it is never fronted by a generated `server` block, so there is no second hop to clobber headers.
+NGINX proxies the whole `/oauth2/*` subtree (and the `auth_request` check at `/oauth2/auth`) to `authServer`, passing the app's own `Host` through. oauth2-proxy terminates those requests itself and builds redirect URIs and cookies against the correct app hostname. If the admin wants oauth2-proxy behind the same load-balancer IP, they expose its port via an L4 (`stream {}`) passthrough.
 
 ```mermaid
 sequenceDiagram

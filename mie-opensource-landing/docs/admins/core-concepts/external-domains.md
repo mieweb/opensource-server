@@ -117,7 +117,7 @@ The manager does **not** provide authentication itself — you must deploy and c
 
 ### Configuring oauth2-proxy
 
-Run oauth2-proxy as a standalone process listening on its own address, and set the domain's **oauth2-proxy URL** to that address (e.g. `http://127.0.0.1:4180`). NGINX proxies the whole `/oauth2/*` path on each protected service straight to that address in a **single hop**, so to the browser the OAuth2 endpoints appear under the app's own hostname (`app.example.com/oauth2/...`) while actually being served by oauth2-proxy.
+Run oauth2-proxy as a standalone process listening on its own address, and set the domain's **oauth2-proxy URL** to that address (e.g. `http://127.0.0.1:4180`). NGINX proxies the whole `/oauth2/*` path on each protected service to that address, so to the browser the OAuth2 endpoints appear under the app's own hostname (`app.example.com/oauth2/...`) while actually being served by oauth2-proxy.
 
 1. **Run oauth2-proxy** on a fixed address reachable from the NGINX host (loopback if co-located, e.g. `http://127.0.0.1:4180`, or a private host/port).
 2. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth.
@@ -126,14 +126,12 @@ Run oauth2-proxy as a standalone process listening on its own address, and set t
 A single oauth2-proxy instance can serve many services this way — they all proxy `/oauth2/*` to the same address. Because NGINX passes each app's own `Host` through, oauth2-proxy builds redirect URIs and cookies against the correct app hostname without any extra configuration.
 
 !!! note "Putting oauth2-proxy behind the same load balancer"
-    oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address. The `/oauth2/*` traffic still reaches oauth2-proxy in a single hop, so none of the header/`--reverse-proxy` handling below is required.
+    oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address.
 
 Run oauth2-proxy with at least:
 
 - `--set-xauthrequest=true` — so identity is returned in `X-Auth-Request-*` response headers (forwarded to the backend).
 - `--pass-access-token=true` *(optional)* — to forward the access token as `X-Access-Token`.
-
-Because NGINX proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), you do **not** need `--reverse-proxy`, `--real-ip-from`, or any `X-Forwarded-*` headers.
 
 !!! warning "HTTPS scheme"
     oauth2-proxy builds its `redirect_uri` and secure cookies from the scheme of the connection it receives. The scheme is whatever you put in the **oauth2-proxy URL**:
@@ -189,7 +187,6 @@ sequenceDiagram
     else 401 (unauthenticated)
         OAuth2Proxy-->>NGINX: 401
         NGINX-->>Client: 302 → app.example.com/oauth2/sign_in?rd=https://app.example.com/page
-        Note over Client,OAuth2Proxy: /oauth2/* is proxied to oauth2-proxy in one hop
     end
 ```
 
