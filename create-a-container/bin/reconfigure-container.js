@@ -80,10 +80,7 @@ async function main() {
     const client = await node.api();
     console.log('Proxmox API client initialized');
     
-    // Build config from environment variables and entrypoint. buildLxcEnvConfig
-    // is the single source of truth for the effective env: it merges admin-defined
-    // system defaults and NVIDIA defaults under the user-defined values, applied
-    // here at configure-time rather than stored in the DB record.
+    // Build config from environment variables and entrypoint
     const lxcConfig = await container.buildLxcEnvConfig();
     
     if (Object.keys(lxcConfig).length > 0) {

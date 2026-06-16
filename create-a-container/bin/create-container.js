@@ -340,15 +340,8 @@ async function main() {
       console.log('Container configured');
     }
     
-    // Apply environment variables and entrypoint. buildLxcEnvConfig is the single
-    // source of truth for the effective env: it merges admin-defined system
-    // defaults and NVIDIA defaults under the user-defined values. None of this is
-    // written back into the DB record (see below).
+    // Apply environment variables and entrypoint
     const envConfig = await container.buildLxcEnvConfig();
-    // On a fresh container there is nothing to unset, so drop any 'delete' key to
-    // avoid a no-op API param.
-    delete envConfig.delete;
-
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
       await client.updateLxcConfig(node.name, vmid, envConfig);
@@ -418,11 +411,7 @@ async function main() {
       throw new Error('Could not get IP address from Proxmox interfaces API');
     }
     
-    // Update the container record. Note: environmentVars and entrypoint are NOT
-    // written back from the live config — the DB record stores only the values
-    // the user supplied. Admin-defined system defaults (and NVIDIA defaults) are
-    // merged in at configure-time and must not be persisted here, otherwise they
-    // would be frozen into the record and exposed in the edit UI.
+    // Update the container record
     console.log('Updating container record...');
     await container.update({
       macAddress,

@@ -243,10 +243,6 @@ router.post(
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
 
       const wantsNvidia = !!nvidiaRequested;
-      // Only the user-defined env vars are persisted on the container record.
-      // NVIDIA defaults (for GPU passthrough) and admin-defined system defaults
-      // are merged in at configure-time by the create/reconfigure jobs, so they
-      // are intentionally not stored here.
       let envVarsJson = null;
       if (Array.isArray(environmentVars) && environmentVars.length > 0) {
         const envObj = {};
