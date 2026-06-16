@@ -92,7 +92,7 @@ export interface Container {
 
 /**
  * Live container status resolved from Proxmox + job state + config drift.
- * Returned by GET /sites/:id/containers/:id/status and embedded on Container.
+ * Embedded on each Container returned by the list/show/create endpoints.
  */
 export type ContainerStatus =
   | 'running'
@@ -103,10 +103,6 @@ export type ContainerStatus =
   | 'missing'
   | 'out-of-sync'
   | 'unknown';
-
-export interface ContainerStatusResult {
-  status: ContainerStatus;
-}
 
 export interface ContainerCreateResult {
   containerId: number;

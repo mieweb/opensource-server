@@ -223,30 +223,6 @@ router.get(
   }),
 );
 
-// GET /containers/:id/status — live status for a single container
-router.get(
-  '/:id/status',
-  asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
-    const containerId = parseInt(req.params.id, 10);
-    if (!Number.isInteger(containerId) || containerId <= 0) {
-      throw new ApiError(404, 'not_found', 'Container not found');
-    }
-    const c = await Container.findOne({
-      where: { id: containerId, username: req.session.user },
-      include: [
-        { association: 'node' },
-        { association: 'creationJob' },
-      ],
-    });
-    if (!c || !c.node || c.node.siteId !== site.id) {
-      throw new ApiError(404, 'not_found', 'Container not found');
-    }
-    const status = await computeContainerStatus({ container: c, Job });
-    return ok(res, { status });
-  }),
-);
-
 // GET /containers/:id
 router.get(
   '/:id',

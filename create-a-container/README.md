@@ -230,22 +230,20 @@ Delete a container from both Proxmox and the database
   - `403` - User doesn't own the container
   - `500` - Proxmox API deletion failed or node not configured
 
-#### `GET /api/v1/sites/:siteId/containers/:id/status` (Auth Required)
-Return the **live** status of a container, computed on demand rather than read
-from a stored column. The status is resolved by combining the container's
-presence/run-state in Proxmox, any active create/reconfigure jobs, and whether
-the live LXC config matches what the API server expects.
-- **Returns**: `{ data: { status } }` where `status` is one of:
-  - `running` — online in Proxmox
-  - `offline` — exists in Proxmox but stopped
-  - `creating` — no Proxmox VM yet, active create job
-  - `restarting` — active reconfigure job
-  - `failed` — no Proxmox VM, last create job failed
-  - `missing` — no Proxmox VM, create succeeded or no create job found
-  - `out-of-sync` — exists in Proxmox but its config differs from expectation
-  - `unknown` — Proxmox unreachable / node has no API credentials
-- **Note**: The same `status` value is also embedded on each container returned
-  by the list and show endpoints, so existing consumers remain non-breaking.
+#### Container status (`status` field)
+Every container returned by the list and show endpoints includes a **live**
+`status` field, computed on demand rather than read from a stored column. It is
+resolved by combining the container's presence/run-state in Proxmox, any active
+create/reconfigure jobs, and whether the live LXC config matches what the API
+server expects. Possible values:
+- `running` — online in Proxmox
+- `offline` — exists in Proxmox but stopped
+- `creating` — no Proxmox VM yet, active create job
+- `restarting` — active reconfigure job
+- `failed` — no Proxmox VM, last create job failed
+- `missing` — no Proxmox VM, create succeeded or no create job found
+- `out-of-sync` — exists in Proxmox but its config differs from expectation
+- `unknown` — Proxmox unreachable / node has no API credentials
 
 #### `GET /status/:jobId` (Auth Required)
 View container creation progress page

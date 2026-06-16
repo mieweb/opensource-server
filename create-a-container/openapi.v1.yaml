@@ -360,26 +360,6 @@ paths:
     get: { tags: [Containers], responses: { '200': { description: Container } } }
     put: { tags: [Containers], responses: { '200': { description: Updated, optional restart job } } }
     delete: { tags: [Containers], responses: { '200': { description: Deleted, with DNS cleanup warnings } } }
-  /sites/{siteId}/containers/{id}/status:
-    get:
-      tags: [Containers]
-      summary: Live container status (computed from Proxmox + jobs + config drift)
-      parameters:
-        - { in: path, name: siteId, required: true, schema: { type: integer } }
-        - { in: path, name: id, required: true, schema: { type: integer } }
-      responses:
-        '200':
-          description: Resolved container status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      status: { $ref: '#/components/schemas/ContainerStatus' }
-        '404': { description: Container not found }
 
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]

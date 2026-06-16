@@ -71,36 +71,8 @@ const STATUS_LABELS: Record<ContainerStatus, string> = {
   unknown: 'Unknown',
 };
 
-// Statuses that are transitional and worth polling for.
-const TRANSITIONAL_STATUSES: ReadonlySet<ContainerStatus> = new Set<ContainerStatus>([
-  'creating',
-  'restarting',
-]);
-
-/**
- * Live status badge. Per issue #350 each row queries the dedicated
- * /containers/:id/status endpoint. The status already returned by the list
- * endpoint seeds initialData so the badge paints instantly, then this query
- * keeps it fresh (polling while the container is in a transitional state).
- */
-function ContainerStatusBadge({
-  siteId,
-  container,
-}: {
-  siteId: string | undefined;
-  container: Container;
-}) {
-  const { data } = useQuery({
-    queryKey: keys.containerStatus(siteId!, container.id),
-    queryFn: () => queries.getContainerStatus(siteId!, container.id),
-    enabled: !!siteId,
-    initialData: { status: container.status },
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status && TRANSITIONAL_STATUSES.has(status) ? 4000 : false;
-    },
-  });
-  const status = data?.status ?? container.status;
+/** Status badge. The status is the live value embedded in the list response. */
+function StatusBadge({ status }: { status: ContainerStatus }) {
   return <Badge variant={statusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
 
@@ -378,7 +350,7 @@ export function ContainersListPage() {
                 <CardTitle as="h2" className="truncate text-sm font-semibold">
                   {c.hostname}
                 </CardTitle>
-                <ContainerStatusBadge siteId={siteId} container={c} />
+                <StatusBadge status={c.status} />
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
                 <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
@@ -422,7 +394,7 @@ export function ContainersListPage() {
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.hostname}</TableCell>
                 <TableCell>
-                  <ContainerStatusBadge siteId={siteId} container={c} />
+                  <StatusBadge status={c.status} />
                 </TableCell>
                 <TableCell>
                   <NodeLink c={c} />
