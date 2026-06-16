@@ -47,9 +47,9 @@ function statusVariant(
       return 'success';
     case 'creating':
     case 'restarting':
+    case 'out-of-sync':
       return 'warning';
     case 'failed':
-    case 'out-of-sync':
       return 'danger';
     case 'offline':
     case 'missing':
