@@ -43,11 +43,28 @@ const STATUS_VALUES = Object.freeze(Object.values(STATUS));
 // container router / resource-requests, so we match them exactly here.
 //   create:      node bin/create-container.js --container-id=<id>
 //   reconfigure: node bin/reconfigure-container.js --container-id=<id>[ --<resource>=<value>...]
+const CREATE_PREFIX = 'node bin/create-container.js --container-id=';
+const RECONFIGURE_PREFIX = 'node bin/reconfigure-container.js --container-id=';
+
 function createCommand(id) {
-  return `node bin/create-container.js --container-id=${id}`;
+  return `${CREATE_PREFIX}${id}`;
 }
 function reconfigureCommand(id) {
-  return `node bin/reconfigure-container.js --container-id=${id}`;
+  return `${RECONFIGURE_PREFIX}${id}`;
+}
+
+// Extract the container id from a create/reconfigure job command, or null if the
+// command isn't one of ours. The id is the run of digits immediately after a
+// known prefix, terminated by end-of-string or a space (so 12 != 123).
+const COMMAND_CONTAINER_ID_RE = new RegExp(
+  `^node bin/(?:create|reconfigure)-container\\.js --container-id=(\\d+)(?: |$)`,
+);
+function containerIdFromCommand(command) {
+  const m = COMMAND_CONTAINER_ID_RE.exec(command || '');
+  return m ? parseInt(m[1], 10) : null;
+}
+function isCreateCommand(command) {
+  return typeof command === 'string' && command.startsWith(CREATE_PREFIX);
 }
 
 const ACTIVE_JOB_STATUSES = ['pending', 'running'];
@@ -92,6 +109,60 @@ async function findLatestReconfigureJob(container, Job) {
     },
     order: [['createdAt', 'DESC']],
   });
+}
+
+/**
+ * Prefetch the latest create and reconfigure job for many containers in a single
+ * DB query, so resolving N containers' statuses is O(1) queries instead of O(N).
+ *
+ * Jobs are matched by their deterministic command strings (exact create command,
+ * and reconfigure command optionally followed by resource flags) for the given
+ * container ids, fetched newest-first, then bucketed per container keeping the
+ * first (latest) of each kind.
+ *
+ * @param {Array<object>} containers - Container instances.
+ * @param {object} Job - Job model.
+ * @returns {Promise<Map<number, { createJob: object|null, reconfigureJob: object|null }>>}
+ */
+async function prefetchLatestJobs(containers, Job) {
+  const byContainer = new Map();
+  const ids = [];
+  for (const c of containers) {
+    byContainer.set(c.id, { createJob: null, reconfigureJob: null });
+    ids.push(c.id);
+  }
+  if (ids.length === 0) return byContainer;
+
+  // One query for all relevant jobs, with a bounded number of WHERE clauses
+  // (independent of N):
+  //   - exact create commands for these ids
+  //   - exact (arg-less) reconfigure commands for these ids
+  //   - any reconfigure command carrying trailing flags (prefix LIKE)
+  // The prefix LIKE may match reconfigure jobs for containers not on this page;
+  // those are discarded during bucketing below (byContainer lookup).
+  const orClauses = [
+    { command: { [Op.in]: ids.map(createCommand) } },
+    { command: { [Op.in]: ids.map(reconfigureCommand) } },
+    { command: { [Op.like]: `${RECONFIGURE_PREFIX}%` } },
+  ];
+  const jobs = await Job.findAll({
+    where: { [Op.or]: orClauses },
+    order: [['createdAt', 'DESC']],
+  });
+
+  // Bucket newest-first; the first job seen for a (container, kind) is the latest.
+  for (const job of jobs) {
+    const id = containerIdFromCommand(job.command);
+    if (id == null) continue;
+    const entry = byContainer.get(id);
+    if (!entry) continue;
+    if (isCreateCommand(job.command)) {
+      if (!entry.createJob) entry.createJob = job;
+    } else if (!entry.reconfigureJob) {
+      entry.reconfigureJob = job;
+    }
+  }
+  return byContainer;
 }
 
 function isActiveJob(job) {
@@ -219,9 +290,13 @@ function decideStatus(facts) {
  * @param {{ data: Array<object>, ok: boolean }} [params.snapshot] - Optional
  *   pre-fetched clusterResources('lxc') snapshot for the node. `ok` indicates the
  *   query succeeded; `data` is the resource list (used for batching the index).
+ * @param {{ createJob: object|null, reconfigureJob: object|null }} [params.jobs] -
+ *   Optional prefetched latest create/reconfigure jobs for this container (see
+ *   prefetchLatestJobs). When provided, the per-container job DB lookups are
+ *   skipped, making batch resolution O(1) queries instead of O(N).
  * @returns {Promise<string>} One of the STATUS values.
  */
-async function computeContainerStatus({ container, Job, api, snapshot }) {
+async function computeContainerStatus({ container, Job, api, snapshot, jobs }) {
   const node = container.node;
   const hasCreds = nodeHasCreds(node);
   const hasVmid = container.containerId != null;
@@ -261,7 +336,10 @@ async function computeContainerStatus({ container, Job, api, snapshot }) {
   }
 
   // --- Jobs ---
-  const reconfigureJob = await findLatestReconfigureJob(container, Job);
+  // Use prefetched jobs when supplied (batch path); otherwise query per container.
+  const reconfigureJob = jobs
+    ? jobs.reconfigureJob
+    : await findLatestReconfigureJob(container, Job);
   const restarting = isActiveJob(reconfigureJob);
 
   // Drift detection (only meaningful if it exists and isn't already restarting).
@@ -282,7 +360,7 @@ async function computeContainerStatus({ container, Job, api, snapshot }) {
   let createFailed = false;
   let hasCreateJob = false;
   if (!inProxmox) {
-    const createJob = await findLatestCreateJob(container, Job);
+    const createJob = jobs ? jobs.createJob : await findLatestCreateJob(container, Job);
     hasCreateJob = !!createJob;
     creating = isActiveJob(createJob);
     createFailed = !!createJob && createJob.status === 'failure';
@@ -304,10 +382,12 @@ async function computeContainerStatus({ container, Job, api, snapshot }) {
 /**
  * Compute live statuses for many containers efficiently.
  *
- * Groups containers by node so each node's Proxmox `clusterResources('lxc')`
- * snapshot is fetched exactly once and a single authenticated client is reused
- * for that node's containers (including per-container config reads). This keeps
- * total end-user latency low for the list page versus N independent calls.
+ * Two batching strategies keep this fast for the list page:
+ *   - Jobs: a single DB query fetches the latest create/reconfigure job for every
+ *     container up front (O(1) queries instead of O(N)).
+ *   - Proxmox: containers are grouped by node so each node's
+ *     `clusterResources('lxc')` snapshot is fetched exactly once and a single
+ *     authenticated client is reused for that node's containers.
  *
  * @param {Array<object>} containers - Container instances (each with `node`).
  * @param {object} Job - Job model.
@@ -315,6 +395,9 @@ async function computeContainerStatus({ container, Job, api, snapshot }) {
  */
 async function computeContainerStatuses(containers, Job) {
   const result = new Map();
+
+  // One query for everyone's latest create/reconfigure jobs.
+  const jobsByContainer = await prefetchLatestJobs(containers, Job);
 
   // Group by node id (containers without a node still get resolved, just without
   // any Proxmox facts).
@@ -344,8 +427,12 @@ async function computeContainerStatuses(containers, Job) {
       // Resolve each container in the group sequentially per node (shares the
       // single authenticated client); different nodes run in parallel.
       for (const container of group) {
+        const jobs = jobsByContainer.get(container.id) || {
+          createJob: null,
+          reconfigureJob: null,
+        };
         // eslint-disable-next-line no-await-in-loop
-        const status = await computeContainerStatus({ container, Job, api, snapshot });
+        const status = await computeContainerStatus({ container, Job, api, snapshot, jobs });
         result.set(container.id, status);
       }
     }),
@@ -366,4 +453,6 @@ module.exports = {
   findInSnapshot,
   findLatestCreateJob,
   findLatestReconfigureJob,
+  prefetchLatestJobs,
+  containerIdFromCommand,
 };
