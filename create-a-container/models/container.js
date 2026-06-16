@@ -64,6 +64,24 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Parse a Proxmox LXC `env` string (NUL-separated `KEY=value` pairs) into a
+     * normalized, flat { KEY: stringValue } object. Anything malformed is
+     * dropped via normalizeEnvVars. The inverse of the encoding done in
+     * buildLxcEnvConfig.
+     * @param {string|null|undefined} envStr - Raw Proxmox `env` value
+     * @returns {object} Flat object of validated { KEY: value }
+     */
+    static parseLxcEnvString(envStr) {
+      if (!envStr || typeof envStr !== 'string') return {};
+      const raw = {};
+      for (const pair of envStr.split('\0')) {
+        const eq = pair.indexOf('=');
+        if (eq > 0) raw[pair.substring(0, eq)] = pair.substring(eq + 1);
+      }
+      return this.normalizeEnvVars(raw);
+    }
+
+    /**
      * Internal helper for buildLxcEnvConfig.
      * Load the admin-defined system default environment variables from the
      * Settings table, flattened to a validated { KEY: value } object.
@@ -120,6 +138,46 @@ module.exports = (sequelize, DataTypes) => {
         NVIDIA_VISIBLE_DEVICES: 'all',
         NVIDIA_DRIVER_CAPABILITIES: 'utility compute'
       };
+    }
+
+    /**
+     * Fold a template's environment variables and entrypoint into this
+     * container's persisted record, as if the user had supplied them.
+     *
+     * Called once at creation, after the template has been cloned, with the
+     * template's own LXC config. We can't recover these values later (templates
+     * are mutable Docker refs that may change or disappear before a reconfigure,
+     * and we don't cache them), so we snapshot them onto the record now. This
+     * keeps env/entrypoint stable across future reconfigures — which use
+     * deleteMissing and would otherwise unset template-provided values that were
+     * never stored.
+     *
+     * Precedence is template < user (user-supplied values win). System and
+     * NVIDIA defaults are intentionally NOT folded in here; they remain
+     * configure-time-only so they are not frozen into the record.
+     *
+     * Persists and returns nothing; mutates this instance.
+     *
+     * @param {object} templateConfig - The cloned template's LXC config
+     * @param {string} [templateConfig.env] - Proxmox NUL-separated `env` string
+     * @param {string} [templateConfig.entrypoint] - Template entrypoint
+     */
+    async persistTemplateDefaults(templateConfig = {}) {
+      const templateEnv = this.constructor.parseLxcEnvString(templateConfig.env);
+      // template < user
+      const mergedEnv = { ...templateEnv, ...this.parseEnvironmentVars() };
+
+      const templateEntrypoint =
+        typeof templateConfig.entrypoint === 'string' && templateConfig.entrypoint.trim()
+          ? templateConfig.entrypoint.trim()
+          : null;
+      const userEntrypoint = this.entrypoint && this.entrypoint.trim() ? this.entrypoint.trim() : null;
+      const mergedEntrypoint = userEntrypoint || templateEntrypoint;
+
+      await this.update({
+        environmentVars: Object.keys(mergedEnv).length > 0 ? JSON.stringify(mergedEnv) : null,
+        entrypoint: mergedEntrypoint
+      });
     }
 
     /**

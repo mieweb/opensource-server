@@ -340,10 +340,20 @@ async function main() {
       console.log('Container configured');
     }
     
+    // Snapshot the template's env/entrypoint onto the container record now, as
+    // if the user had supplied them (user-supplied values still win). Templates
+    // are mutable Docker refs we can't re-query on a later reconfigure, so we
+    // persist them here; otherwise a future reconfigure (which uses
+    // deleteMissing) would unset template-provided values that were never
+    // stored. System/NVIDIA defaults are intentionally left out — they stay
+    // configure-time-only.
+    const templateConfig = await client.lxcConfig(node.name, vmid);
+    await container.persistTemplateDefaults(templateConfig);
+
     // Apply environment variables and entrypoint. Use the default
-    // (deleteMissing=false) so that any env/entrypoint provided by the template
-    // we just cloned is preserved when the user didn't supply their own — only
-    // explicit values are pushed, nothing is unset.
+    // (deleteMissing=false): only explicit values are pushed, nothing is unset.
+    // The record now already includes the template's values, and system/NVIDIA
+    // defaults are merged in by buildLxcEnvConfig.
     const envConfig = await container.buildLxcEnvConfig();
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
