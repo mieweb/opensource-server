@@ -107,24 +107,20 @@ components:
     ContainerStatus:
       type: string
       description: >-
-        Live container status, resolved on read from Proxmox presence/run-state,
-        active jobs, and configuration drift.
+        Live container status, resolved on read from Proxmox run-state and the
+        create job.
         running = online in Proxmox;
         offline = exists in Proxmox but stopped;
         creating = no Proxmox VM yet, active create job;
-        restarting = active reconfigure job;
-        failed = no Proxmox VM, last create job failed;
+        failed = no Proxmox VM, create job failed;
         missing = no Proxmox VM, create succeeded or no create job;
-        out-of-sync = exists in Proxmox but config differs from expectation;
         unknown = Proxmox unreachable / no node credentials.
       enum:
         - running
         - offline
         - creating
-        - restarting
         - failed
         - missing
-        - out-of-sync
         - unknown
     Node:
       type: object

@@ -233,16 +233,14 @@ Delete a container from both Proxmox and the database
 #### Container status (`status` field)
 Every container returned by the list, show, and create endpoints includes a
 **live** `status` field, computed on demand rather than read from a stored
-column. It is resolved by combining the container's presence/run-state in
-Proxmox, any active create/reconfigure jobs, and whether the live LXC config
-matches what the API server expects. Possible values:
+column. It is resolved by combining the container's run-state in Proxmox (from a
+single per-node cluster snapshot) with the state of its create job. Possible
+values:
 - `running` — online in Proxmox
 - `offline` — exists in Proxmox but stopped
 - `creating` — no Proxmox VM yet, active create job
-- `restarting` — active reconfigure job
-- `failed` — no Proxmox VM, last create job failed
+- `failed` — no Proxmox VM, create job failed
 - `missing` — no Proxmox VM, create succeeded or no create job found
-- `out-of-sync` — exists in Proxmox but its config differs from expectation
 - `unknown` — Proxmox unreachable / node has no API credentials
 
 The create endpoint (`POST /containers`) returns `creating` immediately, since a

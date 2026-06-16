@@ -211,10 +211,12 @@ router.get(
         },
         // Full node record (incl. credentials) is required to query live Proxmox status.
         { association: 'node' },
+        // Eager-load the create job so status resolution needs no per-container query.
+        { association: 'creationJob' },
       ],
     });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
-    // per node (shared), rather than N independent round-trips from the browser.
+    // per node (shared), and no per-container DB queries (create job is loaded above).
     const statuses = await computeContainerStatuses(rows, Job);
     return ok(
       res,

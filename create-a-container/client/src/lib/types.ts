@@ -91,17 +91,15 @@ export interface Container {
 }
 
 /**
- * Live container status resolved from Proxmox + job state + config drift.
+ * Live container status resolved from Proxmox run-state + create-job state.
  * Embedded on each Container returned by the list/show/create endpoints.
  */
 export type ContainerStatus =
   | 'running'
   | 'offline'
   | 'creating'
-  | 'restarting'
   | 'failed'
   | 'missing'
-  | 'out-of-sync'
   | 'unknown';
 
 export interface ContainerCreateResult {

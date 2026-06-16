@@ -46,8 +46,6 @@ function statusVariant(
     case 'running':
       return 'success';
     case 'creating':
-    case 'restarting':
-    case 'out-of-sync':
       return 'warning';
     case 'failed':
       return 'danger';
@@ -64,10 +62,8 @@ const STATUS_LABELS: Record<ContainerStatus, string> = {
   running: 'Running',
   offline: 'Offline',
   creating: 'Creating',
-  restarting: 'Restarting',
   failed: 'Failed',
   missing: 'Missing',
-  'out-of-sync': 'Out of sync',
   unknown: 'Unknown',
 };
 
