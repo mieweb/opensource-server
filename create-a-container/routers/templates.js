@@ -5,13 +5,6 @@ const { requireLocalhostOrAdmin } = require('../middlewares');
 
 const router = express.Router();
 
-// A container is routable once it has an assigned IPv4 address. The old code
-// filtered on the (now-removed) static status column; presence of an IP is the
-// stable, Proxmox-independent requirement for "this container can be routed to".
-const ROUTABLE_CONTAINER_WHERE = {
-  ipv4Address: { [Op.ne]: null },
-};
-
 async function loadDnsmasqSite(siteId) {
   return Site.findByPk(siteId, {
     include: [{
@@ -20,7 +13,8 @@ async function loadDnsmasqSite(siteId) {
       include: [{
         model: Container,
         as: 'containers',
-        where: ROUTABLE_CONTAINER_WHERE,
+        // Only containers with an assigned IPv4 are routable.
+        where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
       }],
@@ -48,7 +42,8 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       include: [{
         model: Container,
         as: 'containers',
-        where: ROUTABLE_CONTAINER_WHERE,
+        // Only containers with an assigned IPv4 are routable.
+        where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         include: [{
           model: Service,
