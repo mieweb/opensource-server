@@ -38,10 +38,17 @@ const STATUS = Object.freeze({
 
 const STATUS_VALUES = Object.freeze(Object.values(STATUS));
 
-// Job command fragments that identify create vs reconfigure (restart) jobs.
-// Jobs are distinguished solely by their `command` string (no type column).
-const CREATE_CMD = 'bin/create-container.js';
-const RECONFIGURE_CMD = 'bin/reconfigure-container.js';
+// Job command builders. Jobs are distinguished solely by their `command` string
+// (no type column), and the commands are constructed deterministically by the
+// container router / resource-requests, so we match them exactly here.
+//   create:      node bin/create-container.js --container-id=<id>
+//   reconfigure: node bin/reconfigure-container.js --container-id=<id>[ --<resource>=<value>...]
+function createCommand(id) {
+  return `node bin/create-container.js --container-id=${id}`;
+}
+function reconfigureCommand(id) {
+  return `node bin/reconfigure-container.js --container-id=${id}`;
+}
 
 const ACTIVE_JOB_STATUSES = ['pending', 'running'];
 
@@ -50,40 +57,9 @@ function nodeHasCreds(node) {
 }
 
 /**
- * Escape a string for safe use inside a RegExp.
- * @param {string|number} s
- * @returns {string}
- */
-function escapeRegExp(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Find the most recent job for a container whose command contains
- * `<cmdFragment> --container-id=<id>` as a *whole* argument.
- *
- * A plain SQL LIKE on `--container-id=<id>` would also match longer ids
- * (id 12 matches `--container-id=123`), so we use LIKE only to narrow at the DB
- * level (ordered most-recent first) and then confirm each candidate in JS with a
- * regex requiring the id to be terminated by a space or end-of-string.
- *
- * @param {object} Job - Job model
- * @param {string} cmdFragment - e.g. CREATE_CMD or RECONFIGURE_CMD
- * @param {number} id - Container database id
- * @returns {Promise<object|null>}
- */
-async function findLatestJobForContainer(Job, cmdFragment, id) {
-  const candidates = await Job.findAll({
-    where: { command: { [Op.like]: `%${cmdFragment} --container-id=${id}%` } },
-    order: [['createdAt', 'DESC']],
-  });
-  const whole = new RegExp(`${escapeRegExp(cmdFragment)} --container-id=${escapeRegExp(id)}(?:\\s|$)`);
-  return candidates.find((job) => whole.test(job.command)) || null;
-}
-
-/**
  * Find the most recent create job for a container.
- * Prefers the explicit creationJobId FK; falls back to a command-string match.
+ * Prefers the explicit creationJobId FK; falls back to an exact command match.
+ * Create commands never carry trailing arguments, so the match is exact.
  * @param {object} container - Container instance (with optional creationJob assoc)
  * @param {object} Job - Job model
  * @returns {Promise<object|null>}
@@ -93,17 +69,29 @@ async function findLatestCreateJob(container, Job) {
   if (container.creationJobId) {
     return Job.findByPk(container.creationJobId);
   }
-  return findLatestJobForContainer(Job, CREATE_CMD, container.id);
+  return Job.findOne({
+    where: { command: createCommand(container.id) },
+    order: [['createdAt', 'DESC']],
+  });
 }
 
 /**
  * Find the most recent reconfigure (restart) job for a container, if any.
+ * A reconfigure command is either exactly `<cmd> --container-id=<id>` or that
+ * followed by ` --<resource>=<value>` flags, so we match the exact form OR the
+ * exact form followed by a space (the latter guards against id 12 matching 123).
  * @param {object} container - Container instance
  * @param {object} Job - Job model
  * @returns {Promise<object|null>}
  */
 async function findLatestReconfigureJob(container, Job) {
-  return findLatestJobForContainer(Job, RECONFIGURE_CMD, container.id);
+  const base = reconfigureCommand(container.id);
+  return Job.findOne({
+    where: {
+      [Op.or]: [{ command: base }, { command: { [Op.like]: `${base} %` } }],
+    },
+    order: [['createdAt', 'DESC']],
+  });
 }
 
 function isActiveJob(job) {
