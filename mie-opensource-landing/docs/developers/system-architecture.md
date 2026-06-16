@@ -172,5 +172,5 @@ sequenceDiagram
 
 NGINX captures identity headers from the oauth2-proxy subrequest (`X-Auth-Request-User`, `X-Auth-Request-Email`, `X-Auth-Request-Groups`, and the access token) and forwards them to the backend container via `proxy_set_header` under a stable contract (`X-User`, `X-Email`, `X-Groups`, `X-Access-Token`). This requires oauth2-proxy to run with `--set-xauthrequest` (and `--pass-access-token` for the token).
 
-If `authRequired` is enabled but no (valid) `authServer` is configured on the domain, NGINX serves a 503 error page.
+If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page. (A malformed `authServer` cannot reach the template — it is rejected by the API on write.)
 

@@ -175,5 +175,5 @@ sequenceDiagram
     end
 ```
 
-If **Require auth** is enabled but no (valid) **oauth2-proxy URL** is configured on the domain, NGINX serves a 503 "Authentication Unavailable" page.
+If **Require auth** is enabled but no **oauth2-proxy URL** is configured on the domain, NGINX serves a 503 "Authentication Unavailable" page.
 

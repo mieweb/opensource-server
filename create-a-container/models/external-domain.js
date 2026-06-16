@@ -57,7 +57,22 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true,
       validate: {
-        isUrl: true
+        // Must be an absolute http(s) URL — it is interpolated directly into
+        // nginx `proxy_pass`, which requires a scheme. Reject scheme-less hosts
+        // (e.g. "oauth2-proxy.example.com") and non-http schemes here so a bad
+        // value can never reach the generated config.
+        isHttpUrl(value) {
+          if (value === null || value === undefined || value === '') return;
+          let url;
+          try {
+            url = new URL(value);
+          } catch (e) {
+            throw new Error('authServer must be an absolute URL, e.g. https://oauth2-proxy.example.com');
+          }
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            throw new Error('authServer must use http or https');
+          }
+        }
       },
       comment: 'Public oauth2-proxy URL for nginx auth_request (e.g., https://oauth2-proxy.example.com). A routable host on the same load balancer that proxies to an administrator-run oauth2-proxy; protected services delegate auth to it.'
     }

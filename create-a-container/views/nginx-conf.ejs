@@ -185,20 +185,6 @@ http {
   <%_ httpServices.forEach((service, index) => { _%>
   <%_ const authRequired = service.httpService.authRequired; _%>
   <%_ const authServer = service.httpService.externalDomain.authServer; _%>
-  <%_
-    // The auth server (oauth2-proxy) is a routable host on this same load
-    // balancer (e.g. https://oauth2-proxy.example.com). When NGINX proxies the
-    // /oauth2/* paths to it, it must send Host = the auth host's own name — NOT
-    // $host — otherwise the proxied request would re-match THIS app's server
-    // block and loop through auth_request. Parse the host out of authServer so
-    // we can pin the upstream Host header. Falls back to disabling auth if the
-    // URL is unparseable.
-    let authHost = null;
-    if (authRequired && authServer) {
-      try { authHost = new URL(authServer).host; } catch (e) { authHost = null; }
-    }
-    const authEnabled = authRequired && authServer && authHost;
-  _%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -250,7 +236,7 @@ http {
       proxy_pass http://error_pages;
     }
 
-    <%_ if (authEnabled) { _%>
+    <%_ if (authRequired && authServer) { _%>
     # --- oauth2-proxy integration -------------------------------------------
     # The administrator runs a single oauth2-proxy, published as a routable host
     # on this same load balancer (the domain's "oauth2-proxy URL", e.g.
@@ -259,9 +245,11 @@ http {
     # on the load balancer delegates to it via auth_request.
     #
     # IMPORTANT: the subrequest below proxies to the auth host over the load
-    # balancer, so it MUST send `Host: <%= authHost %>` (the auth host's own
-    # name) and NOT `$host`. With `$host`, the proxied request would re-match
-    # THIS app's server block and loop through auth_request indefinitely.
+    # balancer, so it MUST send the auth host's own name as `Host` and NOT
+    # `$host`. With `$host`, the proxied request would re-match THIS app's server
+    # block and loop through auth_request indefinitely. We use `$proxy_host`
+    # (nginx's default Host, taken from the proxy_pass URL) so the Host always
+    # matches the auth host without re-parsing the URL ourselves.
     # See https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/
 
     # Internal auth check. oauth2-proxy returns 202 (authenticated) or 401.
@@ -270,8 +258,9 @@ http {
     location = /oauth2/auth {
       internal;
       proxy_pass <%= authServer %>/oauth2/auth;
-      # Pin Host to the auth host (loop guard — see note above).
-      proxy_set_header Host                    <%= authHost %>;
+      # Pin Host to the auth host (loop guard — see note above). $proxy_host is
+      # the host from the proxy_pass URL, i.e. the oauth2-proxy host, never $host.
+      proxy_set_header Host                    $proxy_host;
       proxy_ssl_server_name on;
       proxy_set_header X-Real-IP               $remote_addr;
       proxy_set_header X-Scheme                $scheme;
@@ -306,8 +295,8 @@ http {
     auth_request_set $auth_token $upstream_http_x_auth_request_access_token;
 
     <%_ } _%>
-    <%_ if (authRequired && !authEnabled) { _%>
-    # Authentication required but no (valid) oauth2-proxy URL configured for this domain
+    <%_ if (authRequired && !authServer) { _%>
+    # Authentication required but no oauth2-proxy URL configured for this domain
     location @auth_unavailable {
       rewrite ^ /auth-unavailable.html break;
       proxy_method GET;
@@ -323,7 +312,7 @@ http {
     <%_ } else { _%>
     # Proxy settings
     location / {
-      <%_ if (authEnabled) { _%>
+      <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
       error_page 401 = @oauth2_signin;
 
