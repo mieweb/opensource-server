@@ -231,11 +231,11 @@ Delete a container from both Proxmox and the database
   - `500` - Proxmox API deletion failed or node not configured
 
 #### Container status (`status` field)
-Every container returned by the list and show endpoints includes a **live**
-`status` field, computed on demand rather than read from a stored column. It is
-resolved by combining the container's presence/run-state in Proxmox, any active
-create/reconfigure jobs, and whether the live LXC config matches what the API
-server expects. Possible values:
+Every container returned by the list, show, and create endpoints includes a
+**live** `status` field, computed on demand rather than read from a stored
+column. It is resolved by combining the container's presence/run-state in
+Proxmox, any active create/reconfigure jobs, and whether the live LXC config
+matches what the API server expects. Possible values:
 - `running` — online in Proxmox
 - `offline` — exists in Proxmox but stopped
 - `creating` — no Proxmox VM yet, active create job
@@ -244,6 +244,9 @@ server expects. Possible values:
 - `missing` — no Proxmox VM, create succeeded or no create job found
 - `out-of-sync` — exists in Proxmox but its config differs from expectation
 - `unknown` — Proxmox unreachable / node has no API credentials
+
+The create endpoint (`POST /containers`) returns `creating` immediately, since a
+create job is enqueued and there is no Proxmox VM yet.
 
 #### `GET /status/:jobId` (Auth Required)
 View container creation progress page

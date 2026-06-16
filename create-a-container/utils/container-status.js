@@ -50,6 +50,38 @@ function nodeHasCreds(node) {
 }
 
 /**
+ * Escape a string for safe use inside a RegExp.
+ * @param {string|number} s
+ * @returns {string}
+ */
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Find the most recent job for a container whose command contains
+ * `<cmdFragment> --container-id=<id>` as a *whole* argument.
+ *
+ * A plain SQL LIKE on `--container-id=<id>` would also match longer ids
+ * (id 12 matches `--container-id=123`), so we use LIKE only to narrow at the DB
+ * level (ordered most-recent first) and then confirm each candidate in JS with a
+ * regex requiring the id to be terminated by a space or end-of-string.
+ *
+ * @param {object} Job - Job model
+ * @param {string} cmdFragment - e.g. CREATE_CMD or RECONFIGURE_CMD
+ * @param {number} id - Container database id
+ * @returns {Promise<object|null>}
+ */
+async function findLatestJobForContainer(Job, cmdFragment, id) {
+  const candidates = await Job.findAll({
+    where: { command: { [Op.like]: `%${cmdFragment} --container-id=${id}%` } },
+    order: [['createdAt', 'DESC']],
+  });
+  const whole = new RegExp(`${escapeRegExp(cmdFragment)} --container-id=${escapeRegExp(id)}(?:\\s|$)`);
+  return candidates.find((job) => whole.test(job.command)) || null;
+}
+
+/**
  * Find the most recent create job for a container.
  * Prefers the explicit creationJobId FK; falls back to a command-string match.
  * @param {object} container - Container instance (with optional creationJob assoc)
@@ -61,10 +93,7 @@ async function findLatestCreateJob(container, Job) {
   if (container.creationJobId) {
     return Job.findByPk(container.creationJobId);
   }
-  return Job.findOne({
-    where: { command: { [Op.like]: `%${CREATE_CMD} --container-id=${container.id}%` } },
-    order: [['createdAt', 'DESC']],
-  });
+  return findLatestJobForContainer(Job, CREATE_CMD, container.id);
 }
 
 /**
@@ -74,10 +103,7 @@ async function findLatestCreateJob(container, Job) {
  * @returns {Promise<object|null>}
  */
 async function findLatestReconfigureJob(container, Job) {
-  return Job.findOne({
-    where: { command: { [Op.like]: `%${RECONFIGURE_CMD} --container-id=${container.id}%` } },
-    order: [['createdAt', 'DESC']],
-  });
+  return findLatestJobForContainer(Job, RECONFIGURE_CMD, container.id);
 }
 
 function isActiveJob(job) {

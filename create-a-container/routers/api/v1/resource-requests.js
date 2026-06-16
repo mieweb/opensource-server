@@ -217,12 +217,15 @@ router.put(
 );
 
 /**
- * Apply a resource change to existing running containers matching the identity.
+ * Apply a resource change to existing provisioned containers matching the identity.
  * This creates a reconfigure job for each matching container.
  */
 async function applyResourceToExistingContainers(siteId, hostname, username, resourceType, value) {
   const containers = await Container.findAll({
-    where: { siteId, hostname, username, status: 'running' },
+    // Only containers that exist in Proxmox (have a VMID) can be reconfigured.
+    // The status column was removed; reconfigure-container.js exits early without
+    // a containerId, so this is the correct provisioned predicate.
+    where: { siteId, hostname, username, containerId: { [Op.ne]: null } },
   });
 
   if (containers.length === 0) return;
