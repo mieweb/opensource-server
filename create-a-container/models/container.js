@@ -21,42 +21,86 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Normalize a set of environment variables into a safe, flat
+     * { KEY: stringValue } object suitable for building the Proxmox `env`
+     * string. This is the single place that decides what a valid env var is.
+     *
+     * Rules (applied to every source — user input, settings, image defaults):
+     *  - Input that is not a plain object (e.g. an array or null) yields {}.
+     *  - Keys are trimmed. A key is dropped unless it is a non-empty string with
+     *    no whitespace and no `=` or NUL — i.e. it matches a conventional env
+     *    var name. This prevents a key from corrupting the NUL-separated
+     *    `KEY=value` encoding.
+     *  - Values are coerced to strings. Entries whose value is null/undefined or
+     *    a non-primitive (object/array) are dropped rather than stringified to
+     *    something like "[object Object]". Values containing NUL are also
+     *    dropped, since NUL is the pair separator.
+     *
+     * @param {*} input - Candidate env vars, ideally a { key: value } object
+     * @returns {object} Flat object of validated { KEY: stringValue }
+     */
+    static normalizeEnvVars(input) {
+      const out = {};
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+
+      // Conventional env var name: starts with a letter or underscore, followed
+      // by letters, digits, or underscores. Excludes `=`, NUL, whitespace, etc.
+      const validKey = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+      for (const [rawKey, rawValue] of Object.entries(input)) {
+        const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+        if (!validKey.test(key)) continue;
+
+        // Only primitives (string/number/boolean) become values; skip
+        // null/undefined and objects/arrays.
+        if (rawValue === null || rawValue === undefined) continue;
+        if (typeof rawValue === 'object') continue;
+        const value = String(rawValue);
+        if (value.includes('\0')) continue;
+
+        out[key] = value;
+      }
+      return out;
+    }
+
+    /**
      * Internal helper for buildLxcEnvConfig.
      * Load the admin-defined system default environment variables from the
-     * Settings table, flattened to a { KEY: value } object. Descriptions are
-     * metadata only and are not included. Returns an empty object if the
-     * setting is missing or malformed.
+     * Settings table, flattened to a validated { KEY: value } object.
+     * Descriptions are metadata only and are not included. Returns an empty
+     * object if the setting is missing or malformed.
      * @returns {Promise<object>} Flat object of { KEY: value } system defaults
      */
     static async getSystemDefaultEnvVars() {
       const Setting = this.sequelize.models.Setting;
-      const defaults = {};
+      const raw = {};
       try {
         const entries = await Setting.getDefaultContainerEnvVars();
         for (const entry of entries) {
-          if (entry.key && entry.key.trim()) {
-            defaults[entry.key.trim()] = entry.value || '';
+          // getDefaultContainerEnvVars yields { key, value, description }.
+          if (entry && typeof entry.key === 'string') {
+            raw[entry.key] = entry.value;
           }
         }
       } catch (_) {
         console.warn('Could not load default_container_env_vars from settings, skipping');
       }
-      return defaults;
+      return this.normalizeEnvVars(raw);
     }
 
     /**
      * Internal helper for buildLxcEnvConfig.
-     * Parse the container's user-defined environment variables.
-     * The database record only ever stores the variables the user explicitly
-     * provided — admin/system, image, and NVIDIA defaults are merged in at
-     * configure-time (see buildLxcEnvConfig) and are intentionally NOT persisted.
-     * @returns {object} Flat object of { KEY: value } user-defined env vars
+     * Parse the container's user-defined environment variables into a validated,
+     * flat { KEY: value } object. The database record only ever stores the
+     * variables the user explicitly provided — admin/system, image, and NVIDIA
+     * defaults are merged in at configure-time (see buildLxcEnvConfig) and are
+     * intentionally NOT persisted.
+     * @returns {object} Flat object of validated { KEY: value } user env vars
      */
     parseEnvironmentVars() {
       if (!this.environmentVars) return {};
       try {
-        const parsed = JSON.parse(this.environmentVars);
-        return parsed && typeof parsed === 'object' ? parsed : {};
+        return this.constructor.normalizeEnvVars(JSON.parse(this.environmentVars));
       } catch (err) {
         console.error('Failed to parse environment variables JSON:', err.message);
         return {};
@@ -103,6 +147,8 @@ module.exports = (sequelize, DataTypes) => {
 
       // Merge precedence (lowest to highest):
       //   system defaults < NVIDIA defaults < user-defined values
+      // Every source is already normalized to a safe { KEY: stringValue } map
+      // (see normalizeEnvVars), so the encoding below cannot be corrupted.
       const mergedEnvVars = {
         ...(await this.constructor.getSystemDefaultEnvVars()),
         ...this.nvidiaDefaultEnvVars(),
@@ -112,9 +158,7 @@ module.exports = (sequelize, DataTypes) => {
       // Format as NUL-separated list: KEY1=value1\0KEY2=value2\0KEY3=value3
       const envPairs = [];
       for (const [key, value] of Object.entries(mergedEnvVars)) {
-        if (key && value !== undefined) {
-          envPairs.push(`${key}=${value}`);
-        }
+        envPairs.push(`${key}=${value}`);
       }
       if (envPairs.length > 0) {
         config['env'] = envPairs.join('\0');
