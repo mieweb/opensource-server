@@ -21,12 +21,13 @@ serves the agent's error pages and the docs site.
 ## The component Makefile contract
 
 Each component directory has a self-contained `Makefile` with the same targets.
-The default goal is `build`.
+The default goal is `help`, which lists the available targets.
 
 | Target | Description |
 |---|---|
+| `help` | List the available targets (default goal) |
 | `deps` | Install build/runtime dependencies (`npm ci`, `uv sync`, or nothing) |
-| `build` | Compile the component (default goal); depends on `deps` |
+| `build` | Compile the component; depends on `deps` |
 | `install` | Stage built files into `DESTDIR` at their final paths; depends on `build` |
 | `dev` | Run the development watch loop; depends on `deps` |
 | `deb` / `rpm` / `apk` | Stage and package with [fpm](https://fpm.readthedocs.io/); depend on `install` |
@@ -37,13 +38,14 @@ Variables (overridable):
 |---|---|---|
 | `PREFIX` | `/opt/opensource-server` | Vendor install prefix |
 | `DESTDIR` | `/` | Staging root for `install` |
-| `VERSION` | derived from `git describe` | Package version |
 
-`VERSION` is computed inline from git tags: an exact tag `2026.6.2` is used
-as-is; commits after a tag become `2026.6.2+<n>.g<sha>` (valid semver build
-metadata that sorts above the tag and below the next release); a prerelease tag
-`2026.6.3-rc1` sorts below the eventual `2026.6.3`. Tags are unprefixed semver
-(no leading `v`).
+The package version is derived from git by [`./package-version`](https://github.com/mieweb/opensource-server/blob/main/package-version),
+which composes a format-appropriate string per packager from
+`git describe --tags --long --dirty`: an exact tag `2026.6.3` is used as-is;
+commits after a tag become a snapshot that sorts above the tag and below the
+next release (e.g. deb `2026.6.3+<n>.g<sha>`); a prerelease tag `2026.6.3-rc1`
+sorts below the eventual `2026.6.3`. A leading `v` on the tag is optional — it
+is stripped if present (`v2026.6.3` and `2026.6.3` are equivalent).
 
 ```bash
 # Build and stage a component anywhere:
@@ -91,7 +93,7 @@ Each leaf image also stages the release APT source (`/etc/apt/sources.list.d/ope
 
 ## Releases
 
-To cut a release, **publish a GitHub release** (full or prerelease) for a semver tag (e.g. `v2026.6.3`, or `v2026.6.3-rc1` for a prerelease). Publishing the release triggers [`release.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/release.yml), which builds the packages, generates flat APT repository metadata (`Packages`, `Packages.gz`) with `dpkg-scanpackages`, and uploads the debs and metadata to that release. The workflow never creates or modifies the release itself — you choose full vs prerelease when creating it. Because GitHub serves `releases/latest/download/<file>` for the newest non-prerelease release, the release doubles as an apt source:
+To cut a release, **publish a GitHub release** (full or prerelease) for a semver tag — the leading `v` is optional (e.g. `2026.6.3` or `v2026.6.3`, and `2026.6.3-rc1` for a prerelease). Publishing the release triggers [`release.yml`](https://github.com/mieweb/opensource-server/blob/main/.github/workflows/release.yml), which builds the packages, generates flat APT repository metadata (`Packages`, `Packages.gz`) with `dpkg-scanpackages`, and uploads the debs and metadata to that release. The workflow never creates or modifies the release itself — you choose full vs prerelease when creating it. Because GitHub serves `releases/latest/download/<file>` for the newest non-prerelease release, the release doubles as an apt source:
 
 ```text
 deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/download/ ./
