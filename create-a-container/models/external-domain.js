@@ -59,7 +59,7 @@ module.exports = (sequelize) => {
       validate: {
         isUrl: true
       },
-      comment: 'oauth2-proxy upstream URL for nginx auth_request (e.g., http://127.0.0.1:4180). The administrator must run an oauth2-proxy server configured for this domain.'
+      comment: 'Public oauth2-proxy URL for nginx auth_request (e.g., https://oauth2-proxy.example.com). A routable host on the same load balancer that proxies to an administrator-run oauth2-proxy; protected services delegate auth to it.'
     }
   }, {
     tableName: 'ExternalDomains',

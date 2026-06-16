@@ -185,6 +185,20 @@ http {
   <%_ httpServices.forEach((service, index) => { _%>
   <%_ const authRequired = service.httpService.authRequired; _%>
   <%_ const authServer = service.httpService.externalDomain.authServer; _%>
+  <%_
+    // The auth server (oauth2-proxy) is a routable host on this same load
+    // balancer (e.g. https://oauth2-proxy.example.com). When NGINX proxies the
+    // /oauth2/* paths to it, it must send Host = the auth host's own name — NOT
+    // $host — otherwise the proxied request would re-match THIS app's server
+    // block and loop through auth_request. Parse the host out of authServer so
+    // we can pin the upstream Host header. Falls back to disabling auth if the
+    // URL is unparseable.
+    let authHost = null;
+    if (authRequired && authServer) {
+      try { authHost = new URL(authServer).host; } catch (e) { authHost = null; }
+    }
+    const authEnabled = authRequired && authServer && authHost;
+  _%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -236,38 +250,37 @@ http {
       proxy_pass http://error_pages;
     }
 
-    <%_ if (authRequired && authServer) { _%>
+    <%_ if (authEnabled) { _%>
     # --- oauth2-proxy integration -------------------------------------------
-    # The administrator runs an oauth2-proxy server (configured separately) and
-    # sets this domain's "oauth2-proxy URL" to its upstream address. NGINX
-    # authenticates each request against oauth2-proxy's /oauth2/auth endpoint
-    # using the auth_request module.
+    # The administrator runs a single oauth2-proxy, published as a routable host
+    # on this same load balancer (the domain's "oauth2-proxy URL", e.g.
+    # https://oauth2-proxy.example.com — configured as its own external-domain
+    # service that proxies to the oauth2-proxy process). Every authenticated app
+    # on the load balancer delegates to it via auth_request.
+    #
+    # IMPORTANT: the subrequest below proxies to the auth host over the load
+    # balancer, so it MUST send `Host: <%= authHost %>` (the auth host's own
+    # name) and NOT `$host`. With `$host`, the proxied request would re-match
+    # THIS app's server block and loop through auth_request indefinitely.
     # See https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/
-    set $oauth2_proxy <%= authServer %>;
-
-    # Sign-in, callback, and other oauth2-proxy endpoints.
-    location /oauth2/ {
-      resolver 127.0.0.1;
-      proxy_pass $oauth2_proxy;
-      proxy_set_header Host                    $host;
-      proxy_set_header X-Real-IP               $remote_addr;
-      proxy_set_header X-Scheme                $scheme;
-      proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
-    }
 
     # Internal auth check. oauth2-proxy returns 202 (authenticated) or 401.
     # Responses are cached per Cookie+Authorization pair so NGINX only contacts
     # oauth2-proxy when the credentials change.
     location = /oauth2/auth {
       internal;
-      resolver 127.0.0.1;
-      proxy_pass $oauth2_proxy;
-      proxy_set_header Host             $host;
-      proxy_set_header X-Real-IP        $remote_addr;
-      proxy_set_header X-Scheme         $scheme;
+      proxy_pass <%= authServer %>/oauth2/auth;
+      # Pin Host to the auth host (loop guard — see note above).
+      proxy_set_header Host                    <%= authHost %>;
+      proxy_ssl_server_name on;
+      proxy_set_header X-Real-IP               $remote_addr;
+      proxy_set_header X-Scheme                $scheme;
+      # Preserve the ORIGINAL app URL so oauth2-proxy returns the user here
+      # after sign-in (absolute form is required for the multi-domain setup).
+      proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
       # nginx auth_request includes headers but not the request body.
-      proxy_set_header Content-Length   "";
-      proxy_pass_request_body           off;
+      proxy_set_header Content-Length          "";
+      proxy_pass_request_body                  off;
 
       proxy_cache auth_cache;
       proxy_cache_key "$http_cookie$http_authorization";
@@ -275,12 +288,12 @@ http {
       proxy_cache_valid 401 30s;
     }
 
-    # Named location that issues a proper 302 redirect to oauth2-proxy's
-    # sign-in page when auth_request returns 401. The sign-in page is served
-    # on this same host via the `location /oauth2/` proxy above, so redirect
-    # to the local path rather than the (internal) upstream address.
+    # On 401, send the browser to oauth2-proxy's sign-in page on the auth host.
+    # The browser authenticates there, the session cookie is set on the shared
+    # parent domain (oauth2-proxy --cookie-domain=.<domain>), and `rd` brings the
+    # user back to this app afterward.
     location @oauth2_signin {
-      return 302 /oauth2/sign_in?rd=$scheme://$host$request_uri;
+      return 302 <%= authServer %>/oauth2/sign_in?rd=$scheme://$host$request_uri;
     }
 
     # Capture identity from the auth_request response. Requires oauth2-proxy to
@@ -293,8 +306,8 @@ http {
     auth_request_set $auth_token $upstream_http_x_auth_request_access_token;
 
     <%_ } _%>
-    <%_ if (authRequired && !authServer) { _%>
-    # Authentication required but no oauth2-proxy URL configured for this domain
+    <%_ if (authRequired && !authEnabled) { _%>
+    # Authentication required but no (valid) oauth2-proxy URL configured for this domain
     location @auth_unavailable {
       rewrite ^ /auth-unavailable.html break;
       proxy_method GET;
@@ -310,7 +323,7 @@ http {
     <%_ } else { _%>
     # Proxy settings
     location / {
-      <%_ if (authRequired && authServer) { _%>
+      <%_ if (authEnabled) { _%>
       auth_request /oauth2/auth;
       error_page 401 = @oauth2_signin;
 

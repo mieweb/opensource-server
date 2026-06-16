@@ -105,7 +105,7 @@ erDiagram
         string cloudflareApiEmail
         string cloudflareApiKey
         int siteId FK "nullable, default site"
-        string authServer "nullable, oauth2-proxy upstream URL"
+        string authServer "nullable, public oauth2-proxy URL"
     }
 
     Jobs {
@@ -190,7 +190,7 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 - **DnsService**: SRV records with `serviceName`.
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional URL pointing to an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) upstream used for NGINX `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional public URL of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) host (a routable host on the same load balancer) used for NGINX `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
 
 ## User Management Models
 

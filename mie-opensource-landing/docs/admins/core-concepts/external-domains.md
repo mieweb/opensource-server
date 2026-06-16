@@ -18,7 +18,7 @@ External domains expose container HTTP services to the internet. Domains are glo
 | **ACME Directory** | CA endpoint, Let's Encrypt Production/Staging (currently unused) |
 | **Cloudflare API Email** | Cloudflare account email, sent as the `X-Auth-Email` header — optional unless using Cross-Site DNS |
 | **Cloudflare API Key** | Cloudflare **User API Token**, sent as `Authorization: Bearer <token>`. Despite the field name, this is *not* the legacy Global API Key. Optional unless using Cross-Site DNS. |
-| **oauth2-proxy URL** | Optional — upstream URL of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server for NGINX `auth_request`. See [Authentication](#authentication) |
+| **oauth2-proxy URL** | Optional — public URL of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server (a routable host on this load balancer, e.g. `https://oauth2-proxy.example.com`) for NGINX `auth_request`. See [Authentication](#authentication) |
 
 !!! tip
     Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
@@ -117,15 +117,26 @@ The manager does **not** provide authentication itself — you must deploy and c
 
 ### Configuring oauth2-proxy
 
-Set the domain's **oauth2-proxy URL** to the upstream address of your oauth2-proxy instance (e.g. `http://127.0.0.1:4180`). NGINX proxies the `/oauth2/` paths on each authenticated service's host to this upstream, so the OAuth2 endpoints are served on the same hostname as the application.
+A **single** oauth2-proxy instance can authenticate every service on the load balancer. Publish it as its own routable host (e.g. `oauth2-proxy.example.com`) and set the domain's **oauth2-proxy URL** to that public URL (e.g. `https://oauth2-proxy.example.com`).
+
+1. **Expose oauth2-proxy as its own service.** Create an HTTP service (e.g. hostname `oauth2-proxy` on `example.com`) that proxies to your oauth2-proxy process, and leave **Require auth disabled** on it — it *is* the auth server, so it must never require auth itself (doing so would make it call `auth_request` against itself and loop).
+2. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth to `https://oauth2-proxy.example.com`.
+3. **Enable Require auth** on the individual services you want protected.
+
+When a protected service (e.g. `app.example.com`) receives a request, NGINX issues an `auth_request` subrequest to `https://oauth2-proxy.example.com/oauth2/auth`. On `401`, the browser is redirected to `https://oauth2-proxy.example.com/oauth2/sign_in?rd=<original-url>`; after sign-in the user is sent back to the originating service.
 
 Run oauth2-proxy with at least:
 
 - `--reverse-proxy=true` — required when behind NGINX.
 - `--set-xauthrequest=true` — so identity is returned in `X-Auth-Request-*` response headers (forwarded to the backend).
+- `--cookie-domain=.example.com` — so the session cookie is shared across all sibling subdomains (required for one oauth2-proxy to serve multiple hosts).
+- `--whitelist-domain=.example.com` — so post-sign-in redirects back to your app hosts are allowed.
 - `--pass-access-token=true` *(optional)* — to forward the access token as `X-Access-Token`.
 
 See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
+
+!!! warning "Loop protection"
+    When NGINX proxies the auth subrequest to `oauth2-proxy.example.com` over the same load balancer, it sends `Host: oauth2-proxy.example.com` (the auth host's own name) — **not** the app's host. This is what makes the request land on the oauth2-proxy server block instead of re-matching the app's block and looping through `auth_request`. The generated config does this automatically; just make sure the **oauth2-proxy URL** is the auth server's own public hostname and that **Require auth is off** on the oauth2-proxy service.
 
 ### Identity Headers
 
@@ -140,7 +151,7 @@ When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Req
 
 ### Cookie Domain
 
-Because oauth2-proxy is served on the same hostname as each application (via the `/oauth2/` proxy), its session cookie is scoped to that host by default. To share a single sign-in session across multiple subdomains of the external domain, configure oauth2-proxy with a parent `--cookie-domain` (e.g. `.example.com`) and a `--whitelist-domain` for the redirect targets.
+A single oauth2-proxy serving multiple hosts must set its session cookie on the shared parent domain so every app subdomain can present it on the `auth_request` subrequest. Configure oauth2-proxy with `--cookie-domain=.example.com` and `--whitelist-domain=.example.com`. The auth server and all protected services must therefore be subdomains of the same parent domain.
 
 ### Flow
 
@@ -148,11 +159,11 @@ Because oauth2-proxy is served on the same hostname as each application (via the
 sequenceDiagram
     participant Client
     participant NGINX
-    participant OAuth2Proxy as oauth2-proxy
+    participant OAuth2Proxy as oauth2-proxy.example.com
     participant Backend
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>OAuth2Proxy: auth_request → GET /oauth2/auth (subrequest)
+    NGINX->>OAuth2Proxy: auth_request → GET /oauth2/auth (Host: oauth2-proxy.example.com)
     alt 202 (authenticated)
         OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
         NGINX->>Backend: Proxied request + identity headers
@@ -160,9 +171,9 @@ sequenceDiagram
         NGINX-->>Client: Response
     else 401 (unauthenticated)
         OAuth2Proxy-->>NGINX: 401
-        NGINX-->>Client: 302 → /oauth2/sign_in?rd=original_url
+        NGINX-->>Client: 302 → https://oauth2-proxy.example.com/oauth2/sign_in?rd=https://app.example.com/page
     end
 ```
 
-If **Require auth** is enabled but no **oauth2-proxy URL** is configured on the domain, NGINX serves a 503 "Authentication Unavailable" page.
+If **Require auth** is enabled but no (valid) **oauth2-proxy URL** is configured on the domain, NGINX serves a 503 "Authentication Unavailable" page.
 
