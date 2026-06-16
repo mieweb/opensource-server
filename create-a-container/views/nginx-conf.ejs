@@ -244,6 +244,7 @@ http {
       proxy_ssl_server_name on;
       proxy_set_header X-Real-IP               $remote_addr;
       proxy_set_header X-Scheme                $scheme;
+      proxy_set_header X-Forwarded-Uri         $request_uri;
       proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
       proxy_set_header Content-Length          "";
       proxy_pass_request_body                  off;
