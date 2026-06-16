@@ -146,29 +146,29 @@ sequenceDiagram
 
 ### Authenticated HTTP Services
 
-When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests before proxying. The domain's `authServer` must be configured (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
+When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests against an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server before proxying. The domain's `authServer` must point to the oauth2-proxy upstream (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). The manager itself no longer provides forward-auth — administrators run and configure oauth2-proxy.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant NGINX
-    participant AuthServer as Auth Server
+    participant OAuth2Proxy as oauth2-proxy
     participant Container
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>AuthServer: Subrequest: GET /verify
-    alt 2xx (authenticated)
-        AuthServer-->>NGINX: 200 + X-User-* headers
+    NGINX->>OAuth2Proxy: Subrequest: GET /oauth2/auth
+    alt 202 (authenticated)
+        OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
         NGINX->>Container: Proxied request + identity headers
         Container-->>NGINX: Response
         NGINX-->>Client: Response
     else 401 (unauthenticated)
-        AuthServer-->>NGINX: 401
-        NGINX-->>Client: 302 → /login?redirect=original_url
+        OAuth2Proxy-->>NGINX: 401
+        NGINX-->>Client: 302 → /oauth2/sign_in?rd=original_url
     end
 ```
 
-NGINX captures identity headers from the auth server subrequest (`X-User-ID`, `X-Username`, `X-User-First-Name`, `X-User-Last-Name`, `X-Email`, `X-Groups`) and forwards them to the backend container via `proxy_set_header`.
+NGINX captures identity headers from the oauth2-proxy subrequest (`X-Auth-Request-User`, `X-Auth-Request-Email`, `X-Auth-Request-Groups`, and the access token) and forwards them to the backend container via `proxy_set_header` under a stable contract (`X-User`, `X-Email`, `X-Groups`, `X-Access-Token`). This requires oauth2-proxy to run with `--set-xauthrequest` (and `--pass-access-token` for the token).
 
 If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page.
 

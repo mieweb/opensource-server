@@ -8,7 +8,6 @@ const SequelizeStore = require('express-session-sequelize')(session.Store);
 const path = require('path');
 const RateLimit = require('express-rate-limit');
 const crypto = require('crypto');
-const net = require('net');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
@@ -58,25 +57,19 @@ async function main() {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    // Dynamic cookie: drop the host part and set domain to the parent domain
-    // (e.g., manager.example.com → .example.com) so the session cookie is
-    // shared across sibling subdomains for nginx auth_request.
-    // For IP addresses (IPv4/IPv6) and single-label hosts like "localhost",
-    // omit the domain attribute so the browser scopes the cookie to the
-    // exact host (RFC 6265 forbids domain attributes on IP literals).
+    // The manager's session cookie only needs to be valid for the manager
+    // host itself — forward-auth for other subdomains is handled by an
+    // external oauth2-proxy server, which manages its own cookies. We leave
+    // the cookie scoped to the exact host (no `domain` attribute).
     // `secure` is derived from the request protocol (honoring `trust proxy`
     // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
     // tracks the actual transport — set on HTTPS, omitted on plain HTTP
     // bootstrap/dev access.
     cookie: function(req) {
-      const hostname = req.hostname || '';
-      const parts = hostname.split('.');
-      const shouldDropHost = !net.isIP(hostname) && parts.length > 2;
       return {
         secure: req.secure,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: 'lax',
-        domain: shouldDropHost ? `.${parts.slice(1).join('.')}` : hostname
       };
     }
   }));
@@ -103,10 +96,8 @@ async function main() {
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
   const templatesRouter = require('./routers/templates');
-  const verifyRouter = require('./routers/verify');
 
   app.use('/api/v1', apiV1Router);
-  app.use('/verify', verifyRouter); // nginx auth_request subrequest endpoint
   app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
@@ -123,7 +114,7 @@ async function main() {
   // --- SPA: serve compiled React app for everything else ---
   const clientDist = path.join(__dirname, 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api(\/|$)|verify(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 

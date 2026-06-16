@@ -166,8 +166,9 @@ export function ExternalDomainFormPage() {
           {...register('cloudflareApiKey')}
         />
         <Input
-          label="Auth server"
-          helperText="Optional URL for nginx auth_request"
+          label="oauth2-proxy URL"
+          placeholder="http://127.0.0.1:4180"
+          helperText="Optional. Upstream URL of an oauth2-proxy server used for nginx auth_request."
           {...register('authServer')}
         />
         {mutation.error && (

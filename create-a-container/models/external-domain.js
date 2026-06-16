@@ -59,7 +59,7 @@ module.exports = (sequelize) => {
       validate: {
         isUrl: true
       },
-      comment: 'Auth server URL for auth_request (e.g., https://manager.example.com). Must implement GET /verify and GET /login?redirect='
+      comment: 'oauth2-proxy upstream URL for nginx auth_request (e.g., http://127.0.0.1:4180). The administrator must run an oauth2-proxy server configured for this domain.'
     }
   }, {
     tableName: 'ExternalDomains',

@@ -18,7 +18,7 @@ External domains expose container HTTP services to the internet. Domains are glo
 | **ACME Directory** | CA endpoint, Let's Encrypt Production/Staging (currently unused) |
 | **Cloudflare API Email** | Cloudflare account email, sent as the `X-Auth-Email` header — optional unless using Cross-Site DNS |
 | **Cloudflare API Key** | Cloudflare **User API Token**, sent as `Authorization: Bearer <token>`. Despite the field name, this is *not* the legacy Global API Key. Optional unless using Cross-Site DNS. |
-| **Auth Server URL** | Optional — URL of an authentication server for NGINX `auth_request`. See [Authentication](#authentication) |
+| **oauth2-proxy URL** | Optional — upstream URL of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server for NGINX `auth_request`. See [Authentication](#authentication) |
 
 !!! tip
     Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
@@ -111,35 +111,36 @@ When creating a container service, users select an external domain and specify a
 
 ## Authentication
 
-HTTP services can require authentication via NGINX's [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module. When a service has **Require auth** enabled, NGINX sends a subrequest to the domain's auth server before proxying each request. Unauthenticated users are redirected to the auth server's login page.
+HTTP services can require authentication via NGINX's [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module, delegated to an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server that you run and configure. When a service has **Require auth** enabled, NGINX authenticates each request against oauth2-proxy's `/oauth2/auth` endpoint before proxying. Unauthenticated users are redirected to oauth2-proxy's sign-in page.
 
-### Auth Server Requirements
+The manager does **not** provide authentication itself — you must deploy and configure a valid oauth2-proxy server (with your chosen OIDC/OAuth2 provider) and point the domain's **oauth2-proxy URL** at it.
 
-The auth server URL (e.g., `https://manager.example.com`) must implement two endpoints:
+### Configuring oauth2-proxy
 
-| Endpoint | Behavior |
-|----------|----------|
-| `GET /verify` | Return `2xx` if the user is authenticated, `401` otherwise. May return identity headers (see below). |
-| `GET /login?redirect=<url>` | Login page that redirects to `<url>` after successful authentication. |
+Set the domain's **oauth2-proxy URL** to the upstream address of your oauth2-proxy instance (e.g. `http://127.0.0.1:4180`). NGINX proxies the `/oauth2/` paths on each authenticated service's host to this upstream, so the OAuth2 endpoints are served on the same hostname as the application.
 
-The manager application implements both endpoints and can be used as the auth server.
+Run oauth2-proxy with at least:
+
+- `--reverse-proxy=true` — required when behind NGINX.
+- `--set-xauthrequest=true` — so identity is returned in `X-Auth-Request-*` response headers (forwarded to the backend).
+- `--pass-access-token=true` *(optional)* — to forward the access token as `X-Access-Token`.
+
+See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
 
 ### Identity Headers
 
-On successful authentication, the auth server can return identity headers that NGINX forwards to the backend:
+When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Request-*` response headers and forwards them to the backend under a **stable header contract** (so the backend sees the same names regardless of the auth provider):
 
-| Header | Description |
-|--------|-------------|
-| `X-User-ID` | Numeric user ID |
-| `X-Username` | Username |
-| `X-User-First-Name` | First name |
-| `X-User-Last-Name` | Last name |
-| `X-Email` | Email address |
-| `X-Groups` | Comma-separated group names |
+| Header forwarded to backend | Source (oauth2-proxy response) |
+|-----------------------------|--------------------------------|
+| `X-User` | `X-Auth-Request-User` |
+| `X-Email` | `X-Auth-Request-Email` |
+| `X-Groups` | `X-Auth-Request-Groups` |
+| `X-Access-Token` | `X-Auth-Request-Access-Token` (with `--pass-access-token`) |
 
-### Cookie Sharing
+### Cookie Domain
 
-The auth server must be on a subdomain of the external domain (e.g., `manager.example.com` for domain `example.com`). The manager sets its session cookie on the parent domain (`.example.com`) so sibling subdomains share the cookie for `auth_request` subrequests.
+Because oauth2-proxy is served on the same hostname as each application (via the `/oauth2/` proxy), its session cookie is scoped to that host by default. To share a single sign-in session across multiple subdomains of the external domain, configure oauth2-proxy with a parent `--cookie-domain` (e.g. `.example.com`) and a `--whitelist-domain` for the redirect targets.
 
 ### Flow
 
@@ -147,19 +148,21 @@ The auth server must be on a subdomain of the external domain (e.g., `manager.ex
 sequenceDiagram
     participant Client
     participant NGINX
-    participant AuthServer as Auth Server
+    participant OAuth2Proxy as oauth2-proxy
     participant Backend
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>AuthServer: GET /verify (subrequest)
-    alt Authenticated
-        AuthServer-->>NGINX: 200 + identity headers
-        NGINX->>Backend: Proxied request + X-User-* headers
+    NGINX->>OAuth2Proxy: auth_request → GET /oauth2/auth (subrequest)
+    alt 202 (authenticated)
+        OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
+        NGINX->>Backend: Proxied request + identity headers
         Backend-->>NGINX: Response
         NGINX-->>Client: Response
-    else Not authenticated
-        AuthServer-->>NGINX: 401
-        NGINX-->>Client: 302 → auth server /login?redirect=...
+    else 401 (unauthenticated)
+        OAuth2Proxy-->>NGINX: 401
+        NGINX-->>Client: 302 → /oauth2/sign_in?rd=original_url
     end
 ```
+
+If **Require auth** is enabled but no **oauth2-proxy URL** is configured on the domain, NGINX serves a 503 "Authentication Unavailable" page.
 
