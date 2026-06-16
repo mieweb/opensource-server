@@ -167,8 +167,8 @@ export function ExternalDomainFormPage() {
         />
         <Input
           label="oauth2-proxy URL"
-          placeholder="https://oauth2-proxy.example.com"
-          helperText="Optional. URL of an oauth2-proxy server used for nginx auth_request."
+          placeholder="http://127.0.0.1:4180"
+          helperText="Optional. Address of an oauth2-proxy process used for nginx auth_request. nginx proxies /oauth2/* straight to it."
           {...register('authServer')}
         />
         {mutation.error && (

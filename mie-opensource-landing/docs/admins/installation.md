@@ -104,7 +104,7 @@ Further reading: [External Domains](core-concepts/external-domains.md).
     2. **Default Site**: `First Site`
     3. **ACME Email** and **ACME Directory** are currently unused.
     4. **Cloudflare API Email** and **Key** are optional unless you are planning to use Cross-Site DNS.
-    5. **oauth2-proxy URL**: optional — the public URL of an oauth2-proxy server (a routable host on this load balancer, e.g. `https://oauth2-proxy.example.org`) if you want to require authentication for services on this domain (see [Authentication](core-concepts/external-domains.md#authentication)).
+    5. **oauth2-proxy URL**: optional — the address of an oauth2-proxy process (e.g. `http://127.0.0.1:4180`) if you want to require authentication for services on this domain (see [Authentication](core-concepts/external-domains.md#authentication)).
 3. Select "Create External Domain".
 4. Refer to [SSL Certificate Provisioning](core-concepts/external-domains.md#ssl-certificate-provisioning) to configure an HTTPS certificate.
 

@@ -237,17 +237,26 @@ http {
     }
 
     <%_ if (authRequired && authServer) { _%>
+    # oauth2-proxy runs on its own address (this domain's "oauth2-proxy URL").
+    # We proxy the whole /oauth2/* subtree straight to it in a single hop and
+    # pass the app's own Host through, so oauth2-proxy builds redirect URIs and
+    # cookies against this app's hostname. Because it terminates these requests
+    # directly (no proxy in front of it from its point of view), oauth2-proxy does
+    # NOT need --reverse-proxy or any X-Forwarded-* headers. The request scheme is
+    # whatever <%= authServer %> uses; pair an http:// upstream with
+    # --force-https / --cookie-secure on oauth2-proxy if the browser is on HTTPS.
+    location /oauth2/ {
+      proxy_pass <%= authServer %>;
+      proxy_set_header Host $host;
+    }
+
     location = /oauth2/auth {
       internal;
       proxy_pass <%= authServer %>/oauth2/auth;
-      proxy_set_header Host                    $proxy_host;
-      proxy_ssl_server_name on;
-      proxy_set_header X-Real-IP               $remote_addr;
-      proxy_set_header X-Scheme                $scheme;
-      proxy_set_header X-Forwarded-Uri         $request_uri;
-      proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
-      proxy_set_header Content-Length          "";
-      proxy_pass_request_body                  off;
+      proxy_set_header Host             $host;
+      # nginx auth_request includes headers but not the request body.
+      proxy_set_header Content-Length   "";
+      proxy_pass_request_body           off;
 
       proxy_cache auth_cache;
       proxy_cache_key "$http_cookie$http_authorization";
@@ -256,7 +265,7 @@ http {
     }
 
     location @oauth2_signin {
-      return 302 <%= authServer %>/oauth2/sign_in?rd=$scheme://$host$request_uri;
+      return 302 /oauth2/sign_in?rd=$scheme://$host$request_uri;
     }
 
     auth_request_set $auth_user  $upstream_http_x_auth_request_user;

@@ -18,7 +18,7 @@ External domains expose container HTTP services to the internet. Domains are glo
 | **ACME Directory** | CA endpoint, Let's Encrypt Production/Staging (currently unused) |
 | **Cloudflare API Email** | Cloudflare account email, sent as the `X-Auth-Email` header — optional unless using Cross-Site DNS |
 | **Cloudflare API Key** | Cloudflare **User API Token**, sent as `Authorization: Bearer <token>`. Despite the field name, this is *not* the legacy Global API Key. Optional unless using Cross-Site DNS. |
-| **oauth2-proxy URL** | Optional — public URL of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server (a routable host on this load balancer, e.g. `https://oauth2-proxy.example.com`) for NGINX `auth_request`. See [Authentication](#authentication) |
+| **oauth2-proxy URL** | Optional — address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request`. See [Authentication](#authentication) |
 
 !!! tip
     Use Let's Encrypt **Staging** for testing — it has higher rate limits. Switch to **Production** once verified.
@@ -117,26 +117,31 @@ The manager does **not** provide authentication itself — you must deploy and c
 
 ### Configuring oauth2-proxy
 
-A **single** oauth2-proxy instance can authenticate every service on the load balancer. Publish it as its own routable host (e.g. `oauth2-proxy.example.com`) and set the domain's **oauth2-proxy URL** to that public URL (e.g. `https://oauth2-proxy.example.com`).
+Run oauth2-proxy as a standalone process listening on its own address, and set the domain's **oauth2-proxy URL** to that address (e.g. `http://127.0.0.1:4180`). NGINX proxies the whole `/oauth2/*` path on each protected service straight to that address in a **single hop**, so to the browser the OAuth2 endpoints appear under the app's own hostname (`app.example.com/oauth2/...`) while actually being served by oauth2-proxy.
 
-1. **Expose oauth2-proxy as its own service.** Create an HTTP service (e.g. hostname `oauth2-proxy` on `example.com`) that proxies to your oauth2-proxy process, and leave **Require auth disabled** on it — it *is* the auth server, so it must never require auth itself (doing so would make it call `auth_request` against itself and loop).
-2. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth to `https://oauth2-proxy.example.com`.
+1. **Run oauth2-proxy** on a fixed address reachable from the NGINX host (loopback if co-located, e.g. `http://127.0.0.1:4180`, or a private host/port).
+2. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth.
 3. **Enable Require auth** on the individual services you want protected.
 
-When a protected service (e.g. `app.example.com`) receives a request, NGINX issues an `auth_request` subrequest to `https://oauth2-proxy.example.com/oauth2/auth`. On `401`, the browser is redirected to `https://oauth2-proxy.example.com/oauth2/sign_in?rd=<original-url>`; after sign-in the user is sent back to the originating service.
+A single oauth2-proxy instance can serve many services this way — they all proxy `/oauth2/*` to the same address. Because NGINX passes each app's own `Host` through, oauth2-proxy builds redirect URIs and cookies against the correct app hostname without any extra configuration.
+
+!!! note "Putting oauth2-proxy behind the same load balancer"
+    oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address. The `/oauth2/*` traffic still reaches oauth2-proxy in a single hop, so none of the header/`--reverse-proxy` handling below is required.
 
 Run oauth2-proxy with at least:
 
-- `--reverse-proxy=true` — required when behind NGINX.
 - `--set-xauthrequest=true` — so identity is returned in `X-Auth-Request-*` response headers (forwarded to the backend).
-- `--cookie-domain=.example.com` — so the session cookie is shared across all sibling subdomains (required for one oauth2-proxy to serve multiple hosts).
-- `--whitelist-domain=.example.com` — so post-sign-in redirects back to your app hosts are allowed.
 - `--pass-access-token=true` *(optional)* — to forward the access token as `X-Access-Token`.
 
-See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
+Because NGINX proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), you do **not** need `--reverse-proxy`, `--real-ip-from`, or any `X-Forwarded-*` headers.
 
-!!! warning "Loop protection"
-    When NGINX proxies the auth subrequest to `oauth2-proxy.example.com` over the same load balancer, it sends `Host: oauth2-proxy.example.com` (the auth host's own name) — **not** the app's host. This is what makes the request land on the oauth2-proxy server block instead of re-matching the app's block and looping through `auth_request`. The generated config does this automatically; just make sure the **oauth2-proxy URL** is the auth server's own public hostname and that **Require auth is off** on the oauth2-proxy service.
+!!! warning "HTTPS scheme"
+    oauth2-proxy builds its `redirect_uri` and secure cookies from the scheme of the connection it receives. The scheme is whatever you put in the **oauth2-proxy URL**:
+
+    - **`http://…` upstream** (most common, e.g. `http://127.0.0.1:4180`): oauth2-proxy sees a plain-HTTP connection. Run it with `--force-https=true` and `--cookie-secure=true` so it still emits `https://` redirect URIs and secure cookies for HTTPS browsers.
+    - **`https://…` upstream**: terminate TLS on the oauth2-proxy listener; oauth2-proxy infers HTTPS from the connection directly.
+
+See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
 
 ### Identity Headers
 
@@ -149,9 +154,9 @@ When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Req
 | `X-Groups` | `X-Auth-Request-Groups` |
 | `X-Access-Token` | `X-Auth-Request-Access-Token` (with `--pass-access-token`) |
 
-### Cookie Domain
+### Sharing one sign-in across subdomains
 
-A single oauth2-proxy serving multiple hosts must set its session cookie on the shared parent domain so every app subdomain can present it on the `auth_request` subrequest. Configure oauth2-proxy with `--cookie-domain=.example.com` and `--whitelist-domain=.example.com`. The auth server and all protected services must therefore be subdomains of the same parent domain.
+Because `/oauth2/*` is served on each app's own hostname, the oauth2-proxy cookie is scoped to that host by default. To share a single sign-in across multiple subdomains, run oauth2-proxy with `--cookie-domain=.example.com` and `--whitelist-domain=.example.com`, and make the protected services subdomains of the same parent domain.
 
 ### Flow
 
@@ -159,11 +164,11 @@ A single oauth2-proxy serving multiple hosts must set its session cookie on the 
 sequenceDiagram
     participant Client
     participant NGINX
-    participant OAuth2Proxy as oauth2-proxy.example.com
+    participant OAuth2Proxy as oauth2-proxy
     participant Backend
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>OAuth2Proxy: auth_request → GET /oauth2/auth (Host: oauth2-proxy.example.com)
+    NGINX->>OAuth2Proxy: auth_request → GET /oauth2/auth (Host: app.example.com)
     alt 202 (authenticated)
         OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
         NGINX->>Backend: Proxied request + identity headers
@@ -171,7 +176,8 @@ sequenceDiagram
         NGINX-->>Client: Response
     else 401 (unauthenticated)
         OAuth2Proxy-->>NGINX: 401
-        NGINX-->>Client: 302 → https://oauth2-proxy.example.com/oauth2/sign_in?rd=https://app.example.com/page
+        NGINX-->>Client: 302 → app.example.com/oauth2/sign_in?rd=https://app.example.com/page
+        Note over Client,OAuth2Proxy: /oauth2/* is proxied to oauth2-proxy in one hop
     end
 ```
 

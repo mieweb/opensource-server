@@ -146,19 +146,19 @@ sequenceDiagram
 
 ### Authenticated HTTP Services
 
-When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests against an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) server before proxying. The domain's `authServer` is the oauth2-proxy server's public URL — a routable host on the same load balancer, e.g. `https://oauth2-proxy.example.com` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). The manager itself no longer provides forward-auth — administrators run and configure oauth2-proxy.
+When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests against an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process before proxying. The domain's `authServer` is the address of that process, e.g. `http://127.0.0.1:4180` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). The manager itself no longer provides forward-auth — administrators run and configure oauth2-proxy.
 
-The auth subrequest is proxied to that host **with `Host` pinned to the auth host's own name** (`new URL(authServer).host`), not the app's `$host`. Because the subrequest travels back over the load balancer, using `$host` would re-match the app's own `server` block and loop through `auth_request`; pinning `Host` makes it land on the oauth2-proxy `server` block instead. The redirect target (`X-Auth-Request-Redirect` / `rd=`) uses the absolute `$scheme://$host$request_uri` so one oauth2-proxy can serve many app hosts.
+NGINX proxies the whole `/oauth2/*` subtree (and the `auth_request` check at `/oauth2/auth`) straight to `authServer` in a **single hop**, passing the app's own `Host` through. Because oauth2-proxy terminates these requests directly, it builds redirect URIs and cookies against the correct app hostname and needs no `--reverse-proxy` / `X-Forwarded-*` handling. If the admin wants oauth2-proxy behind the same load-balancer IP, they expose its port via an L4 (`stream {}`) passthrough; it is never fronted by a generated `server` block, so there is no second hop to clobber headers.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant NGINX
-    participant OAuth2Proxy as oauth2-proxy.example.com
+    participant OAuth2Proxy as oauth2-proxy
     participant Container
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>OAuth2Proxy: Subrequest: GET /oauth2/auth (Host: oauth2-proxy.example.com)
+    NGINX->>OAuth2Proxy: Subrequest: GET /oauth2/auth (Host: app.example.com)
     alt 202 (authenticated)
         OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
         NGINX->>Container: Proxied request + identity headers
@@ -166,7 +166,7 @@ sequenceDiagram
         NGINX-->>Client: Response
     else 401 (unauthenticated)
         OAuth2Proxy-->>NGINX: 401
-        NGINX-->>Client: 302 → https://oauth2-proxy.example.com/oauth2/sign_in?rd=https://app.example.com/page
+        NGINX-->>Client: 302 → app.example.com/oauth2/sign_in?rd=https://app.example.com/page
     end
 ```
 
