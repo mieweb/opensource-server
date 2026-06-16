@@ -289,12 +289,14 @@ http {
       <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
       error_page 401 = @oauth2_signin;
+      # A location-level error_page replaces (does not merge with) the
+      # server-level error_page list, so the @403/@502 handlers defined above
+      # must be re-declared here or this location would fall back to nginx's
+      # default error pages.
+      error_page 403 @403;
+      error_page 502 @502;
 
       # Capture identity from the auth subrequest and forward it to the backend.
-      # These auth_request_set directives must live here (alongside auth_request),
-      # not at server scope — otherwise nginx evaluates them for error_page
-      # locations like @502 that have no auth subrequest, which breaks those
-      # internal redirects.
       auth_request_set $auth_user   $upstream_http_x_auth_request_user;
       auth_request_set $auth_email  $upstream_http_x_auth_request_email;
       auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
