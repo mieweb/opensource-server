@@ -135,13 +135,27 @@ module.exports = (sequelize, DataTypes) => {
      * (Image-provided defaults are submitted by the UI as user-defined values,
      * so they arrive via parseEnvironmentVars and need no special handling.)
      *
-     * Callers should simply `await container.buildLxcEnvConfig()` — no env-var
-     * merging belongs anywhere else.
+     * Proxmox's config endpoint is a partial update: keys present in the body are
+     * set, omitted keys are left untouched, and a key is only removed if named in
+     * the special `delete` parameter. That distinction matters here:
      *
+     *  - On create, the container has just been cloned from a template that may
+     *    carry its own `env`/`entrypoint`. We must NOT delete those when the user
+     *    didn't provide a value, or we'd wipe the template's defaults. So the
+     *    default (deleteMissing=false) simply omits anything with no value.
+     *  - On reconfigure, the user may have cleared their last env var or removed a
+     *    custom entrypoint, and that change must take effect — so the caller
+     *    passes deleteMissing=true to emit `delete` for the now-empty fields.
+     *
+     * @param {object} [options]
+     * @param {boolean} [options.deleteMissing=false] - When true, env/entrypoint
+     *   that resolve to empty are added to Proxmox's `delete` list (removing any
+     *   existing value). When false, they are simply omitted, preserving whatever
+     *   the container/template already has.
      * @returns {Promise<object>} Config object with 'env' and 'entrypoint'
-     *   properties (and a 'delete' list for any that should be unset)
+     *   properties (and, when deleteMissing is set, a 'delete' list)
      */
-    async buildLxcEnvConfig() {
+    async buildLxcEnvConfig({ deleteMissing = false } = {}) {
       const config = {};
       const deleteList = [];
 
@@ -162,14 +176,14 @@ module.exports = (sequelize, DataTypes) => {
       }
       if (envPairs.length > 0) {
         config['env'] = envPairs.join('\0');
-      } else {
+      } else if (deleteMissing) {
         deleteList.push('env');
       }
 
       // Set entrypoint command
       if (this.entrypoint && this.entrypoint.trim()) {
         config['entrypoint'] = this.entrypoint.trim();
-      } else {
+      } else if (deleteMissing) {
         deleteList.push('entrypoint');
       }
       

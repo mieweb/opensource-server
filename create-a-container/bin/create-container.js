@@ -340,7 +340,10 @@ async function main() {
       console.log('Container configured');
     }
     
-    // Apply environment variables and entrypoint
+    // Apply environment variables and entrypoint. Use the default
+    // (deleteMissing=false) so that any env/entrypoint provided by the template
+    // we just cloned is preserved when the user didn't supply their own — only
+    // explicit values are pushed, nothing is unset.
     const envConfig = await container.buildLxcEnvConfig();
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');

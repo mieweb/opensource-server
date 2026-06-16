@@ -80,8 +80,11 @@ async function main() {
     const client = await node.api();
     console.log('Proxmox API client initialized');
     
-    // Build config from environment variables and entrypoint
-    const lxcConfig = await container.buildLxcEnvConfig();
+    // Build config from environment variables and entrypoint. Pass
+    // deleteMissing so that clearing env vars or removing a custom entrypoint
+    // actually unsets them on the existing container (vs. create, which must
+    // preserve template-provided values).
+    const lxcConfig = await container.buildLxcEnvConfig({ deleteMissing: true });
     
     if (Object.keys(lxcConfig).length > 0) {
       console.log('Applying LXC configuration...');
