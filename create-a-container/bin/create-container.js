@@ -340,23 +340,17 @@ async function main() {
       console.log('Container configured');
     }
     
-    // Apply environment variables and entrypoint.
-    // Admin-defined system defaults are merged in here, at configure-time, and are
-    // intentionally NOT written back into the container's DB record (see below).
-    // Precedence (lowest to highest): system defaults < NVIDIA defaults < user values.
-    // Image-provided env/entrypoint defaults are submitted by the UI as user values,
-    // so they already live in container.environmentVars / container.entrypoint.
-    const systemDefaultEnvVars = await Container.getSystemDefaultEnvVars();
-    const userEnvVars = container.parseEnvironmentVars();
-    const envConfig = container.buildLxcEnvConfig(systemDefaultEnvVars);
-    // buildLxcEnvConfig may add a 'delete' key to unset env/entrypoint; on a fresh
-    // container there is nothing to delete, so drop it to avoid a no-op API param.
+    // Apply environment variables and entrypoint. buildLxcEnvConfig is the single
+    // source of truth for the effective env: it merges admin-defined system
+    // defaults and NVIDIA defaults under the user-defined values. None of this is
+    // written back into the DB record (see below).
+    const envConfig = await container.buildLxcEnvConfig();
+    // On a fresh container there is nothing to unset, so drop any 'delete' key to
+    // avoid a no-op API param.
     delete envConfig.delete;
 
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
-      if (Object.keys(systemDefaultEnvVars).length > 0) console.log(`System default env vars: ${Object.keys(systemDefaultEnvVars).length} from settings`);
-      if (Object.keys(userEnvVars).length > 0) console.log(`Per-container env vars: ${Object.keys(userEnvVars).length}`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }

@@ -21,6 +21,7 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Internal helper for buildLxcEnvConfig.
      * Load the admin-defined system default environment variables from the
      * Settings table, flattened to a { KEY: value } object. Descriptions are
      * metadata only and are not included. Returns an empty object if the
@@ -44,6 +45,7 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Internal helper for buildLxcEnvConfig.
      * Parse the container's user-defined environment variables.
      * The database record only ever stores the variables the user explicitly
      * provided — admin/system, image, and NVIDIA defaults are merged in at
@@ -62,6 +64,7 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Internal helper for buildLxcEnvConfig.
      * Environment variables implied by this container's configuration that are
      * applied as defaults but never stored in the DB record. Currently this is
      * the NVIDIA GPU passthrough defaults, applied when nvidiaRequested is set.
@@ -76,30 +79,34 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
-     * Build LXC config object for environment variables and entrypoint.
-     * Returns config suitable for Proxmox API updateLxcConfig.
+     * Build the LXC config object for environment variables and entrypoint to
+     * deploy to Proxmox via updateLxcConfig.
      *
-     * Default environment variables are merged in here, at configure-time,
-     * rather than being baked into the container's DB record. User-defined
-     * variables take precedence over any provided defaults.
+     * This is the single entrypoint for determining a container's effective
+     * environment. It owns the full merge of every env-var source, applied here
+     * at configure-time rather than being baked into the container's DB record:
      *
-     * @param {object} [defaults={}] - Flat object of default env vars, e.g. the
-     *   admin-defined system defaults. User-defined values and this container's
-     *   own NVIDIA defaults override these.
-     * @returns {object} Config object with 'env' and 'entrypoint' properties
+     *   admin-defined system defaults < NVIDIA defaults < user-defined values
+     *
+     * (Image-provided defaults are submitted by the UI as user-defined values,
+     * so they arrive via parseEnvironmentVars and need no special handling.)
+     *
+     * Callers should simply `await container.buildLxcEnvConfig()` — no env-var
+     * merging belongs anywhere else.
+     *
+     * @returns {Promise<object>} Config object with 'env' and 'entrypoint'
+     *   properties (and a 'delete' list for any that should be unset)
      */
-    buildLxcEnvConfig(defaults = {}) {
+    async buildLxcEnvConfig() {
       const config = {};
       const deleteList = [];
 
       // Merge precedence (lowest to highest):
-      //   provided defaults (admin-defined system defaults) < NVIDIA defaults
-      //   < user-defined values
-      const userEnvVars = this.parseEnvironmentVars();
+      //   system defaults < NVIDIA defaults < user-defined values
       const mergedEnvVars = {
-        ...(defaults && typeof defaults === 'object' ? defaults : {}),
+        ...(await this.constructor.getSystemDefaultEnvVars()),
         ...this.nvidiaDefaultEnvVars(),
-        ...userEnvVars
+        ...this.parseEnvironmentVars()
       };
 
       // Format as NUL-separated list: KEY1=value1\0KEY2=value2\0KEY3=value3
