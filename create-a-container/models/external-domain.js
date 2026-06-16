@@ -74,7 +74,7 @@ module.exports = (sequelize) => {
           }
         }
       },
-      comment: 'Public oauth2-proxy URL for nginx auth_request (e.g., https://oauth2-proxy.example.com). A routable host on the same load balancer that proxies to an administrator-run oauth2-proxy; protected services delegate auth to it.'
+      comment: 'oauth2-proxy URL for nginx auth_request (e.g., https://oauth2-proxy.example.com)'
     }
   }, {
     tableName: 'ExternalDomains',

@@ -57,10 +57,6 @@ async function main() {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    // The manager's session cookie only needs to be valid for the manager
-    // host itself — forward-auth for other subdomains is handled by an
-    // external oauth2-proxy server, which manages its own cookies. We leave
-    // the cookie scoped to the exact host (no `domain` attribute).
     // `secure` is derived from the request protocol (honoring `trust proxy`
     // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
     // tracks the actual transport — set on HTTPS, omitted on plain HTTP

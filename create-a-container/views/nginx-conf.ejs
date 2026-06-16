@@ -237,37 +237,14 @@ http {
     }
 
     <%_ if (authRequired && authServer) { _%>
-    # --- oauth2-proxy integration -------------------------------------------
-    # The administrator runs a single oauth2-proxy, published as a routable host
-    # on this same load balancer (the domain's "oauth2-proxy URL", e.g.
-    # https://oauth2-proxy.example.com — configured as its own external-domain
-    # service that proxies to the oauth2-proxy process). Every authenticated app
-    # on the load balancer delegates to it via auth_request.
-    #
-    # IMPORTANT: the subrequest below proxies to the auth host over the load
-    # balancer, so it MUST send the auth host's own name as `Host` and NOT
-    # `$host`. With `$host`, the proxied request would re-match THIS app's server
-    # block and loop through auth_request indefinitely. We use `$proxy_host`
-    # (nginx's default Host, taken from the proxy_pass URL) so the Host always
-    # matches the auth host without re-parsing the URL ourselves.
-    # See https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/
-
-    # Internal auth check. oauth2-proxy returns 202 (authenticated) or 401.
-    # Responses are cached per Cookie+Authorization pair so NGINX only contacts
-    # oauth2-proxy when the credentials change.
     location = /oauth2/auth {
       internal;
       proxy_pass <%= authServer %>/oauth2/auth;
-      # Pin Host to the auth host (loop guard — see note above). $proxy_host is
-      # the host from the proxy_pass URL, i.e. the oauth2-proxy host, never $host.
       proxy_set_header Host                    $proxy_host;
       proxy_ssl_server_name on;
       proxy_set_header X-Real-IP               $remote_addr;
       proxy_set_header X-Scheme                $scheme;
-      # Preserve the ORIGINAL app URL so oauth2-proxy returns the user here
-      # after sign-in (absolute form is required for the multi-domain setup).
       proxy_set_header X-Auth-Request-Redirect $scheme://$host$request_uri;
-      # nginx auth_request includes headers but not the request body.
       proxy_set_header Content-Length          "";
       proxy_pass_request_body                  off;
 
@@ -277,18 +254,10 @@ http {
       proxy_cache_valid 401 30s;
     }
 
-    # On 401, send the browser to oauth2-proxy's sign-in page on the auth host.
-    # The browser authenticates there, the session cookie is set on the shared
-    # parent domain (oauth2-proxy --cookie-domain=.<domain>), and `rd` brings the
-    # user back to this app afterward.
     location @oauth2_signin {
       return 302 <%= authServer %>/oauth2/sign_in?rd=$scheme://$host$request_uri;
     }
 
-    # Capture identity from the auth_request response. Requires oauth2-proxy to
-    # run with --set-xauthrequest (and --pass-access-token for the access token).
-    # oauth2-proxy returns these as X-Auth-Request-* headers; we forward them to
-    # the backend under the stable X-User / X-Email contract (see below).
     auth_request_set $auth_user  $upstream_http_x_auth_request_user;
     auth_request_set $auth_email $upstream_http_x_auth_request_email;
     auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
@@ -316,9 +285,7 @@ http {
       auth_request /oauth2/auth;
       error_page 401 = @oauth2_signin;
 
-      # Forward identity to the backend under a stable header contract.
-      # (oauth2-proxy's own X-Auth-Request-* names are mapped here so the
-      # backend contract stays the same regardless of the auth provider.)
+      # Forward user identity from auth subrequest to backend
       proxy_set_header X-User         $auth_user;
       proxy_set_header X-Email        $auth_email;
       proxy_set_header X-Groups       $auth_groups;
