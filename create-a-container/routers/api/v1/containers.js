@@ -431,8 +431,6 @@ router.put(
     const dnsWarnings = [];
     await sequelize.transaction(async (t) => {
       if (envChanged || entrypointChanged) {
-        // Persist the new desired config only. The "restarting" state is no
-        // longer stored — it is derived from the active reconfigure job below.
         await container.update(
           {
             environmentVars: envVarsJson,

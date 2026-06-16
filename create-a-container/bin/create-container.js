@@ -481,9 +481,6 @@ async function main() {
       console.error('API Error Details:', JSON.stringify(err.response.data, null, 2));
     }
 
-    // The container status is no longer persisted. Failure is recorded by the
-    // job-runner marking this job 'failure'; the live status resolver maps a
-    // missing-in-Proxmox container whose last create job failed to 'failed'.
     process.exit(1);
   }
 }

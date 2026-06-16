@@ -13,7 +13,6 @@ async function loadDnsmasqSite(siteId) {
       include: [{
         model: Container,
         as: 'containers',
-        // Only containers with an assigned IPv4 are routable.
         where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
@@ -42,7 +41,6 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       include: [{
         model: Container,
         as: 'containers',
-        // Only containers with an assigned IPv4 are routable.
         where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         include: [{
