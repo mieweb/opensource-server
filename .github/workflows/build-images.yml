@@ -1,7 +1,13 @@
 name: Build and Push Images
 
 on:
+  # Build on pushes to the default branch (merges) and on every pull request
+  # update. Feature-branch pushes are covered by their PR, avoiding duplicate
+  # builds and registry churn. No paths filter, so doc-only changes still
+  # rebuild the images.
   push:
+    branches:
+      - main
   pull_request:
     types: [opened, synchronize, reopened, closed]
   schedule:
