@@ -11,7 +11,7 @@
 **/__pycache__
 
 # packaging build artifacts (rebuilt inside the builder image)
-**/build-root
+**/.pkg
 /dist
 **/*.deb
 **/*.rpm
