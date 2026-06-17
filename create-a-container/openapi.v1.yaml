@@ -87,11 +87,16 @@ components:
       type: object
       properties:
         id: { type: integer }
+        containerId:
+          type: integer
+          nullable: true
+          description: Proxmox LXC VMID. Null until the creation job provisions the container.
         hostname: { type: string }
         owner: { type: string, description: Username of the user who created the container }
-        containerId: { type: integer, nullable: true }
         status: { $ref: '#/components/schemas/ContainerStatus' }
-        template: { type: string }
+        template:
+          type: string
+          description: Docker image reference the container was created from.
         ipv4Address: { type: string, nullable: true }
         macAddress: { type: string, nullable: true }
         creationJobId: { type: integer, nullable: true }
@@ -100,11 +105,28 @@ components:
           type: object
           additionalProperties: { type: string }
         nvidiaRequested: { type: boolean }
-        sshPort: { type: integer, nullable: true }
+        sshPort:
+          type: integer
+          nullable: true
+          description: External port of the TCP service whose internal port is 22, if present.
+        sshHost:
+          type: string
+          nullable: true
+          description: Hostname clients should use for SSH — the primary HTTP service's hostname, or the site's external IP.
+        httpEntries:
+          type: array
+          description: Convenience list of the container's HTTP services and their public URLs.
+          items:
+            type: object
+            properties:
+              port: { type: integer, description: Internal (container) port. }
+              externalUrl: { type: string, nullable: true, description: Public `https://` URL, or null if no domain is set. }
         nodeName: { type: string, nullable: true }
+        nodeApiUrl: { type: string, nullable: true }
         services:
           type: array
-          items: { type: object }
+          items: { $ref: '#/components/schemas/Service' }
+        createdAt: { type: string, format: date-time }
     ContainerStatus:
       type: string
       description: >-
@@ -123,6 +145,135 @@ components:
         - failed
         - missing
         - unknown
+    Service:
+      type: object
+      description: |
+        A container service. Exactly one of `httpService`, `transportService`,
+        or `dnsService` is populated, matching `type` (`http`→httpService,
+        `transport`→transportService, `dns`→dnsService).
+      properties:
+        id: { type: integer }
+        type:
+          type: string
+          enum: [http, transport, dns]
+        internalPort:
+          type: integer
+          description: Port the service listens on inside the container.
+        httpService:
+          allOf: [{ $ref: '#/components/schemas/HttpService' }]
+          nullable: true
+        transportService:
+          allOf: [{ $ref: '#/components/schemas/TransportService' }]
+          nullable: true
+        dnsService:
+          allOf: [{ $ref: '#/components/schemas/DnsService' }]
+          nullable: true
+    HttpService:
+      type: object
+      description: HTTP/HTTPS reverse-proxy service. The public side is always HTTPS; `backendProtocol` selects the proxy→container protocol.
+      properties:
+        id: { type: integer }
+        externalHostname:
+          type: string
+          description: Subdomain label (e.g. `app` for `app.example.com`).
+        externalDomainId:
+          type: integer
+          description: ID of the external domain (see GET /external-domains).
+        backendProtocol:
+          type: string
+          enum: [http, https]
+          description: Protocol the reverse proxy uses to reach the container.
+        authRequired:
+          type: boolean
+          description: When true, NGINX enforces `auth_request` against the domain's auth server.
+        domain:
+          type: string
+          nullable: true
+          description: Resolved external domain name (e.g. `example.com`).
+    TransportService:
+      type: object
+      description: Layer-4 TCP/UDP port mapping. TCP services may optionally terminate TLS at the load balancer.
+      properties:
+        id: { type: integer }
+        protocol:
+          type: string
+          enum: [tcp, udp]
+        externalPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Publicly exposed port, auto-assigned from the range 2000–65535.
+        tls:
+          type: boolean
+          description: >-
+            Whether the load balancer terminates TLS on `externalPort` for this
+            service. Only valid for `tcp`; always false for `udp`.
+        externalHostname:
+          type: string
+          nullable: true
+          description: Subdomain label used when `tls` is true (otherwise null).
+        externalDomainId:
+          type: integer
+          nullable: true
+          description: >-
+            External domain whose certificate terminates TLS when `tls` is true
+            (otherwise null). Uses the same certificate as HTTP services for that domain.
+        domain:
+          type: string
+          nullable: true
+          description: Resolved external domain name when `tls` is true (otherwise null).
+    DnsService:
+      type: object
+      description: DNS SRV record for service discovery.
+      properties:
+        id: { type: integer }
+        recordType:
+          type: string
+          enum: [SRV]
+        dnsName:
+          type: string
+          description: SRV record name (e.g. `_ldap._tcp`).
+    ServiceInput:
+      type: object
+      description: |
+        A service definition in a container create/update request. `type` selects
+        the kind of service; supply the fields relevant to that type. On update,
+        include `id` to reference an existing service and `deleted: true` to remove it.
+      required: [type, internalPort]
+      properties:
+        id:
+          type: integer
+          description: Existing service ID (update only). Omit when adding a new service.
+        deleted:
+          type: boolean
+          description: Update only — set true (with `id`) to remove the service.
+        type:
+          type: string
+          enum: [http, https, tcp, udp, srv]
+          description: >-
+            Service type. `http`/`https` create an HTTP service (the value sets
+            backendProtocol); `tcp`/`udp` create a transport service; `srv`
+            creates a DNS service.
+        internalPort:
+          type: integer
+          description: Port the service listens on inside the container.
+        externalHostname:
+          type: string
+          description: Subdomain label. Required for `http`/`https`; used for `tcp` when `tls` is true.
+        externalDomainId:
+          type: integer
+          description: External domain ID. Required for `http`/`https`; required for `tcp` when `tls` is true.
+        authRequired:
+          type: boolean
+          description: HTTP only — require authentication via the domain's auth server.
+        tls:
+          type: boolean
+          description: >-
+            `tcp` only — terminate TLS at the load balancer using the selected
+            domain's certificate. Requires `externalDomainId`. Rejected for `udp`.
+        dnsName:
+          type: string
+          description: Required for `srv` — the SRV record name (e.g. `_ldap._tcp`).
     Node:
       type: object
       properties:
@@ -308,6 +459,7 @@ paths:
   /sites/{siteId}/containers:
     get:
       tags: [Containers]
+      summary: List containers in a site
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: query, name: hostname, schema: { type: string } }
@@ -326,23 +478,46 @@ paths:
             is intersected with what they may already see (own plus shared), so
             it can only narrow visibility.
       responses:
-        '200': { description: Array of containers }
+        '200':
+          description: Array of containers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Container' }
         '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
       tags: [Containers]
+      summary: Create a container (enqueues a provisioning job)
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               required: [hostname, template]
               properties:
-                hostname: { type: string }
-                template: { type: string }
-                customTemplate: { type: string }
+                hostname:
+                  type: string
+                  description: Lowercase letters, digits, and hyphens.
+                template:
+                  type: string
+                  description: >-
+                    Docker image reference (e.g.
+                    `ghcr.io/mieweb/opensource-server/base:latest`). Use the
+                    literal string `custom` with `customTemplate` for an
+                    arbitrary image. The provisioning node is auto-selected.
+                customTemplate:
+                  type: string
+                  description: Image reference used when `template` is `"custom"`.
                 entrypoint: { type: string }
-                nvidiaRequested: { type: boolean }
+                nvidiaRequested:
+                  type: boolean
+                  description: Schedule on an NVIDIA-capable node and inject GPU env vars.
                 collaborators:
                   type: array
                   items: { type: string }
@@ -352,8 +527,27 @@ paths:
                   items: { type: object, properties: { key: { type: string }, value: { type: string } } }
                 services:
                   type: object
-                  additionalProperties: { type: object }
-      responses: { '201': { description: Creation job enqueued } }
+                  description: >-
+                    Map of arbitrary label → service definition. The keys are
+                    ignored by the server; only the values matter.
+                  additionalProperties: { $ref: '#/components/schemas/ServiceInput' }
+      responses:
+        '201':
+          description: Creation job enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      containerId: { type: integer }
+                      jobId: { type: integer }
+                      hostname: { type: string }
+                      status: { type: string, example: pending }
+        '400': { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'No eligible node available (code: no_node / no_nvidia_node)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
       tags: [Containers]
@@ -374,17 +568,79 @@ paths:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
-    get: { tags: [Containers], responses: { '200': { description: Container } } }
+    get:
+      tags: [Containers]
+      summary: Get a single container
+      responses:
+        '200':
+          description: Container
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Container' }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     put:
       tags: [Containers]
+      summary: Update a container's services, env vars, or entrypoint (may enqueue a restart job)
+      description: >-
+        Accepts a partial body. Existing services are immutable except for
+        `authRequired` — to change other fields, delete and re-add the service.
+        `hostname` and `template` cannot be changed here.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entrypoint: { type: string }
+                restart:
+                  type: boolean
+                  description: Force a restart. When sent alone, only restarts (no other changes).
+                environmentVars:
+                  type: array
+                  items: { type: object, properties: { key: { type: string }, value: { type: string } } }
+                services:
+                  type: object
+                  description: 'Map of label → service definition. Include `id` to reference existing services and `deleted: true` to remove them.'
+                  additionalProperties: { $ref: '#/components/schemas/ServiceInput' }
       responses:
-        '200': { description: Updated, optional restart job }
+        '200':
+          description: Updated; optional restart job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      containerId: { type: integer }
+                      jobId: { type: integer, nullable: true }
+                      message: { type: string }
+                      dnsWarnings: { type: array, items: { type: string } }
         '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Containers]
+      summary: Delete a container (also cleans up cross-site DNS)
       responses:
-        '200': { description: Deleted, with DNS cleanup warnings }
+        '200':
+          description: Deleted, with DNS cleanup warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted: { type: boolean, example: true }
+                      dnsWarnings: { type: array, items: { type: string } }
         '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'Hostname mismatch with Proxmox (code: hostname_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
