@@ -52,10 +52,27 @@ Services use a zero-indexed array (`services[0]`, `services[1]`, etc.):
 
 | Type | Required Fields | Notes |
 |------|----------------|-------|
-| `tcp` | `internalPort` | External port auto-assigned |
-| `udp` | `internalPort` | External port auto-assigned (range 2000–65565) |
+| `tcp` | `internalPort` | External port auto-assigned. For TLS termination, also send `tls=true` with `externalHostname` + `externalDomainId` (see below). |
+| `udp` | `internalPort` | External port auto-assigned (range 2000–65535) |
 | `http` | `internalPort`, `externalHostname`, `externalDomainId` | Subdomain + domain |
 | `srv` | `internalPort`, `dnsName` | e.g., `_ldap._tcp` |
+
+#### TLS-Terminated TCP Service
+
+To have the load balancer terminate TLS for a TCP service (using the same certificate as the matching HTTP domain), set `tls=true` and provide a domain. TLS is only supported for `tcp` (not `udp`).
+
+```bash
+curl -X POST 'https://create-a-container.opensource.mieweb.org/sites/1/containers' \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'hostname=my-db' \
+  --data-urlencode 'template=pve1,100' \
+  --data-urlencode 'services[0][type]=tcp' \
+  --data-urlencode 'services[0][internalPort]=5432' \
+  --data-urlencode 'services[0][tls]=true' \
+  --data-urlencode 'services[0][externalHostname]=db' \
+  --data-urlencode 'services[0][externalDomainId]=1'
+```
 
 ## 4. Complete Example
 

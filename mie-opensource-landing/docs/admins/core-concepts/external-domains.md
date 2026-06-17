@@ -103,6 +103,8 @@ On container or service deletion, cross-site A records are cleaned up automatica
 
 When creating a container service, users select an external domain and specify a subdomain (e.g., `app` for `app.example.com`). All external domains are available regardless of which site the container is on. See the [Web GUI guide](../../users/creating-containers/web-gui.md) for details.
 
+A domain's certificate is also used to terminate TLS for **TLS-enabled TCP services**. When a TCP service has TLS enabled and references an external domain, NGINX terminates TLS on that service's auto-assigned external port using the domain's `/etc/ssl/certs/<domain>.crt` (the same certificate as HTTP services), then proxies the decrypted stream to the container. No additional certificate setup is required beyond the domain cert described above. TLS termination is not supported for UDP services.
+
 ## Security
 
 - Issue Cloudflare User API Tokens with minimum scope (`Zone:DNS:Edit` for the target zone only)
