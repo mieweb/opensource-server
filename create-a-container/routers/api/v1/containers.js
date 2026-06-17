@@ -325,6 +325,15 @@ function isUnknownUserError(err) {
   return err?.name === 'SequelizeForeignKeyConstraintError';
 }
 
+// Normalize an optional hostname: trim whitespace and treat blank as null.
+// The client sends `externalHostname` as a string (defaulting to ''), but the
+// model's hostname regex rejects empty strings — so blank means "unset".
+function normalizeHostname(hostname) {
+  if (typeof hostname !== 'string') return hostname ?? null;
+  const trimmed = hostname.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 // Map an incoming transport service `type` to its persisted shape.
 // The API exposes `tcp`, `udp`, and `tls` types, but the DB only stores
 // protocol `tcp`/`udp`; a `tls` type is a TCP service with `backendTls` set
@@ -580,7 +589,7 @@ router.post(
                 externalPort,
                 tls: tlsEnabled,
                 backendTls,
-                externalHostname: tlsEnabled ? externalHostname : null,
+                externalHostname: tlsEnabled ? normalizeHostname(externalHostname) : null,
                 externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
               },
               { transaction: t },
@@ -742,7 +751,7 @@ router.put(
             );
           } else {
             const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535);
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535, t);
             await TransportService.create(
               {
                 serviceId: createdService.id,
@@ -750,7 +759,7 @@ router.put(
                 externalPort,
                 tls: tlsEnabled,
                 backendTls,
-                externalHostname: tlsEnabled ? externalHostname : null,
+                externalHostname: tlsEnabled ? normalizeHostname(externalHostname) : null,
                 externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
               },
               { transaction: t },

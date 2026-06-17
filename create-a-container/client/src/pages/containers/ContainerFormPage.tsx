@@ -299,11 +299,12 @@ export function ContainerFormPage() {
           return;
         }
         if (s.deleted) return;
+        const externalHostname = s.externalHostname?.trim();
         servicesObj[`s${idx}`] = {
           id: s.id,
           type: s.type,
           internalPort: s.internalPort ? parseInt(s.internalPort, 10) : undefined,
-          externalHostname: s.externalHostname,
+          externalHostname: externalHostname ? externalHostname : undefined,
           externalDomainId: s.externalDomainId ? parseInt(s.externalDomainId, 10) : undefined,
           dnsName: s.dnsName,
           authRequired: s.authRequired,
