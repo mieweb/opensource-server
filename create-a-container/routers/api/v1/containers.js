@@ -362,7 +362,7 @@ router.post(
             );
           } else {
             const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565, t);
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535, t);
             await TransportService.create(
               {
                 serviceId: createdService.id,
@@ -534,7 +534,7 @@ router.put(
             );
           } else {
             const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565);
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535);
             await TransportService.create(
               {
                 serviceId: createdService.id,
