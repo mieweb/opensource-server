@@ -41,6 +41,7 @@ const SERVICE_TYPES = [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS (backend TLS)' },
   { value: 'tcp', label: 'TCP' },
+  { value: 'tls', label: 'TLS (backend TLS)' },
   { value: 'udp', label: 'UDP' },
   { value: 'srv', label: 'DNS (SRV record)' },
 ];
@@ -48,7 +49,7 @@ const SERVICE_TYPES = [
 const serviceSchema = z
   .object({
     id: z.number().optional(),
-    type: z.enum(['http', 'https', 'tcp', 'udp', 'srv']),
+    type: z.enum(['http', 'https', 'tcp', 'tls', 'udp', 'srv']),
     internalPort: z.string(),
     externalPort: z.number().optional(),
     externalHostname: z.string().optional(),
@@ -73,11 +74,11 @@ const serviceSchema = z
     (s) =>
       s.deleted ||
       s.id !== undefined || // existing services are immutable here
-      s.type !== 'tcp' ||
+      (s.type !== 'tcp' && s.type !== 'tls') ||
       !s.tls ||
       !!s.externalDomainId,
     {
-      message: 'An external domain is required for TLS-enabled TCP services',
+      message: 'An external domain is required when TLS termination is enabled',
       path: ['externalDomainId'],
     },
   );
@@ -175,7 +176,9 @@ export function ContainerFormPage() {
                 ? s.httpService?.backendProtocol === 'https'
                   ? 'https'
                   : 'http'
-                : (s.transportService?.protocol ?? 'tcp'),
+                : s.transportService?.backendTls
+                  ? 'tls'
+                  : (s.transportService?.protocol ?? 'tcp'),
           internalPort: String(s.internalPort),
           externalPort: s.transportService?.externalPort,
           externalHostname:
@@ -618,7 +621,7 @@ export function ContainerFormPage() {
                       />
                     </div>
                   )}
-                  {(svc.type === 'tcp' || svc.type === 'udp') && (
+                  {(svc.type === 'tcp' || svc.type === 'tls' || svc.type === 'udp') && (
                     <div className="grid gap-3">
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -632,10 +635,10 @@ export function ContainerFormPage() {
                           )}
                         </p>
                       </div>
-                      {svc.type === 'tcp' && (
+                      {(svc.type === 'tcp' || svc.type === 'tls') && (
                         <>
                           <Switch
-                            label="Enable TLS"
+                            label="Terminate TLS at load balancer"
                             checked={!!svc.tls}
                             disabled={isExisting}
                             onCheckedChange={(c) => {

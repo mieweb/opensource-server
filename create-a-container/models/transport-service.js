@@ -70,6 +70,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       comment: 'Whether to use TLS for TCP connections'
     },
+    backendTls: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Whether the load balancer re-encrypts to the backend via proxy_ssl'
+    },
     externalHostname: {
       type: DataTypes.STRING(255),
       allowNull: true,
@@ -104,6 +110,13 @@ module.exports = (sequelize, DataTypes) => {
       tlsRequiresDomain() {
         if (this.tls && !this.externalDomainId) {
           throw new Error('A TLS-enabled TCP service must have an externalDomainId');
+        }
+      },
+      // Backend TLS re-encryption (nginx stream `proxy_ssl`) is only valid for
+      // TCP. UDP cannot use proxy_ssl.
+      backendTlsRequiresTcp() {
+        if (this.backendTls && this.protocol !== 'tcp') {
+          throw new Error('Backend TLS can only be enabled for TCP services');
         }
       }
     },

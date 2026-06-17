@@ -461,6 +461,7 @@ stream {
   <%_ streamServices.forEach((service, index) => { _%>
   <%_ const transport = service.transportService; _%>
   <%_ const tlsEnabled = transport.protocol === 'tcp' && transport.tls && transport.externalDomain; _%>
+  <%_ const backendTls = transport.protocol === 'tcp' && transport.backendTls; _%>
   server {
     <%_ if (tlsEnabled) { _%>
     listen <%= transport.externalPort %> ssl;
@@ -472,6 +473,13 @@ stream {
     ssl_protocols TLSv1.2 TLSv1.3;
     <%_ } else { _%>
     listen <%= transport.externalPort %><%= transport.protocol === 'udp' ? ' udp' : '' %>;
+    <%_ } _%>
+    <%_ if (backendTls) { _%>
+
+    # Re-encrypt the connection to the backend (proxy_ssl). The backend
+    # certificate is not verified (backends often use self-signed certs).
+    proxy_ssl on;
+    proxy_ssl_protocols TLSv1.2 TLSv1.3;
     <%_ } _%>
     proxy_pass <%= service.Container.ipv4Address %>:<%= service.internalPort %>;
   }

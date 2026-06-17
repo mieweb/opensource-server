@@ -98,6 +98,7 @@ Watch the job to completion — see [Track the Creation Job](#5-track-the-creati
 | Type | Required fields | Notes |
 |------|-----------------|-------|
 | `tcp` | `internalPort` | External port auto-assigned. For TLS termination, also send `tls: true` with `externalHostname` + `externalDomainId` (see below). |
+| `tls` | `internalPort` | Like `tcp`, but the load balancer re-encrypts to the backend (`proxy_ssl`). May also terminate client TLS (`tls: true` + domain). |
 | `udp` | `internalPort` | External port auto-assigned (range 2000–65535). |
 | `http` | `internalPort`, `externalHostname`, `externalDomainId` | Public side is always HTTPS. |
 | `https` | `internalPort`, `externalHostname`, `externalDomainId` | Same as `http` but the proxy talks HTTPS to your backend. |
@@ -107,9 +108,24 @@ Watch the job to completion — see [Track the Creation Job](#5-track-the-creati
 
     Add a `tcp` service with `internalPort: 22` to expose SSH. Its external port is auto-assigned; read it back from the container detail (`sshPort`) once created.
 
-#### TLS-Terminated TCP Service
+#### TLS Service (backend re-encryption)
 
-To have the load balancer terminate TLS for a TCP service (using the same certificate as the matching HTTP domain), set `tls: true` and provide an external domain. TLS is supported for `tcp` only, not `udp`.
+Use the `tls` type when your container's service speaks TLS — the load balancer connects to it over TLS (`proxy_ssl`; the backend certificate is not verified). The client still connects to the auto-assigned port over plain TCP unless you also enable termination.
+
+```bash
+curl -s -X POST "$API/sites/1/containers" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "hostname": "my-svc",
+    "template": "docker.io/library/nginx:latest",
+    "services": { "secure": { "type": "tls", "internalPort": 8443 } }
+  }' | jq '.data'
+```
+
+#### TLS Termination at the Load Balancer
+
+To have the load balancer terminate client TLS (using the same certificate as the matching HTTP domain), set `tls: true` and provide an external domain. This works for `tcp` and `tls` services (not `udp`); a `tls` service can both terminate client TLS and re-encrypt to the backend.
 
 ```bash
 curl -s -X POST "$API/sites/1/containers" \
