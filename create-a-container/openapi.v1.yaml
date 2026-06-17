@@ -208,6 +208,12 @@ components:
           description: >-
             Whether the load balancer terminates TLS on `externalPort` for this
             service. Only valid for `tcp`; always false for `udp`.
+        backendTls:
+          type: boolean
+          description: >-
+            Whether the load balancer re-encrypts the connection to the backend
+            (nginx stream `proxy_ssl`). Set for services created with the `tls`
+            type. The backend certificate is not verified. TCP only.
         externalHostname:
           type: string
           nullable: true
@@ -249,28 +255,31 @@ components:
           description: Update only — set true (with `id`) to remove the service.
         type:
           type: string
-          enum: [http, https, tcp, udp, srv]
+          enum: [http, https, tcp, tls, udp, srv]
           description: >-
             Service type. `http`/`https` create an HTTP service (the value sets
-            backendProtocol); `tcp`/`udp` create a transport service; `srv`
-            creates a DNS service.
+            backendProtocol); `tcp`/`udp` create a transport service; `tls`
+            creates a TCP transport service that re-encrypts to the backend
+            (proxy_ssl); `srv` creates a DNS service.
         internalPort:
           type: integer
           description: Port the service listens on inside the container.
         externalHostname:
           type: string
-          description: Subdomain label. Required for `http`/`https`; used for `tcp` when `tls` is true.
+          description: Subdomain label. Required for `http`/`https`; used for `tcp`/`tls` when `tls` is true.
         externalDomainId:
           type: integer
-          description: External domain ID. Required for `http`/`https`; required for `tcp` when `tls` is true.
+          description: External domain ID. Required for `http`/`https`; required for `tcp`/`tls` when `tls` is true.
         authRequired:
           type: boolean
           description: HTTP only — require authentication via the domain's auth server.
         tls:
           type: boolean
           description: >-
-            `tcp` only — terminate TLS at the load balancer using the selected
-            domain's certificate. Requires `externalDomainId`. Rejected for `udp`.
+            `tcp`/`tls` only — terminate client TLS at the load balancer using
+            the selected domain's certificate. Requires `externalDomainId`.
+            Rejected for `udp`. Independent of the `tls` service type
+            (backend re-encryption), so a `tls` service may also terminate.
         dnsName:
           type: string
           description: Required for `srv` — the SRV record name (e.g. `_ldap._tcp`).

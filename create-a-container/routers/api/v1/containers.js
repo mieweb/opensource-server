@@ -161,6 +161,7 @@ function serializeContainer(c, site, status) {
             protocol: s.transportService.protocol,
             externalPort: s.transportService.externalPort,
             tls: !!s.transportService.tls,
+            backendTls: !!s.transportService.backendTls,
             externalHostname: s.transportService.externalHostname,
             externalDomainId: s.transportService.externalDomainId,
             domain: s.transportService.externalDomain?.name,
@@ -322,6 +323,15 @@ async function loadContainerForSession(siteId, containerId, session, { requireMa
  */
 function isUnknownUserError(err) {
   return err?.name === 'SequelizeForeignKeyConstraintError';
+}
+
+// Map an incoming transport service `type` to its persisted shape.
+// The API exposes `tcp`, `udp`, and `tls` types, but the DB only stores
+// protocol `tcp`/`udp`; a `tls` type is a TCP service with `backendTls` set
+// (the load balancer re-encrypts to the backend via `proxy_ssl`).
+function parseTransportType(type) {
+  if (type === 'tls') return { protocol: 'tcp', backendTls: true };
+  return { protocol: type, backendTls: false };
 }
 
 // Validate and normalize the TLS flag for a transport (TCP/UDP) service.
@@ -529,11 +539,12 @@ router.post(
           if (!type || !internalPort) continue;
           let serviceType;
           let protocol = null;
+          let backendTls = false;
           if (type === 'http' || type === 'https') serviceType = 'http';
           else if (type === 'srv') serviceType = 'dns';
           else {
             serviceType = 'transport';
-            protocol = type;
+            ({ protocol, backendTls } = parseTransportType(type));
           }
           const createdService = await Service.create(
             { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
@@ -568,6 +579,7 @@ router.post(
                 protocol,
                 externalPort,
                 tls: tlsEnabled,
+                backendTls,
                 externalHostname: tlsEnabled ? externalHostname : null,
                 externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
               },
@@ -704,7 +716,8 @@ router.put(
           if (deleted === true || deleted === 'true' || id || !type || !internalPort) continue;
           const serviceType =
             type === 'srv' ? 'dns' : type === 'http' || type === 'https' ? 'http' : 'transport';
-          const protocol = serviceType === 'transport' ? type : null;
+          const { protocol, backendTls } =
+            serviceType === 'transport' ? parseTransportType(type) : { protocol: null, backendTls: false };
           const createdService = await Service.create(
             { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
             { transaction: t },
@@ -736,6 +749,7 @@ router.put(
                 protocol,
                 externalPort,
                 tls: tlsEnabled,
+                backendTls,
                 externalHostname: tlsEnabled ? externalHostname : null,
                 externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
               },

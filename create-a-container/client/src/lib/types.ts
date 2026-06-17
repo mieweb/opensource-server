@@ -55,6 +55,7 @@ export interface ServiceTransport {
   protocol: 'tcp' | 'udp';
   externalPort: number;
   tls: boolean;
+  backendTls: boolean;
   externalHostname: string | null;
   externalDomainId: number | null;
   domain?: string;
