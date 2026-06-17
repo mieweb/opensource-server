@@ -29,7 +29,7 @@
     "express-session": "^1.19.0",
     "express-session-sequelize": "^2.3.0",
     "morgan": "^1.10.1",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^8.0.9",
     "openid-client": "^5.7.1",
     "pg": "^8.16.3",
     "sequelize": "^6.37.8",
