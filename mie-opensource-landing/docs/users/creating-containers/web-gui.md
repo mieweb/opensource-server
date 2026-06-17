@@ -47,7 +47,13 @@ Expose container ports. Click **Add Service**, select a type, and enter the inte
 
 Both HTTP and HTTPS services are served to the public over HTTPS with automatic TLS certificates — the type controls the protocol used between the reverse proxy and your container.
 
-HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP services are auto-assigned an external port.
+HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP services are auto-assigned an external port — once the container is created, the assigned port is shown (read-only) in the service row when you edit the container.
+
+#### TLS for TCP services
+
+TCP services can optionally enable **TLS termination at the load balancer**. Toggle **Enable TLS** on a TCP service and select an external domain (and optional hostname, just like an HTTP service). The load balancer then terminates TLS on the assigned external port using that domain's certificate — the same certificate used by HTTP services — and forwards the decrypted traffic to your container. This lets clients connect to a plaintext backend over an encrypted connection without the container managing certificates.
+
+TLS is not available for UDP services.
 
 !!! note
 
