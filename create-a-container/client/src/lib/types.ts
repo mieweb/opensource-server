@@ -54,6 +54,10 @@ export interface ServiceTransport {
   id: number;
   protocol: 'tcp' | 'udp';
   externalPort: number;
+  tls: boolean;
+  externalHostname: string | null;
+  externalDomainId: number | null;
+  domain?: string;
 }
 export interface ServiceDns {
   id: number;

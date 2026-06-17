@@ -57,6 +57,7 @@ const serviceSchema = z
     externalDomainId: z.string().optional(),
     dnsName: z.string().optional(),
     authRequired: z.boolean().optional(),
+    tls: z.boolean().optional(),
     deleted: z.boolean().optional(),
   })
   .refine(
@@ -67,6 +68,18 @@ const serviceSchema = z
       !!s.externalDomainId,
     {
       message: 'An external domain is required for HTTP services',
+      path: ['externalDomainId'],
+    },
+  )
+  .refine(
+    (s) =>
+      s.deleted ||
+      s.id !== undefined || // existing services are immutable here
+      s.type !== 'tcp' ||
+      !s.tls ||
+      !!s.externalDomainId,
+    {
+      message: 'An external domain is required for TLS-enabled TCP services',
       path: ['externalDomainId'],
     },
   );
@@ -185,10 +198,16 @@ export function ContainerFormPage() {
                 : (s.transportService?.protocol ?? 'tcp'),
           internalPort: String(s.internalPort),
           externalPort: s.transportService?.externalPort,
-          externalHostname: s.httpService?.externalHostname || '',
-          externalDomainId: s.httpService ? String(s.httpService.externalDomainId) : '',
+          externalHostname:
+            s.httpService?.externalHostname || s.transportService?.externalHostname || '',
+          externalDomainId: s.httpService
+            ? String(s.httpService.externalDomainId)
+            : s.transportService?.externalDomainId
+              ? String(s.transportService.externalDomainId)
+              : '',
           dnsName: s.dnsService?.dnsName || '',
           authRequired: !!s.httpService?.authRequired,
+          tls: !!s.transportService?.tls,
           deleted: false,
         })),
         environmentVars: Object.entries(container.environmentVars || {}).map(([key, value]) => ({
@@ -238,6 +257,7 @@ export function ContainerFormPage() {
           externalDomainId: '',
           dnsName: '',
           authRequired: false,
+          tls: false,
           deleted: false,
         });
         added += 1;
@@ -284,6 +304,7 @@ export function ContainerFormPage() {
           externalDomainId: s.externalDomainId ? parseInt(s.externalDomainId, 10) : undefined,
           dnsName: s.dnsName,
           authRequired: s.authRequired,
+          tls: s.tls,
         };
       });
       const payload = {
@@ -537,6 +558,7 @@ export function ContainerFormPage() {
                   externalDomainId: defaultExternalDomainId,
                   dnsName: '',
                   authRequired: false,
+                  tls: false,
                   deleted: false,
                 })
               }
@@ -630,17 +652,58 @@ export function ContainerFormPage() {
                     </div>
                   )}
                   {(svc.type === 'tcp' || svc.type === 'udp') && (
-                    <div>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        External port
-                      </p>
-                      <p className="font-mono text-sm">
-                        {svc.externalPort ?? (
-                          <span className="text-muted-foreground">
-                            Auto-assigned on save
-                          </span>
-                        )}
-                      </p>
+                    <div className="grid gap-3">
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          External port
+                        </p>
+                        <p className="font-mono text-sm">
+                          {svc.externalPort ?? (
+                            <span className="text-muted-foreground">
+                              Auto-assigned on save
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      {svc.type === 'tcp' && (
+                        <>
+                          <Switch
+                            label="Enable TLS"
+                            checked={!!svc.tls}
+                            disabled={isExisting}
+                            onCheckedChange={(c) => {
+                              setValue(`services.${idx}.tls`, c);
+                              // Ensure a domain is selected when enabling TLS so
+                              // the load balancer has a certificate to use.
+                              if (c && !svc.externalDomainId && defaultExternalDomainId) {
+                                setValue(
+                                  `services.${idx}.externalDomainId`,
+                                  defaultExternalDomainId,
+                                );
+                              }
+                            }}
+                          />
+                          {svc.tls && (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input
+                                label="External hostname"
+                                placeholder="db"
+                                readOnly={isExisting}
+                                {...register(`services.${idx}.externalHostname`)}
+                              />
+                              <Select
+                                label="External domain"
+                                value={svc.externalDomainId || ''}
+                                onValueChange={(v) =>
+                                  setValue(`services.${idx}.externalDomainId`, v)
+                                }
+                                options={domainOptions}
+                                disabled={isExisting}
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                   {svc.type === 'srv' && (
