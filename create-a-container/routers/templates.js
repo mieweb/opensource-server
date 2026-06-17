@@ -51,7 +51,11 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
               as: 'httpService',
               include: [{ model: ExternalDomain, as: 'externalDomain' }],
             },
-            { model: TransportService, as: 'transportService' },
+            {
+              model: TransportService,
+              as: 'transportService',
+              include: [{ model: ExternalDomain, as: 'externalDomain' }],
+            },
           ],
         }],
       }],

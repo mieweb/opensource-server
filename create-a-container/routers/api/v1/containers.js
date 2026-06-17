@@ -121,6 +121,10 @@ function serializeContainer(c, site) {
             id: s.transportService.id,
             protocol: s.transportService.protocol,
             externalPort: s.transportService.externalPort,
+            tls: !!s.transportService.tls,
+            externalHostname: s.transportService.externalHostname,
+            externalDomainId: s.transportService.externalDomainId,
+            domain: s.transportService.externalDomain?.name,
           }
         : null,
       dnsService: s.dnsService
@@ -129,6 +133,23 @@ function serializeContainer(c, site) {
     })),
     createdAt: c.createdAt,
   };
+}
+
+// Validate and normalize the TLS flag for a transport (TCP/UDP) service.
+// Returns a boolean. Throws ApiError(400) when the request is inconsistent:
+//   - TLS is only supported for TCP (nginx stream `ssl`; UDP would need DTLS).
+//   - A TLS-enabled TCP service must reference an external domain so the load
+//     balancer knows which certificate to terminate with.
+function parseTransportTls(tls, protocol, externalDomainId) {
+  const tlsEnabled = tls === true || tls === 'true';
+  if (!tlsEnabled) return false;
+  if (protocol !== 'tcp') {
+    throw new ApiError(400, 'invalid_service', 'TLS can only be enabled for TCP services');
+  }
+  if (!externalDomainId) {
+    throw new ApiError(400, 'invalid_service', 'TLS-enabled TCP services must have an externalDomainId');
+  }
+  return true;
 }
 
 // GET /containers/metadata?image=...
@@ -179,7 +200,7 @@ router.get(
           association: 'services',
           include: [
             { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
+            { association: 'transportService', include: [{ association: 'externalDomain' }] },
             { association: 'dnsService' },
           ],
         },
@@ -209,7 +230,7 @@ router.get(
           association: 'services',
           include: [
             { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
+            { association: 'transportService', include: [{ association: 'externalDomain' }] },
             { association: 'dnsService' },
           ],
         },
@@ -305,7 +326,7 @@ router.post(
       if (services && typeof services === 'object') {
         for (const key in services) {
           const svc = services[key];
-          const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = svc;
+          const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired, tls } = svc;
           if (!type || !internalPort) continue;
           let serviceType;
           let protocol = null;
@@ -340,9 +361,17 @@ router.post(
               { transaction: t },
             );
           } else {
+            const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
             const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565, t);
             await TransportService.create(
-              { serviceId: createdService.id, protocol, externalPort },
+              {
+                serviceId: createdService.id,
+                protocol,
+                externalPort,
+                tls: tlsEnabled,
+                externalHostname: tlsEnabled ? externalHostname : null,
+                externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
+              },
               { transaction: t },
             );
           }
@@ -475,7 +504,7 @@ router.put(
         }
         const newHttp = [];
         for (const key in services) {
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } =
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired, tls } =
             services[key];
           if (deleted === true || deleted === 'true' || id || !type || !internalPort) continue;
           const serviceType =
@@ -504,9 +533,17 @@ router.put(
               { transaction: t },
             );
           } else {
+            const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
             const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565);
             await TransportService.create(
-              { serviceId: createdService.id, protocol, externalPort },
+              {
+                serviceId: createdService.id,
+                protocol,
+                externalPort,
+                tls: tlsEnabled,
+                externalHostname: tlsEnabled ? externalHostname : null,
+                externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
+              },
               { transaction: t },
             );
           }

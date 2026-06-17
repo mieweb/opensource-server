@@ -459,8 +459,20 @@ stream {
   access_log  /var/log/nginx/stream-access.log  main;
 
   <%_ streamServices.forEach((service, index) => { _%>
+  <%_ const transport = service.transportService; _%>
+  <%_ const tlsEnabled = transport.protocol === 'tcp' && transport.tls && transport.externalDomain; _%>
   server {
-    listen <%= service.transportService.externalPort %><%= service.transportService.protocol === 'udp' ? ' udp' : '' %>;
+    <%_ if (tlsEnabled) { _%>
+    listen <%= transport.externalPort %> ssl;
+
+    # TLS termination at the load balancer using the external domain's
+    # certificate (shared with HTTP services for the same domain).
+    ssl_certificate /etc/ssl/certs/<%= transport.externalDomain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= transport.externalDomain.name %>.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    <%_ } else { _%>
+    listen <%= transport.externalPort %><%= transport.protocol === 'udp' ? ' udp' : '' %>;
+    <%_ } _%>
     proxy_pass <%= service.Container.ipv4Address %>:<%= service.internalPort %>;
   }
   <%_ }) _%>
