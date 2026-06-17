@@ -1,0 +1,101 @@
+name: Wait for Job
+description: Poll a Create-a-Container API job until it completes, fails, or times out.
+author: mieweb
+
+inputs:
+  api_url:
+    description: Base URL for the Container API (e.g. https://containers.example.com).
+    required: true
+  api_key:
+    description: API key used as a Bearer token for authentication.
+    required: true
+  job_id:
+    description: Numeric ID of the job to poll.
+    required: true
+  max_attempts:
+    description: Maximum number of poll attempts before timing out.
+    required: false
+    default: "30"
+  poll_interval:
+    description: Seconds to wait between poll attempts.
+    required: false
+    default: "10"
+
+outputs:
+  job_done:
+    description: "'true' when the job completed successfully."
+    value: ${{ steps.wait.outputs.job_done }}
+
+runs:
+  using: composite
+  steps:
+    - name: Poll job until complete
+      id: wait
+      shell: bash
+      env:
+        API_URL: ${{ inputs.api_url }}
+        API_KEY: ${{ inputs.api_key }}
+        JOB_ID: ${{ inputs.job_id }}
+        MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+        POLL_INTERVAL: ${{ inputs.poll_interval }}
+      run: |
+        set -uo pipefail
+
+        if [ -z "$JOB_ID" ] || [ "$JOB_ID" == "null" ]; then
+          echo "::error::wait-for-job called with an empty job_id."
+          exit 1
+        fi
+
+        ATTEMPT=0
+        echo "Waiting for job $JOB_ID to complete (up to $((MAX_ATTEMPTS * POLL_INTERVAL))s)..."
+
+        while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
+          ATTEMPT=$((ATTEMPT + 1))
+
+          RAW=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $API_KEY" \
+            -H "Accept: application/json" \
+            "$API_URL/api/v1/jobs/$JOB_ID")
+
+          HTTP_CODE=$(echo "$RAW" | tail -1)
+          BODY=$(echo "$RAW" | sed '$d')
+
+          echo "  Attempt $ATTEMPT/$MAX_ATTEMPTS — HTTP $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "    API returned HTTP $HTTP_CODE — retrying."
+            sleep "$POLL_INTERVAL"
+            continue
+          fi
+
+          if ! echo "$BODY" | jq empty 2>/dev/null; then
+            echo "    Response is not valid JSON — retrying."
+            sleep "$POLL_INTERVAL"
+            continue
+          fi
+
+          JOB_STATUS=$(echo "$BODY" | jq -r '.data.status // .status // "unknown"')
+          echo "    Job status: $JOB_STATUS"
+
+          if [ "$JOB_STATUS" == "success" ] || [ "$JOB_STATUS" == "completed" ]; then
+            echo "Job $JOB_ID completed successfully."
+            echo "job_done=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$JOB_STATUS" == "failed" ] || [ "$JOB_STATUS" == "error" ] || [ "$JOB_STATUS" == "cancelled" ]; then
+            FAILURE_REASON=$(echo "$BODY" | jq -r '.error // .message // .reason // empty')
+            if [ -n "$FAILURE_REASON" ]; then
+              echo "::error::Job $JOB_ID entered '$JOB_STATUS' state: $FAILURE_REASON"
+            else
+              echo "::error::Job $JOB_ID entered '$JOB_STATUS' state. Full response: $BODY"
+            fi
+            exit 1
+          fi
+
+          # Still pending or running — keep polling
+          sleep "$POLL_INTERVAL"
+        done
+
+        echo "::error::Timed out waiting for job $JOB_ID after $((MAX_ATTEMPTS * POLL_INTERVAL))s."
+        exit 1
