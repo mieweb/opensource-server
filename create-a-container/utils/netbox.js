@@ -17,6 +17,10 @@
 
 const NETBOX_COMMENT = 'This container was built using opensource-server';
 
+// NetBox stores the VM `disk` field in megabytes and divides by 1000 (decimal)
+// for display, so convert gigabytes to MB before sending.
+const MB_PER_GB = 1000;
+
 /**
  * Build request headers for NetBox API calls.
  * @param {string} token - NetBox API token
@@ -148,7 +152,7 @@ async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv
     ...(deviceId !== null && { device: deviceId }),
     ...(vcpus != null && { vcpus }),
     ...(memoryMb != null && { memory: memoryMb }),
-    ...(diskGb != null && { disk: diskGb }),
+    ...(diskGb != null && { disk: diskGb * MB_PER_GB }),
   };
 
   const vm = await nbFetch(baseUrl, token, '/virtualization/virtual-machines/', {
@@ -213,7 +217,7 @@ async function updateVirtualMachine(baseUrl, token, hostname, { vcpus, memoryMb,
     const patch = {
       ...(vcpus != null && { vcpus }),
       ...(memoryMb != null && { memory: memoryMb }),
-      ...(diskGb != null && { disk: diskGb }),
+      ...(diskGb != null && { disk: diskGb * MB_PER_GB }),
     };
     if (Object.keys(patch).length === 0) return;
     await nbFetch(baseUrl, token, `/virtualization/virtual-machines/${vm.id}/`, {
