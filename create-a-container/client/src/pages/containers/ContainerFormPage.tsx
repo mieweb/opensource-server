@@ -585,9 +585,7 @@ export function ContainerFormPage() {
                 <div key={f.id} className="grid gap-3 rounded-lg border border-border p-4">
                   {isExisting && (
                     <p className="text-xs text-muted-foreground">
-                      {svc.type === 'http' || svc.type === 'https'
-                        ? 'Existing service — only Require authentication can be changed. Delete and re-add to modify other fields.'
-                        : 'Existing service — fields cannot be changed. Delete and re-add to modify.'}
+                      Existing service — the type cannot be changed. Delete and re-add to change it.
                     </p>
                   )}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -615,7 +613,6 @@ export function ContainerFormPage() {
                       label="Internal port"
                       type="number"
                       inputMode="numeric"
-                      readOnly={isExisting}
                       {...register(`services.${idx}.internalPort`)}
                     />
                     <Button
@@ -636,7 +633,6 @@ export function ContainerFormPage() {
                       <Input
                         label="External hostname"
                         placeholder="app"
-                        readOnly={isExisting}
                         {...register(`services.${idx}.externalHostname`)}
                       />
                       <Select
@@ -646,7 +642,6 @@ export function ContainerFormPage() {
                           setValue(`services.${idx}.externalDomainId`, v)
                         }
                         options={domainOptions}
-                        disabled={isExisting}
                       />
                       <Switch
                         label="Require authentication"
@@ -676,7 +671,6 @@ export function ContainerFormPage() {
                           <Switch
                             label="Terminate TLS at load balancer"
                             checked={!!svc.tls}
-                            disabled={isExisting}
                             onCheckedChange={(c) => {
                               setValue(`services.${idx}.tls`, c);
                               // Ensure a domain is selected when enabling TLS so
@@ -694,7 +688,6 @@ export function ContainerFormPage() {
                               <Input
                                 label="External hostname"
                                 placeholder="db"
-                                readOnly={isExisting}
                                 {...register(`services.${idx}.externalHostname`)}
                               />
                               <Select
@@ -704,7 +697,6 @@ export function ContainerFormPage() {
                                   setValue(`services.${idx}.externalDomainId`, v)
                                 }
                                 options={domainOptions}
-                                disabled={isExisting}
                               />
                             </div>
                           )}
@@ -716,7 +708,6 @@ export function ContainerFormPage() {
                     <Input
                       label="DNS name"
                       placeholder="_service._tcp.example"
-                      readOnly={isExisting}
                       {...register(`services.${idx}.dnsName`)}
                     />
                   )}
