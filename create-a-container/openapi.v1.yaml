@@ -558,9 +558,12 @@ paths:
       tags: [Containers]
       summary: Update a container's services, env vars, or entrypoint (may enqueue a restart job)
       description: >-
-        Accepts a partial body. Existing services are immutable except for
-        `authRequired` — to change other fields, delete and re-add the service.
-        `hostname` and `template` cannot be changed here.
+        Accepts a partial body. Existing services can be edited in place by
+        including their `id` — all fields are updatable except the service
+        `type` and a transport service's protocol/auto-assigned external port
+        (delete and re-add to change those). Changing an HTTP service's
+        hostname/domain rewrites its cross-site DNS record. `hostname` and
+        `template` cannot be changed here.
       requestBody:
         content:
           application/json:

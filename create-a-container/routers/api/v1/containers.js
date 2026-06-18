@@ -484,6 +484,7 @@ router.put(
 
       if (services && typeof services === 'object') {
         const deletedHttp = [];
+        const newHttp = [];
         for (const key in services) {
           const { id, deleted } = services[key];
           if ((deleted === true || deleted === 'true') && id) {
@@ -509,21 +510,97 @@ router.put(
             });
           }
         }
+        // Update existing services in place. The service `type` (HTTP vs
+        // transport vs DNS) and a transport's protocol/externalPort are fixed
+        // for the life of the service; everything else is editable. HTTP
+        // hostname/domain changes also rewrite the cross-site DNS record.
         for (const key in services) {
-          const { id, deleted, authRequired } = services[key];
+          const svc = services[key];
+          const { id, deleted, type, internalPort } = svc;
           if (deleted === true || deleted === 'true' || !id) continue;
-          const svc = await Service.findByPk(parseInt(id, 10), {
-            include: [{ model: HTTPService, as: 'httpService' }],
+          const existing = await Service.findByPk(parseInt(id, 10), {
+            include: [
+              { model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] },
+              { model: TransportService, as: 'transportService', include: [{ model: ExternalDomain, as: 'externalDomain' }] },
+              { model: DnsService, as: 'dnsService' },
+            ],
             transaction: t,
           });
-          if (svc?.httpService) {
-            const next = authRequired === true || authRequired === 'true';
-            if (svc.httpService.authRequired !== next) {
-              await svc.httpService.update({ authRequired: next }, { transaction: t });
+          // Only touch services that belong to this container.
+          if (!existing || existing.containerId !== container.id) continue;
+
+          // internalPort is common to all service types and lives on the base row.
+          if (internalPort !== undefined && internalPort !== null && String(internalPort).trim() !== '') {
+            const port = parseInt(internalPort, 10);
+            if (existing.internalPort !== port) {
+              await existing.update({ internalPort: port }, { transaction: t });
+            }
+          }
+
+          if (existing.httpService) {
+            if (type && type !== 'http' && type !== 'https') {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            const { externalHostname, externalDomainId, authRequired } = svc;
+            const newHostname = normalizeHostname(externalHostname);
+            if (!newHostname || !externalDomainId) {
+              throw new ApiError(400, 'invalid_service', 'HTTP services must have an externalHostname and externalDomainId');
+            }
+            const newDomainId = parseInt(externalDomainId, 10);
+            const prevHostname = existing.httpService.externalHostname;
+            const prevDomain = existing.httpService.externalDomain;
+            const hostOrDomainChanged =
+              prevHostname !== newHostname || existing.httpService.externalDomainId !== newDomainId;
+            await existing.httpService.update(
+              {
+                externalHostname: newHostname,
+                externalDomainId: newDomainId,
+                backendProtocol: type === 'https' ? 'https' : 'http',
+                authRequired: authRequired === true || authRequired === 'true',
+              },
+              { transaction: t },
+            );
+            // Rewrite cross-site DNS when the public name changed: remove the
+            // old record, add the new one. Both are non-fatal (warnings only).
+            if (hostOrDomainChanged) {
+              if (prevDomain) {
+                deletedHttp.push({ externalHostname: prevHostname, ExternalDomain: prevDomain });
+              }
+              const newDomain = await ExternalDomain.findByPk(newDomainId, { transaction: t });
+              if (newDomain) newHttp.push({ externalHostname: newHostname, ExternalDomain: newDomain });
+            }
+          } else if (existing.transportService) {
+            // Protocol (and therefore the auto-assigned externalPort) is fixed.
+            // Allow tcp<->tls (backendTls toggle); reject changing protocol or
+            // crossing to a non-transport type.
+            const incomingProtocol =
+              type === undefined ? existing.transportService.protocol : parseTransportType(type).protocol;
+            if (type && (type === 'http' || type === 'https' || type === 'srv')) {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            if (incomingProtocol !== existing.transportService.protocol) {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the protocol of an existing service');
+            }
+            const backendTls = type === undefined ? existing.transportService.backendTls : parseTransportType(type).backendTls;
+            const tlsEnabled = parseTransportTls(svc.tls, existing.transportService.protocol, svc.externalDomainId);
+            await existing.transportService.update(
+              {
+                tls: tlsEnabled,
+                backendTls,
+                externalHostname: tlsEnabled ? normalizeHostname(svc.externalHostname) : null,
+                externalDomainId: tlsEnabled ? parseInt(svc.externalDomainId, 10) : null,
+              },
+              { transaction: t },
+            );
+          } else if (existing.dnsService) {
+            if (type && type !== 'srv') {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            if (svc.dnsName && svc.dnsName !== existing.dnsService.dnsName) {
+              await existing.dnsService.update({ dnsName: svc.dnsName }, { transaction: t });
             }
           }
         }
-        const newHttp = [];
         for (const key in services) {
           const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired, tls } =
             services[key];
