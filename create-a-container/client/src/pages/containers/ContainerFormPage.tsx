@@ -552,7 +552,9 @@ export function ContainerFormPage() {
                 <div key={f.id} className="grid gap-3 rounded-lg border border-border p-4">
                   {isExisting && (
                     <p className="text-xs text-muted-foreground">
-                      Existing service — only Require authentication can be changed. Delete and re-add to modify other fields.
+                      {svc.type === 'http' || svc.type === 'https'
+                        ? 'Existing service — only Require authentication can be changed. Delete and re-add to modify other fields.'
+                        : 'Existing service — fields cannot be changed. Delete and re-add to modify.'}
                     </p>
                   )}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
