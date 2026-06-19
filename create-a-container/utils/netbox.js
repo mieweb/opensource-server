@@ -17,6 +17,10 @@
 
 const NETBOX_COMMENT = 'This container was built using opensource-server';
 
+// NetBox stores the VM `disk` field in megabytes and divides by 1000 (decimal)
+// for display, so convert gigabytes to MB before sending.
+const MB_PER_GB = 1000;
+
 /**
  * Build request headers for NetBox API calls.
  * @param {string} token - NetBox API token
@@ -85,12 +89,11 @@ async function findDeviceId(baseUrl, token, deviceName) {
 }
 
 /**
- * Look up a NetBox cluster by name.
+ * Look up a NetBox cluster by name. Returns null if not found.
  * @param {string} baseUrl
  * @param {string} token
  * @param {string} clusterName - Should match the Site.name value
- * @returns {Promise<number>} Cluster ID
- * @throws {Error} If the cluster is not found in NetBox
+ * @returns {Promise<number|null>} Cluster ID or null
  */
 async function findClusterId(baseUrl, token, clusterName) {
   const data = await nbFetch(
@@ -98,17 +101,15 @@ async function findClusterId(baseUrl, token, clusterName) {
     token,
     `/virtualization/clusters/?name=${encodeURIComponent(clusterName)}&limit=1`,
   );
-  if (!data?.results?.length) {
-    throw new Error(`NetBox: cluster "${clusterName}" not found`);
-  }
-  return data.results[0].id;
+  return data?.results?.[0]?.id ?? null;
 }
 
 /**
  * Create a virtual machine record in NetBox for a newly provisioned container.
  *
  * Steps:
- *   1. Resolve cluster ID from site name
+ *   1. Resolve cluster and/or site ID from the site name (NetBox 3.3+ allows a
+ *      VM to be assigned to a site without a cluster)
  *   2. Create the VM record
  *   3. Create an eth0 interface on the VM
  *   4. Create an IP address assigned to that interface
@@ -118,7 +119,7 @@ async function findClusterId(baseUrl, token, clusterName) {
  * @param {string} token
  * @param {object} opts
  * @param {string} opts.hostname    - Container hostname (becomes VM name)
- * @param {string} opts.clusterName - Site name used to resolve the NetBox cluster
+ * @param {string} opts.clusterName - Site name used to resolve the NetBox cluster and/or site
  * @param {string} opts.ipv4Address - Container IPv4 address (CIDR or bare IP)
  * @param {string} [opts.createdBy] - Username of the person who created the container
  * @param {string} [opts.nodeName]  - Proxmox node name; mapped to the NetBox device within the cluster
@@ -133,20 +134,25 @@ async function createVirtualMachine(baseUrl, token, { hostname, clusterName, ipv
     findSiteId(baseUrl, token, clusterName),
     nodeName ? findDeviceId(baseUrl, token, nodeName) : Promise.resolve(null),
   ]);
+  // A NetBox VM must be anchored to a cluster or a site. If neither matches the
+  // site name, fail loudly so the misconfiguration is visible.
+  if (clusterId === null && siteId === null) {
+    throw new Error(`NetBox: no cluster or site named "${clusterName}" found`);
+  }
   const comment = createdBy
     ? `${NETBOX_COMMENT}\nCreated by: ${createdBy}`
     : NETBOX_COMMENT;
 
   const vmBody = {
     name: hostname,
-    cluster: clusterId,
     status: 'active',
     comments: comment,
+    ...(clusterId !== null && { cluster: clusterId }),
     ...(siteId !== null && { site: siteId }),
     ...(deviceId !== null && { device: deviceId }),
     ...(vcpus != null && { vcpus }),
     ...(memoryMb != null && { memory: memoryMb }),
-    ...(diskGb != null && { disk: diskGb }),
+    ...(diskGb != null && { disk: diskGb * MB_PER_GB }),
   };
 
   const vm = await nbFetch(baseUrl, token, '/virtualization/virtual-machines/', {
@@ -211,7 +217,7 @@ async function updateVirtualMachine(baseUrl, token, hostname, { vcpus, memoryMb,
     const patch = {
       ...(vcpus != null && { vcpus }),
       ...(memoryMb != null && { memory: memoryMb }),
-      ...(diskGb != null && { disk: diskGb }),
+      ...(diskGb != null && { disk: diskGb * MB_PER_GB }),
     };
     if (Object.keys(patch).length === 0) return;
     await nbFetch(baseUrl, token, `/virtualization/virtual-machines/${vm.id}/`, {

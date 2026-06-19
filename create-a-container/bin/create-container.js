@@ -520,7 +520,7 @@ async function main() {
 
     // Register the container in NetBox if the integration is configured
     await withNetbox(Setting, async (baseUrl, token) => {
-      console.log(`Registering container in NetBox (cluster: ${site.name})...`);
+      console.log(`Registering container in NetBox (site: ${site.name})...`);
       try {
         await createVirtualMachine(baseUrl, token, {
           hostname: container.hostname,

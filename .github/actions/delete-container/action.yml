@@ -1,0 +1,52 @@
+name: Delete Container
+description: Delete a container by ID via the Create-a-Container API.
+author: mieweb
+
+inputs:
+  api_url:
+    description: Base URL for the Container API (e.g. https://containers.example.com).
+    required: true
+  api_key:
+    description: API key used as a Bearer token for authentication.
+    required: true
+  site_id:
+    description: Site ID that owns the container.
+    required: false
+    default: "1"
+  container_id:
+    description: Numeric ID of the container to delete.
+    required: true
+
+outputs:
+  deleted:
+    description: "'true' if the container was deleted, otherwise 'false'."
+    value: ${{ steps.delete.outputs.deleted }}
+
+runs:
+  using: composite
+  steps:
+    - name: Delete container
+      id: delete
+      shell: bash
+      env:
+        API_URL: ${{ inputs.api_url }}
+        API_KEY: ${{ inputs.api_key }}
+        SITE_ID: ${{ inputs.site_id }}
+        CONTAINER_ID: ${{ inputs.container_id }}
+      run: |
+        set -uo pipefail
+        echo "Deleting container ID $CONTAINER_ID (site $SITE_ID)..."
+
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+          -X DELETE "$API_URL/api/v1/sites/$SITE_ID/containers/$CONTAINER_ID" \
+          -H "Authorization: Bearer $API_KEY" \
+          -H "Accept: application/json")
+
+        if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+          echo "Container $CONTAINER_ID deleted (HTTP $CODE)."
+          echo "deleted=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "deleted=false" >> "$GITHUB_OUTPUT"
+          echo "::error::Failed to delete container $CONTAINER_ID. HTTP $CODE"
+          exit 1
+        fi
