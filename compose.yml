@@ -37,7 +37,11 @@ services:
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container
-    command: npm ci --no-audit --no-fund
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        npm ci --omit=dev --no-audit --no-fund
+        exec npm --prefix client ci --no-audit --no-fund
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically
@@ -49,6 +53,7 @@ services:
   #
   # Like zensical, this is a development convenience and not a hard dependency:
   # it does an initial build so a dist always exists, then watches for changes.
+  # The server itself runs inside Proxmox, so this only runs the client watcher.
   client:
     image: node:24-trixie-slim
     volumes:

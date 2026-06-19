@@ -13,11 +13,18 @@ target "nodejs" {
     }
 }
 
+# Builds the Debian packages consumed by the other images.
+target "builder" {
+    context = "../"
+    dockerfile = "images/builder/Dockerfile"
+}
+
 target "docs" {
     context = "../"
     dockerfile = "images/docs/Dockerfile"
     contexts = {
         base = "target:base"
+        builder = "target:builder"
     }
 }
 
@@ -26,6 +33,7 @@ target "agent" {
     dockerfile = "images/agent/Dockerfile"
     contexts = {
         nodejs = "target:nodejs"
+        builder = "target:builder"
     }
 }
 
@@ -34,6 +42,7 @@ target "manager" {
     dockerfile = "images/manager/Dockerfile"
     contexts = {
         agent = "target:agent"
+        builder = "target:builder"
     }
 }
 

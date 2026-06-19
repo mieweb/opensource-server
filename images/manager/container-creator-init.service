@@ -1,6 +1,8 @@
 [Unit]
 Description=Initialize PostgreSQL for Container Creator
+Requires=postgresql.service
 After=postgresql.service
+Before=container-creator.service
 ConditionPathExists=!/etc/default/container-creator
 
 [Service]
@@ -21,7 +23,8 @@ ExecStart=/bin/bash -e -c '\
   echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> /etc/default/container-creator; \
   echo "POSTGRES_USER=$${POSTGRES_USER}" >> /etc/default/container-creator; \
   echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> /etc/default/container-creator; \
-  npm run db:migrate;'
+  node_modules/.bin/sequelize db:migrate; \
+  node_modules/.bin/sequelize db:seed:all;'
 
 [Install]
 WantedBy=multi-user.target

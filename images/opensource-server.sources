@@ -1,0 +1,4 @@
+Types: deb
+URIs: https://github.com/mieweb/opensource-server/releases/latest/download/
+Suites: ./
+Trusted: yes

@@ -1,0 +1,70 @@
+name: Release Packages
+
+# Triggered by publishing a GitHub release (full or prerelease). Builds the
+# three Debian packages and uploads them to the release that triggered the
+# workflow, together with flat APT repository metadata (Packages, Packages.gz)
+# so the release can be used directly as an apt source:
+#
+#   deb [trusted=yes] https://github.com/mieweb/opensource-server/releases/latest/download/ ./
+#
+# The release URLs (releases/latest/download/<file>) serve the flat repo; the
+# images ship this source so `apt upgrade` tracks future releases. This
+# workflow never creates or modifies the release itself — create the release
+# (and choose full vs prerelease) in GitHub first, then this attaches assets.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build packages
+        uses: docker/bake-action@v5
+        with:
+          workdir: ./images
+          targets: builder
+          files: |
+            ./docker-bake.hcl
+          set: |
+            builder.output=type=local,dest=../dist
+
+      - name: Generate flat APT repository metadata
+        run: |
+          cd dist/dist
+          # Scan only the versioned packages so the apt index has no duplicates.
+          dpkg-scanpackages --multiversion . > Packages
+          gzip -k9f Packages
+          # Stable-name aliases for one-off downloads (the _latest URLs resolve
+          # via releases/latest/download for the newest non-prerelease release).
+          for pkg in opensource-server opensource-docs opensource-agent; do
+            f=$(ls ${pkg}_*.deb | head -1)
+            [ -n "$f" ] && cp -f "$f" "${pkg}_latest.deb"
+          done
+          ls -l
+
+      - name: Upload assets to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$TAG" \
+            dist/dist/*.deb \
+            dist/dist/Packages \
+            dist/dist/Packages.gz \
+            --repo "${{ github.repository }}" \
+            --clobber

@@ -1,0 +1,9 @@
+--name opensource-docs
+--architecture all
+--license Apache-2.0
+--maintainer "Medical Informatics Engineering <helpdesk@mieweb.com>"
+--vendor "Medical Informatics Engineering"
+--url "https://github.com/mieweb/opensource-server"
+--category doc
+--description "MIE opensource-server documentation site (static content). Ships the prebuilt site under /opt/opensource-server/mie-opensource-landing; serving it is a deployment concern."
+--deb-suggests nginx

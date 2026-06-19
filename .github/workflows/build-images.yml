@@ -1,25 +1,21 @@
 name: Build and Push Images
 
 on:
+  # Build on pushes to the default branch (merges) and on every pull request
+  # update. Feature-branch pushes are covered by their PR, avoiding duplicate
+  # builds and registry churn. No paths filter, so doc-only changes still
+  # rebuild the images.
   push:
     branches:
-      - '**'
-    tags:
-      - '**'
-    paths:
-      - 'images/**'
-      - 'mie-opensource-landing/**'
-      - 'Makefile'
+      - main
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    paths:
-      - 'images/**'
-      - 'mie-opensource-landing/**'
-      - 'Makefile'
   schedule:
     # Run weekly on Sunday at 11:00 PM UTC (Sunday-Monday night depending on timezone)
     - cron: '0 23 * * 0'
   workflow_dispatch:
+  release:
+    types: [published]
 
 env:
   REGISTRY: ghcr.io
@@ -35,6 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -53,12 +50,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/base
           bake-target: base
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=pr
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Docker Meta (NodeJS)
         id: meta-nodejs
@@ -66,12 +64,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/nodejs
           bake-target: nodejs
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=pr
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Docker Meta (Docs)
         id: meta-docs
@@ -79,12 +78,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/docs
           bake-target: docs
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=pr
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Docker Meta (Agent)
         id: meta-agent
@@ -92,11 +92,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/agent
           bake-target: agent
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Docker Meta (Manager)
         id: meta-manager
@@ -104,11 +105,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/manager
           bake-target: manager
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Docker Meta (Proxmox VE)
         id: meta-proxmox-ve
@@ -116,11 +118,12 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/proxmox-ve
           bake-target: proxmox-ve
+          flavor: latest=false
           tags: |
             type=sha
             type=ref,event=branch
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
       - name: Build and push
         uses: docker/bake-action@v5
