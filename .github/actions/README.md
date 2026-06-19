@@ -37,10 +37,4 @@ Reference an action by its directory (GitHub resolves the `action.yml` inside it
 
 ## Versioning and pinning
 
-`uses:` refs must be literal — GitHub does not let you interpolate `${{ github.action_ref }}` into a nested `uses:` value, so the ref a caller passes to `mieweb/launchpad@<ref>` cannot automatically flow through to these actions. To pin against API/cluster changes:
-
-1. Tag releases of this repo (e.g. `v2026.6.2`).
-2. Tag a matching `mieweb/launchpad` release whose `uses:` lines reference that same tag.
-3. Consumers pin `mieweb/launchpad@v2026.6.2`.
-
 Use a floating ref (`@latest` or `@main`) only when you accept breaking changes on each release.
