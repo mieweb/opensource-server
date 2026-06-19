@@ -288,11 +288,22 @@ router.post(
       if (!imageRef) throw new ApiError(400, 'invalid_request', 'template is required');
       const templateName = normalizeDockerRef(imageRef);
 
+      // Select the least-loaded provisionable node in the site, balancing by
+      // container count. A node is provisionable if it's a dummy node or a node
+      // with full API configuration (apiUrl/tokenId/secret). This excludes
+      // half-configured nodes that would only fail later in node.api(). Beyond
+      // that, the NodeApi abstraction (`node.api()`) hides how a node is
+      // provisioned.
       const nodeWhere = {
         siteId: site.id,
-        apiUrl: { [Sequelize.Op.ne]: null },
-        tokenId: { [Sequelize.Op.ne]: null },
-        secret: { [Sequelize.Op.ne]: null },
+        [Sequelize.Op.or]: [
+          { nodeType: 'dummy' },
+          {
+            apiUrl: { [Sequelize.Op.ne]: null },
+            tokenId: { [Sequelize.Op.ne]: null },
+            secret: { [Sequelize.Op.ne]: null },
+          },
+        ],
       };
       if (wantsNvidia) nodeWhere.nvidiaAvailable = true;
       const node = await Node.findOne({
@@ -308,7 +319,7 @@ router.post(
       if (!node && wantsNvidia) {
         throw new ApiError(409, 'no_nvidia_node', 'No NVIDIA-capable nodes available in this site');
       }
-      if (!node) throw new ApiError(409, 'no_node', 'No nodes with API access available in this site');
+      if (!node) throw new ApiError(409, 'no_node', 'No provisionable nodes available in this site (a node needs API access or must be a dummy node)');
 
       const container = await Container.create(
         {
@@ -585,7 +596,11 @@ router.delete(
     if (httpServices.length > 0) {
       dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
     }
-    if (container.containerId && node.apiUrl && node.tokenId) {
+    // Delete the backing VM through the node's API. The NodeApi abstraction
+    // (`node.api()`) hides the provider; a dummy node simply no-ops here. We
+    // only attempt this when the container was actually provisioned (has a
+    // VMID/containerId).
+    if (container.containerId) {
       try {
         const api = await node.api();
         const config = await api.lxcConfig(node.name, container.containerId);
@@ -599,7 +614,7 @@ router.delete(
         await api.deleteContainer(node.name, container.containerId, true, true);
       } catch (err) {
         if (err instanceof ApiError) throw err;
-        console.log(`Proxmox deletion skipped or failed: ${err.message}`);
+        console.log(`Node-side deletion skipped or failed: ${err.message}`);
       }
     }
     await container.destroy();

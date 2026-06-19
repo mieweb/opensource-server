@@ -6,9 +6,10 @@
     ]
   },
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "concurrently -n server,client -c blue,green \"nodemon server.js\" \"npm --prefix client run build:watch\"",
     "dev:server": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
+    "db:migrate": "sequelize-cli db:migrate && sequelize-cli db:seed:all",
     "job-runner": "node job-runner.js",
     "client:install": "npm --prefix client install",
     "client:dev": "npm --prefix client run dev",
@@ -31,14 +32,15 @@
     "morgan": "^1.10.1",
     "nodemailer": "^8.0.9",
     "openid-client": "^5.7.1",
+    "patch-package": "^8.0.1",
     "pg": "^8.16.3",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.3",
-    "sqlite3": "^6.0.1",
     "swagger-ui-express": "^5.0.1",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
+    "@vscode/sqlite3": "5.1.12-vscode",
     "concurrently": "^9.1.0",
     "nodemon": "^3.1.10"
   }

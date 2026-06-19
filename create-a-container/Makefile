@@ -23,10 +23,10 @@ help:
 	@echo "create-a-container — builds the opensource-server package."
 	@echo ""
 	@echo "Targets:"
-	@echo "  deps        install dependencies (npm ci, server + client)"
+	@echo "  deps        install production dependencies (npm ci, server + client)"
 	@echo "  build       build the web client bundle"
 	@echo "  install     stage the app into DESTDIR (default /)"
-	@echo "  dev         run server + client watch (npm run dev)"
+	@echo "  dev         run the Manager locally (SQLite, no Proxmox)"
 	@echo "  deb         build the .deb package"
 	@echo "  rpm         build the .rpm package"
 	@echo "  apk         build the .apk package"
@@ -42,9 +42,43 @@ deps:
 build: deps
 	npm --prefix client run build
 
-# Full local development: server (nodemon) + client (vite watch) together.
-dev: deps
-	npm run dev
+# Run the Manager locally against SQLite, with a dummy (mock) hypervisor so
+# containers can be "created" without Proxmox. No .env is needed — the server's
+# defaults (SQLite, auto-generated session secret, non-production mode) are
+# sufficient for development.
+#
+# Self-contained (dev needs a full install incl. devDependencies, unlike the
+# production `deps` which omits them, so it isn't split into shared phony
+# prerequisites): install server + client deps with `npm install
+# --no-package-lock`. This is a fast, incremental install that keeps
+# devDependencies and runs the server's patch-package postinstall, but never
+# rewrites package-lock.json (so `make dev` leaves the lockfile untouched even
+# when the local npm would otherwise renormalize it). Then run migrations, seed
+# a localhost site + dummy node, build the client once, and run three processes
+# together via concurrently:
+#   - server (nodemon, restarts on change)
+#   - job-runner (so container creation exercises the real POST /containers ->
+#     Job -> job-runner -> bin/create-container.js -> DummyApi path)
+#   - client build in watch mode (rebuilds client/dist, which the server serves)
+#
+# Override behavior on the command line, e.g.:
+#   make dev LOG_LEVEL=trace      # log every SQL query
+#
+# Only forward LOG_LEVEL into the subprocess when it's actually provided on the
+# command line. Setting it unconditionally (even to empty) would shadow any
+# LOG_LEVEL in a local .env, since dotenv does not override existing env vars.
+dev: LOG_LEVEL_PREFIX = $(if $(LOG_LEVEL),LOG_LEVEL=$(LOG_LEVEL) ,)
+dev:
+	npm install --no-package-lock
+	npm --prefix client install --no-package-lock
+	npm run db:migrate
+	node bin/dev-bootstrap.js
+	npm --prefix client run build
+	@echo "Starting Manager (server + job-runner + client watch) at http://localhost:3000 ..."
+	$(LOG_LEVEL_PREFIX)npx concurrently -n server,jobs,client -c blue,magenta,green \
+		"npx nodemon server.js" \
+		"node job-runner.js" \
+		"npm --prefix client run build:watch"
 
 install: build
 	$(INSTALL) -d $(DESTBIN)

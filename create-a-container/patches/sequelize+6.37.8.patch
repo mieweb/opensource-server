@@ -1,0 +1,17 @@
+diff --git a/node_modules/sequelize/lib/dialects/sqlite/query-interface.js b/node_modules/sequelize/lib/dialects/sqlite/query-interface.js
+index c1626f6..3d43497 100644
+--- a/node_modules/sequelize/lib/dialects/sqlite/query-interface.js
++++ b/node_modules/sequelize/lib/dialects/sqlite/query-interface.js
+@@ -149,10 +149,8 @@ class SQLiteQueryInterface extends QueryInterface {
+         data[prop].unique = false;
+       }
+       for (const index of indexes) {
+-        for (const field of index.fields) {
+-          if (index.unique !== void 0) {
+-            data[field.attribute].unique = index.unique;
+-          }
++        if (index.fields.length === 1 && index.unique !== void 0) {
++          data[index.fields[0].attribute].unique = index.unique;
+         }
+       }
+       const foreignKeys = await this.getForeignKeyReferencesForTable(tableName, options);

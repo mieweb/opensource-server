@@ -7,7 +7,7 @@ PACKAGER   ?= deb
 MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
             $(if $(DESTDIR),DESTDIR=$(DESTDIR),)
 
-.PHONY: help deps build install deb rpm apk clean
+.PHONY: help deps build install deb rpm apk clean dev
 
 help:
 	@echo "opensource-server — delegates to each component's Makefile."
@@ -20,6 +20,7 @@ help:
 	@echo "  rpm      build .rpm packages, collected into ./dist"
 	@echo "  apk      build .apk packages, collected into ./dist"
 	@echo "  clean    remove build artifacts, staging, packages and ./dist"
+	@echo "  dev      run the Manager locally (SQLite, no Proxmox)"
 	@echo "  help     show this message"
 	@echo ""
 	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
@@ -51,3 +52,8 @@ deb rpm apk:
 	@echo ""
 	@echo "Packages collected in dist/:"
 	@ls -1 dist/
+
+# Run the Manager locally (SQLite, no Proxmox). Delegates to create-a-container;
+# forwards LOG_LEVEL when provided (e.g. `make dev LOG_LEVEL=trace`).
+dev:
+	$(MAKE) -C create-a-container dev $(if $(LOG_LEVEL),LOG_LEVEL=$(LOG_LEVEL),)
