@@ -4,6 +4,7 @@ const {
 } = require('sequelize');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
+const DummyApi = require('../utils/dummy-api');
 
 module.exports = (sequelize, DataTypes) => {
   class Node extends Model {
@@ -24,15 +25,25 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
-     * Create an authenticated ProxmoxApi client for this node.
-     * Detects whether stored credentials are username/password or API token
-     * based on presence of '!' in tokenId (Proxmox convention).
-     * @returns {Promise<ProxmoxApi>} Authenticated API client
-     * @throws {Error} If credentials are missing or authentication fails
+     * Create an API client for this node, selected by `nodeType`.
+     *
+     * - `proxmox` (default): returns an authenticated {@link ProxmoxApi}.
+     *   Detects whether stored credentials are username/password or API token
+     *   based on presence of '!' in tokenId (Proxmox convention).
+     * - `dummy`: returns a {@link DummyApi} that simulates provisioning so the
+     *   full create-container code path can run locally without a hypervisor.
+     *
+     * @returns {Promise<ProxmoxApi|DummyApi>} API client implementing the NodeApi surface
+     * @throws {Error} If Proxmox configuration is missing or authentication fails (proxmox only)
      */
     async api() {
-      if (!this.tokenId || !this.secret) {
-        throw new Error(`Node ${this.name}: Missing credentials (tokenId and secret required)`);
+      // Dummy nodes have no real hypervisor; return the simulated client.
+      if (this.nodeType === 'dummy') {
+        return new DummyApi(this);
+      }
+
+      if (!this.apiUrl || !this.tokenId || !this.secret) {
+        throw new Error(`Node ${this.name}: Missing Proxmox configuration (apiUrl, tokenId, and secret are required)`);
       }
 
       const httpsAgent = new https.Agent({
@@ -60,6 +71,11 @@ module.exports = (sequelize, DataTypes) => {
     name: {
       type: DataTypes.STRING(255),
       allowNull: false
+    },
+    nodeType: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'proxmox'
     },
     ipv4Address: {
       type: DataTypes.STRING(15),

@@ -62,12 +62,14 @@ The top-level `Makefile` simply forwards these targets to every component and co
 
 ## Development
 
-`make dev` runs the long-running watch loops:
+Each component's `dev` target runs it locally:
 
 ```bash
-make -C create-a-container dev        # server (nodemon) + client (vite watch)
+make -C create-a-container dev        # Manager on localhost (SQLite, no Proxmox); see the Development Workflow guide
 make -C mie-opensource-landing dev    # docs live server
 ```
+
+`make dev` at the repo root delegates to `create-a-container`.
 
 ## Packaging with fpm
 
