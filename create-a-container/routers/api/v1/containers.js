@@ -27,6 +27,25 @@ const router = express.Router({ mergeParams: true });
 
 router.use(apiAuth);
 
+/**
+ * Convert the `environmentVars` request payload (an array of { key, value }
+ * objects) into the JSON string stored on the container record, or null when
+ * there are no valid vars. Keys/values are validated and normalized via
+ * Container.normalizeEnvVars so only safe env var names are persisted (keys
+ * containing `=`/NUL or non-primitive values are dropped at ingest time).
+ * @param {Array<{key: string, value: *}>} environmentVars
+ * @returns {string|null}
+ */
+function serializeUserEnvVars(environmentVars) {
+  if (!Array.isArray(environmentVars)) return null;
+  const flat = {};
+  for (const e of environmentVars) {
+    if (e && typeof e.key === 'string') flat[e.key] = e.value;
+  }
+  const normalized = Container.normalizeEnvVars(flat);
+  return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : null;
+}
+
 function normalizeDockerRef(ref) {
   if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) return ref;
   let tag = 'latest';
@@ -243,20 +262,9 @@ router.post(
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
 
       const wantsNvidia = !!nvidiaRequested;
-      let envVarsJson = null;
-      if (Array.isArray(environmentVars) && environmentVars.length > 0) {
-        const envObj = {};
-        for (const e of environmentVars) {
-          if (e?.key && e.key.trim()) envObj[e.key.trim()] = e.value || '';
-        }
-        if (Object.keys(envObj).length > 0) envVarsJson = JSON.stringify(envObj);
-      }
-      if (wantsNvidia) {
-        const obj = envVarsJson ? JSON.parse(envVarsJson) : {};
-        if (!obj.NVIDIA_VISIBLE_DEVICES) obj.NVIDIA_VISIBLE_DEVICES = 'all';
-        if (!obj.NVIDIA_DRIVER_CAPABILITIES) obj.NVIDIA_DRIVER_CAPABILITIES = 'utility compute';
-        envVarsJson = JSON.stringify(obj);
-      }
+      // Only the user-defined env vars are persisted on the container record;
+      // NVIDIA and admin-defined system defaults are merged in at configure-time.
+      const envVarsJson = serializeUserEnvVars(environmentVars);
 
       const imageRef = template === 'custom' ? customTemplate?.trim() : template;
       if (!imageRef) throw new ApiError(400, 'invalid_request', 'template is required');
@@ -389,11 +397,7 @@ router.put(
 
     let envVarsJson = container.environmentVars;
     if (!isRestartOnly && Array.isArray(environmentVars)) {
-      const obj = {};
-      for (const e of environmentVars) {
-        if (e?.key) obj[e.key.trim()] = e.value || '';
-      }
-      envVarsJson = Object.keys(obj).length > 0 ? JSON.stringify(obj) : null;
+      envVarsJson = serializeUserEnvVars(environmentVars);
     } else if (!isRestartOnly && !environmentVars) {
       envVarsJson = null;
     }
