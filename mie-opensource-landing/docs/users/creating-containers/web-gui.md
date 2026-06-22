@@ -43,11 +43,22 @@ Expose container ports. Click **Add Service**, select a type, and enter the inte
 | **HTTP** | Reverse-proxies to the container over plain HTTP. Use when the backend listens on an unencrypted port. |
 | **HTTPS** | Reverse-proxies to the container over HTTPS. Use when the backend terminates TLS itself. |
 | **TCP / UDP** | Maps an auto-assigned external port to the container's internal port. |
+| **TLS** | Like TCP, but the load balancer connects to your container over TLS (re-encrypts to the backend). Use when the backend listens on a TLS port. |
 | **SRV** | Creates a DNS SRV record for service discovery. |
 
 Both HTTP and HTTPS services are served to the public over HTTPS with automatic TLS certificates — the type controls the protocol used between the reverse proxy and your container.
 
-HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP services are auto-assigned an external port.
+HTTP and HTTPS services require selecting an external domain; the hostname defaults to the container hostname. TCP/UDP/TLS services are auto-assigned an external port — once the container is created, the assigned port is shown (read-only) in the service row when you edit the container.
+
+#### TLS service type (backend re-encryption)
+
+The **TLS** type is the layer-4 equivalent of HTTPS: the client connects to the auto-assigned port over plain TCP, and the load balancer opens a TLS connection to your container (NGINX `proxy_ssl`). The backend certificate is not verified, so self-signed certificates work. Use this when your container's service speaks TLS.
+
+#### Terminating TLS at the load balancer
+
+TCP and TLS services can optionally enable **TLS termination at the load balancer**. Toggle **Terminate TLS at load balancer** and select an external domain (and optional hostname, just like an HTTP service). The load balancer then terminates TLS on the assigned external port using that domain's certificate — the same certificate used by HTTP services. This lets clients connect over an encrypted connection without the container managing certificates. A TLS service can both terminate client TLS and re-encrypt to the backend.
+
+TLS is not available for UDP services.
 
 !!! note
 

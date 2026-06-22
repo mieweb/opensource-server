@@ -140,6 +140,11 @@ function serializeContainer(c, site) {
             id: s.transportService.id,
             protocol: s.transportService.protocol,
             externalPort: s.transportService.externalPort,
+            tls: !!s.transportService.tls,
+            backendTls: !!s.transportService.backendTls,
+            externalHostname: s.transportService.externalHostname,
+            externalDomainId: s.transportService.externalDomainId,
+            domain: s.transportService.externalDomain?.name,
           }
         : null,
       dnsService: s.dnsService
@@ -148,6 +153,41 @@ function serializeContainer(c, site) {
     })),
     createdAt: c.createdAt,
   };
+}
+
+// Normalize an optional hostname: trim whitespace and treat blank as null.
+// The client sends `externalHostname` as a string (defaulting to ''), but the
+// model's hostname regex rejects empty strings — so blank means "unset".
+function normalizeHostname(hostname) {
+  if (typeof hostname !== 'string') return hostname ?? null;
+  const trimmed = hostname.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+// Map an incoming transport service `type` to its persisted shape.
+// The API exposes `tcp`, `udp`, and `tls` types, but the DB only stores
+// protocol `tcp`/`udp`; a `tls` type is a TCP service with `backendTls` set
+// (the load balancer re-encrypts to the backend via `proxy_ssl`).
+function parseTransportType(type) {
+  if (type === 'tls') return { protocol: 'tcp', backendTls: true };
+  return { protocol: type, backendTls: false };
+}
+
+// Validate and normalize the TLS flag for a transport (TCP/UDP) service.
+// Returns a boolean. Throws ApiError(400) when the request is inconsistent:
+//   - TLS is only supported for TCP (nginx stream `ssl`; UDP would need DTLS).
+//   - A TLS-enabled TCP service must reference an external domain so the load
+//     balancer knows which certificate to terminate with.
+function parseTransportTls(tls, protocol, externalDomainId) {
+  const tlsEnabled = tls === true || tls === 'true';
+  if (!tlsEnabled) return false;
+  if (protocol !== 'tcp') {
+    throw new ApiError(400, 'invalid_service', 'TLS can only be enabled for TCP services');
+  }
+  if (!externalDomainId) {
+    throw new ApiError(400, 'invalid_service', 'TLS-enabled TCP services must have an externalDomainId');
+  }
+  return true;
 }
 
 // GET /containers/metadata?image=...
@@ -198,7 +238,7 @@ router.get(
           association: 'services',
           include: [
             { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
+            { association: 'transportService', include: [{ association: 'externalDomain' }] },
             { association: 'dnsService' },
           ],
         },
@@ -228,7 +268,7 @@ router.get(
           association: 'services',
           include: [
             { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
+            { association: 'transportService', include: [{ association: 'externalDomain' }] },
             { association: 'dnsService' },
           ],
         },
@@ -313,15 +353,16 @@ router.post(
       if (services && typeof services === 'object') {
         for (const key in services) {
           const svc = services[key];
-          const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } = svc;
+          const { type, internalPort, externalHostname, externalDomainId, dnsName, authRequired, tls } = svc;
           if (!type || !internalPort) continue;
           let serviceType;
           let protocol = null;
+          let backendTls = false;
           if (type === 'http' || type === 'https') serviceType = 'http';
           else if (type === 'srv') serviceType = 'dns';
           else {
             serviceType = 'transport';
-            protocol = type;
+            ({ protocol, backendTls } = parseTransportType(type));
           }
           const createdService = await Service.create(
             { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
@@ -348,9 +389,18 @@ router.post(
               { transaction: t },
             );
           } else {
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565, t);
+            const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535, t);
             await TransportService.create(
-              { serviceId: createdService.id, protocol, externalPort },
+              {
+                serviceId: createdService.id,
+                protocol,
+                externalPort,
+                tls: tlsEnabled,
+                backendTls,
+                externalHostname: tlsEnabled ? normalizeHostname(externalHostname) : null,
+                externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
+              },
               { transaction: t },
             );
           }
@@ -438,6 +488,7 @@ router.put(
 
       if (services && typeof services === 'object') {
         const deletedHttp = [];
+        const newHttp = [];
         for (const key in services) {
           const { id, deleted } = services[key];
           if ((deleted === true || deleted === 'true') && id) {
@@ -463,28 +514,105 @@ router.put(
             });
           }
         }
+        // Update existing services in place. The service `type` (HTTP vs
+        // transport vs DNS) and a transport's protocol/externalPort are fixed
+        // for the life of the service; everything else is editable. HTTP
+        // hostname/domain changes also rewrite the cross-site DNS record.
         for (const key in services) {
-          const { id, deleted, authRequired } = services[key];
+          const svc = services[key];
+          const { id, deleted, type, internalPort } = svc;
           if (deleted === true || deleted === 'true' || !id) continue;
-          const svc = await Service.findByPk(parseInt(id, 10), {
-            include: [{ model: HTTPService, as: 'httpService' }],
+          const existing = await Service.findByPk(parseInt(id, 10), {
+            include: [
+              { model: HTTPService, as: 'httpService', include: [{ model: ExternalDomain, as: 'externalDomain' }] },
+              { model: TransportService, as: 'transportService', include: [{ model: ExternalDomain, as: 'externalDomain' }] },
+              { model: DnsService, as: 'dnsService' },
+            ],
             transaction: t,
           });
-          if (svc?.httpService) {
-            const next = authRequired === true || authRequired === 'true';
-            if (svc.httpService.authRequired !== next) {
-              await svc.httpService.update({ authRequired: next }, { transaction: t });
+          // Only touch services that belong to this container.
+          if (!existing || existing.containerId !== container.id) continue;
+
+          // internalPort is common to all service types and lives on the base row.
+          if (internalPort !== undefined && internalPort !== null && String(internalPort).trim() !== '') {
+            const port = parseInt(internalPort, 10);
+            if (existing.internalPort !== port) {
+              await existing.update({ internalPort: port }, { transaction: t });
+            }
+          }
+
+          if (existing.httpService) {
+            if (type && type !== 'http' && type !== 'https') {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            const { externalHostname, externalDomainId, authRequired } = svc;
+            const newHostname = normalizeHostname(externalHostname);
+            if (!newHostname || !externalDomainId) {
+              throw new ApiError(400, 'invalid_service', 'HTTP services must have an externalHostname and externalDomainId');
+            }
+            const newDomainId = parseInt(externalDomainId, 10);
+            const prevHostname = existing.httpService.externalHostname;
+            const prevDomain = existing.httpService.externalDomain;
+            const hostOrDomainChanged =
+              prevHostname !== newHostname || existing.httpService.externalDomainId !== newDomainId;
+            await existing.httpService.update(
+              {
+                externalHostname: newHostname,
+                externalDomainId: newDomainId,
+                backendProtocol: type === 'https' ? 'https' : 'http',
+                authRequired: authRequired === true || authRequired === 'true',
+              },
+              { transaction: t },
+            );
+            // Rewrite cross-site DNS when the public name changed: remove the
+            // old record, add the new one. Both are non-fatal (warnings only).
+            if (hostOrDomainChanged) {
+              if (prevDomain) {
+                deletedHttp.push({ externalHostname: prevHostname, ExternalDomain: prevDomain });
+              }
+              const newDomain = await ExternalDomain.findByPk(newDomainId, { transaction: t });
+              if (newDomain) newHttp.push({ externalHostname: newHostname, ExternalDomain: newDomain });
+            }
+          } else if (existing.transportService) {
+            // Protocol (and therefore the auto-assigned externalPort) is fixed.
+            // Allow tcp<->tls (backendTls toggle); reject changing protocol or
+            // crossing to a non-transport type.
+            const incomingProtocol =
+              type === undefined ? existing.transportService.protocol : parseTransportType(type).protocol;
+            if (type && (type === 'http' || type === 'https' || type === 'srv')) {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            if (incomingProtocol !== existing.transportService.protocol) {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the protocol of an existing service');
+            }
+            const backendTls = type === undefined ? existing.transportService.backendTls : parseTransportType(type).backendTls;
+            const tlsEnabled = parseTransportTls(svc.tls, existing.transportService.protocol, svc.externalDomainId);
+            await existing.transportService.update(
+              {
+                tls: tlsEnabled,
+                backendTls,
+                externalHostname: tlsEnabled ? normalizeHostname(svc.externalHostname) : null,
+                externalDomainId: tlsEnabled ? parseInt(svc.externalDomainId, 10) : null,
+              },
+              { transaction: t },
+            );
+          } else if (existing.dnsService) {
+            if (type && type !== 'srv') {
+              throw new ApiError(400, 'invalid_service', 'Cannot change the type of an existing service');
+            }
+            if (svc.dnsName && svc.dnsName !== existing.dnsService.dnsName) {
+              await existing.dnsService.update({ dnsName: svc.dnsName }, { transaction: t });
             }
           }
         }
-        const newHttp = [];
         for (const key in services) {
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } =
+          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired, tls } =
             services[key];
           if (deleted === true || deleted === 'true' || id || !type || !internalPort) continue;
           const serviceType =
             type === 'srv' ? 'dns' : type === 'http' || type === 'https' ? 'http' : 'transport';
-          const protocol = serviceType === 'transport' ? type : null;
+          const { protocol, backendTls } =
+            serviceType === 'transport' ? parseTransportType(type) : { protocol: null, backendTls: false };
           const createdService = await Service.create(
             { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
             { transaction: t },
@@ -508,9 +636,18 @@ router.put(
               { transaction: t },
             );
           } else {
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565);
+            const tlsEnabled = parseTransportTls(tls, protocol, externalDomainId);
+            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65535, t);
             await TransportService.create(
-              { serviceId: createdService.id, protocol, externalPort },
+              {
+                serviceId: createdService.id,
+                protocol,
+                externalPort,
+                tls: tlsEnabled,
+                backendTls,
+                externalHostname: tlsEnabled ? normalizeHostname(externalHostname) : null,
+                externalDomainId: tlsEnabled ? parseInt(externalDomainId, 10) : null,
+              },
               { transaction: t },
             );
           }
