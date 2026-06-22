@@ -222,7 +222,6 @@ async function run() {
         hostname,
         ipv4Address: obj.ip,
         username: obj.user || '',
-        status: 'running',
         template: obj.template || null,
         containerId: obj.ctid,
         macAddress: obj.mac,
@@ -234,7 +233,6 @@ async function run() {
       await container.update({
         ipv4Address: obj.ip,
         username: obj.user || '',
-        status: container.status || 'running',
         template: obj.template || container.template,
         containerId: obj.ctid,
         macAddress: obj.mac

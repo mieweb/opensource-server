@@ -89,7 +89,7 @@ components:
         id: { type: integer }
         hostname: { type: string }
         containerId: { type: integer, nullable: true }
-        status: { type: string }
+        status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
         ipv4Address: { type: string, nullable: true }
         macAddress: { type: string, nullable: true }
@@ -104,6 +104,24 @@ components:
         services:
           type: array
           items: { type: object }
+    ContainerStatus:
+      type: string
+      description: >-
+        Live container status, resolved on read from Proxmox run-state and the
+        create job.
+        running = online in Proxmox;
+        offline = exists in Proxmox but stopped;
+        creating = no Proxmox VM yet, active create job;
+        failed = no Proxmox VM, create job failed;
+        missing = no Proxmox VM, create succeeded or no create job;
+        unknown = Proxmox unreachable / no node credentials.
+      enum:
+        - running
+        - offline
+        - creating
+        - failed
+        - missing
+        - unknown
     Node:
       type: object
       properties:

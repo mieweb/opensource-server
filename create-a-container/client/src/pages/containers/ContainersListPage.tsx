@@ -34,26 +34,42 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
-import type { Container } from '@/lib/types';
+import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
 const VIEW_STORAGE_KEY = 'containers:view';
 
-function statusVariant(s: string): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
+function statusVariant(
+  s: ContainerStatus,
+): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
   switch (s) {
     case 'running':
       return 'success';
-    case 'pending':
-    case 'restarting':
+    case 'creating':
       return 'warning';
     case 'failed':
-    case 'error':
       return 'danger';
-    case 'stopped':
+    case 'offline':
+    case 'missing':
       return 'secondary';
     default:
       return 'default';
   }
+}
+
+// Human-readable labels for the live status values.
+const STATUS_LABELS: Record<ContainerStatus, string> = {
+  running: 'Running',
+  offline: 'Offline',
+  creating: 'Creating',
+  failed: 'Failed',
+  missing: 'Missing',
+  unknown: 'Unknown',
+};
+
+/** Status badge. The status is the live value embedded in the list response. */
+function StatusBadge({ status }: { status: ContainerStatus }) {
+  return <Badge variant={statusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
 
 const linkClass = 'text-(--color-primary,#1d4ed8) hover:underline';
@@ -330,7 +346,7 @@ export function ContainersListPage() {
                 <CardTitle as="h2" className="truncate text-sm font-semibold">
                   {c.hostname}
                 </CardTitle>
-                <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+                <StatusBadge status={c.status} />
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
                 <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
@@ -374,7 +390,7 @@ export function ContainersListPage() {
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.hostname}</TableCell>
                 <TableCell>
-                  <Badge variant={statusVariant(c.status)}>{c.status}</Badge>
+                  <StatusBadge status={c.status} />
                 </TableCell>
                 <TableCell>
                   <NodeLink c={c} />

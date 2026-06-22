@@ -75,7 +75,7 @@ export interface Container {
   hostname: string;
   ipv4Address: string | null;
   macAddress: string | null;
-  status: string;
+  status: ContainerStatus;
   template: string | null;
   creationJobId: number | null;
   entrypoint: string | null;
@@ -90,11 +90,23 @@ export interface Container {
   createdAt: string;
 }
 
+/**
+ * Live container status resolved from Proxmox run-state + create-job state.
+ * Embedded on each Container returned by the list/show/create endpoints.
+ */
+export type ContainerStatus =
+  | 'running'
+  | 'offline'
+  | 'creating'
+  | 'failed'
+  | 'missing'
+  | 'unknown';
+
 export interface ContainerCreateResult {
   containerId: number;
   jobId: number;
   hostname: string;
-  status: string;
+  status: ContainerStatus;
 }
 
 export interface ContainerNewBootstrap {

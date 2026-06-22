@@ -177,9 +177,14 @@ async function main() {
     console.error(`Container with ID ${containerId} not found`);
     process.exit(1);
   }
-  
-  if (container.status !== 'pending') {
-    console.error(`Container is not in pending status (current: ${container.status})`);
+
+  // Guard against double-provisioning. The status column no longer exists, so
+  // we use the Proxmox VMID as the signal: once a VMID has been allocated and
+  // stored, creation has already run for this container.
+  if (container.containerId) {
+    console.error(
+      `Container already has a Proxmox VMID (${container.containerId}); refusing to re-create`,
+    );
     process.exit(1);
   }
   
@@ -217,10 +222,6 @@ async function main() {
   console.log(`Template type: ${isDocker ? 'Docker image' : 'Proxmox template'}`);
   
   try {
-    // Update status to 'creating'
-    await container.update({ status: 'creating' });
-    console.log('Status updated to: creating');
-    
     // Get the Proxmox API client
     const client = await node.api();
     console.log('Proxmox API client initialized');
@@ -428,8 +429,7 @@ async function main() {
     console.log('Updating container record...');
     await container.update({
       macAddress,
-      ipv4Address,
-      status: 'running'
+      ipv4Address
     });
     
     console.log('Container creation completed successfully!');
@@ -480,15 +480,7 @@ async function main() {
     if (err.response?.data) {
       console.error('API Error Details:', JSON.stringify(err.response.data, null, 2));
     }
-    
-    // Update status to failed
-    try {
-      await container.update({ status: 'failed' });
-      console.log('Status updated to: failed');
-    } catch (updateErr) {
-      console.error('Failed to update container status:', updateErr.message);
-    }
-    
+
     process.exit(1);
   }
 }

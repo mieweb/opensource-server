@@ -247,7 +247,6 @@ router.post(
             containerId: c.vmid,
             macAddress,
             ipv4Address,
-            status: 'running',
           };
         }),
       );

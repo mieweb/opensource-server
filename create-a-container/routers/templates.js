@@ -1,4 +1,5 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
 const { requireLocalhostOrAdmin } = require('../middlewares');
 
@@ -12,7 +13,7 @@ async function loadDnsmasqSite(siteId) {
       include: [{
         model: Container,
         as: 'containers',
-        where: { status: 'running' },
+        where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         attributes: ['macAddress', 'ipv4Address', 'hostname'],
       }],
@@ -40,7 +41,7 @@ router.get('/sites/:siteId/nginx', requireLocalhostOrAdmin, async (req, res) => 
       include: [{
         model: Container,
         as: 'containers',
-        where: { status: 'running' },
+        where: { ipv4Address: { [Op.ne]: null } },
         required: false,
         include: [{
           model: Service,
