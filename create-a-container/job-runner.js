@@ -10,6 +10,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const db = require('./models');
+const { runMigrations } = require('./utils/migrate');
 
 const POLL_INTERVAL_MS = parseInt(process.env.JOB_RUNNER_POLL_MS || '2000', 10);
 const WORKDIR = process.env.JOB_RUNNER_CWD || process.cwd();
@@ -156,6 +157,7 @@ process.on('SIGTERM', () => { shutdownAndCancelJobs('SIGTERM').catch(err => { co
 
 async function start() {
   console.log('JobRunner starting, working dir:', WORKDIR);
+  await runMigrations(db.sequelize);
   await db.sequelize.authenticate();
   console.log('DB connected');
   loop();
