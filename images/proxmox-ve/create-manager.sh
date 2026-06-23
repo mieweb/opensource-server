@@ -25,9 +25,8 @@ if [ -f "${CONF}" ]; then
         exit 0
     fi
     echo "Container ${CTID} is partially created; tearing it down and recreating."
-    pct unlock "${CTID}" || true
-    pct stop "${CTID}" || true
-    pct destroy "${CTID}" --force || true
+    pct unlock "${CTID}"
+    pct destroy "${CTID}" --force
 fi
 
 # Ensure the specified network are available
