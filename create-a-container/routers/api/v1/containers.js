@@ -26,7 +26,7 @@ const {
   computeContainerStatuses,
   STATUS,
 } = require('../../../utils/container-status');
-const { apiAuth, apiAdmin, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
+const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
 
 const router = express.Router({ mergeParams: true });
 
@@ -199,6 +199,31 @@ function buildContainerListWhere(query, nodeIds) {
   return where;
 }
 
+/**
+ * Resolve the `user` list filter into a Sequelize `username` constraint,
+ * enforcing authorization. The rules mirror the existing `hostname` filter in
+ * shape (a plain query param) but add ownership scoping:
+ *   - absent/empty -> the requesting user's own containers (default for all)
+ *   - '*'          -> every owner on the site (admin only)
+ *   - '<username>' -> that specific owner (admin only, unless it's yourself)
+ * Non-admins requesting anyone else (or '*') get 403 rather than a silently
+ * empty list, so the boundary is explicit.
+ * @param {string|undefined} requestedUser - req.query.user
+ * @param {{ user: string, isAdmin: boolean }} session - req.session
+ * @returns {string|undefined} username to filter by, or undefined for "all"
+ */
+function resolveUsernameFilter(requestedUser, session) {
+  if (!requestedUser) return session.user;
+  if (requestedUser === '*') {
+    if (!session.isAdmin) throw new ApiError(403, 'forbidden', 'Admin access required');
+    return undefined;
+  }
+  if (requestedUser !== session.user && !session.isAdmin) {
+    throw new ApiError(403, 'forbidden', 'Admin access required');
+  }
+  return requestedUser;
+}
+
 // GET /containers/metadata?image=...
 router.get(
   '/metadata',
@@ -238,30 +263,15 @@ router.get(
     const site = await loadSite(req);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    const where = { ...buildContainerListWhere(req.query, nodeIds), username: req.session.user };
+    const where = buildContainerListWhere(req.query, nodeIds);
+    // `user` filter: defaults to the requesting user, so everyone (incl. admins)
+    // sees their own containers by default; admins may pass `user=*` for all or
+    // `user=<name>` for a specific owner. undefined means "all owners".
+    const username = resolveUsernameFilter(req.query.user, req.session);
+    if (username !== undefined) where.username = username;
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
-    const statuses = await computeContainerStatuses(rows, Job);
-    return ok(
-      res,
-      rows.map((c) => serializeContainer(c, site, statuses.get(c.id))),
-    );
-  }),
-);
-
-// GET /containers/all — admin-only: every container on the site, with owner info.
-// Declared before /:id so the literal "all" segment is not parsed as an id.
-router.get(
-  '/all',
-  apiAdmin,
-  asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
-    const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
-    const nodeIds = nodes.map((n) => n.id);
-    const where = buildContainerListWhere(req.query, nodeIds);
-    if (req.query.username) where.username = req.query.username;
-    const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     const statuses = await computeContainerStatuses(rows, Job);
     return ok(
       res,

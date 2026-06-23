@@ -210,17 +210,22 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-export function ContainersListPage({ scope = 'mine' }: { scope?: 'mine' | 'all' }) {
+export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
   const { data: session } = useSession();
   const sessionUser = session?.user;
   const isAdmin = !!session?.isAdmin;
-  const isAll = scope === 'all';
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
+  // `user=*` (admin only) lists every owner on the site; anything else falls
+  // back to the requesting user's own containers. The param is the single
+  // source of truth so the view is bookmarkable and slots in beside the
+  // existing hostname/nodeId filters.
+  const isAll = searchParams.get('user') === '*';
+  const userFilter = isAll ? '*' : undefined;
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -242,9 +247,8 @@ export function ContainersListPage({ scope = 'mine' }: { scope?: 'mine' | 'all' 
     enabled: !!siteId,
   });
   const { data, isLoading, error } = useQuery({
-    queryKey: isAll ? keys.containersAll(siteId!, { nodeId }) : keys.containers(siteId!),
-    queryFn: () =>
-      isAll ? queries.listAllContainers(siteId!, { nodeId }) : queries.listContainers(siteId!),
+    queryKey: keys.containers(siteId!, { user: userFilter, nodeId }),
+    queryFn: () => queries.listContainers(siteId!, { user: userFilter, nodeId }),
     enabled: !!siteId,
   });
 
@@ -278,7 +282,7 @@ export function ContainersListPage({ scope = 'mine' }: { scope?: 'mine' | 'all' 
                     Mine
                   </Button>
                 </Link>
-                <Link to={`/sites/${siteId}/containers/all`} aria-label="All containers">
+                <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
                   <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
                     All
                   </Button>

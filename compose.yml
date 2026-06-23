@@ -28,39 +28,15 @@ services:
           skopeo copy docker://$${IMAGE_REF} oci-archive:$${FILENAME}
         fi
 
-  # This service runs once when bringing the compose stack up to ensure the
-  # node_modules are populated in the user's create-a-container directory. This
-  # is usually handled by the manager's Dockerfile, but we're mounting over that
-  # directory so we need to be sure the user has them.
-  #
-  # This is the SINGLE owner of `npm ci` for both the server and the client.
-  # The `client` service below must NOT also run `npm ci`, otherwise two
-  # concurrent installs race on the same bind-mounted node_modules and wipe the
-  # .bin symlinks (manifesting as "tsc: not found" / "vite: not found").
-  #
-  # We install the FULL dependency tree (no --omit=dev) because the Proxmox dev
-  # systemd override runs node_modules/.bin/nodemon, and nodemon is a
-  # devDependency. The catch is another devDependency, @vscode/sqlite3 (the
-  # local-dev sqlite driver), is a native module that builds from source via
-  # node-gyp and would need Python + a C/C++ toolchain this slim image lacks.
-  # --ignore-scripts skips that build (and every other lifecycle script) so the
-  # install can't fail on it; bin symlinks like nodemon are still created
-  # because linking is not a lifecycle script. This stack runs against
-  # PostgreSQL and only require()s @vscode/sqlite3 lazily for the sqlite dialect,
-  # so leaving it unbuilt is harmless. We then run patch-package by hand to
-  # re-apply patches/ (e.g. the sequelize patch) that the skipped postinstall
-  # would have applied.
   node:
-    image: node:24-trixie-slim
+    image: node:24-trixie
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        npm ci --ignore-scripts --no-audit --no-fund
-        ./node_modules/.bin/patch-package
-        exec npm --prefix client ci --no-audit --no-fund
+        exec npm ci --no-audit --no-fund
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically
@@ -79,17 +55,14 @@ services:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container/client
     entrypoint: ["/bin/sh", "-c"]
-    # No `npm ci` here: the `node` service is the single install owner. Running
-    # it again concurrently would race on the shared bind-mounted node_modules
-    # and remove the tsc/vite bin symlinks. We wait for `node` to finish, then
-    # build once and watch.
+    # Owns the client's node_modules install (separate directory from the
+    # server, so it runs in parallel with the `node` service). Then builds once
+    # and watches.
     command:
       - |
+        npm ci --no-audit --no-fund
         npm run build
         exec npm run build:watch
-    depends_on:
-      node:
-        condition: service_completed_successfully
     # Healthy once an initial bundle exists, so Proxmox can wait for it on a
     # fresh checkout (where client/dist isn't present yet) before serving.
     healthcheck:
