@@ -99,8 +99,11 @@ def verify_assertion(token: str, config: Config, jwks_client: PyJWKClient | None
 def _read_header(scope: dict[str, Any], header_name: str) -> str | None:
     target = header_name.lower().encode()
     for name, value in scope.get("headers", []):
-        if name == target and value.strip():
-            return value.decode().strip()
+        if name != target:
+            continue
+        decoded = value.decode().strip()
+        if decoded:
+            return decoded
     return None
 
 
