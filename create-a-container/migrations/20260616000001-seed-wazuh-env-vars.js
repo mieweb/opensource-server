@@ -1,8 +1,7 @@
 'use strict';
 
-// Variables seeded into the default_container_env_vars setting.
-// Add future cross-container variables here and create a new seeder
-// that calls the same merge logic.
+// Seeds the Wazuh agent enrollment variables into the
+// default_container_env_vars setting.
 const WAZUH_DEFAULTS = [
   {
     key: 'WAZUH_MANAGER',
