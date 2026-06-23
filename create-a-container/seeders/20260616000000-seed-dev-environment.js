@@ -39,9 +39,17 @@ module.exports = {
       return;
     }
 
+    // Use the dialect-aware query generator to quote identifiers/literals so the
+    // raw lookups below work regardless of DATABASE_DIALECT (Postgres uses
+    // double quotes, MySQL/MariaDB use backticks, etc.).
+    const qg = queryInterface.queryGenerator;
+    const sitesTable = qg.quoteTable('Sites');
+
     // No-op if any site exists — never interfere with an existing environment
     // (e.g. the Docker Compose "Development" site).
-    const [siteRows] = await queryInterface.sequelize.query('SELECT COUNT(*) AS count FROM "Sites"');
+    const [siteRows] = await queryInterface.sequelize.query(
+      `SELECT COUNT(*) AS count FROM ${sitesTable}`,
+    );
     const existingSiteCount = Number(siteRows[0].count);
     if (existingSiteCount > 0) {
       console.log(
@@ -68,7 +76,9 @@ module.exports = {
 
     // Fetch the id of the site just created so the node/domain can reference it.
     const [createdSiteRows] = await queryInterface.sequelize.query(
-      `SELECT id FROM "Sites" WHERE name = 'localhost' ORDER BY id ASC LIMIT 1`,
+      `SELECT ${qg.quoteIdentifier('id')} FROM ${sitesTable} ` +
+        `WHERE ${qg.quoteIdentifier('name')} = ${qg.escape('localhost')} ` +
+        `ORDER BY ${qg.quoteIdentifier('id')} ASC LIMIT 1`,
     );
     const siteId = createdSiteRows[0].id;
     console.log(`  • Site "localhost" created (id=${siteId})`);

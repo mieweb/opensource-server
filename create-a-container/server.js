@@ -34,10 +34,7 @@ async function getSessionSecrets() {
 }
 
 async function main() {
-  // Apply any pending database migrations before serving traffic. This is
-  // serialized across processes by an engine-appropriate advisory lock (see
-  // utils/migrate.js). If it fails we must not start the server against an
-  // out-of-date schema, so the rejection propagates and the process exits.
+  // Apply any pending database migrations before serving traffic
   await runMigrations(sequelize);
 
   const app = express();

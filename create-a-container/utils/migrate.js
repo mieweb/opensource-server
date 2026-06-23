@@ -105,7 +105,14 @@ async function acquireAdvisoryLock(sequelize) {
     // advisory locks belong to the connection that acquired them.
     const connection = await sequelize.connectionManager.getConnection();
     console.log(`[migrate] acquiring postgres advisory lock (${classId}, ${objId})...`);
-    await connection.query('SELECT pg_advisory_lock($1, $2)', [classId, objId]);
+    try {
+      await connection.query('SELECT pg_advisory_lock($1, $2)', [classId, objId]);
+    } catch (err) {
+      // Acquisition failed (permission/network error, etc.) — return the
+      // connection to the pool so it isn't leaked across startup retries.
+      sequelize.connectionManager.releaseConnection(connection);
+      throw err;
+    }
     console.log('[migrate] postgres advisory lock acquired');
     return async () => {
       try {
@@ -123,8 +130,16 @@ async function acquireAdvisoryLock(sequelize) {
     // MySQL GET_LOCK is keyed by a string name; -1 = wait indefinitely.
     const connection = await sequelize.connectionManager.getConnection();
     console.log(`[migrate] acquiring mysql advisory lock "${LOCK_NAMESPACE}"...`);
-    const [rows] = await connection.query('SELECT GET_LOCK(?, ?) AS acquired', [LOCK_NAMESPACE, -1]);
-    const acquired = rows && rows[0] && Number(rows[0].acquired) === 1;
+    let acquired = false;
+    try {
+      const [rows] = await connection.query('SELECT GET_LOCK(?, ?) AS acquired', [LOCK_NAMESPACE, -1]);
+      acquired = rows && rows[0] && Number(rows[0].acquired) === 1;
+    } catch (err) {
+      // Query failed (e.g. connection dropped) before returning — release the
+      // connection so it isn't leaked across startup retries.
+      sequelize.connectionManager.releaseConnection(connection);
+      throw err;
+    }
     if (!acquired) {
       sequelize.connectionManager.releaseConnection(connection);
       throw new Error(`Could not acquire MySQL advisory lock "${LOCK_NAMESPACE}" for migrations`);
