@@ -107,6 +107,12 @@ FLUSH PRIVILEGES;
 ```
 
 #### Run Migrations
+
+Migrations run **automatically when the server starts** (`server.js` applies all
+pending migrations before listening, serialized across processes by a database
+advisory lock). For a fresh database you can simply start the server, or run
+them explicitly:
+
 ```bash
 npm run db:migrate
 ```
@@ -593,16 +599,35 @@ kill -9 <PID>
 ## Development
 
 ### Database Migrations
+
+Migrations are applied **automatically at server startup**. `server.js` calls the
+runner in `utils/migrate.js`, which uses [umzug](https://github.com/sequelize/umzug)
+(a runtime/production dependency) to run every pending migration in
+`migrations/` before the HTTP server begins listening. Only one process migrates
+at a time: the run is wrapped in an engine-appropriate advisory lock
+(`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL; SQLite needs none). If a
+migration fails, the process exits non-zero and does not serve traffic.
+
+`sequelize-cli` is a **dev dependency** used for authoring and ad-hoc migration
+management:
+
 ```bash
 # Create new migration
 npx sequelize-cli migration:generate --name description-here
 
-# Run migrations
+# Run migrations + seeders manually (also used for first-time/dev setup)
 npm run db:migrate
 
 # Undo last migration
 npx sequelize-cli db:migrate:undo
 ```
+
+#### Seeders
+
+The `seeders/` directory is for **test/development data only**. Data that must
+exist on every deployment lives in `migrations/` (so it is applied automatically
+at startup). Run seeders on demand with `npx sequelize-cli db:seed:all` (also
+invoked by `npm run db:migrate`).
 
 ### Code Structure
 ```
@@ -613,6 +638,7 @@ create-a-container/
 ├── config/            # Sequelize configuration
 ├── models/            # Database models
 ├── migrations/        # Database migrations
+├── seeders/           # Test/development data seeders
 ├── views/             # HTML templates
 ├── public/            # Static assets
 ├── data/              # JSON data files
