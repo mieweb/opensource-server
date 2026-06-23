@@ -1,665 +1,122 @@
-# Create-a-Container
+# Create-a-Container (Manager)
 
-A web application for managing LXC container creation, configuration, and lifecycle on Proxmox VE infrastructure. Provides a user-friendly interface and REST API for container management with automated database tracking and nginx reverse proxy configuration generation.
+The Manager web application for opensource-server: a Node.js + Express + Sequelize
+app that manages LXC container creation, configuration, and lifecycle on Proxmox
+VE, exposes a REST API, and generates the nginx/dnsmasq configuration consumed by
+agents.
 
-## Data Model
+This README documents the component itself. For installing, operating, or
+developing the wider system, start with the guides below.
 
-```mermaid
-erDiagram
-    Node ||--o{ Container : "hosts"
-    Container ||--o{ Service : "exposes"
-    
-    Node {
-        int id PK
-        string name UK "Proxmox node name"
-        string apiUrl "Proxmox API URL"
-        boolean tlsVerify "Verify TLS certificates"
-        datetime createdAt
-        datetime updatedAt
-    }
-    
-    Container {
-        int id PK
-        string hostname UK "FQDN hostname"
-        string username "Owner username"
-        string template "Template name"
-        int creationJobId FK "References Job"
-        int nodeId FK "References Node"
-        int containerId UK "Proxmox VMID"
-        string macAddress UK "MAC address (nullable)"
-        string ipv4Address UK "IPv4 address (nullable)"
-        string aiContainer "Node type flag"
-        datetime createdAt
-        datetime updatedAt
-    }
-    
-    Service {
-        int id PK
-        int containerId FK "References Container"
-        enum type "tcp, udp, or http"
-        int internalPort "Port inside container"
-        int externalPort "External port (tcp/udp only)"
-        boolean tls "TLS enabled (tcp only)"
-        string externalHostname UK "Public hostname (http only)"
-        datetime createdAt
-        datetime updatedAt
-    }
-```
+| If you want to... | Read |
+|---|---|
+| Install and operate a production deployment | [Installation Guide](../mie-opensource-landing/docs/admins/installation.md) |
+| Run the Manager locally to develop or contribute | [Development Workflow](../mie-opensource-landing/docs/developers/development-workflow.md) |
+| Understand the system design | [System Architecture](../mie-opensource-landing/docs/developers/system-architecture.md) |
 
-**Key Constraints:**
-- `(Node.name)` - Unique
-- `(Container.hostname)` - Unique
-- `(Container.nodeId, Container.containerId)` - Unique (same VMID can exist on different nodes)
-- `(Service.externalHostname)` - Unique when type='http'
-- `(Service.type, Service.externalPort)` - Unique when type='tcp' or type='udp'
+## Running it
 
-## Features
-
-- **User Authentication** - Proxmox VE authentication integration
-- **Container Management** - Create, list, and track LXC containers
-- **Docker/OCI Support** - Pull and deploy containers from Docker Hub, GHCR, or any OCI registry
-- **Service Registry** - Track HTTP/TCP/UDP services running on containers
-- **Dynamic Nginx Config** - Generate nginx reverse proxy configurations on-demand
-- **Real-time Progress** - SSE (Server-Sent Events) for container creation progress
-- **User Registration** - Self-service account request system with email notifications
-- **Rate Limiting** - Protection against abuse (100 requests per 15 minutes)
-
-## Prerequisites
-
-### System Requirements
-- **Node.js** 18.x or higher
-- **PostgreSQL** 16 or higher
-- **Proxmox VE** cluster with API access
-- **SMTP server** for email notifications (optional)
-
-### Services
-```bash
-# Install Node.js (Debian/Ubuntu)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install PostgreSQL
-sudo apt-get install postgresql -y
-```
-
-## Installation
-
-### 1. Clone Repository
-```bash
-cd /opt
-sudo git clone https://github.com/mieweb/opensource-server.git
-cd opensource-server/create-a-container
-```
-
-### 2. Install Dependencies
-```bash
-npm install
-```
-
-### 3. Database Setup
-
-#### Create Database and User
-```sql
-CREATE DATABASE opensource_containers CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'container_manager'@'localhost' IDENTIFIED BY 'secure_password_here';
-GRANT ALL PRIVILEGES ON opensource_containers.* TO 'container_manager'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-#### Run Migrations
-
-Migrations run **automatically when the server starts** (`server.js` applies all
-pending migrations before listening, serialized across processes by a database
-advisory lock). For a fresh database you can simply start the server, or run
-them explicitly:
+### Development
 
 ```bash
-npm run db:migrate
+make dev
 ```
 
-This creates the following tables:
-- `Containers` - Container records (hostname, IP, MAC, OS, etc.)
-- `Services` - Service mappings (ports, protocols, hostnames)
+That's all you need. `make dev` installs dependencies, runs database migrations
+and dev seeders, builds the client, and starts the server, the job-runner, and
+the client build watcher together. It uses SQLite and a dummy (mock) hypervisor,
+so **no `.env`, PostgreSQL, or Proxmox cluster is required** — the Manager comes
+up at <http://localhost:3000> and can "create" containers locally (simulated).
 
-### 4. Configuration
-
-Create a `.env` file in the `create-a-container` directory:
+Pass `LOG_LEVEL=trace` to additionally log every SQL query:
 
 ```bash
-# Database Configuration
-POSTGRES_HOST=localhost
-POSTGRES_USER=cluster_manager
-POSTGRES_PASSWORD=secure_password_here
-POSTGRES_DATABASE=cluster_manager
-DATABASE_DIALECT=postgres
-
-# Session Configuration
-SESSION_SECRET=generate_random_secret_here
-
-# Application
-NODE_ENV=production
+make dev LOG_LEVEL=trace
 ```
 
-#### Generate Session Secret
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+For the full Docker-based stack (real reverse proxy, DNS, Proxmox VE), see the
+[Development Workflow](../mie-opensource-landing/docs/developers/development-workflow.md).
 
-### 5. Start Application
+### Production
 
-#### Development Mode (with auto-reload)
-```bash
-npm run dev
-```
+The Manager is not installed by hand in production. It ships as:
 
-#### Production Mode
-```bash
-node server.js
-```
+- an **OCI image** (`images/manager`) — the supported deployment, used by the
+  [Installation Guide](../mie-opensource-landing/docs/admins/installation.md); and
+- distribution **packages** built from this directory with `make deb`, `make rpm`,
+  or `make apk` (via [fpm](https://fpm.readthedocs.io/)), which install the app
+  under `/opt/opensource-server/create-a-container` and register the
+  `container-creator` and `job-runner` systemd services.
 
-#### As a System Service
-Create `/etc/systemd/system/create-a-container.service`:
-```ini
-[Unit]
-Description=Create-a-Container Service
-After=network.target mariadb.service
+In both cases the app runs `server.js` (HTTP API + UI) and `job-runner.js`
+(background worker). Database connection settings come from the environment (see
+[Configuration](#configuration)); the manager image provisions PostgreSQL and
+writes these to `/etc/default/container-creator` on first boot.
 
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/opensource-server/create-a-container
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/node server.js
-Restart=always
-RestartSec=10
+## Configuration
 
-[Install]
-WantedBy=multi-user.target
-```
+Configuration is read from environment variables (a local `.env` file is
+supported in development). See [`example.env`](example.env) for the full list,
+including the database dialect/connection settings and the optional OIDC
+single-sign-on variables. Session secrets are generated and stored automatically
+— there is no secret to configure.
 
-Enable and start:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable create-a-container
-sudo systemctl start create-a-container
-sudo systemctl status create-a-container
-```
+Production uses PostgreSQL (`DATABASE_DIALECT=postgres`); `make dev` uses SQLite.
 
-## API Routes
-
-### Authentication Routes
-
-#### `GET /login`
-Display login page
-
-#### `POST /login`
-Authenticate user with Proxmox VE credentials
-- **Body**: `{ username, password }`
-- **Returns**: `{ success: true, redirect: "/" }`
-
-#### `POST /logout`
-End user session
-
-### Container Management Routes
-
-#### `GET /` 
-Redirect to `/containers`
-
-#### `GET /containers` (Auth Required)
-List all containers for authenticated user
-- **Returns**: HTML page with container list
-
-#### `GET /containers/new` (Auth Required)
-Display container creation form
-
-#### `POST /containers`
-Create a container asynchronously via a background job
-- **Body**: `{ hostname, template, customTemplate, services }` where:
-  - `hostname`: Container hostname
-  - `template`: Template selection in format "nodeName,vmid" OR "custom" for Docker images
-  - `customTemplate`: Docker image reference when template="custom" (e.g., `nginx`, `nginx:alpine`, `myorg/myapp:v1`, `ghcr.io/org/image:tag`)
-  - `services`: Object of service definitions
-- **Returns**: Redirect to containers list with flash message
-- **Process**: Creates pending container, services, and job in a single transaction. Docker image references are normalized to full format (`host/org/image:tag`). The job-runner executes the actual Proxmox operations.
-
-#### `DELETE /containers/:id` (Auth Required)
-Delete a container from both Proxmox and the database
-- **Path Parameter**: `id` - Container database ID
-- **Authorization**: User can only delete their own containers
-- **Process**:
-  1. Verifies container ownership
-  2. Deletes container from Proxmox via API
-  3. On success, removes container record from database (cascades to services)
-- **Returns**: `{ success: true, message: "Container deleted successfully" }`
-- **Errors**: 
-  - `404` - Container not found
-  - `403` - User doesn't own the container
-  - `500` - Proxmox API deletion failed or node not configured
-
-#### Container status (`status` field)
-Every container returned by the list, show, and create endpoints includes a
-**live** `status` field, computed on demand rather than read from a stored
-column. It is resolved by combining the container's run-state in Proxmox (from a
-single per-node cluster snapshot) with the state of its create job. Possible
-values:
-- `running` — online in Proxmox
-- `offline` — exists in Proxmox but stopped
-- `creating` — no Proxmox VM yet, active create job
-- `failed` — no Proxmox VM, create job failed
-- `missing` — no Proxmox VM, create succeeded or no create job found
-- `unknown` — Proxmox unreachable / node has no API credentials
-
-The create endpoint (`POST /containers`) returns `creating` immediately, since a
-create job is enqueued and there is no Proxmox VM yet.
-
-#### `GET /status/:jobId` (Auth Required)
-View container creation progress page
-
-#### `GET /api/stream/:jobId`
-SSE stream for real-time container creation progress
-- **Returns**: Server-Sent Events stream
-
-### Job Runner & Jobs API Routes
-
-#### `POST /jobs` (Admin Auth Required)
-Enqueue a job for background execution
-- **Body**: `{ "command": "<shell command>" }`
-- **Response**: `201 { id, status }`
-- **Authorization**: Admin only (prevents arbitrary command execution)
-- **Behavior**: Admin's username is recorded in `createdBy` column for audit trail
-
-#### `GET /jobs/:id` (Auth Required)
-Fetch job metadata (command, status, timestamps)
-- **Response**: `{ id, command, status, createdAt, updatedAt, createdBy }`
-- **Authorization**: Only the job owner or admins may view
-- **Returns**: `404` if unauthorized (prevents information leakage)
-
-#### `GET /jobs/:id/status` (Auth Required)
-Fetch job output rows with offset/limit pagination
-- **Query Params**: 
-  - `offset` (optional, default 0) - Skip first N rows
-  - `limit` (optional, max 1000) - Return up to N rows
-- **Response**: Array of JobStatus objects `[{ id, jobId, output, createdAt, updatedAt }, ...]`
-- **Authorization**: Only the job owner or admins may view
-- **Returns**: `404` if unauthorized
-
-### Job Runner System
-
-#### Background Job Execution
-The job runner (`job-runner.js`) is a background Node.js process that:
-1. Polls the `Jobs` table for `pending` status records
-2. Claims a job transactionally (sets status to `running` and acquires row lock)
-3. Spawns the job command in a shell subprocess
-4. Streams stdout/stderr into the `JobStatuses` table in real-time
-5. Updates job status to `success` or `failure` on process exit
-6. Gracefully cancels running jobs on shutdown (SIGTERM/SIGINT) and marks them `cancelled`
-
-#### Data Models
-
-**Job Model** (`models/job.js`)
-```
-id          INT PRIMARY KEY AUTO_INCREMENT
-command     VARCHAR(2000) NOT NULL - shell command to execute
-createdBy   VARCHAR(255) - username of admin who enqueued (nullable for legacy jobs)
-status      ENUM('pending', 'running', 'success', 'failure', 'cancelled')
-createdAt   DATETIME
-updatedAt   DATETIME
-```
-
-**JobStatus Model** (`models/jobstatus.js`)
-```
-id          INT PRIMARY KEY AUTO_INCREMENT
-jobId       INT NOT NULL (FK → Jobs.id, CASCADE delete)
-output      TEXT - chunk of stdout/stderr from the job
-createdAt   DATETIME
-updatedAt   DATETIME
-```
-
-**Migrations**
-- `migrations/20251117120000-create-jobs.js`
-- `migrations/20251117120001-create-jobstatuses.js` (includes `updatedAt`)
-- `migrations/20251117120002-add-job-createdby.js` (adds nullable `createdBy` column + index)
-
-#### Running the Job Runner
-
-**Development (foreground, logs to stdout)**
-```bash
-cd create-a-container
-npm run job-runner
-```
-
-**Production (systemd service)**
-Copy `systemd/job-runner.service` to `/etc/systemd/system/job-runner.service`:
-```bash
-sudo cp systemd/job-runner.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now job-runner.service
-sudo systemctl status job-runner.service
-```
-
-#### Configuration
-
-**Database** (via `.env`)
-- `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`, `DATABASE_DIALECT`
-
-**Runner Behavior** (environment variables)
-- `JOB_RUNNER_POLL_MS` (default 2000) - Polling interval in milliseconds
-- `JOB_RUNNER_CWD` (default cwd) - Working directory for spawned commands
-- `NODE_ENV=production` - Recommended for production
-
-**Systemd Setup** (recommended for production)
-Create `/etc/default/container-creator` with DB credentials:
-```bash
-POSTGRES_HOST=localhost
-POSTGRES_USER=cluster_manager
-POSTGRES_PASSWORD=secure_password_here
-POSTGRES_DATABASE=cluster_manager
-DATABASE_DIALECT=postgres
-```
-
-Update `job-runner.service` to include:
-```ini
-EnvironmentFile=/etc/default/container-creator
-```
-
-#### Security Considerations
-
-1. **Command Injection Risk**: The runner spawns commands via shell. Only admins can enqueue jobs via the API. Do not expose `POST /jobs` to untrusted users.
-2. **Job Ownership**: Jobs are scoped by `createdBy`. Only the admin who created the job (or other admins) can view its metadata and output. Non-owners receive `404` (not `403`) to prevent information leakage.
-3. **Legacy Jobs**: Jobs created before the `createdBy` migration will have `createdBy = NULL` and are visible only to admins.
-4. **Graceful Shutdown**: On SIGTERM/SIGINT, the runner kills all running child processes and marks their jobs as `cancelled`.
-
-#### Testing & Troubleshooting
-
-**Insert a test job (SQL)**
-```sql
-INSERT INTO Jobs (command, status, createdAt, updatedAt)
-VALUES ('echo "Hello" && sleep 5 && echo "World"', 'pending', NOW(), NOW());
-```
-
-**Inspect job status**
-```sql
-SELECT id, status, updatedAt FROM Jobs ORDER BY id DESC LIMIT 10;
-```
-
-**View job output**
-```sql
-SELECT id, output, createdAt FROM JobStatuses WHERE jobId = 1 ORDER BY id ASC;
-```
-
-**Long-running test (5 minutes)**
-1. Stop runner to keep job pending
-```bash
-sudo systemctl stop job-runner.service
-```
-2. Insert job
-```bash
-psql -c "INSERT INTO \"Jobs\" (command, status, \"createdAt\", \"updatedAt\") VALUES ('for i in \$(seq 1 300); do echo \"line \$i\"; sleep 1; done', 'pending', NOW(), NOW()) RETURNING id;"
-```
-3. Start runner and monitor
-```bash
-node job-runner.js
-# In another terminal:
-while sleep 15; do
-  psql -c "SELECT id, output FROM \"JobStatuses\" WHERE \"jobId\"=<ID> ORDER BY id ASC;" 
-done
-```
-4. Check final status
-```sql
-SELECT id, status FROM Jobs WHERE id = <ID>;
-```
-
-#### Deployment Checklist
-
-- [ ] Run migrations: `npm run db:migrate`
-- [ ] Deploy `job-runner.js` to target host (e.g., `/opt/container-creator/`)
-- [ ] Copy `systemd/job-runner.service` to `/etc/systemd/system/`
-- [ ] Create `/etc/default/container-creator` with DB env vars
-- [ ] Reload systemd: `sudo systemctl daemon-reload`
-- [ ] Enable and start: `sudo systemctl enable --now job-runner.service`
-- [ ] Verify runner is running: `sudo systemctl status job-runner.service`
-- [ ] Test API by creating a job via `POST /jobs` (admin user)
-
-#### Future Enhancements
-
-- Replace raw `command` API with safe task names and parameter mapping
-- Add SSE or WebSocket streaming endpoint (`/jobs/:id/stream`) to push log lines to frontend in real-time
-- Add batching or file-based logs for high-volume output to reduce DB pressure
-- Implement job timeout/deadline and automatic cancellation
-
-### Configuration Routes
-
-#### `GET /sites/:siteId/nginx`
-Generate nginx configuration for all registered services
-- **Returns**: `text/plain` - Complete nginx configuration with all server blocks
-
-### User Registration Routes
-
-#### `GET /register`
-Display account request form
-
-#### `POST /register`
-Submit account request (sends email to admins)
-- **Body**: `{ name, email, username, reason }`
-- **Returns**: Success message
-
-### Utility Routes
-
-#### `GET /send-test-email` (Dev Only)
-Test email configuration (development/testing)
-
-## Database Schema
-
-### Containers Table
-```sql
-id              INT PRIMARY KEY AUTO_INCREMENT
-hostname        VARCHAR(255) UNIQUE NOT NULL
-username        VARCHAR(255) NOT NULL
-status          VARCHAR(20) NOT NULL DEFAULT 'pending'
-template        VARCHAR(255)
-creationJobId   INT FOREIGN KEY REFERENCES Jobs(id)
-nodeId          INT FOREIGN KEY REFERENCES Nodes(id)
-containerId     INT UNSIGNED NOT NULL
-macAddress      VARCHAR(17) UNIQUE
-ipv4Address     VARCHAR(45) UNIQUE
-aiContainer     VARCHAR(50) DEFAULT 'N'
-createdAt       DATETIME
-updatedAt       DATETIME
-```
-
-### Services Table
-```sql
-id                  INT PRIMARY KEY AUTO_INCREMENT
-containerId         INT FOREIGN KEY REFERENCES Containers(id)
-type                ENUM('tcp', 'udp', 'http') NOT NULL
-internalPort        INT NOT NULL
-externalPort        INT
-tls                 BOOLEAN DEFAULT FALSE
-externalHostname    VARCHAR(255)
-createdAt           DATETIME
-updatedAt           DATETIME
-```
-
-## Configuration Files
-
-### `config/config.js`
-Sequelize database configuration (reads from `.env`)
-
-### `models/`
-- `container.js` - Container model definition
-- `service.js` - Service model definition
-- `index.js` - Sequelize initialization
-
-### `data/services.json`
-Service type definitions and port mappings
-
-### `views/`
-- `login.html` - Login form
-- `form.html` - Container creation form
-- `request-account.html` - Account request form
-- `status.html` - Container creation progress viewer
-- `containers.ejs` - Container list (EJS template)
-- `nginx-conf.ejs` - Nginx config generator (EJS template)
-
-### `public/`
-- `style.css` - Application styles
-
-### `migrations/`
-Database migration files for schema management
-
-## Environment Variables
-
-### Required
-- `POSTGRES_HOST` - Database host (default: localhost)
-- `POSTGRES_USER` - Database username
-- `POSTGRES_PASSWORD` - Database password
-- `POSTGRES_DATABASE` - Database name
-- `SESSION_SECRET` - Express session secret (cryptographically random string)
-
-### Optional
-- `NODE_ENV` - Environment (development/production, default: development)
-
-## Security
-
-### Authentication
-- Proxmox VE integration via API
-- Session-based authentication with secure cookies
-- Per-route authentication middleware
-
-### Rate Limiting
-- 100 requests per 15-minute window per IP
-- Protects against brute force and abuse
-
-### Session Security
-- Session secret required for cookie signing
-- Secure cookie flag enabled
-- Session data server-side only
-
-### Input Validation
-- URL encoding for all parameters
-- Sequelize ORM prevents SQL injection
-- Form data validation
-
-## Troubleshooting
-
-### Database Connection Issues
-```bash
-# Test database connection
-psql -h localhost -U cluster_manager -d cluster_manager
-
-# Check if migrations ran
-npm run db:migrate
-
-# Verify tables exist
-psql -h localhost -U cluster_manager -d cluster_manager -c "\dt"
-```
-
-### Application Won't Start
-```bash
-# Check Node.js version
-node --version  # Should be 18.x or higher
-
-# Verify .env file exists and is readable
-cat .env
-
-# Check for syntax errors
-node -c server.js
-
-# Run with verbose logging
-NODE_ENV=development node server.js
-```
-
-### Authentication Failing
-```bash
-# Verify Proxmox API is accessible
-curl -k https://10.15.0.4:8006/api2/json/version
-
-# Check if certificate validation is working
-# Edit server.js if using self-signed certs
-```
-
-### Email Not Sending
-```bash
-# Test SMTP connection
-telnet mail.example.com 25
-
-# Test route (development only)
-curl http://localhost:3000/send-test-email
-```
-
-### Port Already in Use
-```bash
-# Find process using port 3000
-sudo lsof -i :3000
-
-# Change port in .env or kill conflicting process
-kill -9 <PID>
-```
-
-## Development
-
-### Database Migrations
+## Database migrations & seeders
 
 Migrations are applied **automatically at server startup**. `server.js` calls the
 runner in `utils/migrate.js`, which uses [umzug](https://github.com/sequelize/umzug)
-(a runtime/production dependency) to run every pending migration in
-`migrations/` before the HTTP server begins listening. Only one process migrates
-at a time: the run is wrapped in an engine-appropriate advisory lock
-(`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on MySQL; SQLite needs none). If a
-migration fails, the process exits non-zero and does not serve traffic.
+to run every pending migration in `migrations/` before the HTTP server begins
+listening. Only one process migrates at a time: the run is wrapped in an
+engine-appropriate advisory lock (`pg_advisory_lock` on PostgreSQL, `GET_LOCK` on
+MySQL; SQLite needs none). If a migration fails the process exits non-zero and
+does not serve traffic.
 
-`sequelize-cli` is a **dev dependency** used for authoring and ad-hoc migration
-management:
+`sequelize-cli` is a dev dependency used for authoring and ad-hoc management:
 
 ```bash
-# Create new migration
+# Create a new migration
 npx sequelize-cli migration:generate --name description-here
 
-# Run migrations + seeders manually (also used for first-time/dev setup)
+# Apply migrations + seeders manually
 npm run db:migrate
 
-# Undo last migration
+# Undo the last migration
 npx sequelize-cli db:migrate:undo
 ```
 
-#### Seeders
+The `seeders/` directory is for **development/test data only** (e.g. the local
+`make dev` site and dummy node). Data that must exist on every deployment lives in
+`migrations/`, so it is applied automatically at startup.
 
-The `seeders/` directory is for **test/development data only**. Data that must
-exist on every deployment lives in `migrations/` (so it is applied automatically
-at startup). Run seeders on demand with `npx sequelize-cli db:seed:all` (also
-invoked by `npm run db:migrate`).
+## API
 
-### Code Structure
+The REST API is versioned under `/api/v1` and documented by the OpenAPI spec in
+[`openapi.v1.yaml`](openapi.v1.yaml), browsable via the built-in Swagger UI at
+`/api` when the server is running.
+
+## Layout
+
 ```
 create-a-container/
-├── server.js           # Main Express application
-├── package.json        # Dependencies and scripts
-├── .env               # Environment configuration (gitignored)
-├── config/            # Sequelize configuration
-├── models/            # Database models
-├── migrations/        # Database migrations
-├── seeders/           # Test/development data seeders
-├── views/             # HTML templates
-├── public/            # Static assets
-├── data/              # JSON data files
-└── bin/               # Utility scripts
+├── server.js        # HTTP API + UI (Express)
+├── job-runner.js    # Background job worker
+├── client/          # React/Vite single-page app (built to client/dist)
+├── config/          # Sequelize configuration
+├── models/          # Sequelize models
+├── migrations/      # Database migrations (applied at startup)
+├── seeders/         # Dev/test data seeders
+├── routers/         # API and template routers
+├── middlewares/     # Express middleware
+├── utils/           # Shared helpers (incl. the migration runner)
+├── views/           # EJS templates (nginx/dnsmasq config generation)
+├── contrib/         # systemd units, logrotate, packaging hooks
+└── Makefile         # dev, build, and packaging targets
 ```
 
-## Integration with Nginx Reverse Proxy
+## License & support
 
-This application generates nginx configurations consumed by the `nginx-reverse-proxy` component:
-
-1. Containers register their services in the database
-2. The `/sites/:siteId/nginx` endpoint generates complete nginx configs
-3. The reverse proxy polls this endpoint via cron
-4. Nginx automatically reloads with updated configurations
-
-See `../nginx-reverse-proxy/README.md` for reverse proxy setup.
-
-## License
-
-See the main repository LICENSE file.
-
-## Support
-
-For issues, questions, or contributions, see the main opensource-server repository.
+See the main repository [LICENSE](../LICENSE). For issues, questions, or
+contributions, see the [opensource-server](https://github.com/mieweb/opensource-server)
+repository.
