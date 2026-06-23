@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
 import jwt
 from jwt import InvalidTokenError, PyJWKClient
 
-UNAUTHORIZED_BODY = b'{"error":"invalid_assertion"}'
+UNAUTHORIZED_RESPONSE = {"error": "invalid_assertion"}
+UNAUTHORIZED_BODY = json.dumps(UNAUTHORIZED_RESPONSE, separators=(",", ":")).encode()
 
 
 @dataclass(frozen=True)
@@ -27,7 +29,7 @@ class Identity:
     claims: dict[str, Any]
 
 
-class AssertionError(Exception):
+class InvalidAssertionError(Exception):
     pass
 
 
@@ -46,10 +48,10 @@ class TrustedProxyAuthMiddleware:
         try:
             token = _read_header(scope, self.config.header)
             if token is None:
-                raise AssertionError("missing assertion")
+                raise InvalidAssertionError("missing assertion")
             scope["trusted_proxy_identity"] = verify_assertion(token, self.config, self.jwks_client)
             await self.app(scope, receive, send)
-        except AssertionError:
+        except InvalidAssertionError:
             await send(
                 {
                     "type": "http.response.start",
@@ -84,13 +86,13 @@ def verify_assertion(token: str, config: Config, jwks_client: PyJWKClient | None
             options={"require": ["exp", "iss", "aud", "sub"]},
         )
     except (InvalidTokenError, ValueError) as error:
-        raise AssertionError("invalid assertion") from error
+        raise InvalidAssertionError("invalid assertion") from error
 
     return Identity(
         subject=claims["sub"],
         email=claims.get("email"),
         name=claims.get("name"),
-        claims=json.loads(json.dumps(claims)),
+        claims=deepcopy(claims),
     )
 
 

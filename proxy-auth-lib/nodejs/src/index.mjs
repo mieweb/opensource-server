@@ -1,6 +1,7 @@
 import { createPublicKey, createVerify } from 'node:crypto';
 
-const UNAUTHORIZED_BODY = JSON.stringify({ error: 'invalid_assertion' });
+const UNAUTHORIZED_RESPONSE = { error: 'invalid_assertion' };
+const UNAUTHORIZED_BODY = JSON.stringify(UNAUTHORIZED_RESPONSE);
 
 export function loadConfigFromEnv(env = process.env) {
   return {
@@ -35,7 +36,7 @@ export function createTrustedProxyAuth(config, options = {}) {
       }
 
       if (typeof res.json === 'function') {
-        res.json({ error: 'invalid_assertion' });
+        res.json(UNAUTHORIZED_RESPONSE);
         return;
       }
 
