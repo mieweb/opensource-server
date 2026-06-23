@@ -11,9 +11,23 @@ until [ -d /etc/pve/local ]; do
     sleep 0.5
 done
 
-# Exit success if the specified container already exists
-if [ -f "/etc/pve/lxc/${CTID}.conf" ]; then
-    exit 0
+# Decide whether the container is already fully provisioned. A bare existence
+# check on the config file is not enough: an interrupted prior `pct create`
+# (common under the nested Proxmox-in-Docker, e.g. a failed `--start=1`) leaves
+# a partial config behind that is still holding the `create` lock and missing
+# required keys like `arch`. Treating that half-created container as "done"
+# wedges every subsequent boot (`pct start` then fails with "missing 'arch'").
+# So only short-circuit when the config exists, carries no lingering create
+# lock, and has a real `arch` line; otherwise tear the remnants down and rebuild.
+CONF="/etc/pve/lxc/${CTID}.conf"
+if [ -f "${CONF}" ]; then
+    if ! grep -q '^lock: create' "${CONF}" && grep -q '^arch:' "${CONF}"; then
+        exit 0
+    fi
+    echo "Container ${CTID} is partially created; tearing it down and recreating."
+    pct unlock "${CTID}" || true
+    pct stop "${CTID}" || true
+    pct destroy "${CTID}" --force || true
 fi
 
 # Ensure the specified network are available

@@ -88,6 +88,7 @@ components:
       properties:
         id: { type: integer }
         hostname: { type: string }
+        owner: { type: string, description: Username of the user who created the container }
         containerId: { type: integer, nullable: true }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
@@ -310,6 +311,7 @@ paths:
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: query, name: hostname, schema: { type: string } }
+        - { in: query, name: nodeId, schema: { type: integer }, description: Filter to a single node belonging to the site }
       responses: { '200': { description: Array of containers } }
     post:
       tags: [Containers]
@@ -339,6 +341,22 @@ paths:
       summary: Form bootstrap data (domains + NVIDIA flag)
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
       responses: { '200': { description: Bootstrap payload } }
+  /sites/{siteId}/containers/all:
+    get:
+      tags: [Containers]
+      summary: List every container on the site (admin only)
+      description: >-
+        Returns all containers belonging to the site regardless of owner. Each
+        container includes the `owner` field. Requires the caller to be an admin;
+        non-admins receive 403.
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: query, name: hostname, schema: { type: string } }
+        - { in: query, name: nodeId, schema: { type: integer }, description: Filter to a single node belonging to the site }
+        - { in: query, name: username, schema: { type: string }, description: Filter to a single owner }
+      responses:
+        '200': { description: Array of containers }
+        '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:
       tags: [Containers]

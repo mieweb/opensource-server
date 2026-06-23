@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -30,6 +30,7 @@ import {
   Server,
   Terminal,
   Trash2,
+  User,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
@@ -209,13 +210,17 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-export function ContainersListPage() {
+export function ContainersListPage({ scope = 'mine' }: { scope?: 'mine' | 'all' }) {
   const { siteId } = useParams<{ siteId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
   const { data: session } = useSession();
   const sessionUser = session?.user;
+  const isAdmin = !!session?.isAdmin;
+  const isAll = scope === 'all';
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const nodeId = searchParams.get('nodeId') || undefined;
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -237,8 +242,9 @@ export function ContainersListPage() {
     enabled: !!siteId,
   });
   const { data, isLoading, error } = useQuery({
-    queryKey: keys.containers(siteId!),
-    queryFn: () => queries.listContainers(siteId!),
+    queryKey: isAll ? keys.containersAll(siteId!, { nodeId }) : keys.containers(siteId!),
+    queryFn: () =>
+      isAll ? queries.listAllContainers(siteId!, { nodeId }) : queries.listContainers(siteId!),
     enabled: !!siteId,
   });
 
@@ -256,11 +262,29 @@ export function ContainersListPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Containers"
+        title={isAll ? 'All Containers' : 'Containers'}
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <div
+                role="group"
+                aria-label="Container ownership scope"
+                className="inline-flex rounded-md border border-border p-0.5"
+              >
+                <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
+                  <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
+                    Mine
+                  </Button>
+                </Link>
+                <Link to={`/sites/${siteId}/containers/all`} aria-label="All containers">
+                  <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
+                    All
+                  </Button>
+                </Link>
+              </div>
+            )}
             {hasContainers && (
               <div
                 role="group"
@@ -328,7 +352,11 @@ export function ContainersListPage() {
       {data && data.length === 0 && (
         <Alert variant="info">
           <AlertTitle>No containers</AlertTitle>
-          <AlertDescription>Create your first container with the button above.</AlertDescription>
+          <AlertDescription>
+            {isAll
+              ? 'No containers exist on this site yet.'
+              : 'Create your first container with the button above.'}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -355,6 +383,14 @@ export function ContainersListPage() {
                 <Meta label="Node">
                   <NodeLink c={c} />
                 </Meta>
+                {isAll && (
+                  <Meta label="User">
+                    <span className="inline-flex items-center gap-1">
+                      <User className="size-3.5" aria-hidden="true" />
+                      {c.owner}
+                    </span>
+                  </Meta>
+                )}
                 <Meta label="Template">
                   <span className="font-mono" title={c.template || undefined}>
                     {templateTitle(c.template)}
@@ -379,6 +415,7 @@ export function ContainersListPage() {
               <TableHead>Hostname</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Node</TableHead>
+              {isAll && <TableHead>User</TableHead>}
               <TableHead>Template</TableHead>
               <TableHead>HTTP</TableHead>
               <TableHead>SSH</TableHead>
@@ -395,6 +432,14 @@ export function ContainersListPage() {
                 <TableCell>
                   <NodeLink c={c} />
                 </TableCell>
+                {isAll && (
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1">
+                      <User className="size-3.5" aria-hidden="true" />
+                      {c.owner}
+                    </span>
+                  </TableCell>
+                )}
                 <TableCell className="font-mono text-xs" title={c.template || undefined}>
                   {templateTitle(c.template)}
                 </TableCell>

@@ -26,7 +26,7 @@ const {
   computeContainerStatuses,
   STATUS,
 } = require('../../../utils/container-status');
-const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
+const { apiAuth, apiAdmin, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
 
 const router = express.Router({ mergeParams: true });
 
@@ -113,6 +113,10 @@ function serializeContainer(c, site, status) {
     id: c.id,
     containerId: c.containerId,
     hostname: c.hostname,
+    // Owner (the user who created the container). Surfaced so the admin
+    // "all containers" view can show a User column; for the per-user list it
+    // simply equals the requesting user.
+    owner: c.username,
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).
@@ -157,6 +161,44 @@ function serializeContainer(c, site, status) {
   };
 }
 
+// Eager-load graph shared by every list/show route so status resolution needs
+// no per-container queries and the serializer has the data it needs.
+const CONTAINER_INCLUDE = [
+  {
+    association: 'services',
+    include: [
+      { association: 'httpService', include: [{ association: 'externalDomain' }] },
+      { association: 'transportService' },
+      { association: 'dnsService' },
+    ],
+  },
+  // Full node record (incl. credentials) is required to query live Proxmox status.
+  { association: 'node' },
+  // Eager-load the create job so status resolution needs no per-container query.
+  { association: 'creationJob' },
+];
+
+/**
+ * Build the `where` clause for a container list query, scoped to the given
+ * site's nodes and narrowed by the supported query-string filters
+ * (`hostname`, `nodeId`). The `nodeId` filter is intersected with the site's
+ * own nodes so it can never widen the result set beyond the site.
+ * @param {object} query - req.query
+ * @param {number[]} nodeIds - IDs of the nodes belonging to the site
+ * @returns {object} Sequelize where clause
+ */
+function buildContainerListWhere(query, nodeIds) {
+  const where = { nodeId: nodeIds };
+  if (query.hostname) where.hostname = query.hostname;
+  if (query.nodeId) {
+    const nodeId = parseInt(query.nodeId, 10);
+    // Restrict to the requested node only when it belongs to this site;
+    // otherwise force an empty result rather than leaking other sites' nodes.
+    where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
+  }
+  return where;
+}
+
 // GET /containers/metadata?image=...
 router.get(
   '/metadata',
@@ -196,27 +238,30 @@ router.get(
     const site = await loadSite(req);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    const where = { username: req.session.user, nodeId: nodeIds };
-    if (req.query.hostname) where.hostname = req.query.hostname;
-    const rows = await Container.findAll({
-      where,
-      include: [
-        {
-          association: 'services',
-          include: [
-            { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
-            { association: 'dnsService' },
-          ],
-        },
-        // Full node record (incl. credentials) is required to query live Proxmox status.
-        { association: 'node' },
-        // Eager-load the create job so status resolution needs no per-container query.
-        { association: 'creationJob' },
-      ],
-    });
+    const where = { ...buildContainerListWhere(req.query, nodeIds), username: req.session.user };
+    const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
+    const statuses = await computeContainerStatuses(rows, Job);
+    return ok(
+      res,
+      rows.map((c) => serializeContainer(c, site, statuses.get(c.id))),
+    );
+  }),
+);
+
+// GET /containers/all — admin-only: every container on the site, with owner info.
+// Declared before /:id so the literal "all" segment is not parsed as an id.
+router.get(
+  '/all',
+  apiAdmin,
+  asyncHandler(async (req, res) => {
+    const site = await loadSite(req);
+    const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
+    const nodeIds = nodes.map((n) => n.id);
+    const where = buildContainerListWhere(req.query, nodeIds);
+    if (req.query.username) where.username = req.query.username;
+    const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     const statuses = await computeContainerStatuses(rows, Job);
     return ok(
       res,
@@ -239,18 +284,7 @@ router.get(
     }
     const c = await Container.findOne({
       where: { id: containerId, username: req.session.user },
-      include: [
-        {
-          association: 'services',
-          include: [
-            { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
-            { association: 'dnsService' },
-          ],
-        },
-        { association: 'node' },
-        { association: 'creationJob' },
-      ],
+      include: CONTAINER_INCLUDE,
     });
     if (!c || !c.node || c.node.siteId !== site.id) {
       throw new ApiError(404, 'not_found', 'Container not found');

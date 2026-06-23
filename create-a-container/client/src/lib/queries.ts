@@ -27,6 +27,8 @@ export const keys = {
   node: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'nodes', String(id)] as const,
   containers: (siteId: number | string) => ['sites', String(siteId), 'containers'] as const,
+  containersAll: (siteId: number | string, params?: Record<string, string | undefined>) =>
+    ['sites', String(siteId), 'containers', 'all', params ?? {}] as const,
   container: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'containers', String(id)] as const,
   containerBootstrap: (siteId: number | string) =>
@@ -62,6 +64,16 @@ export const queries = {
   // Containers
   listContainers: (siteId: number | string) =>
     api.get<Container[]>(`/api/v1/sites/${siteId}/containers`),
+  listAllContainers: (
+    siteId: number | string,
+    params?: { nodeId?: string; hostname?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.nodeId) qs.set('nodeId', params.nodeId);
+    if (params?.hostname) qs.set('hostname', params.hostname);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<Container[]>(`/api/v1/sites/${siteId}/containers/all${suffix}`);
+  },
   getContainer: (siteId: number | string, id: number | string) =>
     api.get<Container>(`/api/v1/sites/${siteId}/containers/${id}`),
   containerBootstrap: (siteId: number | string) =>

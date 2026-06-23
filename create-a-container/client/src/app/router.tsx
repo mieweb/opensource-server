@@ -53,6 +53,7 @@ export const router = createBrowserRouter([
           { path: '/sites/:id/edit', element: <SiteFormPage /> },
 
           { path: '/sites/:siteId/containers', element: <ContainersListPage /> },
+          { path: '/sites/:siteId/containers/all', element: <ContainersListPage scope="all" /> },
           { path: '/sites/:siteId/containers/new', element: <ContainerFormPage /> },
           { path: '/sites/:siteId/containers/:id/edit', element: <ContainerFormPage /> },
 
