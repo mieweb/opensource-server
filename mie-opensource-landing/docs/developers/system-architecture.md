@@ -168,5 +168,7 @@ sequenceDiagram
 
 NGINX captures identity headers from the auth server subrequest (`X-User-ID`, `X-Username`, `X-User-First-Name`, `X-User-Last-Name`, `X-Email`, `X-Groups`) and forwards them to the backend container via `proxy_set_header`.
 
+Backends should treat those raw headers as untrusted unless the auth layer also provides a signed assertion that the application verifies against JWKS, issuer, audience, and expiration checks. See [Trusted Proxy Auth Libraries](trusted-proxy-auth.md).
+
 If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page.
 
