@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +12,18 @@ from jwt import InvalidTokenError, PyJWKClient
 
 UNAUTHORIZED_RESPONSE = {"error": "invalid_assertion"}
 UNAUTHORIZED_BODY = json.dumps(UNAUTHORIZED_RESPONSE, separators=(",", ":")).encode()
+
+# Reasonable defaults so every setting is optional. The auth domain is derived
+# from the host's FQDN (`web1.os.example.org` -> `auth.os.example.org`); issuer
+# and JWKS come from it. Override any single value with its own env var.
+DEFAULT_ASSERTION_HEADER = "X-Trusted-Proxy-Assertion"
+
+
+def derive_auth_domain(hostname: str | None = None) -> str:
+    host = hostname or socket.getfqdn()
+    labels = [label for label in host.split(".") if label]
+    parent = ".".join(labels[1:]) if len(labels) > 1 else (labels[0] if labels else "localhost")
+    return f"auth.{parent}"
 
 
 @dataclass(frozen=True)
@@ -62,13 +75,15 @@ class TrustedProxyAuthMiddleware:
             await send({"type": "http.response.body", "body": UNAUTHORIZED_BODY})
 
 
-def load_config_from_env(env: dict[str, str] | None = None) -> Config:
+def load_config_from_env(env: dict[str, str] | None = None, hostname: str | None = None) -> Config:
     values = env or os.environ
+    domain = values.get("TRUSTED_PROXY_AUTH_DOMAIN") or derive_auth_domain(hostname)
+    base = f"https://{domain}"
     return Config(
-        header=values.get("TRUSTED_PROXY_ASSERTION_HEADER", ""),
-        jwks_url=values.get("TRUSTED_PROXY_JWKS_URL", ""),
-        issuer=values.get("TRUSTED_PROXY_ISSUER", ""),
-        audience=values.get("TRUSTED_PROXY_AUDIENCE", ""),
+        header=values.get("TRUSTED_PROXY_ASSERTION_HEADER") or DEFAULT_ASSERTION_HEADER,
+        jwks_url=values.get("TRUSTED_PROXY_JWKS_URL") or f"{base}/.well-known/jwks.json",
+        issuer=values.get("TRUSTED_PROXY_ISSUER") or base,
+        audience=values.get("TRUSTED_PROXY_AUDIENCE") or base,
     )
 
 

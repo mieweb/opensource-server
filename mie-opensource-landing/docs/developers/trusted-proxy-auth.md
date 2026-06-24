@@ -25,12 +25,15 @@ Never trust raw identity headers such as `X-Forwarded-User`, `X-User`, `X-Email`
 
 ## Shared configuration
 
-| Variable | Purpose |
-|---|---|
-| `TRUSTED_PROXY_ASSERTION_HEADER` | Header containing the signed assertion |
-| `TRUSTED_PROXY_JWKS_URL` | JWKS URL for key discovery |
-| `TRUSTED_PROXY_ISSUER` | Expected issuer |
-| `TRUSTED_PROXY_AUDIENCE` | Expected audience |
+Every setting is optional. By default the auth domain is derived from the host's FQDN (`web1.os.example.org` → `auth.os.example.org`); the issuer and JWKS URL come from that domain. Override any single value with its own variable.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRUSTED_PROXY_AUTH_DOMAIN` | `auth.<parent-domain-of-hostname>` | Base domain used to derive the issuer and JWKS URL |
+| `TRUSTED_PROXY_ASSERTION_HEADER` | `X-Trusted-Proxy-Assertion` | Header containing the signed assertion |
+| `TRUSTED_PROXY_JWKS_URL` | `https://<domain>/.well-known/jwks.json` | JWKS URL for key discovery |
+| `TRUSTED_PROXY_ISSUER` | `https://<domain>` | Expected issuer |
+| `TRUSTED_PROXY_AUDIENCE` | `https://<domain>` | Expected audience |
 
 ## Implemented MVP targets
 

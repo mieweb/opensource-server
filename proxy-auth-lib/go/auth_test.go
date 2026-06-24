@@ -124,3 +124,27 @@ func TestConfigFromEnvUsesSharedNames(t *testing.T) {
 		t.Fatalf("unexpected config: %+v", config)
 	}
 }
+
+func TestDeriveAuthDomainFromHostFQDN(t *testing.T) {
+	if got := deriveAuthDomain("web1.os.example.org"); got != "auth.os.example.org" {
+		t.Fatalf("got %q", got)
+	}
+	if got := deriveAuthDomain("host"); got != "auth.host" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestConfigFromEnvAuthDomainOverride(t *testing.T) {
+	config := ConfigFromEnv(func(key string) string {
+		if key == "TRUSTED_PROXY_AUTH_DOMAIN" {
+			return "auth.example.test"
+		}
+		return ""
+	})
+	if config.Issuer != "https://auth.example.test" {
+		t.Fatalf("got issuer %q", config.Issuer)
+	}
+	if config.JWKSURL != "https://auth.example.test/.well-known/jwks.json" {
+		t.Fatalf("got jwks %q", config.JWKSURL)
+	}
+}

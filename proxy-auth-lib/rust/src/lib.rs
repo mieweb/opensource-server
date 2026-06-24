@@ -62,11 +62,16 @@ impl TrustedProxyAuth {
     }
 
     pub fn config_from_env() -> Config {
+        let domain = match std::env::var("TRUSTED_PROXY_AUTH_DOMAIN") {
+            Ok(value) if !value.is_empty() => value,
+            _ => default_auth_domain(),
+        };
+        let base = format!("https://{domain}");
         Config {
-            header: std::env::var("TRUSTED_PROXY_ASSERTION_HEADER").unwrap_or_default(),
-            jwks_url: std::env::var("TRUSTED_PROXY_JWKS_URL").unwrap_or_default(),
-            issuer: std::env::var("TRUSTED_PROXY_ISSUER").unwrap_or_default(),
-            audience: std::env::var("TRUSTED_PROXY_AUDIENCE").unwrap_or_default(),
+            header: var_or("TRUSTED_PROXY_ASSERTION_HEADER", DEFAULT_ASSERTION_HEADER),
+            jwks_url: var_or("TRUSTED_PROXY_JWKS_URL", format!("{base}/.well-known/jwks.json")),
+            issuer: var_or("TRUSTED_PROXY_ISSUER", base.clone()),
+            audience: var_or("TRUSTED_PROXY_AUDIENCE", base),
         }
     }
 
@@ -140,6 +145,32 @@ fn read_header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .ok()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+}
+
+// Reasonable defaults so every setting is optional. The auth domain is derived
+// from the host name (`web1.os.example.org` -> `auth.os.example.org`); issuer
+// and JWKS come from it. Override any single value with its own env var.
+pub const DEFAULT_ASSERTION_HEADER: &str = "X-Trusted-Proxy-Assertion";
+
+fn derive_auth_domain(hostname: &str) -> String {
+    let labels: Vec<&str> = hostname.split('.').filter(|label| !label.is_empty()).collect();
+    match labels.len() {
+        0 => "auth.localhost".to_string(),
+        1 => format!("auth.{}", labels[0]),
+        _ => format!("auth.{}", labels[1..].join(".")),
+    }
+}
+
+fn default_auth_domain() -> String {
+    let host = gethostname::gethostname().to_string_lossy().into_owned();
+    derive_auth_domain(&host)
+}
+
+fn var_or(key: &str, default: impl Into<String>) -> String {
+    match std::env::var(key) {
+        Ok(value) if !value.is_empty() => value,
+        _ => default.into(),
+    }
 }
 
 fn validate_config(config: &Config) -> Result<(), AuthError> {
@@ -233,6 +264,12 @@ mod tests {
             issuer: "https://issuer.example.test".into(),
             audience: "my-service".into(),
         }
+    }
+
+    #[test]
+    fn derives_auth_domain_from_host() {
+        assert_eq!(derive_auth_domain("web1.os.example.org"), "auth.os.example.org");
+        assert_eq!(derive_auth_domain("host"), "auth.host");
     }
 
     #[tokio::test]

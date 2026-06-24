@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -56,13 +57,50 @@ func New(config Config) (*Authenticator, error) {
 	return &Authenticator{config: config, httpClient: client}, nil
 }
 
+// Reasonable defaults so every setting is optional. The auth domain is derived
+// from the host's FQDN (`web1.os.example.org` -> `auth.os.example.org`); issuer
+// and JWKS come from it. Override any single value with its own env var.
+const DefaultAssertionHeader = "X-Trusted-Proxy-Assertion"
+
 func ConfigFromEnv(getenv func(string) string) Config {
-	return Config{
-		Header:   getenv("TRUSTED_PROXY_ASSERTION_HEADER"),
-		JWKSURL:  getenv("TRUSTED_PROXY_JWKS_URL"),
-		Issuer:   getenv("TRUSTED_PROXY_ISSUER"),
-		Audience: getenv("TRUSTED_PROXY_AUDIENCE"),
+	domain := getenv("TRUSTED_PROXY_AUTH_DOMAIN")
+	if domain == "" {
+		host, _ := os.Hostname()
+		domain = deriveAuthDomain(host)
 	}
+	base := "https://" + domain
+	return Config{
+		Header:   firstNonEmpty(getenv("TRUSTED_PROXY_ASSERTION_HEADER"), DefaultAssertionHeader),
+		JWKSURL:  firstNonEmpty(getenv("TRUSTED_PROXY_JWKS_URL"), base+"/.well-known/jwks.json"),
+		Issuer:   firstNonEmpty(getenv("TRUSTED_PROXY_ISSUER"), base),
+		Audience: firstNonEmpty(getenv("TRUSTED_PROXY_AUDIENCE"), base),
+	}
+}
+
+func deriveAuthDomain(hostname string) string {
+	labels := make([]string, 0)
+	for _, label := range strings.Split(hostname, ".") {
+		if label != "" {
+			labels = append(labels, label)
+		}
+	}
+	switch {
+	case len(labels) > 1:
+		return "auth." + strings.Join(labels[1:], ".")
+	case len(labels) == 1:
+		return "auth." + labels[0]
+	default:
+		return "auth.localhost"
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func IdentityFromContext(ctx context.Context) (Identity, bool) {

@@ -6,8 +6,11 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 from trusted_proxy_auth import Config, TrustedProxyAuthMiddleware, load_config_from_env, verify_assertion
+from trusted_proxy_auth.django import TrustedProxyAuthMiddleware as DjangoMiddleware
+from trusted_proxy_auth.flask import TrustedProxyAuthMiddleware as FlaskMiddleware
 
 FIXTURES = Path(__file__).resolve().parents[2] / "testdata"
 TOKENS = json.loads((FIXTURES / "tokens.json").read_text())
@@ -90,6 +93,79 @@ class TrustedProxyAuthTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(config.header, "x-test")
         self.assertEqual(config.jwks_url, self.config.jwks_url)
+
+    async def test_load_config_from_env_derives_auth_domain_from_host(self) -> None:
+        derived = load_config_from_env({}, "web1.os.example.org")
+        self.assertEqual(derived.header, "X-Trusted-Proxy-Assertion")
+        self.assertEqual(derived.issuer, "https://auth.os.example.org")
+        self.assertEqual(derived.jwks_url, "https://auth.os.example.org/.well-known/jwks.json")
+        self.assertEqual(derived.audience, "https://auth.os.example.org")
+
+        override = load_config_from_env({"TRUSTED_PROXY_AUTH_DOMAIN": "auth.example.test"}, "web1.os.example.org")
+        self.assertEqual(override.issuer, "https://auth.example.test")
+        self.assertEqual(override.jwks_url, "https://auth.example.test/.well-known/jwks.json")
+
+    async def test_flask_wsgi_middleware_exposes_identity(self) -> None:
+        def app(environ, start_response):
+            identity = environ["trusted_proxy_identity"]
+            start_response("200 OK", [("Content-Type", "application/json")])
+            return [json.dumps({"subject": identity.subject}).encode()]
+
+        middleware = FlaskMiddleware(app, self.config)
+        status, body = call_wsgi(middleware, TOKENS["valid"], self.config.header)
+        self.assertTrue(status.startswith("200"))
+        self.assertEqual(json.loads(body), {"subject": "user-123"})
+
+    async def test_flask_wsgi_middleware_rejects_invalid(self) -> None:
+        middleware = FlaskMiddleware(wsgi_ok_app, self.config)
+        for key in [None, "expired", "invalid_signature", "wrong_issuer", "wrong_audience", "malformed"]:
+            with self.subTest(key=key):
+                status, body = call_wsgi(middleware, TOKENS[key] if key else None, self.config.header)
+                self.assertTrue(status.startswith("401"))
+                self.assertEqual(json.loads(body), {"error": "invalid_assertion"})
+
+    async def test_django_middleware_exposes_identity_and_rejects(self) -> None:
+        meta_key = "HTTP_" + self.config.header.upper().replace("-", "_")
+        sentinel = object()
+        response_marker = object()
+
+        def get_response(request):
+            return response_marker
+
+        with mock.patch("trusted_proxy_auth.django._django_unauthorized", return_value=sentinel):
+            middleware = DjangoMiddleware(get_response, self.config)
+
+            valid_request = _FakeRequest({meta_key: TOKENS["valid"]})
+            self.assertIs(middleware(valid_request), response_marker)
+            self.assertEqual(valid_request.trusted_proxy_identity.subject, "user-123")
+
+            for key in [None, "expired", "invalid_signature", "wrong_issuer", "wrong_audience", "malformed"]:
+                with self.subTest(key=key):
+                    meta = {} if key is None else {meta_key: TOKENS[key]}
+                    self.assertIs(middleware(_FakeRequest(meta)), sentinel)
+
+
+class _FakeRequest:
+    def __init__(self, meta: dict[str, str]):
+        self.META = meta
+
+
+def wsgi_ok_app(environ, start_response):
+    start_response("200 OK", [])
+    return [b"ok"]
+
+
+def call_wsgi(app, token: str | None, header_name: str) -> tuple[str, bytes]:
+    environ = {"REQUEST_METHOD": "GET", "PATH_INFO": "/"}
+    if token is not None:
+        environ["HTTP_" + header_name.upper().replace("-", "_")] = token
+    captured: dict[str, str] = {}
+
+    def start_response(status: str, headers: list[tuple[str, str]]) -> None:
+        captured["status"] = status
+
+    body = b"".join(app(environ, start_response))
+    return captured["status"], body
 
 
 async def empty_app(scope, receive, send):

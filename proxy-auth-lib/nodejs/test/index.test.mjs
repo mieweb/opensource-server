@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { before, after, describe, test } from 'node:test';
 
 import { createTrustedProxyAuth, loadConfigFromEnv, verifyAssertion } from '../src/index.mjs';
+import { fastifyTrustedProxyAuth } from '../src/fastify.mjs';
+import { honoTrustedProxyAuth } from '../src/hono.mjs';
 
 const tokens = JSON.parse(await readFile(new URL('../../testdata/tokens.json', import.meta.url), 'utf8'));
 const jwks = await readFile(new URL('../../testdata/jwks.json', import.meta.url), 'utf8');
@@ -114,4 +116,107 @@ describe('createTrustedProxyAuth', () => {
       },
     );
   });
+
+  test('derives the auth domain from the host fqdn', () => {
+    const derived = loadConfigFromEnv({}, 'web1.os.example.org');
+    assert.equal(derived.header, 'X-Trusted-Proxy-Assertion');
+    assert.equal(derived.issuer, 'https://auth.os.example.org');
+    assert.equal(derived.jwksUrl, 'https://auth.os.example.org/.well-known/jwks.json');
+    assert.equal(derived.audience, 'https://auth.os.example.org');
+  });
+
+  test('an explicit auth domain overrides hostname derivation', () => {
+    const derived = loadConfigFromEnv({ TRUSTED_PROXY_AUTH_DOMAIN: 'auth.example.test' }, 'web1.os.example.org');
+    assert.equal(derived.issuer, 'https://auth.example.test');
+    assert.equal(derived.jwksUrl, 'https://auth.example.test/.well-known/jwks.json');
+  });
+});
+
+describe('fastifyTrustedProxyAuth', () => {
+  function fakeReply() {
+    return {
+      statusCode: 200,
+      payload: undefined,
+      headers: {},
+      sent: false,
+      code(value) {
+        this.statusCode = value;
+        return this;
+      },
+      type(value) {
+        this.headers['content-type'] = value;
+        return this;
+      },
+      send(payload) {
+        this.sent = true;
+        this.payload = payload;
+        return this;
+      },
+    };
+  }
+
+  test('attaches identity for a valid assertion', async () => {
+    const request = { headers: { 'x-trusted-proxy-assertion': tokens.valid } };
+    const reply = fakeReply();
+    await fastifyTrustedProxyAuth(config)(request, reply);
+    assert.equal(reply.sent, false);
+    assert.equal(request.trustedProxyIdentity.subject, 'user-123');
+  });
+
+  for (const key of ['missing', 'expired', 'invalid_signature', 'wrong_issuer', 'wrong_audience', 'malformed']) {
+    test(`rejects ${key} assertions with 401`, async () => {
+      const request = { headers: key === 'missing' ? {} : { 'x-trusted-proxy-assertion': tokens[key] } };
+      const reply = fakeReply();
+      await fastifyTrustedProxyAuth(config)(request, reply);
+      assert.equal(reply.statusCode, 401);
+      assert.deepEqual(reply.payload, { error: 'invalid_assertion' });
+    });
+  }
+});
+
+describe('honoTrustedProxyAuth', () => {
+  function fakeContext(token) {
+    const store = new Map();
+    return {
+      response: null,
+      req: {
+        header(name) {
+          return name.toLowerCase() === 'x-trusted-proxy-assertion' ? (token ?? undefined) : undefined;
+        },
+      },
+      set(key, value) {
+        store.set(key, value);
+      },
+      get(key) {
+        return store.get(key);
+      },
+      json(body, status) {
+        this.response = { body, status };
+        return this.response;
+      },
+    };
+  }
+
+  test('sets identity for a valid assertion', async () => {
+    const c = fakeContext(tokens.valid);
+    let nextCalled = false;
+    await honoTrustedProxyAuth(config)(c, async () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, true);
+    assert.equal(c.get('trustedProxyIdentity').subject, 'user-123');
+  });
+
+  for (const key of ['missing', 'expired', 'invalid_signature', 'wrong_issuer', 'wrong_audience', 'malformed']) {
+    test(`rejects ${key} assertions with 401`, async () => {
+      const c = fakeContext(key === 'missing' ? undefined : tokens[key]);
+      let nextCalled = false;
+      await honoTrustedProxyAuth(config)(c, async () => {
+        nextCalled = true;
+      });
+      assert.equal(nextCalled, false);
+      assert.equal(c.response.status, 401);
+      assert.deepEqual(c.response.body, { error: 'invalid_assertion' });
+    });
+  }
 });
