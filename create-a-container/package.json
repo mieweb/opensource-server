@@ -35,13 +35,14 @@
     "patch-package": "^8.0.1",
     "pg": "^8.16.3",
     "sequelize": "^6.37.8",
-    "sequelize-cli": "^6.6.3",
     "swagger-ui-express": "^5.0.1",
+    "umzug": "^2.3.0",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@vscode/sqlite3": "5.1.12-vscode",
     "concurrently": "^9.2.3",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "sequelize-cli": "^6.6.3"
   }
 }

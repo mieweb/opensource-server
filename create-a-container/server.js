@@ -12,6 +12,7 @@ const net = require('net');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
+const { runMigrations } = require('./utils/migrate');
 
 
 // Function to get or create session secrets
@@ -33,6 +34,9 @@ async function getSessionSecrets() {
 }
 
 async function main() {
+  // Apply any pending database migrations before serving traffic
+  await runMigrations(sequelize);
+
   const app = express();
 
   // setup views (still used by templates router for nginx-conf / dnsmasq files)
@@ -132,4 +136,7 @@ async function main() {
   app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 }
 
-main();
+main().catch(err => {
+  console.error('Fatal: server failed to start:', err);
+  process.exit(1);
+});
