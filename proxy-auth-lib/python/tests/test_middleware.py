@@ -4,9 +4,9 @@ import asyncio
 import json
 import threading
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from unittest import mock
 
 from trusted_proxy_auth import Config, TrustedProxyAuthMiddleware, load_config_from_env, verify_assertion
 from trusted_proxy_auth.django import TrustedProxyAuthMiddleware as DjangoMiddleware
@@ -152,7 +152,7 @@ class TrustedProxyAuthTests(unittest.IsolatedAsyncioTestCase):
         def get_response(request):
             return response_marker
 
-        with mock.patch("trusted_proxy_auth.django._django_unauthorized", return_value=sentinel):
+        with unittest.mock.patch("trusted_proxy_auth.django._django_unauthorized", return_value=sentinel):
             middleware = DjangoMiddleware(get_response, self.config)
 
             valid_request = _FakeRequest({meta_key: TOKENS["valid"]})
