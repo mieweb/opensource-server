@@ -148,3 +148,43 @@ func TestConfigFromEnvAuthDomainOverride(t *testing.T) {
 		t.Fatalf("got jwks %q", config.JWKSURL)
 	}
 }
+
+func TestVerifyWithStaticPublicKey(t *testing.T) {
+	tokens, _ := loadFixtures(t)
+	pemData, err := os.ReadFile(filepath.Join("..", "testdata", "public-key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := New(Config{
+		Header:    "X-Trusted-Proxy-Assertion",
+		PublicKey: string(pemData),
+		Issuer:    "https://issuer.example.test",
+		Audience:  "my-service",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	identity, err := auth.Verify(context.Background(), tokens["valid"])
+	if err != nil {
+		t.Fatalf("verify valid token: %v", err)
+	}
+	if identity.Subject != "user-123" {
+		t.Fatalf("got subject %q", identity.Subject)
+	}
+	if _, err := auth.Verify(context.Background(), tokens["invalid_signature"]); err == nil {
+		t.Fatal("expected invalid signature to fail")
+	}
+}
+
+func TestConfigFromEnvReadsInlinePublicKey(t *testing.T) {
+	config := ConfigFromEnv(func(key string) string {
+		if key == "TRUSTED_PROXY_PUBLIC_KEY" {
+			return "-----BEGIN PUBLIC KEY-----\nMII...\n-----END PUBLIC KEY-----"
+		}
+		return ""
+	})
+	if config.PublicKey == "" {
+		t.Fatal("expected public key to be set")
+	}
+}

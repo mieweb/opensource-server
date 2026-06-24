@@ -35,7 +35,7 @@ class TrustedProxyAuthMiddleware:
         self.app = app
         self.config = config or load_config_from_env()
         _validate_config(self.config)
-        self.jwks_client = PyJWKClient(self.config.jwks_url)
+        self.jwks_client = None if self.config.public_key else PyJWKClient(self.config.jwks_url)
         self._environ_key = "HTTP_" + self.config.header.upper().replace("-", "_")
 
     def __call__(self, environ: dict[str, Any], start_response: StartResponse) -> Iterable[bytes]:

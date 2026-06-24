@@ -38,6 +38,11 @@ with its own environment variable:
 | `TRUSTED_PROXY_JWKS_URL` | `https://<domain>/.well-known/jwks.json` | JWKS URL for signing keys |
 | `TRUSTED_PROXY_ISSUER` | `https://<domain>` | Expected JWT issuer |
 | `TRUSTED_PROXY_AUDIENCE` | `https://<domain>` | Expected JWT audience |
+| `TRUSTED_PROXY_PUBLIC_KEY` | _(unset)_ | Inline PEM public key; skips JWKS and verifies offline |
+| `TRUSTED_PROXY_PUBLIC_KEY_FILE` | _(unset)_ | Path to a PEM public key (alternative to the inline form) |
+
+JWKS is preferred (key rotation, and what OIDC providers publish); set a static
+public key only for the self-signed case where your own proxy mints assertions.
 
 ## Flow
 

@@ -105,6 +105,26 @@ class TrustedProxyAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(override.issuer, "https://auth.example.test")
         self.assertEqual(override.jwks_url, "https://auth.example.test/.well-known/jwks.json")
 
+    async def test_static_public_key_verifies_without_network(self) -> None:
+        public_key = (FIXTURES / "public-key.pem").read_text()
+        config = Config(
+            header="x-trusted-proxy-assertion",
+            jwks_url="",
+            issuer="https://issuer.example.test",
+            audience="my-service",
+            public_key=public_key,
+        )
+        identity = verify_assertion(TOKENS["valid"], config)
+        self.assertEqual(identity.subject, "user-123")
+        with self.assertRaises(Exception):
+            verify_assertion(TOKENS["invalid_signature"], config)
+
+    async def test_load_config_from_env_reads_inline_public_key(self) -> None:
+        config = load_config_from_env(
+            {"TRUSTED_PROXY_PUBLIC_KEY": "-----BEGIN PUBLIC KEY-----\nMII...\n-----END PUBLIC KEY-----"}
+        )
+        self.assertIn("BEGIN PUBLIC KEY", config.public_key)
+
     async def test_flask_wsgi_middleware_exposes_identity(self) -> None:
         def app(environ, start_response):
             identity = environ["trusted_proxy_identity"]

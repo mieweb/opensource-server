@@ -16,6 +16,7 @@ pub struct Config {
     pub jwks_url: String,
     pub issuer: String,
     pub audience: String,
+    pub public_key: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -72,35 +73,18 @@ impl TrustedProxyAuth {
             jwks_url: var_or("TRUSTED_PROXY_JWKS_URL", format!("{base}/.well-known/jwks.json")),
             issuer: var_or("TRUSTED_PROXY_ISSUER", base.clone()),
             audience: var_or("TRUSTED_PROXY_AUDIENCE", base),
+            public_key: resolve_public_key(),
         }
     }
 
     pub async fn verify(&self, token: &str) -> Result<Identity, AuthError> {
         let header = decode_header(token).map_err(AuthError::Jwt)?;
+        // Pin the algorithm: never let the token pick a weaker scheme.
         if header.alg != Algorithm::RS256 {
             return Err(AuthError::UnsupportedAlgorithm);
         }
-        let kid = header.kid.ok_or(AuthError::MissingKeyId)?;
 
-        let jwks = self
-            .client
-            .get(&self.config.jwks_url)
-            .send()
-            .await
-            .map_err(AuthError::Jwks)?
-            .error_for_status()
-            .map_err(AuthError::Jwks)?
-            .json::<Jwks>()
-            .await
-            .map_err(AuthError::Jwks)?;
-
-        let jwk = jwks
-            .keys
-            .into_iter()
-            .find(|candidate| candidate.kid == kid)
-            .ok_or(AuthError::UnknownKey)?;
-        let decoding_key =
-            DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(AuthError::Jwt)?;
+        let decoding_key = self.resolve_decoding_key(&header).await?;
 
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_issuer(&[self.config.issuer.clone()]);
@@ -120,6 +104,38 @@ impl TrustedProxyAuth {
             name: token_data.claims.name,
             claims,
         })
+    }
+
+    // JWKS is preferred for key rotation. A static public key (PEM) is an
+    // opt-in alternative for self-signed assertions: when set, verification
+    // uses it directly and never touches the network.
+    async fn resolve_decoding_key(
+        &self,
+        header: &jsonwebtoken::Header,
+    ) -> Result<DecodingKey, AuthError> {
+        if let Some(pem) = &self.config.public_key {
+            return DecodingKey::from_rsa_pem(pem.as_bytes()).map_err(AuthError::Jwt);
+        }
+
+        let kid = header.kid.clone().ok_or(AuthError::MissingKeyId)?;
+        let jwks = self
+            .client
+            .get(&self.config.jwks_url)
+            .send()
+            .await
+            .map_err(AuthError::Jwks)?
+            .error_for_status()
+            .map_err(AuthError::Jwks)?
+            .json::<Jwks>()
+            .await
+            .map_err(AuthError::Jwks)?;
+
+        let jwk = jwks
+            .keys
+            .into_iter()
+            .find(|candidate| candidate.kid == kid)
+            .ok_or(AuthError::UnknownKey)?;
+        DecodingKey::from_rsa_components(&jwk.n, &jwk.e).map_err(AuthError::Jwt)
     }
 }
 
@@ -166,6 +182,22 @@ fn default_auth_domain() -> String {
     derive_auth_domain(&host)
 }
 
+fn resolve_public_key() -> Option<String> {
+    if let Ok(inline) = std::env::var("TRUSTED_PROXY_PUBLIC_KEY") {
+        if !inline.is_empty() {
+            return Some(inline);
+        }
+    }
+    if let Ok(path) = std::env::var("TRUSTED_PROXY_PUBLIC_KEY_FILE") {
+        if !path.is_empty() {
+            if let Ok(data) = std::fs::read_to_string(path) {
+                return Some(data);
+            }
+        }
+    }
+    None
+}
+
 fn var_or(key: &str, default: impl Into<String>) -> String {
     match std::env::var(key) {
         Ok(value) if !value.is_empty() => value,
@@ -177,14 +209,14 @@ fn validate_config(config: &Config) -> Result<(), AuthError> {
     if config.header.is_empty() {
         return Err(AuthError::Config("header"));
     }
-    if config.jwks_url.is_empty() {
-        return Err(AuthError::Config("jwks_url"));
-    }
     if config.issuer.is_empty() {
         return Err(AuthError::Config("issuer"));
     }
     if config.audience.is_empty() {
         return Err(AuthError::Config("audience"));
+    }
+    if config.public_key.as_deref().unwrap_or("").is_empty() && config.jwks_url.is_empty() {
+        return Err(AuthError::Config("jwks_url or public_key"));
     }
     Ok(())
 }
@@ -263,6 +295,7 @@ mod tests {
             jwks_url,
             issuer: "https://issuer.example.test".into(),
             audience: "my-service".into(),
+            public_key: None,
         }
     }
 
@@ -270,6 +303,19 @@ mod tests {
     fn derives_auth_domain_from_host() {
         assert_eq!(derive_auth_domain("web1.os.example.org"), "auth.os.example.org");
         assert_eq!(derive_auth_domain("host"), "auth.host");
+    }
+
+    #[tokio::test]
+    async fn verify_accepts_valid_with_static_public_key() {
+        let tokens: HashMap<String, String> = from_str(&fixtures("tokens.json")).unwrap();
+        let mut cfg = config(String::new());
+        cfg.public_key = Some(fixtures("public-key.pem"));
+        let auth = TrustedProxyAuth::new(cfg).unwrap();
+
+        let identity = auth.verify(&tokens["valid"]).await.unwrap();
+        assert_eq!(identity.subject, "user-123");
+
+        assert!(auth.verify(&tokens["invalid_signature"]).await.is_err());
     }
 
     #[tokio::test]

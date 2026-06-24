@@ -51,10 +51,21 @@ are derived from that domain. Override any single value with its own variable.
 | `TRUSTED_PROXY_JWKS_URL` | `https://<domain>/.well-known/jwks.json` | JWKS URL used to resolve signing keys |
 | `TRUSTED_PROXY_ISSUER` | `https://<domain>` | Expected JWT issuer |
 | `TRUSTED_PROXY_AUDIENCE` | `https://<domain>` | Expected JWT audience |
+| `TRUSTED_PROXY_PUBLIC_KEY` | _(unset)_ | Inline PEM public key; skips JWKS and verifies offline |
+| `TRUSTED_PROXY_PUBLIC_KEY_FILE` | _(unset)_ | Path to a PEM public key (alternative to the inline form) |
 
 Set `TRUSTED_PROXY_AUTH_DOMAIN` explicitly in any environment where the host
 FQDN does not match the auth domain, and set `TRUSTED_PROXY_AUDIENCE` to a
 per-application value if you want tokens scoped to one service.
+
+### Key source: JWKS vs static public key
+
+JWKS is preferred and is the default: it supports key rotation and is what
+OIDC providers (Authentik, Cloudflare Access, Pomerium) publish. A static
+public key is an opt-in alternative for the self-signed case where your own
+proxy mints assertions with a key you control. When `TRUSTED_PROXY_PUBLIC_KEY`
+(or `_FILE`) is set, verification uses it directly and never calls the network;
+otherwise the JWKS URL is used. Either way the algorithm is pinned to `RS256`.
 
 ## Security boundary
 

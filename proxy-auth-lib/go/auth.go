@@ -5,8 +5,10 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"math/big"
 	"net/http"
@@ -20,6 +22,7 @@ type Config struct {
 	JWKSURL    string
 	Issuer     string
 	Audience   string
+	PublicKey  string
 	HTTPClient *http.Client
 }
 
@@ -35,14 +38,12 @@ type contextKey struct{}
 type Authenticator struct {
 	config     Config
 	httpClient *http.Client
+	publicKey  *rsa.PublicKey
 }
 
 func New(config Config) (*Authenticator, error) {
 	if config.Header == "" {
 		return nil, errors.New("missing config: header")
-	}
-	if config.JWKSURL == "" {
-		return nil, errors.New("missing config: jwks url")
 	}
 	if config.Issuer == "" {
 		return nil, errors.New("missing config: issuer")
@@ -50,11 +51,22 @@ func New(config Config) (*Authenticator, error) {
 	if config.Audience == "" {
 		return nil, errors.New("missing config: audience")
 	}
+	if config.PublicKey == "" && config.JWKSURL == "" {
+		return nil, errors.New("missing config: jwks url or public key")
+	}
 	client := config.HTTPClient
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &Authenticator{config: config, httpClient: client}, nil
+	auth := &Authenticator{config: config, httpClient: client}
+	if config.PublicKey != "" {
+		key, err := parseRSAPublicKey(config.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		auth.publicKey = key
+	}
+	return auth, nil
 }
 
 // Reasonable defaults so every setting is optional. The auth domain is derived
@@ -70,11 +82,43 @@ func ConfigFromEnv(getenv func(string) string) Config {
 	}
 	base := "https://" + domain
 	return Config{
-		Header:   firstNonEmpty(getenv("TRUSTED_PROXY_ASSERTION_HEADER"), DefaultAssertionHeader),
-		JWKSURL:  firstNonEmpty(getenv("TRUSTED_PROXY_JWKS_URL"), base+"/.well-known/jwks.json"),
-		Issuer:   firstNonEmpty(getenv("TRUSTED_PROXY_ISSUER"), base),
-		Audience: firstNonEmpty(getenv("TRUSTED_PROXY_AUDIENCE"), base),
+		Header:    firstNonEmpty(getenv("TRUSTED_PROXY_ASSERTION_HEADER"), DefaultAssertionHeader),
+		JWKSURL:   firstNonEmpty(getenv("TRUSTED_PROXY_JWKS_URL"), base+"/.well-known/jwks.json"),
+		Issuer:    firstNonEmpty(getenv("TRUSTED_PROXY_ISSUER"), base),
+		Audience:  firstNonEmpty(getenv("TRUSTED_PROXY_AUDIENCE"), base),
+		PublicKey: resolvePublicKey(getenv),
 	}
+}
+
+// JWKS is preferred for key rotation. A static public key (PEM) is an opt-in
+// alternative for self-signed assertions: when set, verification uses it
+// directly and never touches the network.
+func resolvePublicKey(getenv func(string) string) string {
+	if inline := getenv("TRUSTED_PROXY_PUBLIC_KEY"); inline != "" {
+		return inline
+	}
+	if path := getenv("TRUSTED_PROXY_PUBLIC_KEY_FILE"); path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			return string(data)
+		}
+	}
+	return ""
+}
+
+func parseRSAPublicKey(pemData string) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, errors.New("invalid public key pem")
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	key, ok := parsed.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("public key is not rsa")
+	}
+	return key, nil
 }
 
 func deriveAuthDomain(hostname string) string {
@@ -139,7 +183,7 @@ func (a *Authenticator) Verify(ctx context.Context, token string) (Identity, err
 	if err := decodeSegment(parts[0], &header); err != nil {
 		return Identity{}, err
 	}
-	if header.Alg != "RS256" || header.Kid == "" {
+	if header.Alg != "RS256" {
 		return Identity{}, errors.New("unsupported assertion")
 	}
 
@@ -148,7 +192,7 @@ func (a *Authenticator) Verify(ctx context.Context, token string) (Identity, err
 		return Identity{}, err
 	}
 
-	key, err := a.lookupKey(ctx, header.Kid)
+	key, err := a.keyForToken(ctx, header.Kid)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -181,6 +225,16 @@ func (a *Authenticator) Verify(ctx context.Context, token string) (Identity, err
 	email, _ := claims["email"].(string)
 	name, _ := claims["name"].(string)
 	return Identity{Subject: subject, Email: email, Name: name, Claims: claims}, nil
+}
+
+func (a *Authenticator) keyForToken(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+	if a.publicKey != nil {
+		return a.publicKey, nil
+	}
+	if kid == "" {
+		return nil, errors.New("unsupported assertion")
+	}
+	return a.lookupKey(ctx, kid)
 }
 
 func (a *Authenticator) lookupKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {

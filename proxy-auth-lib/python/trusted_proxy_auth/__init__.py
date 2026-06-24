@@ -32,6 +32,7 @@ class Config:
     jwks_url: str
     issuer: str
     audience: str
+    public_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class TrustedProxyAuthMiddleware:
         _validate_config(config)
         self.app = app
         self.config = config
-        self.jwks_client = PyJWKClient(config.jwks_url)
+        self.jwks_client = None if config.public_key else PyJWKClient(config.jwks_url)
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") != "http":
@@ -84,17 +85,35 @@ def load_config_from_env(env: dict[str, str] | None = None, hostname: str | None
         jwks_url=values.get("TRUSTED_PROXY_JWKS_URL") or f"{base}/.well-known/jwks.json",
         issuer=values.get("TRUSTED_PROXY_ISSUER") or base,
         audience=values.get("TRUSTED_PROXY_AUDIENCE") or base,
+        public_key=_resolve_public_key(values),
     )
+
+
+# JWKS is preferred for key rotation. A static public key (PEM) is an opt-in
+# alternative for self-signed assertions: when set, verification uses it
+# directly and never touches the network.
+def _resolve_public_key(values: Any) -> str | None:
+    inline = values.get("TRUSTED_PROXY_PUBLIC_KEY")
+    if inline:
+        return inline
+    path = values.get("TRUSTED_PROXY_PUBLIC_KEY_FILE")
+    if path:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    return None
 
 
 def verify_assertion(token: str, config: Config, jwks_client: PyJWKClient | None = None) -> Identity:
     _validate_config(config)
-    client = jwks_client or PyJWKClient(config.jwks_url)
     try:
-        signing_key = client.get_signing_key_from_jwt(token)
+        if config.public_key:
+            signing_key: Any = config.public_key
+        else:
+            client = jwks_client or PyJWKClient(config.jwks_url)
+            signing_key = client.get_signing_key_from_jwt(token).key
         claims = jwt.decode(
             token,
-            signing_key.key,
+            signing_key,
             algorithms=["RS256"],
             issuer=config.issuer,
             audience=config.audience,
@@ -123,6 +142,8 @@ def _read_header(scope: dict[str, Any], header_name: str) -> str | None:
 
 
 def _validate_config(config: Config) -> None:
-    for key in ("header", "jwks_url", "issuer", "audience"):
+    for key in ("header", "issuer", "audience"):
         if not getattr(config, key):
             raise ValueError(f"missing config: {key}")
+    if not config.public_key and not config.jwks_url:
+        raise ValueError("missing config: jwks_url or public_key")

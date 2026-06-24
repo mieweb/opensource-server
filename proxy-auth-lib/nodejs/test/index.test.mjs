@@ -54,6 +54,22 @@ describe('verifyAssertion', () => {
   }
 });
 
+describe('static public key', () => {
+  test('verifies with a PEM public key and no network', async () => {
+    const publicKey = await readFile(new URL('../../testdata/public-key.pem', import.meta.url), 'utf8');
+    const staticConfig = {
+      header: 'x-trusted-proxy-assertion',
+      issuer: 'https://issuer.example.test',
+      audience: 'my-service',
+      publicKey,
+    };
+    // Pass a null fetch to prove verification never touches the network.
+    const identity = await verifyAssertion(tokens.valid, staticConfig, null);
+    assert.equal(identity.subject, 'user-123');
+    await assert.rejects(() => verifyAssertion(tokens.invalid_signature, staticConfig, null));
+  });
+});
+
 describe('createTrustedProxyAuth', () => {
   async function invoke(token) {
     let nextCalled = false;
@@ -113,8 +129,14 @@ describe('createTrustedProxyAuth', () => {
         jwksUrl,
         issuer: config.issuer,
         audience: config.audience,
+        publicKey: null,
       },
     );
+  });
+
+  test('reads an inline static public key from the environment', () => {
+    const derived = loadConfigFromEnv({ TRUSTED_PROXY_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\nMII...\n-----END PUBLIC KEY-----' });
+    assert.match(derived.publicKey, /BEGIN PUBLIC KEY/);
   });
 
   test('derives the auth domain from the host fqdn', () => {

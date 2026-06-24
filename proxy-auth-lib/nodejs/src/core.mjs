@@ -1,4 +1,5 @@
 import { createPublicKey, createVerify } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 
 export const UNAUTHORIZED_RESPONSE = { error: 'invalid_assertion' };
@@ -23,7 +24,21 @@ export function loadConfigFromEnv(env = process.env, hostname = os.hostname()) {
     jwksUrl: env.TRUSTED_PROXY_JWKS_URL || `${base}/.well-known/jwks.json`,
     issuer: env.TRUSTED_PROXY_ISSUER || base,
     audience: env.TRUSTED_PROXY_AUDIENCE || base,
+    publicKey: resolvePublicKey(env),
   };
+}
+
+// JWKS is preferred for key rotation. A static public key (PEM) is an opt-in
+// alternative for self-signed assertions: when set, verification uses it
+// directly and never touches the network.
+function resolvePublicKey(env) {
+  if (env.TRUSTED_PROXY_PUBLIC_KEY) {
+    return env.TRUSTED_PROXY_PUBLIC_KEY;
+  }
+  if (env.TRUSTED_PROXY_PUBLIC_KEY_FILE) {
+    return readFileSync(env.TRUSTED_PROXY_PUBLIC_KEY_FILE, 'utf8');
+  }
+  return null;
 }
 
 export function resolveFetch(options = {}) {
@@ -59,9 +74,6 @@ export function sendUnauthorized(res) {
 
 export async function verifyAssertion(token, config, fetchImpl = globalThis.fetch) {
   validateConfig(config);
-  if (typeof fetchImpl !== 'function') {
-    throw new Error('fetch is required to resolve JWKS');
-  }
 
   const parts = token.split('.');
   if (parts.length !== 3) {
@@ -72,20 +84,16 @@ export async function verifyAssertion(token, config, fetchImpl = globalThis.fetc
   const claims = parseSegment(parts[1]);
   const signature = decodeBase64Url(parts[2]);
 
-  if (header.alg !== 'RS256' || !header.kid) {
+  // Pin the algorithm: never let the token pick a weaker scheme.
+  if (header.alg !== 'RS256') {
     throw new Error('unsupported assertion');
   }
 
-  const jwks = await fetchJwks(config.jwksUrl, fetchImpl);
-  const jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
-  if (!jwk) {
-    throw new Error('unknown signing key');
-  }
+  const key = await resolveVerificationKey(header, config, fetchImpl);
 
   const verifier = createVerify('RSA-SHA256');
   verifier.update(`${parts[0]}.${parts[1]}`);
   verifier.end();
-  const key = createPublicKey({ key: jwk, format: 'jwk' });
   if (!verifier.verify(key, signature)) {
     throw new Error('invalid signature');
   }
@@ -110,11 +118,32 @@ export async function verifyAssertion(token, config, fetchImpl = globalThis.fetc
   };
 }
 
+async function resolveVerificationKey(header, config, fetchImpl) {
+  if (config.publicKey) {
+    return createPublicKey(config.publicKey);
+  }
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('fetch is required to resolve JWKS');
+  }
+  if (!header.kid) {
+    throw new Error('unsupported assertion');
+  }
+  const jwks = await fetchJwks(config.jwksUrl, fetchImpl);
+  const jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
+  if (!jwk) {
+    throw new Error('unknown signing key');
+  }
+  return createPublicKey({ key: jwk, format: 'jwk' });
+}
+
 export function validateConfig(config) {
-  for (const key of ['header', 'jwksUrl', 'issuer', 'audience']) {
+  for (const key of ['header', 'issuer', 'audience']) {
     if (!config?.[key]) {
       throw new Error(`missing config: ${key}`);
     }
+  }
+  if (!config.publicKey && !config.jwksUrl) {
+    throw new Error('missing config: jwksUrl or publicKey');
   }
 }
 

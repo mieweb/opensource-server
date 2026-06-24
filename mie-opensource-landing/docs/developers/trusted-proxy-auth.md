@@ -34,6 +34,12 @@ Every setting is optional. By default the auth domain is derived from the host's
 | `TRUSTED_PROXY_JWKS_URL` | `https://<domain>/.well-known/jwks.json` | JWKS URL for key discovery |
 | `TRUSTED_PROXY_ISSUER` | `https://<domain>` | Expected issuer |
 | `TRUSTED_PROXY_AUDIENCE` | `https://<domain>` | Expected audience |
+| `TRUSTED_PROXY_PUBLIC_KEY` | _(unset)_ | Inline PEM public key; skips JWKS and verifies offline |
+| `TRUSTED_PROXY_PUBLIC_KEY_FILE` | _(unset)_ | Path to a PEM public key (alternative to the inline form) |
+
+### Key source: JWKS vs static public key
+
+JWKS is preferred and is the default: it supports key rotation and is what OIDC providers (Authentik, Cloudflare Access, Pomerium) publish. A static public key is an opt-in alternative for the self-signed case where your own proxy mints assertions with a key you control. When `TRUSTED_PROXY_PUBLIC_KEY` (or `_FILE`) is set, verification uses it directly and never calls the network; otherwise the JWKS URL is used. Either way the algorithm is pinned to `RS256`.
 
 ## Implemented MVP targets
 
