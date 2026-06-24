@@ -1,0 +1,13 @@
+{
+  "name": "@mieweb/trusted-proxy-auth",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./express": "./src/express.mjs",
+    "./fastify": "./src/fastify.mjs",
+    "./hono": "./src/hono.mjs"
+  },
+  "publish": {
+    "include": ["src", "jsr.json", "README.md"]
+  }
+}

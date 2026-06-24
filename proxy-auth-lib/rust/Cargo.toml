@@ -2,6 +2,13 @@
 name = "trusted-proxy-auth"
 version = "0.1.0"
 edition = "2021"
+description = "Vendor-neutral Axum middleware that verifies signed proxy identity assertions (RS256 JWT via JWKS or a static public key)."
+license = "Apache-2.0"
+repository = "https://github.com/mieweb/opensource-server"
+documentation = "https://github.com/mieweb/opensource-server/tree/main/proxy-auth-lib/rust"
+readme = "../README.md"
+keywords = ["jwt", "jwks", "proxy", "authentication", "axum"]
+categories = ["authentication", "web-programming"]
 
 [dependencies]
 axum = "0.8.9"

@@ -74,3 +74,7 @@ Do not trust raw identity headers such as `X-Forwarded-User`, `X-User`, `X-Email
 ## Proxy pattern
 
 The same middleware works when the upstream component is Cloudflare Access, Pomerium, OAuth2 Proxy, Envoy `ext_authz`, Traefik ForwardAuth, NGINX `auth_request`, or a custom gateway. The application trusts the signature, not the proxy brand.
+
+## Releasing
+
+Pushing a `proxy-auth-lib-v<semver>` tag (e.g. `proxy-auth-lib-v1.2.3`) runs [`.github/workflows/proxy-auth-lib-release.yml`](../.github/workflows/proxy-auth-lib-release.yml), which stamps that one version into every manifest and publishes each package to its registry — npm, JSR, PyPI, crates.io, Atmosphere (Meteor), and the Go module proxy — as independent jobs. The same commands run locally from [`scripts/`](scripts/README.md).
