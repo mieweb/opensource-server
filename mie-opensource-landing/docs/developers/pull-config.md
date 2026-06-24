@@ -1,6 +1,8 @@
 
 # pull-config
 
+{{ contributor_warning }}
+
 Cron-based configuration management that pulls config files from the manager API. Installed on agent and manager containers. For deployment instructions, see [Deploying Agents](../admins/deploying-agents.md).
 
 ## Architecture

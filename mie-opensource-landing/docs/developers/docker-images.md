@@ -1,6 +1,8 @@
 
 # Docker Images
 
+{{ contributor_warning }}
+
 OCI container images automatically built and published to GitHub Container Registry (GHCR). Used as base templates for Proxmox containers.
 
 ## Available Images

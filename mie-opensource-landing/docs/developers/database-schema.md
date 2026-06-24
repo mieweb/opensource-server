@@ -1,6 +1,8 @@
 
 # Database Schema
 
+{{ contributor_warning }}
+
 The cluster management system uses Sequelize ORM with PostgreSQL. While Sequelize supports other databases, only PostgreSQL is officially supported.
 
 ## Entity Relationship Diagram
