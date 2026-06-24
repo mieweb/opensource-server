@@ -46,7 +46,7 @@ nav = [
       { "Kernel Keyring" = "admins/kernel-keyring.md" },
       { "NVIDIA Container Toolkit" = "admins/nvidia-container-toolkit.md" },
     ] },
-    { "Developers" = [
+    { "Contributors" = [
       { "System Architecture" = "developers/system-architecture.md" },
       { "Core Technologies" = "developers/core-technologies.md" },
       { "Development Workflow" = "developers/development-workflow.md" },

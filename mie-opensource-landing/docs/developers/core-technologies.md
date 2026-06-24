@@ -1,6 +1,8 @@
 
 # Core Technologies
 
+{{ contributor_warning }}
+
 External documentation for core components.
 
 | Component | Links |

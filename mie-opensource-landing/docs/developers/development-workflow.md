@@ -1,5 +1,7 @@
 # Development Workflow
 
+{{ contributor_warning }}
+
 There are two ways to run the Manager locally:
 
 - **`make dev`** — a lightweight, Proxmox-free workflow for iterating on the

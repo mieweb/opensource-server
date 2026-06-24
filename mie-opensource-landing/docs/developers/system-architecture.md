@@ -1,6 +1,8 @@
 
 # System Architecture
 
+{{ contributor_warning }}
+
 ## Overview
 
 ```mermaid

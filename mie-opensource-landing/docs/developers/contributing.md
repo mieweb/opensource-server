@@ -1,6 +1,8 @@
 
 # Contributing
 
+{{ contributor_warning }}
+
 ## Getting Started
 
 1. Review the [GitHub repository](https://github.com/mieweb/opensource-server) and open issues

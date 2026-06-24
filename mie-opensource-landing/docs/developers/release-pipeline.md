@@ -1,5 +1,7 @@
 # Release Pipeline
 
+{{ contributor_warning }}
+
 The three deployable components are packaged as Debian packages and published
 to GitHub Releases as a flat APT repository. The same component build commands
 are reused by local development, the container images, and CI.
