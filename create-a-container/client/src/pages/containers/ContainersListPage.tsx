@@ -253,6 +253,19 @@ export function ContainersListPage() {
 
   const hasContainers = !!data && data.length > 0;
 
+  // The Proxmox cluster web UI lives at the origin of any node's API URL
+  // (e.g. https://os.mieweb.org:8006). Derive it from the container list so we
+  // never hardcode a cluster host.
+  const proxmoxClusterUrl = (() => {
+    const apiUrl = data?.find((c) => c.nodeApiUrl)?.nodeApiUrl;
+    if (!apiUrl) return null;
+    try {
+      return new URL(apiUrl).origin;
+    } catch {
+      return null;
+    }
+  })();
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -294,6 +307,17 @@ export function ContainersListPage() {
                 <span className="hidden sm:inline">Nodes</span>
               </Button>
             </Link>
+            {proxmoxClusterUrl && (
+              <a href={proxmoxClusterUrl} target="_blank" rel="noopener noreferrer">
+                <Button
+                  variant="ghost"
+                  aria-label="Open Proxmox cluster web UI"
+                  leftIcon={<ExternalLink className="size-4" />}
+                >
+                  <span className="hidden sm:inline">Proxmox</span>
+                </Button>
+              </a>
+            )}
             <Link to={`/sites/${siteId}/containers/new`}>
               <Button variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
                 <span className="hidden sm:inline">New container</span>
