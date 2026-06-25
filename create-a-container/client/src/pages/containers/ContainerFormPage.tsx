@@ -229,7 +229,8 @@ export function ContainerFormPage() {
       }
       setMetadataMsg(`Loaded metadata: ${added} port(s) discovered.`);
     },
-    onError: (err: ApiError) => setMetadataMsg(err.message),
+    onError: (err: ApiError) =>
+      setMetadataMsg(`${err.message} — Use "Fetch metadata" to try again.`),
   });
 
   // Tracks the last image we auto-fetched so blurring the custom-image input
