@@ -173,7 +173,7 @@ A single instance can serve many services this way — they all proxy `/oauth2/*
     oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address.
 
 !!! note "Multiple apps, one oauth2-proxy"
-    Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP, and make sure every protected host is covered by `whitelist_domains`. With the `__Host-` cookie above, a user signs in separately per host; to share one sign-in across subdomains instead, see [Sharing one sign-in](#sharing-one-sign-in-across-subdomains).
+    Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP, and make sure every protected host is covered by `whitelist_domains`.
 
 !!! warning "Do not set `reverse_proxy`"
     Because nginx proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), leave `reverse_proxy` off. Enabling it makes oauth2-proxy trust `X-Forwarded-*` headers, which this integration neither sends nor needs.
@@ -196,15 +196,6 @@ See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oa
 When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Request-*` response headers and forwards the user's identity to the backend under a **stable header contract** (`X-User`, `X-Preferred-Username`, `X-Email`, `X-Groups`, and — with `--pass-access-token` — `X-Access-Token`).
 
 For the full header table and how applications consume the identity (server-side headers, verifying the access-token JWT, and the browser `/oauth2/userinfo` endpoint for static frontends), see [Adding Authentication](../../users/consuming-auth.md).
-
-### Sharing one sign-in across subdomains
-
-The example config scopes the session cookie to each host (via the `__Host-` cookie name), so a user signs in separately on every subdomain. To share a single sign-in across subdomains instead:
-
-- add `cookie_domains = [".example.com"]` (the example's `whitelist_domains` already covers the subdomains), and
-- change `cookie_name` to the `__Secure-` prefix (e.g. `"__Secure-oauth2_proxy"`) — the `__Host-` prefix forbids a `Domain` attribute and is therefore incompatible with `cookie_domains`.
-
-Make the protected services subdomains of the same parent domain.
 
 ### Flow
 
