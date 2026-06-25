@@ -117,58 +117,51 @@ The manager does **not** provide authentication itself — you must deploy and c
 
 ### Configuring oauth2-proxy
 
-Run oauth2-proxy as a standalone process listening on its own address, and set the domain's **oauth2-proxy URL** to that address (e.g. `http://127.0.0.1:4180`). NGINX proxies the whole `/oauth2/*` path on each protected service to that address, so to the browser the OAuth2 endpoints appear under the app's own hostname (`app.example.com/oauth2/...`) while actually being served by oauth2-proxy.
+Run oauth2-proxy with a config like the one below, then:
 
-1. **Run oauth2-proxy** on a fixed address reachable from the NGINX host (loopback if co-located, e.g. `http://127.0.0.1:4180`, or a private host/port).
-2. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth.
-3. **Enable Require auth** on the individual services you want protected.
+1. **Point protected domains at it.** Set the **oauth2-proxy URL** on each external domain whose services should require auth to the address from `http_address` (e.g. `http://127.0.0.1:4180`).
+2. **Enable Require auth** on the individual services you want protected.
 
-A single oauth2-proxy instance can serve many services this way — they all proxy `/oauth2/*` to the same address. Because NGINX passes each app's own `Host` through, oauth2-proxy builds redirect URIs and cookies against the correct app hostname without any extra configuration.
+Copy this `oauth2-proxy.cfg`, fill in the four OIDC values from your identity provider plus a generated cookie secret, and run `oauth2-proxy --config=/etc/oauth2-proxy.cfg`:
 
-!!! note "Putting oauth2-proxy behind the same load balancer"
-    oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address.
-
-This manager's nginx integration needs oauth2-proxy to return identity in `X-Auth-Request-*` headers (`set_xauthrequest`) and, if your apps use the access token, to expose it (`pass_access_token`). The example below sets these along with everything else required.
-
-### Example configuration
-
-A complete `oauth2-proxy.cfg` for use with this manager. Copy it, fill in the four OIDC values from your identity provider (and a generated cookie secret), and run `oauth2-proxy --config=/etc/oauth2-proxy.cfg`.
-
-```ini
+```toml
 # --- listen address -------------------------------------------------------
 # This is what you put in the domain's "oauth2-proxy URL".
 http_address = "127.0.0.1:4180"
 
 # --- your identity provider (fill these in) -------------------------------
-provider      = "oidc"
-oidc_issuer_url = "https://idp.example.com/realms/your-realm"   # OIDC issuer
-client_id     = "REPLACE_ME"
+provider = "oidc"
+oidc_issuer_url = "https://idp.example.com/realms/your-realm"
+client_id = "REPLACE_ME"
 client_secret = "REPLACE_ME"
-# Generate with: openssl rand -base64 32
-cookie_secret = "REPLACE_ME"            # must be 16, 24, or 32 bytes
-# Which users may sign in. "*" allows any email the IdP returns.
-email_domains = ["*"]
+cookie_secret = "REPLACE_ME"   # 16, 24, or 32 bytes; generate: openssl rand -base64 32
+email_domains = ["*"]          # which users may sign in; "*" = any email the IdP returns
 
 # --- required for this manager's nginx integration ------------------------
-# Return identity in X-Auth-Request-* headers (nginx forwards them to your app).
-set_xauthrequest = true
-# Also expose the access token (drop this if your app doesn't need it).
-pass_access_token = true
-# oauth2-proxy only answers /oauth2/* here; nginx serves the app itself.
-upstreams = ["static://202"]
-# The browser is on HTTPS even though nginx talks to us over plain HTTP,
-# so force https:// redirect URLs and Secure cookies.
-force_https  = true
+set_xauthrequest = true        # return identity in X-Auth-Request-* headers
+pass_access_token = true       # also expose the access token (drop if unused)
+upstreams = ["static://202"]   # oauth2-proxy only answers /oauth2/*; nginx serves the app
+force_https = true             # browser is HTTPS even though nginx talks to us over HTTP
 cookie_secure = true
 
 # --- recommended ----------------------------------------------------------
-# Keep the session cookie small (see "Large session cookies" below).
-session_store_type   = "redis"
+session_store_type = "redis"   # keep the session cookie small (see below)
 redis_connection_url = "redis://127.0.0.1:6379"
 ```
 
+That's the whole setup. The rest of this section explains how it fits together and the options worth knowing about.
+
+### How it works
+
+oauth2-proxy runs as a standalone process listening on its own address (`http_address`). NGINX proxies the whole `/oauth2/*` path on each protected service straight to that address, so to the browser the OAuth2 endpoints appear under the app's own hostname (`app.example.com/oauth2/...`) while actually being served by oauth2-proxy.
+
+A single instance can serve many services this way — they all proxy `/oauth2/*` to the same address. Because NGINX passes each app's own `Host` through, oauth2-proxy builds redirect URIs and cookies against the correct app hostname without any extra configuration.
+
+!!! note "Putting oauth2-proxy behind the same load balancer"
+    oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address.
+
 !!! note "Multiple apps, one oauth2-proxy"
-    A single instance can serve every protected service. Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP. If your protected services span multiple subdomains and you want one shared sign-in, also add `cookie_domains = [".example.com"]` and `whitelist_domains = [".example.com"]`.
+    Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP. If your protected services span multiple subdomains and you want one shared sign-in, also add `cookie_domains = [".example.com"]` and `whitelist_domains = [".example.com"]`.
 
 !!! warning "Do not set `reverse_proxy`"
     Because nginx proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), leave `reverse_proxy` off. Enabling it makes oauth2-proxy trust `X-Forwarded-*` headers, which this integration neither sends nor needs.
@@ -176,15 +169,15 @@ redis_connection_url = "redis://127.0.0.1:6379"
 !!! warning "HTTPS scheme"
     oauth2-proxy builds its `redirect_uri` and secure cookies from the scheme of the connection it receives, which is whatever scheme you put in the **oauth2-proxy URL**:
 
-    - **`http://…` upstream** (most common, e.g. `http://127.0.0.1:4180`): oauth2-proxy sees a plain-HTTP connection, so the example config sets `force_https = true` and `cookie_secure = true` to still emit `https://` redirect URIs and Secure cookies for HTTPS browsers.
+    - **`http://…` upstream** (most common, e.g. `http://127.0.0.1:4180`): oauth2-proxy sees a plain-HTTP connection, so the config sets `force_https = true` and `cookie_secure = true` to still emit `https://` redirect URIs and Secure cookies for HTTPS browsers.
     - **`https://…` upstream**: terminate TLS on the oauth2-proxy listener instead (`tls_cert_file` / `tls_key_file`); oauth2-proxy then infers HTTPS from the connection and you can drop `force_https`.
 
-See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
-
 !!! warning "Large session cookies"
-    With the default **cookie** session store, oauth2-proxy packs the entire encrypted session (access, refresh, and ID tokens plus claims) into the `_oauth2_proxy` cookie, sent on every request. This easily exceeds 4&nbsp;KB and can trip NGINX header-buffer limits (e.g. a `502` on the `/oauth2/callback` response). The example config above avoids this by using the **Redis** session store (`session_store_type = "redis"`), which keeps only a small ticket in the cookie.
+    With the default **cookie** session store, oauth2-proxy packs the entire encrypted session (access, refresh, and ID tokens plus claims) into the `_oauth2_proxy` cookie, sent on every request. This easily exceeds 4&nbsp;KB and can trip NGINX header-buffer limits (e.g. a `502` on the `/oauth2/callback` response). The config above avoids this with the **Redis** session store (`session_store_type = "redis"`), which keeps only a small ticket in the cookie.
 
     If you cannot run Redis, reduce what the cookie carries instead: drop `pass_access_token` if your app doesn't need the token, and request only the scopes you use. See the [session storage docs](https://oauth2-proxy.github.io/oauth2-proxy/configuration/session_storage/).
+
+See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oauth2-proxy/configuration/integrations/nginx/) for full configuration details.
 
 ### Identity Headers
 
