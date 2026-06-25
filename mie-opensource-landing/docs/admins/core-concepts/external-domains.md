@@ -136,17 +136,21 @@ client_id = "REPLACE_ME"
 client_secret = "REPLACE_ME"
 cookie_secret = "REPLACE_ME"   # 16, 24, or 32 bytes; generate: openssl rand -base64 32
 email_domains = ["*"]          # which users may sign in; "*" = any email the IdP returns
+code_challenge_method = "S256" # use PKCE (recommended)
 
 # --- required for this manager's nginx integration ------------------------
 set_xauthrequest = true        # return identity in X-Auth-Request-* headers
 pass_access_token = true       # also expose the access token (drop if unused)
-upstreams = ["static://202"]   # oauth2-proxy only answers /oauth2/*; nginx serves the app
 force_https = true             # browser is HTTPS even though nginx talks to us over HTTP
 cookie_secure = true
 
 # --- recommended ----------------------------------------------------------
 session_store_type = "redis"   # keep the session cookie small (see below)
 redis_connection_url = "redis://127.0.0.1:6379"
+
+# --- optional, depending on your IdP / preference -------------------------
+skip_provider_button = true              # go straight to the IdP, skip the oauth2-proxy landing page
+# insecure_oidc_allow_unverified_email = true  # accept logins when the IdP marks email unverified
 ```
 
 That's the whole setup. The rest of this section explains how it fits together and the options worth knowing about.
