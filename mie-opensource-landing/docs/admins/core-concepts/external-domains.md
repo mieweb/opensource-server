@@ -143,6 +143,10 @@ set_xauthrequest = true        # return identity in X-Auth-Request-* headers
 pass_access_token = true       # also expose the access token (drop if unused)
 force_https = true             # browser is HTTPS even though nginx talks to us over HTTP
 cookie_secure = true
+# Must cover every protected host — nginx sends an absolute post-sign-in
+# redirect, which oauth2-proxy rejects unless its domain is whitelisted.
+# A leading dot matches the apex and all subdomains.
+whitelist_domains = [".example.com"]
 
 # --- recommended ----------------------------------------------------------
 session_store_type = "redis"   # keep the session cookie small (see below)
@@ -165,7 +169,7 @@ A single instance can serve many services this way — they all proxy `/oauth2/*
     oauth2-proxy does **not** need to be on the NGINX host. If you want it to live behind the same load-balancer IP, expose its port with an L4 (TCP) passthrough — e.g. a **transport service**, which NGINX serves via its `stream {}` block — and point the **oauth2-proxy URL** at that address.
 
 !!! note "Multiple apps, one oauth2-proxy"
-    Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP. If your protected services span multiple subdomains and you want one shared sign-in, also add `cookie_domains = [".example.com"]` and `whitelist_domains = [".example.com"]`.
+    Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP, and make sure every protected host is covered by `whitelist_domains`. If your protected services span multiple subdomains and you want them to share a single sign-in, also add `cookie_domains = [".example.com"]`.
 
 !!! warning "Do not set `reverse_proxy`"
     Because nginx proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), leave `reverse_proxy` off. Enabling it makes oauth2-proxy trust `X-Forwarded-*` headers, which this integration neither sends nor needs.
@@ -191,7 +195,7 @@ For the full header table and how applications consume the identity (server-side
 
 ### Sharing one sign-in across subdomains
 
-Because `/oauth2/*` is served on each app's own hostname, the oauth2-proxy cookie is scoped to that host by default. To share a single sign-in across multiple subdomains, add `cookie_domains = [".example.com"]` and `whitelist_domains = [".example.com"]` to the config, and make the protected services subdomains of the same parent domain.
+Because `/oauth2/*` is served on each app's own hostname, the oauth2-proxy cookie is scoped to that host by default. To share a single sign-in across multiple subdomains, add `cookie_domains = [".example.com"]` to the config (the example's `whitelist_domains = [".example.com"]` already covers the subdomains), and make the protected services subdomains of the same parent domain.
 
 ### Flow
 
