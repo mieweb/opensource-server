@@ -33,6 +33,12 @@ http {
 
   server_names_hash_bucket_size 128;
 
+  <%_ /*
+    Headroom for large request headers — chiefly the oauth2-proxy session
+    cookie and JWT access tokens, which can run several KB. Default is 4 8k.
+  */ -%>
+  large_client_header_buffers 8 16k;
+
   <%_ /* Cache zone for auth_request subrequests, keyed on credentials. */ -%>
   proxy_cache_path /var/cache/nginx/auth_cache levels=1:2 keys_zone=auth_cache:1m
                    max_size=10m inactive=5m;
@@ -210,6 +216,9 @@ http {
     location /oauth2/ {
       proxy_pass <%= authServer %>;
       proxy_set_header Host $host;
+      <%_ /* Sign-in/callback responses can set large session cookies. */ -%>
+      proxy_buffer_size 16k;
+      proxy_buffers 8 16k;
     }
 
     location = /oauth2/auth {
@@ -219,6 +228,14 @@ http {
       <%_ /* nginx auth_request includes headers but not the request body. */ -%>
       proxy_set_header Content-Length   "";
       proxy_pass_request_body           off;
+
+      <%_ /*
+        oauth2-proxy's auth response carries the identity in headers, including
+        the access-token JWT (several KB). Enlarge the response-header buffers
+        so a big token doesn't make the auth subrequest fail (502 -> 500).
+      */ -%>
+      proxy_buffer_size 16k;
+      proxy_buffers 8 16k;
 
       proxy_cache auth_cache;
       proxy_cache_key "$http_cookie$http_authorization";
