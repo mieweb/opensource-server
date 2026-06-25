@@ -155,14 +155,9 @@ See the [oauth2-proxy NGINX integration guide](https://oauth2-proxy.github.io/oa
 
 ### Identity Headers
 
-When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Request-*` response headers and forwards them to the backend under a **stable header contract** (so the backend sees the same names regardless of the auth provider):
+When oauth2-proxy runs with `--set-xauthrequest`, NGINX captures its `X-Auth-Request-*` response headers and forwards the user's identity to the backend under a **stable header contract** (`X-User`, `X-Preferred-Username`, `X-Email`, `X-Groups`, and — with `--pass-access-token` — `X-Access-Token`).
 
-| Header forwarded to backend | Source (oauth2-proxy response) |
-|-----------------------------|--------------------------------|
-| `X-User` | `X-Auth-Request-User` |
-| `X-Email` | `X-Auth-Request-Email` |
-| `X-Groups` | `X-Auth-Request-Groups` |
-| `X-Access-Token` | `X-Auth-Request-Access-Token` (with `--pass-access-token`) |
+For the full header table and how applications consume the identity (server-side headers, verifying the access-token JWT, and the browser `/oauth2/userinfo` endpoint for static frontends), see [Adding Authentication](../../users/consuming-auth.md).
 
 ### Sharing one sign-in across subdomains
 
