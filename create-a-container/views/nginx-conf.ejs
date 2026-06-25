@@ -33,7 +33,7 @@ http {
 
   server_names_hash_bucket_size 128;
 
-  # Cache zone for auth_request subrequests, keyed on credentials.
+  <%_ /* Cache zone for auth_request subrequests, keyed on credentials. */ -%>
   proxy_cache_path /var/cache/nginx/auth_cache levels=1:2 keys_zone=auth_cache:1m
                    max_size=10m inactive=5m;
 
@@ -41,10 +41,29 @@ http {
   modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
   modsecurity_transaction_id "$request_id";
 
-  # Internal error page server on a unix socket. Named locations proxy here
-  # with proxy_method GET so that NGINX's static file module will serve the
-  # HTML regardless of the original request method (POST, PUT, etc.).
-  # ModSecurity is disabled to prevent re-evaluation of the original request.
+  <%_ /* Modern TLS configuration */ -%>
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+  ssl_prefer_server_ciphers off;
+
+  <%_ /* SSL session optimization */ -%>
+  ssl_session_cache shared:SSL:10m;
+  ssl_session_timeout 10m;
+  ssl_session_tickets off;
+
+  <%_ /* Security headers (a location-level add_header would replace these). */ -%>
+  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+  add_header X-Frame-Options "SAMEORIGIN" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-XSS-Protection "1; mode=block" always;
+  add_header Alt-Svc 'h3=":443"; ma=86400' always;
+
+  <%_ /*
+    Internal error page server on a unix socket. Named locations proxy here
+    with proxy_method GET so that NGINX's static file module will serve the
+    HTML regardless of the original request method (POST, PUT, etc.).
+    ModSecurity is disabled to prevent re-evaluation of the original request.
+  */ -%>
   upstream error_pages {
     server unix:/run/nginx-error-pages.sock;
   }
@@ -79,29 +98,11 @@ http {
 
     server_name _;
 
-    # SSL certificates
+    <%_ /* SSL certificates */ -%>
     ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
     ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
 
-    # Modern TLS configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers off;
-
-    # SSL session optimization
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    ssl_session_tickets off;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
-
     error_page 403 @403;
-
     location @403 {
       rewrite ^ /403.html break;
       proxy_method GET;
@@ -110,58 +111,7 @@ http {
       proxy_pass http://error_pages;
     }
 
-    <%_ if (httpServices.length === 0) { _%>
-    error_page 502 @502;
-
-    location @502 {
-      rewrite ^ /502.html break;
-      proxy_method GET;
-      proxy_pass_request_body off;
-      proxy_set_header Content-Length "";
-      proxy_pass http://error_pages;
-    }
-
-    location / {
-      proxy_pass http://localhost:3000;
-      proxy_http_version 1.1;
-
-      # Proxy headers
-      proxy_set_header Host $host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
-      proxy_set_header X-Forwarded-Host $host;
-      proxy_set_header X-Forwarded-Port $server_port;
-
-      # WebSocket support
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
-
-      # Timeouts
-      proxy_connect_timeout 60s;
-      proxy_send_timeout 60s;
-      proxy_read_timeout 60s;
-
-      # Buffering (disable for SSE/streaming)
-      proxy_buffering off;
-      proxy_request_buffering off;
-
-      # Allow large uploads
-      client_max_body_size 2G;
-    }
-    <%_ } else { _%>
-    error_page 403 @403;
     error_page 404 @404;
-    error_page 502 @502;
-
-    location @403 {
-      rewrite ^ /403.html break;
-      proxy_method GET;
-      proxy_pass_request_body off;
-      proxy_set_header Content-Length "";
-      proxy_pass http://error_pages;
-    }
-
     location @404 {
       rewrite ^ /404.html break;
       proxy_method GET;
@@ -170,6 +120,7 @@ http {
       proxy_pass http://error_pages;
     }
 
+    error_page 502 @502;
     location @502 {
       rewrite ^ /502.html break;
       proxy_method GET;
@@ -178,6 +129,36 @@ http {
       proxy_pass http://error_pages;
     }
 
+    <%_ if (httpServices.length === 0) { _%>
+    location / {
+      proxy_pass http://localhost:3000;
+      proxy_http_version 1.1;
+
+      <%_ /* Proxy headers */ -%>
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header X-Forwarded-Host $host;
+      proxy_set_header X-Forwarded-Port $server_port;
+
+      <%_ /* WebSocket support */ -%>
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+
+      <%_ /* Timeouts */ -%>
+      proxy_connect_timeout 60s;
+      proxy_send_timeout 60s;
+      proxy_read_timeout 60s;
+
+      <%_ /* Buffering (disable for SSE/streaming) */ -%>
+      proxy_buffering off;
+      proxy_request_buffering off;
+
+      <%_ /* Allow large uploads */ -%>
+      client_max_body_size 2G;
+    }
+    <%_ } else { _%>
     return 404;
     <%_ } _%>
   }
@@ -195,39 +176,11 @@ http {
     
     server_name <%= service.httpService.externalHostname %>.<%= service.httpService.externalDomain.name %>;
   
-    # SSL certificates
+    <%_ /* SSL certificates */ -%>
     ssl_certificate /etc/ssl/certs/<%= service.httpService.externalDomain.name %>.crt;
     ssl_certificate_key /etc/ssl/private/<%= service.httpService.externalDomain.name %>.key;
-    
-    # Modern TLS configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers off;
-    
-    # SSL session optimization
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    ssl_session_tickets off;
-    
-    # Security headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
-    
-    # All error_page mappings for this server are declared here, once. Keep
-    # them at server scope (not inside a location) so a location-level
-    # error_page can never replace the inherited list — see the auth-enabled
-    # `location /` below, which relies on inheriting these.
-    error_page 403 @403;
-    error_page 502 @502;
-    <%_ if (authRequired && authServer) { _%>
-    error_page 401 = @oauth2_signin;
-    <%_ } else if (authRequired && !authServer) { _%>
-    error_page 503 @auth_unavailable;
-    <%_ } _%>
 
+    error_page 403 @403;
     location @403 {
       rewrite ^ /403.html break;
       proxy_method GET;
@@ -236,6 +189,7 @@ http {
       proxy_pass http://error_pages;
     }
 
+    error_page 502 @502;
     location @502 {
       rewrite ^ /502.html break;
       proxy_method GET;
@@ -245,14 +199,14 @@ http {
     }
 
     <%_ if (authRequired && authServer) { _%>
-    # oauth2-proxy runs on its own address (this domain's "oauth2-proxy URL").
-    # We proxy the whole /oauth2/* subtree straight to it in a single hop and
-    # pass the app's own Host through, so oauth2-proxy builds redirect URIs and
-    # cookies against this app's hostname. Because it terminates these requests
-    # directly (no proxy in front of it from its point of view), oauth2-proxy does
-    # NOT need --reverse-proxy or any X-Forwarded-* headers. The request scheme is
-    # whatever <%= authServer %> uses; pair an http:// upstream with
-    # --force-https / --cookie-secure on oauth2-proxy if the browser is on HTTPS.
+    <%_ /*
+      oauth2-proxy runs on its own address (this domain's "oauth2-proxy URL").
+      We proxy the whole /oauth2/* subtree to it and pass the app's own Host
+      through, so oauth2-proxy builds redirect URIs and cookies against this
+      app's hostname. The request scheme is whatever the oauth2-proxy URL uses;
+      pair an http:// upstream with --force-https / --cookie-secure on
+      oauth2-proxy if the browser is on HTTPS.
+    */ -%>
     location /oauth2/ {
       proxy_pass <%= authServer %>;
       proxy_set_header Host $host;
@@ -262,7 +216,7 @@ http {
       internal;
       proxy_pass <%= authServer %>/oauth2/auth;
       proxy_set_header Host             $host;
-      # nginx auth_request includes headers but not the request body.
+      <%_ /* nginx auth_request includes headers but not the request body. */ -%>
       proxy_set_header Content-Length   "";
       proxy_pass_request_body           off;
 
@@ -272,13 +226,14 @@ http {
       proxy_cache_valid 401 30s;
     }
 
+    error_page 401 = @oauth2_signin;
     location @oauth2_signin {
       return 302 /oauth2/sign_in?rd=$scheme://$host$request_uri;
     }
-
     <%_ } _%>
     <%_ if (authRequired && !authServer) { _%>
-    # Authentication required but no oauth2-proxy URL configured for this domain
+    <%_ /* Authentication required but no oauth2-proxy URL configured for this domain */ -%>
+    error_page 503 @auth_unavailable;
     location @auth_unavailable {
       rewrite ^ /auth-unavailable.html break;
       proxy_method GET;
@@ -291,26 +246,28 @@ http {
       return 503;
     }
     <%_ } else { _%>
-    # Proxy settings
+    <%_ /* Proxy settings */ -%>
     location / {
       <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
 
-      # Capture identity from the auth subrequest and forward it to the backend.
-      auth_request_set $auth_user   $upstream_http_x_auth_request_user;
-      auth_request_set $auth_email  $upstream_http_x_auth_request_email;
-      auth_request_set $auth_groups $upstream_http_x_auth_request_groups;
-      auth_request_set $auth_token  $upstream_http_x_auth_request_access_token;
+      <%_ /* Capture identity from the auth subrequest and forward it to the backend. */ -%>
+      auth_request_set $auth_user               $upstream_http_x_auth_request_user;
+      auth_request_set $auth_groups             $upstream_http_x_auth_request_groups;
+      auth_request_set $auth_email              $upstream_http_x_auth_request_email;
+      auth_request_set $auth_preferred_username $upstream_http_x_auth_request_preferred_username;
+      auth_request_set $auth_token              $upstream_http_x_auth_request_access_token;
 
-      proxy_set_header X-User         $auth_user;
-      proxy_set_header X-Email        $auth_email;
-      proxy_set_header X-Groups       $auth_groups;
-      proxy_set_header X-Access-Token $auth_token;
+      proxy_set_header X-User               $auth_user;
+      proxy_set_header X-Preferred-Username $auth_preferred_username;
+      proxy_set_header X-Groups             $auth_groups;
+      proxy_set_header X-Email              $auth_email;
+      proxy_set_header X-Access-Token       $auth_token;
       <%_ } _%>
       proxy_pass <%= service.httpService.backendProtocol %>://<%= service.Container.ipv4Address %>:<%= service.internalPort %>;
       proxy_http_version 1.1;
       
-      # Proxy headers
+      <%_ /* Proxy headers */ -%>
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -318,28 +275,33 @@ http {
       proxy_set_header X-Forwarded-Host $host;
       proxy_set_header X-Forwarded-Port $server_port;
       
-      # WebSocket support
+      <%_ /* WebSocket support */ -%>
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
       
-      # Timeouts
+      <%_ /* Timeouts */ -%>
       proxy_connect_timeout 60s;
       proxy_send_timeout 60s;
       proxy_read_timeout 60s;
       
-      # Buffering (disable for SSE/streaming)
+      <%_ /* Buffering (disable for SSE/streaming) */ -%>
       proxy_buffering off;
       proxy_request_buffering off;
       
-      # Allow large uploads
+      <%_ /* Allow large uploads */ -%>
       client_max_body_size 2G;
+
+      <%_ /* Allow large responses */ -%>
+      proxy_buffer_size 16k;
+      proxy_buffers 4 32k;
+      proxy_busy_buffers_size 64k;
     }
     <%_ } _%>
   }
   <%_ }) _%>
 
   <%_ externalDomains.forEach((domain) => { _%>
-  # Wildcard server for *.<%= domain.name %> - returns 404
+  <%_ /* Wildcard server for the domain - returns 404 */ -%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -350,29 +312,11 @@ http {
     
     server_name *.<%= domain.name %>;
   
-    # SSL certificates
+    <%_ /* SSL certificates */ -%>
     ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
     ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
-    
-    # Modern TLS configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers off;
-    
-    # SSL session optimization
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    ssl_session_tickets off;
-    
-    # Security headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
-    
-    error_page 403 @403;
 
+    error_page 403 @403;
     location @403 {
       rewrite ^ /403.html break;
       proxy_method GET;
@@ -382,7 +326,6 @@ http {
     }
 
     error_page 404 @404;
-
     location @404 {
       rewrite ^ /404.html break;
       proxy_method GET;
@@ -391,11 +334,11 @@ http {
       proxy_pass http://error_pages;
     }
 
-    # Return 404 for all requests
+    <%_ /* Return 404 for all requests */ -%>
     return 404;
   }
 
-  # Bare domain <%= domain.name %> - proxies to docs site
+  <%_ /* Bare domain - proxies to docs site */ -%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -406,29 +349,11 @@ http {
     
     server_name <%= domain.name %>;
   
-    # SSL certificates
+    <%_ /* SSL certificates */ -%>
     ssl_certificate /etc/ssl/certs/<%= domain.name %>.crt;
     ssl_certificate_key /etc/ssl/private/<%= domain.name %>.key;
-    
-    # Modern TLS configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers off;
-    
-    # SSL session optimization
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    ssl_session_tickets off;
-    
-    # Security headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Alt-Svc 'h3=":443"; ma=86400' always;
-    
-    error_page 403 @403;
 
+    error_page 403 @403;
     location @403 {
       rewrite ^ /403.html break;
       proxy_method GET;
@@ -438,7 +363,6 @@ http {
     }
 
     error_page 502 @502;
-
     location @502 {
       rewrite ^ /502.html break;
       proxy_method GET;
@@ -447,7 +371,7 @@ http {
       proxy_pass http://error_pages;
     }
 
-    # Serve documentation site statically
+    <%_ /* Serve documentation site statically */ -%>
     location / {
       root /opt/opensource-server/mie-opensource-landing/site;
       index index.html;
