@@ -175,9 +175,6 @@ A single instance can serve many services this way — they all proxy `/oauth2/*
 !!! note "Multiple apps, one oauth2-proxy"
     Leave `redirect_url` unset — oauth2-proxy derives the callback per request as `https://<requested-host>/oauth2/callback`, so each app gets the right one. Register `https://<app-host>/oauth2/callback` as a redirect URI for **each** app in your IdP, and make sure every protected host is covered by `whitelist_domains`.
 
-!!! warning "Do not set `reverse_proxy`"
-    Because nginx proxies straight to oauth2-proxy (nothing sits in front of it from its point of view), leave `reverse_proxy` off. Enabling it makes oauth2-proxy trust `X-Forwarded-*` headers, which this integration neither sends nor needs.
-
 !!! warning "HTTPS scheme"
     oauth2-proxy builds its `redirect_uri` and secure cookies from the scheme of the connection it receives, which is whatever scheme you put in the **oauth2-proxy URL**:
 
