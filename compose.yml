@@ -28,6 +28,10 @@ services:
           skopeo copy docker://$${IMAGE_REF} oci-archive:$${FILENAME}
         fi
 
+# This service runs once when bringing the compose stack up to ensure the
+# node_modules are populated in the user's create-a-container directory. This
+# is usually handled by the manager's Dockerfile, but we're mounting over that
+# directory so we need to be sure that the user has them.
   node:
     image: node:24-trixie
     volumes:

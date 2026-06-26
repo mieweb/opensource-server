@@ -220,12 +220,16 @@ export function ContainersListPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
-  // `user=*` (admin only) lists every owner on the site; anything else falls
-  // back to the requesting user's own containers. The param is the single
-  // source of truth so the view is bookmarkable and slots in beside the
-  // existing hostname/nodeId filters.
+  // `user=*` lists every owner on the site for admins; for non-admins the
+  // server scopes it back to their own containers, so the toggle is available
+  // to everyone (ahead of future shareable/collaborative containers). The param
+  // is the single source of truth so the view is bookmarkable and slots in
+  // beside the existing hostname/nodeId filters.
   const isAll = searchParams.get('user') === '*';
   const userFilter = isAll ? '*' : undefined;
+  // Only admins ever see more than one owner in the `*` view, so the owner
+  // column is meaningful for them alone.
+  const showOwner = isAdmin && isAll;
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -271,24 +275,22 @@ export function ContainersListPage() {
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {isAdmin && (
-              <div
-                role="group"
-                aria-label="Container ownership scope"
-                className="inline-flex rounded-md border border-border p-0.5"
-              >
-                <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
-                  <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
-                    Mine
-                  </Button>
-                </Link>
-                <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
-                  <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
-                    All
-                  </Button>
-                </Link>
-              </div>
-            )}
+            <div
+              role="group"
+              aria-label="Container ownership scope"
+              className="inline-flex rounded-md border border-border p-0.5"
+            >
+              <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
+                <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
+                  Mine
+                </Button>
+              </Link>
+              <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
+                <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
+                  All
+                </Button>
+              </Link>
+            </div>
             {hasContainers && (
               <div
                 role="group"
@@ -357,7 +359,7 @@ export function ContainersListPage() {
         <Alert variant="info">
           <AlertTitle>No containers</AlertTitle>
           <AlertDescription>
-            {isAll
+            {showOwner
               ? 'No containers exist on this site yet.'
               : 'Create your first container with the button above.'}
           </AlertDescription>
@@ -387,7 +389,7 @@ export function ContainersListPage() {
                 <Meta label="Node">
                   <NodeLink c={c} />
                 </Meta>
-                {isAll && (
+                {showOwner && (
                   <Meta label="User">
                     <span className="inline-flex items-center gap-1">
                       <User className="size-3.5" aria-hidden="true" />
@@ -419,7 +421,7 @@ export function ContainersListPage() {
               <TableHead>Hostname</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Node</TableHead>
-              {isAll && <TableHead>User</TableHead>}
+              {showOwner && <TableHead>User</TableHead>}
               <TableHead>Template</TableHead>
               <TableHead>HTTP</TableHead>
               <TableHead>SSH</TableHead>
@@ -436,7 +438,7 @@ export function ContainersListPage() {
                 <TableCell>
                   <NodeLink c={c} />
                 </TableCell>
-                {isAll && (
+                {showOwner && (
                   <TableCell>
                     <span className="inline-flex items-center gap-1">
                       <User className="size-3.5" aria-hidden="true" />

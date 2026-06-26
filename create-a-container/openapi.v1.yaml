@@ -317,9 +317,10 @@ paths:
           schema: { type: string }
           description: >-
             Owner filter. Omitted/empty returns the requesting user's own
-            containers (default). `*` returns every owner on the site and a
-            specific username returns that owner's containers; both are
-            admin-only and yield 403 for non-admins (except requesting yourself).
+            containers (default). `*` returns every owner on the site for admins,
+            or just your own containers for non-admins. A specific username
+            returns that owner's containers and is admin-only (except requesting
+            yourself), yielding 403 otherwise.
       responses:
         '200': { description: Array of containers }
         '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }

@@ -204,10 +204,12 @@ function buildContainerListWhere(query, nodeIds) {
  * enforcing authorization. The rules mirror the existing `hostname` filter in
  * shape (a plain query param) but add ownership scoping:
  *   - absent/empty -> the requesting user's own containers (default for all)
- *   - '*'          -> every owner on the site (admin only)
+ *   - '*'          -> every owner on the site (admin), or just your own (non-admin)
  *   - '<username>' -> that specific owner (admin only, unless it's yourself)
- * Non-admins requesting anyone else (or '*') get 403 rather than a silently
- * empty list, so the boundary is explicit.
+ * Non-admins may use `*`, but it is scoped to their own containers rather than
+ * returning a 403. This keeps the "All" toggle usable for everyone today and
+ * leaves room for future shareable/collaborative containers to widen what a
+ * non-admin sees here. Requesting a specific *other* owner still 403s.
  * @param {string|undefined} requestedUser - req.query.user
  * @param {{ user: string, isAdmin: boolean }} session - req.session
  * @returns {string|undefined} username to filter by, or undefined for "all"
@@ -215,8 +217,8 @@ function buildContainerListWhere(query, nodeIds) {
 function resolveUsernameFilter(requestedUser, session) {
   if (!requestedUser) return session.user;
   if (requestedUser === '*') {
-    if (!session.isAdmin) throw new ApiError(403, 'forbidden', 'Admin access required');
-    return undefined;
+    // Admins see every owner; non-admins are scoped to their own containers.
+    return session.isAdmin ? undefined : session.user;
   }
   if (requestedUser !== session.user && !session.isAdmin) {
     throw new ApiError(403, 'forbidden', 'Admin access required');
@@ -265,8 +267,9 @@ router.get(
     const nodeIds = nodes.map((n) => n.id);
     const where = buildContainerListWhere(req.query, nodeIds);
     // `user` filter: defaults to the requesting user, so everyone (incl. admins)
-    // sees their own containers by default; admins may pass `user=*` for all or
-    // `user=<name>` for a specific owner. undefined means "all owners".
+    // sees their own containers by default. `user=*` lists every owner for admins
+    // and stays scoped to the requester for non-admins; `user=<name>` targets a
+    // specific owner (admin-only). undefined means "all owners".
     const username = resolveUsernameFilter(req.query.user, req.session);
     if (username !== undefined) where.username = username;
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
