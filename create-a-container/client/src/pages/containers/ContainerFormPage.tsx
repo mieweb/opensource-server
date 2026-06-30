@@ -26,6 +26,7 @@ import { keys, queries } from '@/lib/queries';
 import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
 import { ResourcesSection } from './ResourcesSection';
+import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from './CollaboratorsManager';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 function useDebouncedValue<T>(value: T, delay = 500): T {
@@ -85,6 +86,9 @@ const schema = z.object({
   restart: z.boolean().optional(),
   services: z.array(serviceSchema),
   environmentVars: z.array(envVarSchema),
+  // Usernames to share a new container with ("additional owners"). Existence is
+  // validated server-side on submit. Unused in edit mode (live manager instead).
+  additionalOwners: z.array(z.string()),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -121,12 +125,15 @@ export function ContainerFormPage() {
     defaultValues: {
       services: [],
       environmentVars: [],
+      additionalOwners: [],
       nvidiaRequested: false,
       restart: false,
     },
   });
   const services = useFieldArray({ control, name: 'services' });
   const envVars = useFieldArray({ control, name: 'environmentVars' });
+  // Guards the one-time form initialization from the loaded container (edit).
+  const initializedRef = useRef(false);
 
   // Default external domain for new HTTP services. The bootstrap endpoint
   // returns domains already sorted so the site's default domains come first,
@@ -143,9 +150,15 @@ export function ContainerFormPage() {
   const hostname = watch('hostname');
   const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
+  const additionalOwners = watch('additionalOwners') || [];
 
   useEffect(() => {
-    if (container && isEdit) {
+    if (container && isEdit && !initializedRef.current) {
+      // Initialize the form from the loaded container exactly once. Re-running
+      // reset on every `container` change would wipe unsaved edits whenever the
+      // container query refetches (e.g. after the Sharing manager adds/removes a
+      // collaborator and invalidates this query).
+      initializedRef.current = true;
       reset({
         hostname: container.hostname,
         template: container.template || '',
@@ -173,6 +186,7 @@ export function ContainerFormPage() {
           key,
           value,
         })),
+        additionalOwners: [],
       });
     }
   }, [container, isEdit, reset]);
@@ -271,6 +285,8 @@ export function ContainerFormPage() {
         services: servicesObj,
         environmentVars: values.environmentVars.filter((e) => e.key.trim()),
         restart: values.restart,
+        // Only meaningful on create; the edit form manages sharing live.
+        additionalOwners: values.additionalOwners,
       };
       type UpdateResult = {
         containerId: number;
@@ -605,6 +621,52 @@ export function ContainerFormPage() {
                 </div>
               );
             })}
+          </CardContent>
+        </Card>
+
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Sharing</CardTitle>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            {isEdit && container ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Share this container with other users for collaboration. They will see it in
+                  their All containers tab.
+                </p>
+                <CollaboratorsManager
+                  siteId={siteId!}
+                  containerId={container.id}
+                  collaborators={container.collaborators}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Optionally add other users as additional owners. They will see this container in
+                  their All containers tab once it is created.
+                </p>
+                <CollaboratorChips
+                  usernames={additionalOwners}
+                  emptyText="No additional owners."
+                  onRemove={(u) =>
+                    setValue(
+                      'additionalOwners',
+                      additionalOwners.filter((x) => x !== u),
+                    )
+                  }
+                />
+                <AddCollaboratorField
+                  label="Additional owner"
+                  onAdd={(u) => {
+                    if (!additionalOwners.includes(u)) {
+                      setValue('additionalOwners', [...additionalOwners, u]);
+                    }
+                  }}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
 

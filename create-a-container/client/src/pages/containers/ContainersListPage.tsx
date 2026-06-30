@@ -9,6 +9,11 @@ import {
   Button,
   Card,
   CardTitle,
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalHeader,
+  ModalTitle,
   PageHeader,
   Spinner,
   Table,
@@ -28,6 +33,7 @@ import {
   Plus,
   Rows3,
   Server,
+  Share2,
   Terminal,
   Trash2,
   User,
@@ -35,6 +41,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
+import { CollaboratorsManager } from './CollaboratorsManager';
 import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
@@ -163,11 +170,15 @@ function RowActions({
   siteId,
   onDelete,
   deleting,
+  canShare,
+  onShare,
 }: {
   c: Container;
   siteId?: string;
   onDelete: (id: number) => void;
   deleting: boolean;
+  canShare: boolean;
+  onShare: (c: Container) => void;
 }) {
   return (
     <>
@@ -177,6 +188,17 @@ function RowActions({
             Logs
           </Button>
         </Link>
+      )}
+      {canShare && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Share ${c.hostname}`}
+          leftIcon={<Share2 className="size-4" />}
+          onClick={() => onShare(c)}
+        >
+          <span className="hidden sm:inline">Share</span>
+        </Button>
       )}
       <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
         <Button variant="ghost" size="sm" aria-label="Edit" leftIcon={<Pencil className="size-4" />}>
@@ -220,22 +242,24 @@ export function ContainersListPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
-  // `user=*` lists every owner on the site for admins; for non-admins the
-  // server scopes it back to their own containers, so the toggle is available
-  // to everyone (ahead of future shareable/collaborative containers). The param
-  // is the single source of truth so the view is bookmarkable and slots in
-  // beside the existing hostname/nodeId filters.
+  // `user=*` lists every owner on the site for admins; for non-admins it lists
+  // their own containers plus any shared with them. The toggle is available to
+  // everyone. The param is the single source of truth so the view is
+  // bookmarkable and slots in beside the existing hostname/nodeId filters.
   const isAll = searchParams.get('user') === '*';
   const userFilter = isAll ? '*' : undefined;
-  // Only admins ever see more than one owner in the `*` view, so the owner
-  // column is meaningful for them alone.
-  const showOwner = isAdmin && isAll;
+  // In the "All" view a row may belong to another owner (every owner for admins;
+  // shared containers for non-admins), so the owner column is meaningful here.
+  const showOwner = isAll;
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const [view, setView] = useState<ViewMode>(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
     return stored === 'table' ? 'table' : 'cards';
   });
+  // Container whose sharing dialog is open. Tracked by id so the dialog reflects
+  // live collaborator changes after the list query refetches.
+  const [shareTargetId, setShareTargetId] = useState<number | null>(null);
   const changeView = (next: ViewMode) => {
     setView(next);
     try {
@@ -266,6 +290,11 @@ export function ContainersListPage() {
   });
 
   const hasContainers = !!data && data.length > 0;
+
+  // Sharing is owner/admin only. Derive the open dialog's container from the
+  // live list so its collaborator chips update after add/remove.
+  const canShareContainer = (c: Container) => isAdmin || c.owner === sessionUser;
+  const shareTarget = data?.find((c) => c.id === shareTargetId) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -383,7 +412,14 @@ export function ContainersListPage() {
                 <StatusBadge status={c.status} />
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
-                <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                <RowActions
+                  c={c}
+                  siteId={siteId}
+                  onDelete={del.mutate}
+                  deleting={del.isPending}
+                  canShare={canShareContainer(c)}
+                  onShare={(target) => setShareTargetId(target.id)}
+                />
               </div>
               <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:order-2 lg:w-auto lg:flex-1">
                 <Meta label="Node">
@@ -456,13 +492,46 @@ export function ContainersListPage() {
                   <SshLinks c={c} sessionUser={sessionUser} />
                 </TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                  <RowActions
+                    c={c}
+                    siteId={siteId}
+                    onDelete={del.mutate}
+                    deleting={del.isPending}
+                    canShare={canShareContainer(c)}
+                    onShare={(target) => setShareTargetId(target.id)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <Modal
+        open={shareTarget !== null}
+        onOpenChange={(open) => !open && setShareTargetId(null)}
+        size="md"
+      >
+        <ModalHeader>
+          <ModalTitle>
+            {shareTarget ? `Share ${shareTarget.hostname}` : 'Share container'}
+          </ModalTitle>
+          <ModalClose />
+        </ModalHeader>
+        <ModalBody className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Share this container with other users for collaboration. Shared users see it in
+            their All containers tab.
+          </p>
+          {shareTarget && siteId && (
+            <CollaboratorsManager
+              siteId={siteId}
+              containerId={shareTarget.id}
+              collaborators={shareTarget.collaborators}
+            />
+          )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }
