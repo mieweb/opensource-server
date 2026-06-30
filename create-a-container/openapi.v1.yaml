@@ -88,6 +88,7 @@ components:
       properties:
         id: { type: integer }
         hostname: { type: string }
+        owner: { type: string, description: Username of the user who created the container }
         containerId: { type: integer, nullable: true }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
@@ -310,7 +311,19 @@ paths:
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: query, name: hostname, schema: { type: string } }
-      responses: { '200': { description: Array of containers } }
+        - { in: query, name: nodeId, schema: { type: integer }, description: Filter to a single node belonging to the site }
+        - in: query
+          name: user
+          schema: { type: string }
+          description: >-
+            Owner filter. Omitted/empty returns the requesting user's own
+            containers (default). `*` returns every owner on the site for admins,
+            or just your own containers for non-admins. A specific username
+            returns that owner's containers and is admin-only (except requesting
+            yourself), yielding 403 otherwise.
+      responses:
+        '200': { description: Array of containers }
+        '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
       tags: [Containers]
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]

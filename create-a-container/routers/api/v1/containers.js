@@ -113,6 +113,10 @@ function serializeContainer(c, site, status) {
     id: c.id,
     containerId: c.containerId,
     hostname: c.hostname,
+    // Owner (the user who created the container). Surfaced so the admin
+    // "all containers" view can show a User column; for the per-user list it
+    // simply equals the requesting user.
+    owner: c.username,
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).
@@ -157,6 +161,71 @@ function serializeContainer(c, site, status) {
   };
 }
 
+// Eager-load graph shared by every list/show route so status resolution needs
+// no per-container queries and the serializer has the data it needs.
+const CONTAINER_INCLUDE = [
+  {
+    association: 'services',
+    include: [
+      { association: 'httpService', include: [{ association: 'externalDomain' }] },
+      { association: 'transportService' },
+      { association: 'dnsService' },
+    ],
+  },
+  // Full node record (incl. credentials) is required to query live Proxmox status.
+  { association: 'node' },
+  // Eager-load the create job so status resolution needs no per-container query.
+  { association: 'creationJob' },
+];
+
+/**
+ * Build the `where` clause for a container list query, scoped to the given
+ * site's nodes and narrowed by the supported query-string filters
+ * (`hostname`, `nodeId`). The `nodeId` filter is intersected with the site's
+ * own nodes so it can never widen the result set beyond the site.
+ * @param {object} query - req.query
+ * @param {number[]} nodeIds - IDs of the nodes belonging to the site
+ * @returns {object} Sequelize where clause
+ */
+function buildContainerListWhere(query, nodeIds) {
+  const where = { nodeId: nodeIds };
+  if (query.hostname) where.hostname = query.hostname;
+  if (query.nodeId) {
+    const nodeId = parseInt(query.nodeId, 10);
+    // Restrict to the requested node only when it belongs to this site;
+    // otherwise force an empty result rather than leaking other sites' nodes.
+    where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
+  }
+  return where;
+}
+
+/**
+ * Resolve the `user` list filter into a Sequelize `username` constraint,
+ * enforcing authorization. The rules mirror the existing `hostname` filter in
+ * shape (a plain query param) but add ownership scoping:
+ *   - absent/empty -> the requesting user's own containers (default for all)
+ *   - '*'          -> every owner on the site (admin), or just your own (non-admin)
+ *   - '<username>' -> that specific owner (admin only, unless it's yourself)
+ * Non-admins may use `*`, but it is scoped to their own containers rather than
+ * returning a 403. This keeps the "All" toggle usable for everyone today and
+ * leaves room for future shareable/collaborative containers to widen what a
+ * non-admin sees here. Requesting a specific *other* owner still 403s.
+ * @param {string|undefined} requestedUser - req.query.user
+ * @param {{ user: string, isAdmin: boolean }} session - req.session
+ * @returns {string|undefined} username to filter by, or undefined for "all"
+ */
+function resolveUsernameFilter(requestedUser, session) {
+  if (!requestedUser) return session.user;
+  if (requestedUser === '*') {
+    // Admins see every owner; non-admins are scoped to their own containers.
+    return session.isAdmin ? undefined : session.user;
+  }
+  if (requestedUser !== session.user && !session.isAdmin) {
+    throw new ApiError(403, 'forbidden', 'Admin access required');
+  }
+  return requestedUser;
+}
+
 // GET /containers/metadata?image=...
 router.get(
   '/metadata',
@@ -196,25 +265,14 @@ router.get(
     const site = await loadSite(req);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    const where = { username: req.session.user, nodeId: nodeIds };
-    if (req.query.hostname) where.hostname = req.query.hostname;
-    const rows = await Container.findAll({
-      where,
-      include: [
-        {
-          association: 'services',
-          include: [
-            { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
-            { association: 'dnsService' },
-          ],
-        },
-        // Full node record (incl. credentials) is required to query live Proxmox status.
-        { association: 'node' },
-        // Eager-load the create job so status resolution needs no per-container query.
-        { association: 'creationJob' },
-      ],
-    });
+    const where = buildContainerListWhere(req.query, nodeIds);
+    // `user` filter: defaults to the requesting user, so everyone (incl. admins)
+    // sees their own containers by default. `user=*` lists every owner for admins
+    // and stays scoped to the requester for non-admins; `user=<name>` targets a
+    // specific owner (admin-only). undefined means "all owners".
+    const username = resolveUsernameFilter(req.query.user, req.session);
+    if (username !== undefined) where.username = username;
+    const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
     const statuses = await computeContainerStatuses(rows, Job);
@@ -239,18 +297,7 @@ router.get(
     }
     const c = await Container.findOne({
       where: { id: containerId, username: req.session.user },
-      include: [
-        {
-          association: 'services',
-          include: [
-            { association: 'httpService', include: [{ association: 'externalDomain' }] },
-            { association: 'transportService' },
-            { association: 'dnsService' },
-          ],
-        },
-        { association: 'node' },
-        { association: 'creationJob' },
-      ],
+      include: CONTAINER_INCLUDE,
     });
     if (!c || !c.node || c.node.siteId !== site.id) {
       throw new ApiError(404, 'not_found', 'Container not found');
