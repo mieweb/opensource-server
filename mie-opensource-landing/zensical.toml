@@ -53,6 +53,7 @@ nav = [
       { "Docker Images" = "developers/docker-images.md" },
       { "Release Pipeline" = "developers/release-pipeline.md" },
       { "Database Schema" = "developers/database-schema.md" },
+      { "Trusted Proxy Auth" = "developers/trusted-proxy-auth.md" },
       { "Pull Config" = "developers/pull-config.md" },
       { "Contributing" = "developers/contributing.md" },
     ] },

@@ -22,6 +22,7 @@ Full documentation lives in [`mie-opensource-landing/docs/`](mie-opensource-land
 | [`pull-config/`](pull-config/) | Cron-driven config distribution for nginx and dnsmasq on agents — see [pull-config docs](mie-opensource-landing/docs/developers/pull-config.md) |
 | [`images/`](images/) | Docker Bake definitions for the `base`, `nodejs`, `agent`, and `manager` images — see [Docker Images](mie-opensource-landing/docs/developers/docker-images.md) |
 | [`manager-control-program/`](manager-control-program/) | MCP server for AI-assisted container management — see [MCP Server](mie-opensource-landing/docs/users/mcp-server.md) |
+| [`proxy-auth-lib/`](proxy-auth-lib/) | Vendor-neutral trusted proxy identity middleware examples for Node.js, Python, Rust, and Go |
 | [`mie-opensource-landing/`](mie-opensource-landing/) | Documentation site source |
 | [`error-pages/`](error-pages/) | Static error pages served by NGINX |
 | [`compose.yml`](compose.yml) | Local development stack (used by the Development Workflow guide) |

@@ -11,3 +11,7 @@ test-results/
 /*.deb
 /*.rpm
 /*.apk
+
+# Playwright test artifacts
+/playwright-report/
+/test-results/

@@ -1,0 +1,125 @@
+name: proxy-auth-lib release
+
+# Publishes the proxy-auth-lib packages to every registry when a tag of the
+# form proxy-auth-lib-v<semver> is pushed (e.g. proxy-auth-lib-v1.2.3).
+#
+# Each registry is an independent job so one failing publish never blocks the
+# others. Every job derives the same version from the tag and runs the matching
+# script in proxy-auth-lib/scripts/, which are the exact commands a maintainer
+# can run locally.
+
+on:
+  push:
+    tags:
+      - 'proxy-auth-lib-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./proxy-auth-lib/scripts/publish-npm.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+
+  jsr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Publish to JSR
+        run: ./proxy-auth-lib/scripts/publish-jsr.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build distribution
+        run: ./proxy-auth-lib/scripts/build-pypi.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: proxy-auth-lib/python/dist
+
+  crates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./proxy-auth-lib/scripts/publish-crates.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+
+  meteor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Meteor
+        run: |
+          curl -fsSL https://install.meteor.com/ | sh
+          echo "$HOME/.meteor" >> "$GITHUB_PATH"
+      - name: Publish to Atmosphere
+        env:
+          METEOR_SESSION_FILE: ${{ runner.temp }}/meteor-session
+        run: |
+          printf '%s' "${{ secrets.METEOR_SESSION }}" > "$METEOR_SESSION_FILE"
+          ./proxy-auth-lib/scripts/publish-meteor.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+
+  go:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Tag and index the Go module
+        run: ./proxy-auth-lib/scripts/publish-go.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
+
+  smoke-runtimes:
+    runs-on: ubuntu-latest
+    needs: npm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Smoke test Bun and Deno
+        run: ./proxy-auth-lib/scripts/smoke-runtimes.sh "${GITHUB_REF_NAME#proxy-auth-lib-v}"
