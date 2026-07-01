@@ -18,6 +18,12 @@ module.exports = (sequelize, DataTypes) => {
       Container.belongsTo(models.Site, { foreignKey: 'siteId', as: 'site' });
       // a container may have a creation job
       Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
+      // a container may be shared with additional users (collaborators)
+      Container.hasMany(models.ContainerCollaborator, {
+        foreignKey: 'containerId',
+        as: 'collaborators',
+        onDelete: 'CASCADE',
+      });
     }
 
     /**

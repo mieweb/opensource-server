@@ -77,6 +77,17 @@ export const queries = {
   },
   getContainer: (siteId: number | string, id: number | string) =>
     api.get<Container>(`/api/v1/sites/${siteId}/containers/${id}`),
+  // Container sharing (collaborators / additional owners). Both return the
+  // updated collaborator username list.
+  shareContainer: (siteId: number | string, id: number | string, username: string) =>
+    api.post<{ collaborators: string[] }>(
+      `/api/v1/sites/${siteId}/containers/${id}/collaborators`,
+      { username },
+    ),
+  unshareContainer: (siteId: number | string, id: number | string, username: string) =>
+    api.delete<{ collaborators: string[] }>(
+      `/api/v1/sites/${siteId}/containers/${id}/collaborators/${encodeURIComponent(username)}`,
+    ),
   containerBootstrap: (siteId: number | string) =>
     api.get<ContainerNewBootstrap>(`/api/v1/sites/${siteId}/containers/new`),
   containerMetadata: (siteId: number | string, image: string) =>

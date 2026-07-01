@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,6 +9,11 @@ import {
   Button,
   Card,
   CardTitle,
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalHeader,
+  ModalTitle,
   PageHeader,
   Spinner,
   Table,
@@ -28,6 +33,7 @@ import {
   Plus,
   Rows3,
   Server,
+  Share2,
   Terminal,
   Trash2,
   User,
@@ -35,6 +41,8 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
+import { CollaboratorsManager } from './CollaboratorsManager';
+import { ContainerFilters, type FilterOption } from './ContainerFilters';
 import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
@@ -163,23 +171,49 @@ function RowActions({
   siteId,
   onDelete,
   deleting,
+  canShare,
+  onShare,
 }: {
   c: Container;
   siteId?: string;
   onDelete: (id: number) => void;
   deleting: boolean;
+  canShare: boolean;
+  onShare: (c: Container) => void;
 }) {
   return (
     <>
       {c.creationJobId && (
         <Link to={`/jobs/${c.creationJobId}`}>
-          <Button variant="ghost" size="sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
             Logs
           </Button>
         </Link>
       )}
+      {canShare && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={`Share ${c.hostname}`}
+          leftIcon={<Share2 className="size-4" />}
+          onClick={() => onShare(c)}
+          className="transition-colors hover:bg-violet-100 hover:text-violet-700 dark:hover:bg-violet-900/40 dark:hover:text-violet-200"
+        >
+          <span className="hidden sm:inline">Share</span>
+        </Button>
+      )}
       <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
-        <Button variant="ghost" size="sm" aria-label="Edit" leftIcon={<Pencil className="size-4" />}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Edit"
+          leftIcon={<Pencil className="size-4" />}
+          className="transition-colors hover:bg-sky-100 hover:text-sky-700 dark:hover:bg-sky-900/40 dark:hover:text-sky-200"
+        >
           <span className="hidden sm:inline">Edit</span>
         </Button>
       </Link>
@@ -192,6 +226,7 @@ function RowActions({
           if (confirm(`Delete container "${c.hostname}"?`)) onDelete(c.id);
         }}
         disabled={deleting}
+        className="transition-colors hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900/40 dark:hover:text-red-200"
       >
         <span className="hidden sm:inline">Delete</span>
       </Button>
@@ -218,24 +253,67 @@ export function ContainersListPage() {
   const sessionUser = session?.user;
   const isAdmin = !!session?.isAdmin;
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
-  // `user=*` lists every owner on the site for admins; for non-admins the
-  // server scopes it back to their own containers, so the toggle is available
-  // to everyone (ahead of future shareable/collaborative containers). The param
-  // is the single source of truth so the view is bookmarkable and slots in
-  // beside the existing hostname/nodeId filters.
-  const isAll = searchParams.get('user') === '*';
-  const userFilter = isAll ? '*' : undefined;
-  // Only admins ever see more than one owner in the `*` view, so the owner
-  // column is meaningful for them alone.
-  const showOwner = isAdmin && isAll;
+  // The URL is the single source of truth for the filter bar, so views are
+  // bookmarkable and shareable. `user` is a comma-separated owner list (or the
+  // wildcard `*`) that drives the server query; an empty list defaults to the
+  // caller's own containers. Status/template/hostname refine the loaded rows
+  // client-side.
+  const parseList = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
+  const selectedUsers = parseList(searchParams.get('user'));
+  const selectedStatuses = parseList(searchParams.get('status'));
+  const selectedTemplates = parseList(searchParams.get('template'));
+  const hostnameQuery = searchParams.get('q') ?? '';
+  // A row may belong to another owner once the user filter is anything other
+  // than "just me", so the owner column only earns its place then.
+  const showOwner = selectedUsers.some((u) => u === '*' || u !== sessionUser);
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
+
+  const setListParam = (key: string, values: string[]) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (values.length > 0) next.set(key, values.join(','));
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  const setTextParam = (key: string, value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  // "Everyone"/"All shared" (`*`) is exclusive: turning it on clears specific
+  // owners, and picking a specific owner drops it.
+  const onUsersChange = (next: string[]) => {
+    const gainedWildcard = next.includes('*') && !selectedUsers.includes('*');
+    const normalized = gainedWildcard ? ['*'] : next.filter((v) => v !== '*');
+    setListParam('user', normalized);
+  };
+  const clearAllFilters = () =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        ['user', 'status', 'template', 'q'].forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true },
+    );
 
   const [view, setView] = useState<ViewMode>(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
     return stored === 'table' ? 'table' : 'cards';
   });
+  // Container whose sharing dialog is open. Tracked by id so the dialog reflects
+  // live collaborator changes after the list query refetches.
+  const [shareTargetId, setShareTargetId] = useState<number | null>(null);
   const changeView = (next: ViewMode) => {
     setView(next);
     try {
@@ -250,10 +328,26 @@ export function ContainersListPage() {
     queryFn: () => queries.getSite(siteId!),
     enabled: !!siteId,
   });
+  // Empty selection defaults to the caller's own containers server-side.
+  const userParam = selectedUsers.length > 0 ? selectedUsers.join(',') : undefined;
   const { data, isLoading, error } = useQuery({
-    queryKey: keys.containers(siteId!, { user: userFilter, nodeId }),
-    queryFn: () => queries.listContainers(siteId!, { user: userFilter, nodeId }),
+    queryKey: keys.containers(siteId!, { user: userParam, nodeId }),
+    queryFn: () => queries.listContainers(siteId!, { user: userParam, nodeId }),
     enabled: !!siteId,
+  });
+
+  // Options for the "User" filter. Admins may filter by any user; non-admins may
+  // only narrow to owners who have shared a container with them, so their option
+  // list is derived from everything they can currently see (own + shared).
+  const { data: allUsers } = useQuery({
+    queryKey: keys.users(),
+    queryFn: queries.listUsers,
+    enabled: !!siteId && isAdmin,
+  });
+  const { data: visibleContainers } = useQuery({
+    queryKey: keys.containers(siteId!, { user: '*' }),
+    queryFn: () => queries.listContainers(siteId!, { user: '*' }),
+    enabled: !!siteId && !isAdmin,
   });
 
   const del = useMutation({
@@ -265,33 +359,76 @@ export function ContainersListPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  const hasContainers = !!data && data.length > 0;
+  // Client-side refinement of the loaded rows by status/template/hostname.
+  const visible = useMemo(() => {
+    const q = hostnameQuery.trim().toLowerCase();
+    return (data ?? []).filter(
+      (c) =>
+        (selectedStatuses.length === 0 || selectedStatuses.includes(c.status)) &&
+        (selectedTemplates.length === 0 ||
+          (c.template != null && selectedTemplates.includes(c.template))) &&
+        (q === '' || c.hostname.toLowerCase().includes(q)),
+    );
+  }, [data, selectedStatuses, selectedTemplates, hostnameQuery]);
+
+  const userOptions = useMemo<FilterOption[]>(() => {
+    const base: FilterOption[] = [
+      { value: '*', label: isAdmin ? 'Everyone' : 'All shared' },
+    ];
+    const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
+    if (isAdmin) {
+      const opts = (allUsers ?? []).map((u) => ({
+        value: u.uid,
+        label: u.uid === sessionUser ? `${u.cn} (me)` : u.cn,
+      }));
+      return [...base, ...opts.sort(byLabel)];
+    }
+    const owners = new Set<string>();
+    if (sessionUser) owners.add(sessionUser);
+    (visibleContainers ?? []).forEach((c) => owners.add(c.owner));
+    const opts = [...owners].map((o) => ({
+      value: o,
+      label: o === sessionUser ? `${o} (me)` : o,
+    }));
+    return [...base, ...opts.sort(byLabel)];
+  }, [isAdmin, allUsers, visibleContainers, sessionUser]);
+
+  const statusOptions = useMemo<FilterOption[]>(
+    () =>
+      (Object.keys(STATUS_LABELS) as ContainerStatus[]).map((s) => ({
+        value: s,
+        label: STATUS_LABELS[s],
+      })),
+    [],
+  );
+
+  const templateOptions = useMemo<FilterOption[]>(() => {
+    const seen = new Map<string, string>();
+    (data ?? []).forEach((c) => {
+      if (c.template) seen.set(c.template, templateTitle(c.template));
+    });
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  const hasContainers = visible.length > 0;
+  const serverHasContainers = !!data && data.length > 0;
+
+  // Sharing is owner/admin only. Derive the open dialog's container from the
+  // live list so its collaborator chips update after add/remove.
+  const canShareContainer = (c: Container) => isAdmin || c.owner === sessionUser;
+  const shareTarget = data?.find((c) => c.id === shareTargetId) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={isAll ? 'All Containers' : 'Containers'}
+        title="Containers"
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="Container ownership scope"
-              className="inline-flex rounded-md border border-border p-0.5"
-            >
-              <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
-                <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
-                  Mine
-                </Button>
-              </Link>
-              <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
-                <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
-                  All
-                </Button>
-              </Link>
-            </div>
-            {hasContainers && (
+            {serverHasContainers && (
               <div
                 role="group"
                 aria-label="Container view"
@@ -333,6 +470,21 @@ export function ContainersListPage() {
         }
       />
 
+      <ContainerFilters
+        userOptions={userOptions}
+        selectedUsers={selectedUsers}
+        onUsersChange={onUsersChange}
+        statusOptions={statusOptions}
+        selectedStatuses={selectedStatuses}
+        onStatusesChange={(v) => setListParam('status', v)}
+        templateOptions={templateOptions}
+        selectedTemplates={selectedTemplates}
+        onTemplatesChange={(v) => setListParam('template', v)}
+        hostname={hostnameQuery}
+        onHostnameChange={(v) => setTextParam('q', v)}
+        onClearAll={clearAllFilters}
+      />
+
       {error && (
         <Alert variant="danger">
           <AlertDescription>{(error as ApiError).message}</AlertDescription>
@@ -360,15 +512,21 @@ export function ContainersListPage() {
           <AlertTitle>No containers</AlertTitle>
           <AlertDescription>
             {showOwner
-              ? 'No containers exist on this site yet.'
+              ? 'No containers match the selected users.'
               : 'Create your first container with the button above.'}
           </AlertDescription>
+        </Alert>
+      )}
+      {serverHasContainers && !hasContainers && (
+        <Alert variant="info">
+          <AlertTitle>No matches</AlertTitle>
+          <AlertDescription>No containers match the current filters.</AlertDescription>
         </Alert>
       )}
 
       {hasContainers && view === 'cards' && (
         <div className="grid gap-2">
-          {data.map((c: Container) => (
+          {visible.map((c: Container) => (
             <Card
               key={c.id}
               as="article"
@@ -383,7 +541,14 @@ export function ContainersListPage() {
                 <StatusBadge status={c.status} />
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
-                <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                <RowActions
+                  c={c}
+                  siteId={siteId}
+                  onDelete={del.mutate}
+                  deleting={del.isPending}
+                  canShare={canShareContainer(c)}
+                  onShare={(target) => setShareTargetId(target.id)}
+                />
               </div>
               <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:order-2 lg:w-auto lg:flex-1">
                 <Meta label="Node">
@@ -429,7 +594,7 @@ export function ContainersListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((c: Container) => (
+            {visible.map((c: Container) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.hostname}</TableCell>
                 <TableCell>
@@ -456,13 +621,46 @@ export function ContainersListPage() {
                   <SshLinks c={c} sessionUser={sessionUser} />
                 </TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                  <RowActions
+                    c={c}
+                    siteId={siteId}
+                    onDelete={del.mutate}
+                    deleting={del.isPending}
+                    canShare={canShareContainer(c)}
+                    onShare={(target) => setShareTargetId(target.id)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <Modal
+        open={shareTarget !== null}
+        onOpenChange={(open) => !open && setShareTargetId(null)}
+        size="md"
+      >
+        <ModalHeader>
+          <ModalTitle>
+            {shareTarget ? `Share ${shareTarget.hostname}` : 'Share container'}
+          </ModalTitle>
+          <ModalClose />
+        </ModalHeader>
+        <ModalBody className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Share this container with other users for collaboration. Shared users can find it
+            by filtering the containers list by your username.
+          </p>
+          {shareTarget && siteId && (
+            <CollaboratorsManager
+              siteId={siteId}
+              containerId={shareTarget.id}
+              collaborators={shareTarget.collaborators}
+            />
+          )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }
