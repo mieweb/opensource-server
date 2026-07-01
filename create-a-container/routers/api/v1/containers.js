@@ -210,46 +210,72 @@ function buildContainerListWhere(query, nodeIds) {
 
 /**
  * Apply the `user` list filter to a Sequelize `where`, enforcing authorization
- * and folding in shared containers. The `user` query param drives the Mine/All
- * toggle:
- *   - absent/empty -> the requesting user's OWNED containers ("Mine", all users)
- *   - '*'          -> every owner on the site for admins; for non-admins, their
- *                     own containers PLUS any shared with them ("All")
- *   - '<username>' -> that specific owner (admin only, unless it's yourself)
- * Non-admins requesting a specific *other* owner get 403 rather than a silently
- * empty list, so the boundary is explicit. The shared-container fold is what
- * surfaces collaborative containers in the sharee's "All" tab.
+ * and folding in shared containers. It backs the single containers screen's
+ * "User" filter.
+ * The `user` query param may be a single username, a comma-separated list of
+ * usernames, or the wildcard `*`. Absent/empty -> the caller's own containers
+ * (the default screen). `*` -> every owner on the site for admins; the caller's
+ * own plus any shared with them for non-admins. A list of names -> those owners
+ * for admins; for non-admins the same list intersected with what they may
+ * already see (own plus shared), so a non-admin can only narrow down to owners
+ * who have shared a container with them and never widen their visibility.
  * @param {object} where - The Sequelize where clause to mutate (already scoped
  *   to the site's nodes).
  * @param {object} req - Express request (uses req.query.user, req.session).
  * @returns {Promise<object>} The same `where`, mutated.
  */
 async function applyOwnershipFilter(where, req) {
-  const requestedUser = req.query.user;
   const session = req.session;
-  if (!requestedUser) {
-    where.username = session.user;
+  const names = parseUserFilter(req.query.user);
+  if (names.length === 0) {
+    where.username = session.user; // default: the caller's own containers
     return where;
   }
-  if (requestedUser === '*') {
+  if (names.includes('*')) {
     if (session.isAdmin) return where; // every owner on the site
-    // Non-admin: own containers plus any shared with them.
-    const shares = await ContainerCollaborator.findAll({
-      where: { username: session.user },
-      attributes: ['containerId'],
-    });
-    const sharedIds = shares.map((s) => s.containerId);
-    where[Sequelize.Op.or] = [
-      { username: session.user },
-      ...(sharedIds.length > 0 ? [{ id: sharedIds }] : []),
-    ];
+    where[Sequelize.Op.or] = await ownVisibleClauses(session.user);
     return where;
   }
-  if (requestedUser !== session.user && !session.isAdmin) {
-    throw new ApiError(403, 'forbidden', 'Admin access required');
+  if (session.isAdmin) {
+    where.username = names.length === 1 ? names[0] : { [Sequelize.Op.in]: names };
+    return where;
   }
-  where.username = requestedUser;
+  // Non-admin: intersect the requested owners with what they may already see.
+  where[Sequelize.Op.and] = [
+    { [Sequelize.Op.or]: await ownVisibleClauses(session.user) },
+    { username: { [Sequelize.Op.in]: names } },
+  ];
   return where;
+}
+
+/**
+ * Parse the `user` list filter into a de-duplicated array of usernames. Accepts
+ * a single value, a repeated query param (array), or a comma-separated string.
+ * Returns an empty array when no filter was supplied.
+ * @param {*} raw - req.query.user.
+ * @returns {string[]}
+ */
+function parseUserFilter(raw) {
+  if (raw === undefined || raw === null) return [];
+  const parts = (Array.isArray(raw) ? raw : String(raw).split(','))
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  return [...new Set(parts)];
+}
+
+/**
+ * Sequelize OR clauses matching every container a non-admin may see: their own
+ * plus any shared with them. An empty shared set collapses to just their own.
+ * @param {string} username - The requesting user's uid.
+ * @returns {Promise<object[]>}
+ */
+async function ownVisibleClauses(username) {
+  const shares = await ContainerCollaborator.findAll({
+    where: { username },
+    attributes: ['containerId'],
+  });
+  const sharedIds = shares.map((s) => s.containerId);
+  return [{ username }, ...(sharedIds.length > 0 ? [{ id: sharedIds }] : [])];
 }
 
 /**

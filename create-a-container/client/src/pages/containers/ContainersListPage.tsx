@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -42,6 +42,7 @@ import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import { CollaboratorsManager } from './CollaboratorsManager';
+import { ContainerFilters, type FilterOption } from './ContainerFilters';
 import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
@@ -252,18 +253,59 @@ export function ContainersListPage() {
   const sessionUser = session?.user;
   const isAdmin = !!session?.isAdmin;
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
-  // `user=*` lists every owner on the site for admins; for non-admins it lists
-  // their own containers plus any shared with them. The toggle is available to
-  // everyone. The param is the single source of truth so the view is
-  // bookmarkable and slots in beside the existing hostname/nodeId filters.
-  const isAll = searchParams.get('user') === '*';
-  const userFilter = isAll ? '*' : undefined;
-  // In the "All" view a row may belong to another owner (every owner for admins;
-  // shared containers for non-admins), so the owner column is meaningful here.
-  const showOwner = isAll;
+  // The URL is the single source of truth for the filter bar, so views are
+  // bookmarkable and shareable. `user` is a comma-separated owner list (or the
+  // wildcard `*`) that drives the server query; an empty list defaults to the
+  // caller's own containers. Status/template/hostname refine the loaded rows
+  // client-side.
+  const parseList = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
+  const selectedUsers = parseList(searchParams.get('user'));
+  const selectedStatuses = parseList(searchParams.get('status'));
+  const selectedTemplates = parseList(searchParams.get('template'));
+  const hostnameQuery = searchParams.get('q') ?? '';
+  // A row may belong to another owner once the user filter is anything other
+  // than "just me", so the owner column only earns its place then.
+  const showOwner = selectedUsers.some((u) => u === '*' || u !== sessionUser);
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
+
+  const setListParam = (key: string, values: string[]) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (values.length > 0) next.set(key, values.join(','));
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  const setTextParam = (key: string, value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  // "Everyone"/"All shared" (`*`) is exclusive: turning it on clears specific
+  // owners, and picking a specific owner drops it.
+  const onUsersChange = (next: string[]) => {
+    const gainedWildcard = next.includes('*') && !selectedUsers.includes('*');
+    const normalized = gainedWildcard ? ['*'] : next.filter((v) => v !== '*');
+    setListParam('user', normalized);
+  };
+  const clearAllFilters = () =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        ['user', 'status', 'template', 'q'].forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true },
+    );
 
   const [view, setView] = useState<ViewMode>(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
@@ -286,10 +328,26 @@ export function ContainersListPage() {
     queryFn: () => queries.getSite(siteId!),
     enabled: !!siteId,
   });
+  // Empty selection defaults to the caller's own containers server-side.
+  const userParam = selectedUsers.length > 0 ? selectedUsers.join(',') : undefined;
   const { data, isLoading, error } = useQuery({
-    queryKey: keys.containers(siteId!, { user: userFilter, nodeId }),
-    queryFn: () => queries.listContainers(siteId!, { user: userFilter, nodeId }),
+    queryKey: keys.containers(siteId!, { user: userParam, nodeId }),
+    queryFn: () => queries.listContainers(siteId!, { user: userParam, nodeId }),
     enabled: !!siteId,
+  });
+
+  // Options for the "User" filter. Admins may filter by any user; non-admins may
+  // only narrow to owners who have shared a container with them, so their option
+  // list is derived from everything they can currently see (own + shared).
+  const { data: allUsers } = useQuery({
+    queryKey: keys.users(),
+    queryFn: queries.listUsers,
+    enabled: !!siteId && isAdmin,
+  });
+  const { data: visibleContainers } = useQuery({
+    queryKey: keys.containers(siteId!, { user: '*' }),
+    queryFn: () => queries.listContainers(siteId!, { user: '*' }),
+    enabled: !!siteId && !isAdmin,
   });
 
   const del = useMutation({
@@ -301,7 +359,61 @@ export function ContainersListPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  const hasContainers = !!data && data.length > 0;
+  // Client-side refinement of the loaded rows by status/template/hostname.
+  const visible = useMemo(() => {
+    const q = hostnameQuery.trim().toLowerCase();
+    return (data ?? []).filter(
+      (c) =>
+        (selectedStatuses.length === 0 || selectedStatuses.includes(c.status)) &&
+        (selectedTemplates.length === 0 ||
+          (c.template != null && selectedTemplates.includes(c.template))) &&
+        (q === '' || c.hostname.toLowerCase().includes(q)),
+    );
+  }, [data, selectedStatuses, selectedTemplates, hostnameQuery]);
+
+  const userOptions = useMemo<FilterOption[]>(() => {
+    const base: FilterOption[] = [
+      { value: '*', label: isAdmin ? 'Everyone' : 'All shared' },
+    ];
+    const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
+    if (isAdmin) {
+      const opts = (allUsers ?? []).map((u) => ({
+        value: u.uid,
+        label: u.uid === sessionUser ? `${u.cn} (me)` : u.cn,
+      }));
+      return [...base, ...opts.sort(byLabel)];
+    }
+    const owners = new Set<string>();
+    if (sessionUser) owners.add(sessionUser);
+    (visibleContainers ?? []).forEach((c) => owners.add(c.owner));
+    const opts = [...owners].map((o) => ({
+      value: o,
+      label: o === sessionUser ? `${o} (me)` : o,
+    }));
+    return [...base, ...opts.sort(byLabel)];
+  }, [isAdmin, allUsers, visibleContainers, sessionUser]);
+
+  const statusOptions = useMemo<FilterOption[]>(
+    () =>
+      (Object.keys(STATUS_LABELS) as ContainerStatus[]).map((s) => ({
+        value: s,
+        label: STATUS_LABELS[s],
+      })),
+    [],
+  );
+
+  const templateOptions = useMemo<FilterOption[]>(() => {
+    const seen = new Map<string, string>();
+    (data ?? []).forEach((c) => {
+      if (c.template) seen.set(c.template, templateTitle(c.template));
+    });
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  const hasContainers = visible.length > 0;
+  const serverHasContainers = !!data && data.length > 0;
 
   // Sharing is owner/admin only. Derive the open dialog's container from the
   // live list so its collaborator chips update after add/remove.
@@ -311,28 +423,12 @@ export function ContainersListPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={isAll ? 'All Containers' : 'Containers'}
+        title="Containers"
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="Container ownership scope"
-              className="inline-flex rounded-md border border-border p-0.5"
-            >
-              <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
-                <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
-                  Mine
-                </Button>
-              </Link>
-              <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
-                <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
-                  All
-                </Button>
-              </Link>
-            </div>
-            {hasContainers && (
+            {serverHasContainers && (
               <div
                 role="group"
                 aria-label="Container view"
@@ -374,6 +470,21 @@ export function ContainersListPage() {
         }
       />
 
+      <ContainerFilters
+        userOptions={userOptions}
+        selectedUsers={selectedUsers}
+        onUsersChange={onUsersChange}
+        statusOptions={statusOptions}
+        selectedStatuses={selectedStatuses}
+        onStatusesChange={(v) => setListParam('status', v)}
+        templateOptions={templateOptions}
+        selectedTemplates={selectedTemplates}
+        onTemplatesChange={(v) => setListParam('template', v)}
+        hostname={hostnameQuery}
+        onHostnameChange={(v) => setTextParam('q', v)}
+        onClearAll={clearAllFilters}
+      />
+
       {error && (
         <Alert variant="danger">
           <AlertDescription>{(error as ApiError).message}</AlertDescription>
@@ -401,15 +512,21 @@ export function ContainersListPage() {
           <AlertTitle>No containers</AlertTitle>
           <AlertDescription>
             {showOwner
-              ? 'No containers exist on this site yet.'
+              ? 'No containers match the selected users.'
               : 'Create your first container with the button above.'}
           </AlertDescription>
+        </Alert>
+      )}
+      {serverHasContainers && !hasContainers && (
+        <Alert variant="info">
+          <AlertTitle>No matches</AlertTitle>
+          <AlertDescription>No containers match the current filters.</AlertDescription>
         </Alert>
       )}
 
       {hasContainers && view === 'cards' && (
         <div className="grid gap-2">
-          {data.map((c: Container) => (
+          {visible.map((c: Container) => (
             <Card
               key={c.id}
               as="article"
@@ -477,7 +594,7 @@ export function ContainersListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((c: Container) => (
+            {visible.map((c: Container) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.hostname}</TableCell>
                 <TableCell>
@@ -532,8 +649,8 @@ export function ContainersListPage() {
         </ModalHeader>
         <ModalBody className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Share this container with other users for collaboration. Shared users see it in
-            their All containers tab.
+            Share this container with other users for collaboration. Shared users can find it
+            by filtering the containers list by your username.
           </p>
           {shareTarget && siteId && (
             <CollaboratorsManager
