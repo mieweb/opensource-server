@@ -146,29 +146,31 @@ sequenceDiagram
 
 ### Authenticated HTTP Services
 
-When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests before proxying. The domain's `authServer` must be configured (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
+When `authRequired` is enabled on an HTTP service, NGINX uses the [`auth_request`](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html) module to authenticate requests against an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process before proxying. The domain's `authServer` is the address of that process, e.g. `http://127.0.0.1:4180` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). The manager itself no longer provides forward-auth — administrators run and configure oauth2-proxy.
+
+NGINX proxies the whole `/oauth2/*` subtree (and the `auth_request` check at `/oauth2/auth`) to `authServer`, passing the app's own `Host` through. oauth2-proxy terminates those requests itself and builds redirect URIs and cookies against the correct app hostname. If the admin wants oauth2-proxy behind the same load-balancer IP, they expose its port via an L4 (`stream {}`) passthrough.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant NGINX
-    participant AuthServer as Auth Server
+    participant OAuth2Proxy as oauth2-proxy
     participant Container
 
     Client->>NGINX: GET app.example.com/page
-    NGINX->>AuthServer: Subrequest: GET /verify
-    alt 2xx (authenticated)
-        AuthServer-->>NGINX: 200 + X-User-* headers
+    NGINX->>OAuth2Proxy: Subrequest: GET /oauth2/auth (Host: app.example.com)
+    alt 202 (authenticated)
+        OAuth2Proxy-->>NGINX: 202 + X-Auth-Request-* headers
         NGINX->>Container: Proxied request + identity headers
         Container-->>NGINX: Response
         NGINX-->>Client: Response
     else 401 (unauthenticated)
-        AuthServer-->>NGINX: 401
-        NGINX-->>Client: 302 → /login?redirect=original_url
+        OAuth2Proxy-->>NGINX: 401
+        NGINX-->>Client: 302 → app.example.com/oauth2/sign_in?rd=https://app.example.com/page
     end
 ```
 
-NGINX captures identity headers from the auth server subrequest (`X-User-ID`, `X-Username`, `X-User-First-Name`, `X-User-Last-Name`, `X-Email`, `X-Groups`) and forwards them to the backend container via `proxy_set_header`.
+NGINX captures identity headers from the oauth2-proxy subrequest (`X-Auth-Request-User`, `X-Auth-Request-Preferred-Username`, `X-Auth-Request-Email`, `X-Auth-Request-Groups`, and the access token) and forwards them to the backend container via `proxy_set_header` under a stable contract (`X-User`, `X-Preferred-Username`, `X-Email`, `X-Groups`, `X-Access-Token`). This requires oauth2-proxy to run with `--set-xauthrequest` (and `--pass-access-token` for the token). See [Adding Authentication](../users/consuming-auth.md) for how applications consume these.
 
-If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page.
+If `authRequired` is enabled but no `authServer` is configured on the domain, NGINX serves a 503 error page. (A malformed `authServer` cannot reach the template — it is rejected by the API on write.)
 
