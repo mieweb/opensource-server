@@ -39,6 +39,9 @@ async function main() {
   app.set('views', path.join(__dirname, 'views'));
   app.set('view engine', 'ejs');
   app.set('trust proxy', 1);
+  // Parse query strings with qs so bracket notation (e.g. `user[0]=alice`)
+  // yields real arrays. Express 5 defaults to the 'simple' parser.
+  app.set('query parser', 'extended');
 
   // setup middleware
   const accessLogStream = process.env.ACCESS_LOG

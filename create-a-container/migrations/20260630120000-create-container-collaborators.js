@@ -2,9 +2,9 @@
 
 /**
  * Container sharing: a join table between containers and the additional users
- * (collaborators / "additional owners") who have been granted access to a
- * container. Membership is keyed by `username` (the user's `uid`) to mirror how
- * a container records its primary owner (`Containers.username`).
+ * (collaborators) who have been granted access to a container. Membership is
+ * keyed by `username` (the user's `uid`) to mirror how a container records its
+ * primary owner (`Containers.username`).
  *
  * @type {import('sequelize-cli').Migration}
  */

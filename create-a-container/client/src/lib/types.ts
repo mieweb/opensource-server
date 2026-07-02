@@ -74,7 +74,7 @@ export interface Container {
   containerId: number | null;
   hostname: string;
   owner: string;
-  /** Usernames this container is shared with (additional owners). */
+  /** Usernames this container is shared with (collaborators). */
   collaborators: string[];
   ipv4Address: string | null;
   macAddress: string | null;

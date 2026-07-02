@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Button, Checkbox, Input, useClickOutside } from '@mieweb/ui';
+import { useState } from 'react';
+import { Button, Dropdown, DropdownItem, Input } from '@mieweb/ui';
 import { ChevronDown, Filter, User as UserIcon, X } from 'lucide-react';
 
 export interface FilterOption {
@@ -8,8 +8,8 @@ export interface FilterOption {
 }
 
 /**
- * A compact checkbox-popover multiselect. Selected values are controlled by the
- * parent so filter state stays in the URL. Closes on outside click.
+ * A compact multiselect built on @mieweb/ui's Dropdown (multiSelect mode).
+ * Selected values are controlled by the parent so filter state stays in the URL.
  */
 function MultiSelect({
   label,
@@ -19,6 +19,7 @@ function MultiSelect({
   selected,
   onChange,
   searchable = false,
+  showSelectAll = false,
 }: {
   label: string;
   /** Trigger summary shown when nothing is selected. */
@@ -28,23 +29,8 @@ function MultiSelect({
   selected: string[];
   onChange: (next: string[]) => void;
   searchable?: boolean;
+  showSelectAll?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, () => setOpen(false), open);
-
-  const toggle = (value: string) => {
-    onChange(
-      selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value],
-    );
-  };
-
-  const filtered =
-    searchable && query
-      ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
-      : options;
-
   const summary =
     selected.length === 0
       ? emptyLabel
@@ -53,55 +39,33 @@ function MultiSelect({
         : `${selected.length} selected`;
 
   return (
-    <div ref={ref} className="relative">
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={icon}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={`${label}: ${summary}`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="font-normal text-muted-foreground">{label}:</span>
-        <span className="ml-1">{summary}</span>
-        <ChevronDown className="ml-1 size-4" aria-hidden="true" />
-      </Button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label={label}
-          className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-border bg-white p-2 shadow-md dark:bg-neutral-900"
+    <Dropdown
+      multiSelect
+      selectedValues={selected}
+      onSelectedValuesChange={onChange}
+      searchable={searchable}
+      searchPlaceholder="Search…"
+      searchAriaLabel={`Search ${label}`}
+      showSelectAll={showSelectAll}
+      trigger={
+        <Button
+          variant="secondary"
+          size="sm"
+          leftIcon={icon}
+          aria-label={`${label}: ${summary}`}
         >
-          {searchable && (
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
-              aria-label={`Search ${label}`}
-              className="mb-2 h-8"
-            />
-          )}
-          <div className="flex max-h-60 flex-col gap-1 overflow-auto">
-            {filtered.length === 0 && (
-              <p className="px-1 py-1 text-xs text-muted-foreground">No matches</p>
-            )}
-            {filtered.map((o) => (
-              <div
-                key={o.value}
-                className="rounded px-1 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              >
-                <Checkbox
-                  label={o.label}
-                  checked={selected.includes(o.value)}
-                  onChange={() => toggle(o.value)}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+          <span className="font-normal text-muted-foreground">{label}:</span>
+          <span className="ml-1">{summary}</span>
+          <ChevronDown className="ml-1 size-4" aria-hidden="true" />
+        </Button>
+      }
+    >
+      {options.map((o) => (
+        <DropdownItem key={o.value} value={o.value}>
+          {o.label}
+        </DropdownItem>
+      ))}
+    </Dropdown>
   );
 }
 
@@ -149,12 +113,13 @@ export function ContainerFilters({
       <div className="flex flex-wrap items-center gap-2">
         <MultiSelect
           label="User"
-          emptyLabel="Me"
+          emptyLabel="All"
           icon={<UserIcon className="size-4" />}
           options={userOptions}
           selected={selectedUsers}
           onChange={onUsersChange}
           searchable
+          showSelectAll
         />
         <Button
           variant="ghost"

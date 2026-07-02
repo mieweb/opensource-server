@@ -25,8 +25,8 @@ import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
-import { ResourcesSection } from './ResourcesSection';
-import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from './CollaboratorsManager';
+import { ResourcesSection } from '@/components/containers/ResourcesSection';
+import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 function useDebouncedValue<T>(value: T, delay = 500): T {
@@ -86,9 +86,9 @@ const schema = z.object({
   restart: z.boolean().optional(),
   services: z.array(serviceSchema),
   environmentVars: z.array(envVarSchema),
-  // Usernames to share a new container with ("additional owners"). Existence is
+  // Usernames to share a new container with (collaborators). Existence is
   // validated server-side on submit. Unused in edit mode (live manager instead).
-  additionalOwners: z.array(z.string()),
+  collaborators: z.array(z.string()),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -125,7 +125,7 @@ export function ContainerFormPage() {
     defaultValues: {
       services: [],
       environmentVars: [],
-      additionalOwners: [],
+      collaborators: [],
       nvidiaRequested: false,
       restart: false,
     },
@@ -150,7 +150,7 @@ export function ContainerFormPage() {
   const hostname = watch('hostname');
   const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
-  const additionalOwners = watch('additionalOwners') || [];
+  const collaborators = watch('collaborators') || [];
 
   useEffect(() => {
     if (container && isEdit && !initializedRef.current) {
@@ -186,7 +186,7 @@ export function ContainerFormPage() {
           key,
           value,
         })),
-        additionalOwners: [],
+        collaborators: [],
       });
     }
   }, [container, isEdit, reset]);
@@ -286,7 +286,7 @@ export function ContainerFormPage() {
         environmentVars: values.environmentVars.filter((e) => e.key.trim()),
         restart: values.restart,
         // Only meaningful on create; the edit form manages sharing live.
-        additionalOwners: values.additionalOwners,
+        collaborators: values.collaborators,
       };
       type UpdateResult = {
         containerId: number;
@@ -624,52 +624,6 @@ export function ContainerFormPage() {
           </CardContent>
         </Card>
 
-        <Card padding="none" className={sectionCardClass}>
-          <CardHeader className={sectionHeaderClass}>
-            <CardTitle className="text-base">Sharing</CardTitle>
-          </CardHeader>
-          <CardContent className={sectionContentClass}>
-            {isEdit && container ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Share this container with other users for collaboration. They will see it in
-                  their All containers tab.
-                </p>
-                <CollaboratorsManager
-                  siteId={siteId!}
-                  containerId={container.id}
-                  collaborators={container.collaborators}
-                />
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Optionally add other users as additional owners. They will see this container in
-                  their All containers tab once it is created.
-                </p>
-                <CollaboratorChips
-                  usernames={additionalOwners}
-                  emptyText="No additional owners."
-                  onRemove={(u) =>
-                    setValue(
-                      'additionalOwners',
-                      additionalOwners.filter((x) => x !== u),
-                    )
-                  }
-                />
-                <AddCollaboratorField
-                  label="Additional owner"
-                  onAdd={(u) => {
-                    if (!additionalOwners.includes(u)) {
-                      setValue('additionalOwners', [...additionalOwners, u]);
-                    }
-                  }}
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
-
         <ResourcesSection
           siteId={siteId!}
           hostname={debouncedHostname}
@@ -727,6 +681,51 @@ export function ContainerFormPage() {
                 </Button>
               </div>
             ))}
+          </CardContent>
+        </Card>
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Sharing</CardTitle>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            {isEdit && container ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Share this container with other users for collaboration. They will see it in
+                  their All containers tab.
+                </p>
+                <CollaboratorsManager
+                  siteId={siteId!}
+                  containerId={container.id}
+                  collaborators={container.collaborators}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Optionally add other users as collaborators. They will see this container in
+                  their All containers tab once it is created.
+                </p>
+                <CollaboratorChips
+                  usernames={collaborators}
+                  emptyText="No collaborators."
+                  onRemove={(u) =>
+                    setValue(
+                      'collaborators',
+                      collaborators.filter((x) => x !== u),
+                    )
+                  }
+                />
+                <AddCollaboratorField
+                  label="Collaborator"
+                  onAdd={(u) => {
+                    if (!collaborators.includes(u)) {
+                      setValue('collaborators', [...collaborators, u]);
+                    }
+                  }}
+                />
+              </>
+            )}
           </CardContent>
           <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
             <Button

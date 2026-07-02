@@ -4,9 +4,9 @@ const { Model } = require('sequelize');
 module.exports = (sequelize, DataTypes) => {
   /**
    * A grant giving a user (the `username`/uid) access to a container they do
-   * not own — i.e. a shared/collaborative container ("additional owner"). The
-   * container's primary owner is still `Container.username`; this table only
-   * records the extra collaborators.
+   * not own — i.e. a shared/collaborative container. The container's primary
+   * owner is still `Container.username`; this table only records the extra
+   * collaborators.
    */
   class ContainerCollaborator extends Model {
     static associate(models) {

@@ -27,6 +27,30 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Whether a user may view/use this container: its primary owner or a
+     * collaborator it is shared with. Requires the `collaborators` association
+     * to be eager-loaded. Admin overrides live at the route layer (admin status
+     * is a session property, not derivable from a username here).
+     * @param {string} username - The candidate user's uid.
+     * @returns {boolean}
+     */
+    canView(username) {
+      if (this.username === username) return true;
+      return (this.collaborators || []).some((c) => c.username === username);
+    }
+
+    /**
+     * Whether a user may edit this container — manage its sharing (add/remove
+     * collaborators) or delete it: only its primary owner. Collaborators can
+     * use a shared container but cannot re-share or delete it.
+     * @param {string} username - The candidate user's uid.
+     * @returns {boolean}
+     */
+    canEdit(username) {
+      return this.username === username;
+    }
+
+    /**
      * Normalize a set of environment variables into a safe, flat
      * { KEY: stringValue } object suitable for building the Proxmox `env`
      * string. This is the single place that decides what a valid env var is.

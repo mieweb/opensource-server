@@ -5,7 +5,6 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
   Button,
   Card,
   CardTitle,
@@ -25,225 +24,29 @@ import {
   useToast,
 } from '@mieweb/ui';
 import {
-  Code2,
   Container as ContainerIcon,
-  ExternalLink,
   LayoutGrid,
-  Pencil,
   Plus,
   Rows3,
   Server,
-  Share2,
-  Terminal,
-  Trash2,
   User,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
-import { CollaboratorsManager } from './CollaboratorsManager';
-import { ContainerFilters, type FilterOption } from './ContainerFilters';
+import { HttpLinks } from '@/components/containers/HttpLinks';
+import { Meta } from '@/components/containers/Meta';
+import { NodeLink } from '@/components/containers/NodeLink';
+import { RowActions } from '@/components/containers/RowActions';
+import { STATUS_LABELS, StatusBadge } from '@/components/containers/StatusBadge';
+import { SshLinks } from '@/components/containers/SshLinks';
+import { templateTitle } from '@/components/containers/shared';
+import { CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { ContainerFilters, type FilterOption } from '@/components/containers/ContainerFilters';
 import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
 const VIEW_STORAGE_KEY = 'containers:view';
-
-function statusVariant(
-  s: ContainerStatus,
-): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
-  switch (s) {
-    case 'running':
-      return 'success';
-    case 'creating':
-      return 'warning';
-    case 'failed':
-      return 'danger';
-    case 'offline':
-    case 'missing':
-      return 'secondary';
-    default:
-      return 'default';
-  }
-}
-
-// Human-readable labels for the live status values.
-const STATUS_LABELS: Record<ContainerStatus, string> = {
-  running: 'Running',
-  offline: 'Offline',
-  creating: 'Creating',
-  failed: 'Failed',
-  missing: 'Missing',
-  unknown: 'Unknown',
-};
-
-/** Status badge. The status is the live value embedded in the list response. */
-function StatusBadge({ status }: { status: ContainerStatus }) {
-  return <Badge variant={statusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
-}
-
-const linkClass = 'text-(--color-primary,#1d4ed8) hover:underline';
-
-/** Shorten a full image ref to just its name+tag, e.g. ghcr.io/mieweb/base:latest -> base:latest */
-function templateTitle(template: string | null): string {
-  if (!template) return '—';
-  return template.split('/').pop() || template;
-}
-
-function NodeLink({ c }: { c: Container }) {
-  if (!c.nodeApiUrl) return <>{c.nodeName || '—'}</>;
-  return (
-    <a
-      href={`${c.nodeApiUrl}${c.containerId ? `/#v1:0:=lxc%2F${c.containerId}:4:::::::` : ''}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Open node in Proxmox web UI"
-      className={linkClass}
-    >
-      {c.nodeName || c.nodeApiUrl}
-    </a>
-  );
-}
-
-function HttpLinks({ c, limit }: { c: Container; limit?: number }) {
-  if (c.httpEntries.length === 0) return <span className="text-muted-foreground">—</span>;
-  const entries = limit ? c.httpEntries.slice(0, limit) : c.httpEntries;
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
-      {entries.map((h) =>
-        h.externalUrl ? (
-          <a
-            key={`${c.id}-${h.port}`}
-            href={h.externalUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex items-center gap-1 text-xs ${linkClass}`}
-          >
-            <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-            <span className="break-all">{h.externalUrl.replace(/^https?:\/\//, '')}</span>
-          </a>
-        ) : (
-          <span key={`${c.id}-${h.port}`} className="text-xs">
-            :{h.port}
-          </span>
-        ),
-      )}
-    </span>
-  );
-}
-
-function SshLinks({ c, sessionUser }: { c: Container; sessionUser?: string }) {
-  if (!c.sshHost || !c.sshPort) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="inline-flex items-center gap-2 font-mono text-xs">
-      <span className="whitespace-nowrap">
-        {c.sshHost}:{c.sshPort}
-      </span>
-      {sessionUser && (
-        <>
-          <a
-            href={`vscode://vscode-remote/ssh-remote+${sessionUser}@${c.sshHost}:${c.sshPort}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open in VS Code"
-            aria-label={`Open SSH in VS Code for container ${c.hostname}`}
-            className={linkClass}
-          >
-            <Code2 className="size-4" aria-hidden="true" />
-          </a>
-          <a
-            href={`ssh://${sessionUser}@${c.sshHost}:${c.sshPort}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open SSH in terminal"
-            aria-label={`Open SSH terminal for container ${c.hostname}`}
-            className={linkClass}
-          >
-            <Terminal className="size-4" aria-hidden="true" />
-          </a>
-        </>
-      )}
-    </span>
-  );
-}
-
-function RowActions({
-  c,
-  siteId,
-  onDelete,
-  deleting,
-  canShare,
-  onShare,
-}: {
-  c: Container;
-  siteId?: string;
-  onDelete: (id: number) => void;
-  deleting: boolean;
-  canShare: boolean;
-  onShare: (c: Container) => void;
-}) {
-  return (
-    <>
-      {c.creationJobId && (
-        <Link to={`/jobs/${c.creationJobId}`}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          >
-            Logs
-          </Button>
-        </Link>
-      )}
-      {canShare && (
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Share ${c.hostname}`}
-          leftIcon={<Share2 className="size-4" />}
-          onClick={() => onShare(c)}
-          className="transition-colors hover:bg-violet-100 hover:text-violet-700 dark:hover:bg-violet-900/40 dark:hover:text-violet-200"
-        >
-          <span className="hidden sm:inline">Share</span>
-        </Button>
-      )}
-      <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Edit"
-          leftIcon={<Pencil className="size-4" />}
-          className="transition-colors hover:bg-sky-100 hover:text-sky-700 dark:hover:bg-sky-900/40 dark:hover:text-sky-200"
-        >
-          <span className="hidden sm:inline">Edit</span>
-        </Button>
-      </Link>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label="Delete"
-        leftIcon={<Trash2 className="size-4" />}
-        onClick={() => {
-          if (confirm(`Delete container "${c.hostname}"?`)) onDelete(c.id);
-        }}
-        disabled={deleting}
-        className="transition-colors hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900/40 dark:hover:text-red-200"
-      >
-        <span className="hidden sm:inline">Delete</span>
-      </Button>
-    </>
-  );
-}
-
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className="text-xs">{children}</span>
-    </span>
-  );
-}
 
 export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -256,18 +59,18 @@ export function ContainersListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
   // The URL is the single source of truth for the filter bar, so views are
-  // bookmarkable and shareable. `user` is a comma-separated owner list (or the
-  // wildcard `*`) that drives the server query; an empty list defaults to the
-  // caller's own containers. Status/template/hostname refine the loaded rows
-  // client-side.
+  // bookmarkable and shareable. `user` is a comma-separated owner list that
+  // drives the server query; an empty list returns everything the caller may
+  // see (all owners for admins; own + shared for non-admins).
+  // Status/template/hostname refine the loaded rows client-side.
   const parseList = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
   const selectedUsers = parseList(searchParams.get('user'));
   const selectedStatuses = parseList(searchParams.get('status'));
   const selectedTemplates = parseList(searchParams.get('template'));
   const hostnameQuery = searchParams.get('q') ?? '';
-  // A row may belong to another owner once the user filter is anything other
-  // than "just me", so the owner column only earns its place then.
-  const showOwner = selectedUsers.some((u) => u === '*' || u !== sessionUser);
+  // A row may belong to another owner unless the filter is narrowed to just
+  // the caller, so the owner column only disappears then.
+  const showOwner = selectedUsers.length === 0 || selectedUsers.some((u) => u !== sessionUser);
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const setListParam = (key: string, values: string[]) =>
@@ -290,13 +93,8 @@ export function ContainersListPage() {
       },
       { replace: true },
     );
-  // "Everyone"/"All shared" (`*`) is exclusive: turning it on clears specific
-  // owners, and picking a specific owner drops it.
-  const onUsersChange = (next: string[]) => {
-    const gainedWildcard = next.includes('*') && !selectedUsers.includes('*');
-    const normalized = gainedWildcard ? ['*'] : next.filter((v) => v !== '*');
-    setListParam('user', normalized);
-  };
+  // The unfiltered default already shows everything the caller may see;
+  // select-all in the dropdown is just an explicit form of the same thing.
   const clearAllFilters = () =>
     setSearchParams(
       (prev) => {
@@ -328,25 +126,27 @@ export function ContainersListPage() {
     queryFn: () => queries.getSite(siteId!),
     enabled: !!siteId,
   });
-  // Empty selection defaults to the caller's own containers server-side.
-  const userParam = selectedUsers.length > 0 ? selectedUsers.join(',') : undefined;
+  // Empty selection returns everything the caller may see server-side.
+  const userParam = selectedUsers.length > 0 ? selectedUsers : undefined;
   const { data, isLoading, error } = useQuery({
     queryKey: keys.containers(siteId!, { user: userParam, nodeId }),
     queryFn: () => queries.listContainers(siteId!, { user: userParam, nodeId }),
     enabled: !!siteId,
   });
 
-  // Options for the "User" filter. Admins may filter by any user; non-admins may
-  // only narrow to owners who have shared a container with them, so their option
-  // list is derived from everything they can currently see (own + shared).
+  // Options for the "User" filter. Admins may filter by any user; non-admins
+  // may only narrow to owners who have shared a container with them, so their
+  // option list is derived from the unfiltered list (own + shared). With no
+  // owner filter selected this is the same query as the list above, so React
+  // Query dedupes it into a single fetch.
   const { data: allUsers } = useQuery({
     queryKey: keys.users(),
     queryFn: queries.listUsers,
     enabled: !!siteId && isAdmin,
   });
   const { data: visibleContainers } = useQuery({
-    queryKey: keys.containers(siteId!, { user: '*' }),
-    queryFn: () => queries.listContainers(siteId!, { user: '*' }),
+    queryKey: keys.containers(siteId!, {}),
+    queryFn: () => queries.listContainers(siteId!),
     enabled: !!siteId && !isAdmin,
   });
 
@@ -372,16 +172,13 @@ export function ContainersListPage() {
   }, [data, selectedStatuses, selectedTemplates, hostnameQuery]);
 
   const userOptions = useMemo<FilterOption[]>(() => {
-    const base: FilterOption[] = [
-      { value: '*', label: isAdmin ? 'Everyone' : 'All shared' },
-    ];
     const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
     if (isAdmin) {
       const opts = (allUsers ?? []).map((u) => ({
         value: u.uid,
         label: u.uid === sessionUser ? `${u.cn} (me)` : u.cn,
       }));
-      return [...base, ...opts.sort(byLabel)];
+      return opts.sort(byLabel);
     }
     const owners = new Set<string>();
     if (sessionUser) owners.add(sessionUser);
@@ -390,7 +187,7 @@ export function ContainersListPage() {
       value: o,
       label: o === sessionUser ? `${o} (me)` : o,
     }));
-    return [...base, ...opts.sort(byLabel)];
+    return opts.sort(byLabel);
   }, [isAdmin, allUsers, visibleContainers, sessionUser]);
 
   const statusOptions = useMemo<FilterOption[]>(
@@ -473,7 +270,7 @@ export function ContainersListPage() {
       <ContainerFilters
         userOptions={userOptions}
         selectedUsers={selectedUsers}
-        onUsersChange={onUsersChange}
+        onUsersChange={(v) => setListParam('user', v)}
         statusOptions={statusOptions}
         selectedStatuses={selectedStatuses}
         onStatusesChange={(v) => setListParam('status', v)}
@@ -511,7 +308,7 @@ export function ContainersListPage() {
         <Alert variant="info">
           <AlertTitle>No containers</AlertTitle>
           <AlertDescription>
-            {showOwner
+            {selectedUsers.length > 0
               ? 'No containers match the selected users.'
               : 'Create your first container with the button above.'}
           </AlertDescription>

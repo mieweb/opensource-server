@@ -87,8 +87,13 @@ function normalizeDockerRef(ref) {
   return `${host}/${org}/${image}:${tag}`;
 }
 
-async function loadSite(req) {
-  const site = await Site.findByPk(parseInt(req.params.siteId, 10));
+/**
+ * Load a site by id (typically `req.params.siteId`) or 404.
+ * @param {*} siteId - Candidate site id; parsed as a base-10 integer.
+ * @returns {Promise<object>} The Site instance.
+ */
+async function loadSite(siteId) {
+  const site = await Site.findByPk(parseInt(siteId, 10));
   if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
   return site;
 }
@@ -212,95 +217,61 @@ function buildContainerListWhere(query, nodeIds) {
  * Apply the `user` list filter to a Sequelize `where`, enforcing authorization
  * and folding in shared containers. It backs the single containers screen's
  * "User" filter.
- * The `user` query param may be a single username, a comma-separated list of
- * usernames, or the wildcard `*`. Absent/empty -> the caller's own containers
- * (the default screen). `*` -> every owner on the site for admins; the caller's
- * own plus any shared with them for non-admins. A list of names -> those owners
- * for admins; for non-admins the same list intersected with what they may
- * already see (own plus shared), so a non-admin can only narrow down to owners
- * who have shared a container with them and never widen their visibility.
+ * `req.query.user` must be an array (callers default it with
+ * `req.query.user ??= []`; clients send bracket notation, e.g. `user[0]=alice`,
+ * which the 'extended' query parser coerces to an array). Empty -> everything
+ * the caller may see: every container on the site for admins, their own plus
+ * any shared with them for non-admins. A list of names -> those owners for
+ * admins; for non-admins the same list intersected with what they may already
+ * see (own plus shared), so a non-admin can only narrow down to owners who
+ * have shared a container with them and never widen their visibility.
  * @param {object} where - The Sequelize where clause to mutate (already scoped
  *   to the site's nodes).
  * @param {object} req - Express request (uses req.query.user, req.session).
- * @returns {Promise<object>} The same `where`, mutated.
+ * @returns {object} The same `where`, mutated.
  */
-async function applyOwnershipFilter(where, req) {
+function applyOwnershipFilter(where, req) {
   const session = req.session;
-  const names = parseUserFilter(req.query.user);
+  const names = req.query.user;
   if (names.length === 0) {
-    where.username = session.user; // default: the caller's own containers
-    return where;
-  }
-  if (names.includes('*')) {
     if (session.isAdmin) return where; // every owner on the site
-    where[Sequelize.Op.or] = await ownVisibleClauses(session.user);
+    where[Sequelize.Op.or] = ownVisibleClauses(session.user);
     return where;
   }
   if (session.isAdmin) {
-    where.username = names.length === 1 ? names[0] : { [Sequelize.Op.in]: names };
+    where.username = names;
     return where;
   }
   // Non-admin: intersect the requested owners with what they may already see.
   where[Sequelize.Op.and] = [
-    { [Sequelize.Op.or]: await ownVisibleClauses(session.user) },
-    { username: { [Sequelize.Op.in]: names } },
+    { [Sequelize.Op.or]: ownVisibleClauses(session.user) },
+    { username: names },
   ];
   return where;
 }
 
 /**
- * Parse the `user` list filter into a de-duplicated array of usernames. Accepts
- * a single value, a repeated query param (array), or a comma-separated string.
- * Returns an empty array when no filter was supplied.
- * @param {*} raw - req.query.user.
- * @returns {string[]}
- */
-function parseUserFilter(raw) {
-  if (raw === undefined || raw === null) return [];
-  const parts = (Array.isArray(raw) ? raw : String(raw).split(','))
-    .map((s) => String(s).trim())
-    .filter(Boolean);
-  return [...new Set(parts)];
-}
-
-/**
  * Sequelize OR clauses matching every container a non-admin may see: their own
- * plus any shared with them. An empty shared set collapses to just their own.
+ * plus any shared with them. The shared set is expressed as an `IN (SELECT …)`
+ * subquery so the whole visibility check resolves inside the main containers
+ * query — a single round trip — instead of a separate lookup. (A plain JOIN on
+ * the eager-loaded `collaborators` association would filter the joined rows
+ * and truncate the serialized collaborator list, so a subquery is used.)
  * @param {string} username - The requesting user's uid.
- * @returns {Promise<object[]>}
+ * @returns {object[]}
  */
-async function ownVisibleClauses(username) {
-  const shares = await ContainerCollaborator.findAll({
-    where: { username },
-    attributes: ['containerId'],
-  });
-  const sharedIds = shares.map((s) => s.containerId);
-  return [{ username }, ...(sharedIds.length > 0 ? [{ id: sharedIds }] : [])];
-}
-
-/**
- * Whether a session may view/edit a container: its owner, a collaborator it is
- * shared with, or an admin. Requires `collaborators` to be loaded on the record.
- * @param {object} container - Container instance with `collaborators` included.
- * @param {object} session - req.session ({ user, isAdmin }).
- * @returns {boolean}
- */
-function userCanAccess(container, session) {
-  if (session.isAdmin) return true;
-  if (container.username === session.user) return true;
-  return (container.collaborators || []).some((c) => c.username === session.user);
-}
-
-/**
- * Whether a session may manage a container's sharing (add/remove collaborators)
- * or delete it: only its primary owner or an admin. Collaborators can use a
- * shared container but cannot re-share or delete it.
- * @param {object} container - Container instance.
- * @param {object} session - req.session ({ user, isAdmin }).
- * @returns {boolean}
- */
-function userCanManage(container, session) {
-  return session.isAdmin || container.username === session.user;
+function ownVisibleClauses(username) {
+  // Built with the dialect's query generator so identifier quoting and value
+  // escaping stay correct across sqlite/mysql/postgres. selectQuery emits a
+  // trailing ';' which is invalid inside IN (…), hence the slice.
+  const shared = sequelize.dialect.queryGenerator
+    .selectQuery(
+      ContainerCollaborator.getTableName(),
+      { attributes: ['containerId'], where: { username } },
+      ContainerCollaborator,
+    )
+    .slice(0, -1);
+  return [{ username }, { id: { [Sequelize.Op.in]: Sequelize.literal(`(${shared})`) } }];
 }
 
 /**
@@ -315,7 +286,7 @@ function userCanManage(container, session) {
  * @returns {Promise<{site: object, container: object}>}
  */
 async function loadContainerForSession(req, { requireManage = false, include } = {}) {
-  const site = await loadSite(req);
+  const site = await loadSite(req.params.siteId);
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id) || id <= 0) {
     throw new ApiError(404, 'not_found', 'Container not found');
@@ -326,9 +297,11 @@ async function loadContainerForSession(req, { requireManage = false, include } =
   if (!container || !container.node || container.node.siteId !== site.id) {
     throw new ApiError(404, 'not_found', 'Container not found');
   }
-  const authorized = requireManage
-    ? userCanManage(container, req.session)
-    : userCanAccess(container, req.session);
+  const authorized =
+    req.session.isAdmin ||
+    (requireManage
+      ? container.canEdit(req.session.user)
+      : container.canView(req.session.user));
   if (!authorized) throw new ApiError(404, 'not_found', 'Container not found');
   return { site, container };
 }
@@ -391,7 +364,7 @@ router.get(
 router.get(
   '/new',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const externalDomains = await site.getSortedExternalDomains();
     const nvidiaAvailable =
       (await Node.count({ where: { siteId: site.id, nvidiaAvailable: true } })) > 0;
@@ -403,15 +376,16 @@ router.get(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
     const where = buildContainerListWhere(req.query, nodeIds);
-    // `user` filter drives the Mine/All toggle and folds in shared containers:
-    // defaults to the requesting user (Mine); admins may pass `user=*` for every
-    // owner or `user=<name>` for a specific one; non-admins passing `user=*` get
-    // their own plus any containers shared with them. See applyOwnershipFilter.
-    await applyOwnershipFilter(where, req);
+    // `user` filter backs the list page's User filter: omitted, it returns
+    // everything the caller may see (all owners for admins; own + shared for
+    // non-admins); `user[0]=<name>` narrows to specific owners. See
+    // applyOwnershipFilter.
+    req.query.user ??= [];
+    applyOwnershipFilter(where, req);
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
@@ -427,7 +401,7 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     // Guard against non-numeric ids (e.g. "undefined", "NaN"): parseInt would
     // yield NaN and reach the DB as an invalid integer comparison, surfacing as
     // a 500. Treat anything non-numeric as "not found".
@@ -439,7 +413,12 @@ router.get(
       where: { id: containerId },
       include: CONTAINER_INCLUDE,
     });
-    if (!c || !c.node || c.node.siteId !== site.id || !userCanAccess(c, req.session)) {
+    if (
+      !c ||
+      !c.node ||
+      c.node.siteId !== site.id ||
+      !(req.session.isAdmin || c.canView(req.session.user))
+    ) {
       throw new ApiError(404, 'not_found', 'Container not found');
     }
     const status = await computeContainerStatus({ container: c, Job });
@@ -451,7 +430,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const t = await sequelize.transaction();
     try {
       let {
@@ -462,7 +441,7 @@ router.post(
         environmentVars,
         entrypoint,
         nvidiaRequested,
-        additionalOwners,
+        collaborators,
       } = req.body || {};
 
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
@@ -526,13 +505,13 @@ router.post(
         { transaction: t },
       );
 
-      // Additional owners (collaborators) the creator chose to share with.
-      // Each must be an existing user and is validated up front so a typo fails
-      // the whole create (rolled back) rather than silently dropping a share.
-      // The creator is the owner already, so skip them if they list themselves.
-      if (Array.isArray(additionalOwners) && additionalOwners.length > 0) {
+      // Collaborators the creator chose to share with. Each must be an existing
+      // user and is validated up front so a typo fails the whole create (rolled
+      // back) rather than silently dropping a share. The creator is the owner
+      // already, so skip them if they list themselves.
+      if (Array.isArray(collaborators) && collaborators.length > 0) {
         const seen = new Set();
-        for (const raw of additionalOwners) {
+        for (const raw of collaborators) {
           const trimmed = typeof raw === 'string' ? raw.trim() : '';
           if (!trimmed || trimmed === container.username) continue;
           const username = await resolveShareUsername(raw, container, { transaction: t });
@@ -621,7 +600,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const container = await Container.findOne({
       where: { id: parseInt(req.params.id, 10) },
       include: [
@@ -629,7 +608,7 @@ router.put(
         { association: 'collaborators' },
       ],
     });
-    if (!container || !userCanAccess(container, req.session)) {
+    if (!container || !(req.session.isAdmin || container.canView(req.session.user))) {
       throw new ApiError(404, 'not_found', 'Container not found');
     }
 
@@ -776,7 +755,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const container = await Container.findOne({
       where: { id: parseInt(req.params.id, 10) },
       include: [
@@ -800,7 +779,7 @@ router.delete(
     }
     // Deleting is owner/admin only; collaborators may use but not destroy a
     // shared container.
-    if (!userCanManage(container, req.session)) {
+    if (!(req.session.isAdmin || container.canEdit(req.session.user))) {
       throw new ApiError(404, 'not_found', 'Container not found');
     }
     const node = container.node;

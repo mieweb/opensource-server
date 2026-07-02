@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Input, useToast } from '@mieweb/ui';
-import { UserPlus, X } from 'lucide-react';
+import { Button, Input, ServiceBadge, useToast } from '@mieweb/ui';
+import { UserPlus } from 'lucide-react';
 import { ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 
 /**
  * Presentational list of collaborator usernames rendered as removable chips.
- * Shared by the live manager and the create-form's "additional owners" field so
+ * Shared by the live manager and the create-form's collaborators field so
  * both surfaces look identical.
  */
 export function CollaboratorChips({
@@ -28,18 +28,16 @@ export function CollaboratorChips({
     <ul className="flex flex-wrap gap-2" aria-label="Shared with">
       {usernames.map((username) => (
         <li key={username}>
-          <Badge variant="secondary" className="gap-1 pr-1">
-            <span>{username}</span>
-            <button
-              type="button"
-              onClick={() => onRemove(username)}
-              disabled={disabled}
-              aria-label={`Remove ${username}`}
-              className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/10 disabled:opacity-50"
-            >
-              <X className="size-3" aria-hidden="true" />
-            </button>
-          </Badge>
+          <ServiceBadge
+            variant="secondary"
+            size="sm"
+            removable
+            onRemove={() => {
+              if (!disabled) onRemove(username);
+            }}
+          >
+            {username}
+          </ServiceBadge>
         </li>
       ))}
     </ul>
