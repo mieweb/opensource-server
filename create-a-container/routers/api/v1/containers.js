@@ -193,15 +193,29 @@ const CONTAINER_INCLUDE = [
 ];
 
 /**
- * Build the `where` clause for a container list query, scoped to the given
- * site's nodes and narrowed by the supported query-string filters
- * (`hostname`, `nodeId`). The `nodeId` filter is intersected with the site's
- * own nodes so it can never widen the result set beyond the site.
+ * Build the `where` clause for a container list query — the single arbiter of
+ * what a list request may return. Scopes to the given site's nodes, narrows by
+ * the supported query-string filters (`hostname`, `nodeId`, `user`), and
+ * enforces ownership visibility, folding in shared containers.
+ *
+ * The `nodeId` filter is intersected with the site's own nodes so it can never
+ * widen the result set beyond the site.
+ *
+ * `query.user` must be an array (callers default it with `req.query.user ??=
+ * []`; clients send bracket notation, e.g. `user[0]=alice`, which the
+ * 'extended' query parser coerces to an array). Empty -> everything the caller
+ * may see: every container on the site for admins, their own plus any shared
+ * with them for non-admins. A list of names -> those owners for admins; for
+ * non-admins the same list intersected with what they may already see (own
+ * plus shared), so a non-admin can only narrow down to owners who have shared
+ * a container with them and never widen their visibility.
+ *
  * @param {object} query - req.query
  * @param {number[]} nodeIds - IDs of the nodes belonging to the site
+ * @param {object} session - req.session ({ user, isAdmin })
  * @returns {object} Sequelize where clause
  */
-function buildContainerListWhere(query, nodeIds) {
+function buildContainerListWhere(query, nodeIds, session) {
   const where = { nodeId: nodeIds };
   if (query.hostname) where.hostname = query.hostname;
   if (query.nodeId) {
@@ -210,68 +224,40 @@ function buildContainerListWhere(query, nodeIds) {
     // otherwise force an empty result rather than leaking other sites' nodes.
     where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
   }
-  return where;
-}
 
-/**
- * Apply the `user` list filter to a Sequelize `where`, enforcing authorization
- * and folding in shared containers. It backs the single containers screen's
- * "User" filter.
- * `req.query.user` must be an array (callers default it with
- * `req.query.user ??= []`; clients send bracket notation, e.g. `user[0]=alice`,
- * which the 'extended' query parser coerces to an array). Empty -> everything
- * the caller may see: every container on the site for admins, their own plus
- * any shared with them for non-admins. A list of names -> those owners for
- * admins; for non-admins the same list intersected with what they may already
- * see (own plus shared), so a non-admin can only narrow down to owners who
- * have shared a container with them and never widen their visibility.
- * @param {object} where - The Sequelize where clause to mutate (already scoped
- *   to the site's nodes).
- * @param {object} req - Express request (uses req.query.user, req.session).
- * @returns {object} The same `where`, mutated.
- */
-function applyOwnershipFilter(where, req) {
-  const session = req.session;
-  const names = req.query.user;
-  if (names.length === 0) {
-    if (session.isAdmin) return where; // every owner on the site
-    where[Sequelize.Op.or] = ownVisibleClauses(session.user);
-    return where;
-  }
+  const names = query.user;
   if (session.isAdmin) {
-    where.username = names;
+    // Admins may see every owner on the site; a name list simply narrows it.
+    if (names.length > 0) where.username = names;
     return where;
   }
-  // Non-admin: intersect the requested owners with what they may already see.
-  where[Sequelize.Op.and] = [
-    { [Sequelize.Op.or]: ownVisibleClauses(session.user) },
-    { username: names },
-  ];
-  return where;
-}
-
-/**
- * Sequelize OR clauses matching every container a non-admin may see: their own
- * plus any shared with them. The shared set is expressed as an `IN (SELECT …)`
- * subquery so the whole visibility check resolves inside the main containers
- * query — a single round trip — instead of a separate lookup. (A plain JOIN on
- * the eager-loaded `collaborators` association would filter the joined rows
- * and truncate the serialized collaborator list, so a subquery is used.)
- * @param {string} username - The requesting user's uid.
- * @returns {object[]}
- */
-function ownVisibleClauses(username) {
-  // Built with the dialect's query generator so identifier quoting and value
-  // escaping stay correct across sqlite/mysql/postgres. selectQuery emits a
+  // Non-admins may only see their own containers plus any shared with them.
+  // The shared set is expressed as an `IN (SELECT …)` subquery so the whole
+  // visibility check resolves inside the main containers query — a single
+  // round trip — instead of a separate lookup. (A plain JOIN on the
+  // eager-loaded `collaborators` association would filter the joined rows and
+  // truncate the serialized collaborator list, so a subquery is used.) It is
+  // built with the dialect's query generator so identifier quoting and value
+  // escaping stay correct across sqlite/mysql/postgres; selectQuery emits a
   // trailing ';' which is invalid inside IN (…), hence the slice.
   const shared = sequelize.dialect.queryGenerator
     .selectQuery(
       ContainerCollaborator.getTableName(),
-      { attributes: ['containerId'], where: { username } },
+      { attributes: ['containerId'], where: { username: session.user } },
       ContainerCollaborator,
     )
     .slice(0, -1);
-  return [{ username }, { id: { [Sequelize.Op.in]: Sequelize.literal(`(${shared})`) } }];
+  const visible = [
+    { username: session.user },
+    { id: { [Sequelize.Op.in]: Sequelize.literal(`(${shared})`) } },
+  ];
+  if (names.length === 0) {
+    where[Sequelize.Op.or] = visible;
+  } else {
+    // Intersect the requested owners with what the caller may already see.
+    where[Sequelize.Op.and] = [{ [Sequelize.Op.or]: visible }, { username: names }];
+  }
+  return where;
 }
 
 /**
@@ -379,13 +365,12 @@ router.get(
     const site = await loadSite(req.params.siteId);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    const where = buildContainerListWhere(req.query, nodeIds);
     // `user` filter backs the list page's User filter: omitted, it returns
     // everything the caller may see (all owners for admins; own + shared for
     // non-admins); `user[0]=<name>` narrows to specific owners. See
-    // applyOwnershipFilter.
+    // buildContainerListWhere.
     req.query.user ??= [];
-    applyOwnershipFilter(where, req);
+    const where = buildContainerListWhere(req.query, nodeIds, req.session);
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
