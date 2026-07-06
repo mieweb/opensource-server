@@ -376,7 +376,11 @@ paths:
       - { in: path, name: id, required: true, schema: { type: integer } }
     get: { tags: [Containers], responses: { '200': { description: Container } } }
     put: { tags: [Containers], responses: { '200': { description: Updated, optional restart job } } }
-    delete: { tags: [Containers], responses: { '200': { description: Deleted, with DNS cleanup warnings } } }
+    delete:
+      tags: [Containers]
+      responses:
+        '200': { description: Deleted, with DNS cleanup warnings }
+        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
@@ -398,6 +402,7 @@ paths:
               properties: { username: { type: string } }
       responses:
         '201': { description: '{ collaborators: string[] }' }
+        '403': { description: 'forbidden — only the owner/admin may share (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'user_not_found when the username does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '409': { description: 'already_shared / already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators/{username}:
@@ -408,7 +413,9 @@ paths:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: path, name: id, required: true, schema: { type: integer } }
         - { in: path, name: username, required: true, schema: { type: string } }
-      responses: { '200': { description: '{ collaborators: string[] }' } }
+      responses:
+        '200': { description: '{ collaborators: string[] }' }
+        '403': { description: 'forbidden — only the owner/admin may unshare (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
