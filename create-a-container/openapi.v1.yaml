@@ -375,7 +375,11 @@ paths:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
     get: { tags: [Containers], responses: { '200': { description: Container } } }
-    put: { tags: [Containers], responses: { '200': { description: Updated, optional restart job } } }
+    put:
+      tags: [Containers]
+      responses:
+        '200': { description: Updated, optional restart job }
+        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Containers]
       responses:

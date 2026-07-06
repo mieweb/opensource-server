@@ -587,11 +587,12 @@ router.post(
   }),
 );
 
-// PUT /containers/:id — service add/delete + env/entrypoint changes + optional restart job
+// PUT /containers/:id — service add/delete + env/entrypoint changes + optional restart job.
+// Owner/admin only; collaborators get a read-only view of a shared container.
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { site, container } = await loadContainerForSession(req);
+    const { site, container } = await loadContainerForSession(req, { requireManage: true });
 
     const { services, environmentVars, entrypoint } = req.body || {};
     const forceRestart = req.body?.restart === true || req.body?.restart === 'true';

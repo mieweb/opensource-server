@@ -27,9 +27,10 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
-     * Whether a user may edit this container — manage its sharing (add/remove
-     * collaborators) or delete it: only its primary owner. Collaborators can
-     * use a shared container but cannot re-share or delete it.
+     * Whether a user may edit this container — change its configuration,
+     * manage its sharing (add/remove collaborators), or delete it: only its
+     * primary owner. Collaborators can use a shared container but have a
+     * read-only view of it.
      * @param {string} username - The candidate user's uid.
      * @returns {boolean}
      */

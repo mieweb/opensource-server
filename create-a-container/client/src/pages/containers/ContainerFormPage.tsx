@@ -23,6 +23,7 @@ import {
 import { Container, Dices, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { useSession } from '@/lib/auth';
 import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
 import { ResourcesSection } from '@/components/containers/ResourcesSection';
@@ -108,6 +109,7 @@ export function ContainerFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  const { data: session } = useSession();
 
   const { data: bootstrap, isLoading: bootstrapLoading } = useQuery({
     queryKey: keys.containerBootstrap(siteId!),
@@ -119,6 +121,11 @@ export function ContainerFormPage() {
     queryFn: () => queries.getContainer(siteId!, id!),
     enabled: isEdit,
   });
+  // Collaborators get a read-only view of a shared container: the whole form is
+  // disabled and the save footer hidden. The server enforces the same rule
+  // (PUT is owner/admin only), so this is purely presentational.
+  const isReadOnly =
+    isEdit && !!container && !!session && !session.isAdmin && container.owner !== session.user;
 
   const { register, handleSubmit, control, reset, watch, setValue, formState } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -360,8 +367,17 @@ export function ContainerFormPage() {
           backTo={{ label: 'Back to containers', to: `/sites/${siteId}/containers` }}
         />
 
+        {isReadOnly && (
+          <Alert variant="info">
+            <AlertDescription>
+              This container is shared with you. Only the owner ({container?.owner}) can make
+              changes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <fieldset
-          disabled={metadataMutation.isPending}
+          disabled={metadataMutation.isPending || isReadOnly}
           className={`flex flex-col gap-6 border-0 p-0 m-0 ${
             metadataMutation.isPending ? 'pointer-events-none opacity-60' : ''
           }`}
@@ -728,18 +744,20 @@ export function ContainerFormPage() {
               </>
             )}
           </CardContent>
-          <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => navigate(`/sites/${siteId}/containers`)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-              {isEdit ? 'Save changes' : 'Create container'}
-            </Button>
-          </CardFooter>
+          {!isReadOnly && (
+            <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => navigate(`/sites/${siteId}/containers`)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+                {isEdit ? 'Save changes' : 'Create container'}
+              </Button>
+            </CardFooter>
+          )}
         </Card>
         </fieldset>
 
