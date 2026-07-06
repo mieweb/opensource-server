@@ -627,6 +627,7 @@ export function ContainerFormPage() {
         <ResourcesSection
           siteId={siteId!}
           hostname={debouncedHostname}
+          owner={isEdit ? container?.owner : undefined}
           isNewContainer={!isEdit}
           sectionCardClass={sectionCardClass}
           sectionHeaderClass={sectionHeaderClass}
