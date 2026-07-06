@@ -201,9 +201,10 @@ const CONTAINER_INCLUDE = [
  * The `nodeId` filter is intersected with the site's own nodes so it can never
  * widen the result set beyond the site.
  *
- * `query.user` must be an array (callers default it with `req.query.user ??=
- * []`; clients send bracket notation, e.g. `user[0]=alice`, which the
- * 'extended' query parser coerces to an array). Empty -> everything the caller
+ * `query.user` must be an array (callers capture `req.query` once and default
+ * it with `query.user ??= []` — Express 5 re-parses req.query on each access;
+ * clients send bracket notation, e.g. `user[0]=alice`, which the 'extended'
+ * query parser coerces to an array). Empty -> everything the caller
  * may see: every container on the site for admins, their own plus any shared
  * with them for non-admins. A list of names -> those owners for admins; for
  * non-admins the same list intersected with what they may already see (own
@@ -387,9 +388,12 @@ router.get(
     // `user` filter backs the list page's User filter: omitted, it returns
     // everything the caller may see (all owners for admins; own + shared for
     // non-admins); `user[0]=<name>` narrows to specific owners. See
-    // buildContainerListWhere.
-    req.query.user ??= [];
-    const where = buildContainerListWhere(req.query, nodeIds, req.session);
+    // buildContainerListWhere. Express 5's req.query is a getter that re-parses
+    // on every access, so capture it once — defaulting `req.query.user` directly
+    // would mutate a throwaway object.
+    const query = req.query;
+    query.user ??= [];
+    const where = buildContainerListWhere(query, nodeIds, req.session);
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
