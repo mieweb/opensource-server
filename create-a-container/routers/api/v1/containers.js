@@ -226,6 +226,19 @@ function resolveUsernameFilter(requestedUser, session) {
   return requestedUser;
 }
 
+/**
+ * Ownership scoping for single-container operations (show/update/delete).
+ * Admins may act on any owner's container — mirroring the `user=*` behaviour of
+ * the list route — while everyone else is restricted to containers they own.
+ * Returns a partial Sequelize `where` to spread into the lookup; site scoping is
+ * still enforced separately by the caller.
+ * @param {{ user: string, isAdmin: boolean }} session - req.session
+ * @returns {object} partial where clause ({} for admins, { username } otherwise)
+ */
+function containerOwnerWhere(session) {
+  return session.isAdmin ? {} : { username: session.user };
+}
+
 // GET /containers/metadata?image=...
 router.get(
   '/metadata',
@@ -296,7 +309,7 @@ router.get(
       throw new ApiError(404, 'not_found', 'Container not found');
     }
     const c = await Container.findOne({
-      where: { id: containerId, username: req.session.user },
+      where: { id: containerId, ...containerOwnerWhere(req.session) },
       include: CONTAINER_INCLUDE,
     });
     if (!c || !c.node || c.node.siteId !== site.id) {
@@ -463,7 +476,7 @@ router.put(
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
     const container = await Container.findOne({
-      where: { id: parseInt(req.params.id, 10), username: req.session.user },
+      where: { id: parseInt(req.params.id, 10), ...containerOwnerWhere(req.session) },
       include: [{ model: Node, as: 'node', where: { siteId: site.id } }],
     });
     if (!container) throw new ApiError(404, 'not_found', 'Container not found');
@@ -613,7 +626,7 @@ router.delete(
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
     const container = await Container.findOne({
-      where: { id: parseInt(req.params.id, 10), username: req.session.user },
+      where: { id: parseInt(req.params.id, 10), ...containerOwnerWhere(req.session) },
       include: [
         { model: Node, as: 'node' },
         {
