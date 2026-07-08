@@ -123,11 +123,9 @@ function serializeContainer(c, site, status) {
     // "all containers" view can show a User column; for the per-user list it
     // simply equals the requesting user.
     owner: c.username,
-    // Additional users this container is shared with. Sorted for a stable UI;
-    // present on every payload so consumers can render/manage sharing.
-    collaborators: (c.collaborators || [])
-      .map((x) => x.username)
-      .sort((a, b) => a.localeCompare(b)),
+    // Additional users this container is shared with. Present on every
+    // payload so consumers can render/manage sharing.
+    collaborators: c.collaboratorNames(),
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).
@@ -338,21 +336,6 @@ function normalizeShareUsername(rawUsername, container) {
  */
 function isUnknownUserError(err) {
   return err?.name === 'SequelizeForeignKeyConstraintError';
-}
-
-/**
- * Load the current collaborator usernames for a container, sorted for a stable
- * UI. Shared shape returned by the share/unshare endpoints.
- * @param {number} containerId
- * @returns {Promise<string[]>}
- */
-async function listCollaboratorUsernames(containerId) {
-  const rows = await ContainerCollaborator.findAll({
-    where: { containerId },
-    attributes: ['username'],
-    order: [['username', 'ASC']],
-  });
-  return rows.map((r) => r.username);
 }
 
 // GET /containers/metadata?image=...
@@ -835,10 +818,7 @@ router.get(
   asyncHandler(async (req, res) => {
     // The loader already eager-loads `collaborators`, so no second query.
     const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session);
-    const collaborators = (container.collaborators || [])
-      .map((c) => c.username)
-      .sort((a, b) => a.localeCompare(b));
-    return ok(res, { collaborators });
+    return ok(res, { collaborators: container.collaboratorNames() });
   }),
 );
 
@@ -863,7 +843,9 @@ router.post(
       }
       throw err;
     }
-    return created(res, { collaborators: await listCollaboratorUsernames(container.id) });
+    // The loader's eager load predates the insert — reload to reflect the add.
+    await container.reload();
+    return created(res, { collaborators: container.collaboratorNames() });
   }),
 );
 
@@ -878,7 +860,9 @@ router.delete(
       where: { containerId: container.id, username: req.params.username },
     });
     if (!removed) throw new ApiError(404, 'not_found', 'Collaborator not found');
-    return ok(res, { collaborators: await listCollaboratorUsernames(container.id) });
+    // The loader's eager load predates the delete — reload to reflect the removal.
+    await container.reload();
+    return ok(res, { collaborators: container.collaboratorNames() });
   }),
 );
 

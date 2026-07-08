@@ -39,6 +39,17 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Usernames this container is shared with, sorted for a stable UI. The
+     * shared shape of the `collaborators` field across container payloads and
+     * the share/unshare endpoints. Requires the `collaborators` association to
+     * be eager-loaded (and reloaded after a share/unshare mutation).
+     * @returns {string[]}
+     */
+    collaboratorNames() {
+      return this.collaborators.map((c) => c.username).sort((a, b) => a.localeCompare(b));
+    }
+
+    /**
      * Normalize a set of environment variables into a safe, flat
      * { KEY: stringValue } object suitable for building the Proxmox `env`
      * string. This is the single place that decides what a valid env var is.
