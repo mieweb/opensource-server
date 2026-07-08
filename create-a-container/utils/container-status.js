@@ -41,8 +41,8 @@ const STATUS_VALUES = Object.freeze(Object.values(STATUS));
 
 const ACTIVE_JOB_STATUSES = ['pending', 'running'];
 
-function nodeHasCreds(node) {
-  return !!(node && node.apiUrl && node.tokenId && node.secret);
+function nodeHasApiAccess(node) {
+  return !!(node && typeof node.hasApiAccess === 'function' && node.hasApiAccess());
 }
 
 /**
@@ -118,7 +118,7 @@ function decideStatus(facts) {
  */
 async function computeContainerStatus({ container, Job, api, snapshot }) {
   const node = container.node;
-  const hasCreds = nodeHasCreds(node);
+  const hasCreds = nodeHasApiAccess(node);
   const hasVmid = container.containerId != null;
 
   // --- Determine Proxmox presence / run state ---
@@ -202,7 +202,7 @@ async function computeContainerStatuses(containers, Job) {
       const node = group[0].node;
       let snapshot = { ok: false, data: null };
 
-      if (nodeHasCreds(node)) {
+      if (nodeHasApiAccess(node)) {
         try {
           const api = await node.api();
           const data = await api.clusterResources('lxc');

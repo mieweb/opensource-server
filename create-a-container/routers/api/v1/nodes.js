@@ -16,6 +16,7 @@ function serialize(n) {
   return {
     id: n.id,
     name: n.name,
+    nodeType: n.nodeType,
     siteId: n.siteId,
     ipv4Address: n.ipv4Address,
     apiUrl: n.apiUrl,
@@ -63,7 +64,7 @@ router.get(
     const node = await Node.findOne({
       where: { id: parseInt(req.params.id, 10), siteId: site.id },
     });
-    if (!node || !node.apiUrl || !node.tokenId || !node.secret) return ok(res, []);
+    if (!node || !node.hasApiAccess()) return ok(res, []);
     try {
       const client = await node.api();
       const storages = await client.datastores(node.name, 'vztmpl', true);
@@ -80,10 +81,11 @@ router.post(
   apiAdmin,
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
     const node = await Node.create({
       name,
+      nodeType: nodeType || 'proxmox',
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
@@ -109,10 +111,11 @@ router.put(
       where: { id: parseInt(req.params.id, 10), siteId: site.id },
     });
     if (!node) throw new ApiError(404, 'not_found', 'Node not found');
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
     const update = {
       name,
+      nodeType: nodeType || node.nodeType || 'proxmox',
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
