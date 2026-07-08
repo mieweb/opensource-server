@@ -42,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
      * Usernames this container is shared with, sorted for a stable UI. The
      * shared shape of the `collaborators` field across container payloads and
      * the share/unshare endpoints. Requires the `collaborators` association to
-     * be eager-loaded (and reloaded after a share/unshare mutation).
+     * be eager-loaded.
      * @returns {string[]}
      */
     collaboratorNames() {

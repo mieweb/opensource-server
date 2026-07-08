@@ -834,17 +834,18 @@ router.post(
     });
     const username = normalizeShareUsername(req.body?.username, container);
     try {
-      await ContainerCollaborator.findOrCreate({
+      const [collaborator, isNew] = await ContainerCollaborator.findOrCreate({
         where: { containerId: container.id, username },
       });
+      // The eager load predates the insert; push the new row in place (the
+      // association shares one array with dataValues) instead of re-querying.
+      if (isNew) container.collaborators.push(collaborator);
     } catch (err) {
       if (isUnknownUserError(err)) {
         throw new ApiError(404, 'user_not_found', `User "${username}" does not exist`);
       }
       throw err;
     }
-    // The loader's eager load predates the insert — reload to reflect the add.
-    await container.reload();
     return created(res, { collaborators: container.collaboratorNames() });
   }),
 );
@@ -860,8 +861,10 @@ router.delete(
       where: { containerId: container.id, username: req.params.username },
     });
     if (!removed) throw new ApiError(404, 'not_found', 'Collaborator not found');
-    // The loader's eager load predates the delete — reload to reflect the removal.
-    await container.reload();
+    // Splice the removed row out of the eager-loaded association in place (it
+    // shares one array with dataValues; reassignment would desync them).
+    const idx = container.collaborators.findIndex((c) => c.username === req.params.username);
+    if (idx !== -1) container.collaborators.splice(idx, 1);
     return ok(res, { collaborators: container.collaboratorNames() });
   }),
 );
