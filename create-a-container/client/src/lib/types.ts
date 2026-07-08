@@ -74,6 +74,7 @@ export interface Container {
   id: number;
   containerId: number | null;
   hostname: string;
+  owner: string;
   ipv4Address: string | null;
   macAddress: string | null;
   status: ContainerStatus;

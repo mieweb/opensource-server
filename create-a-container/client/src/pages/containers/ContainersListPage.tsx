@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -30,6 +30,7 @@ import {
   Server,
   Terminal,
   Trash2,
+  User,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
@@ -215,7 +216,20 @@ export function ContainersListPage() {
   const toast = useToast();
   const { data: session } = useSession();
   const sessionUser = session?.user;
+  const isAdmin = !!session?.isAdmin;
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const nodeId = searchParams.get('nodeId') || undefined;
+  // `user=*` lists every owner on the site for admins; for non-admins the
+  // server scopes it back to their own containers, so the toggle is available
+  // to everyone (ahead of future shareable/collaborative containers). The param
+  // is the single source of truth so the view is bookmarkable and slots in
+  // beside the existing hostname/nodeId filters.
+  const isAll = searchParams.get('user') === '*';
+  const userFilter = isAll ? '*' : undefined;
+  // Only admins ever see more than one owner in the `*` view, so the owner
+  // column is meaningful for them alone.
+  const showOwner = isAdmin && isAll;
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const [view, setView] = useState<ViewMode>(() => {
@@ -237,8 +251,8 @@ export function ContainersListPage() {
     enabled: !!siteId,
   });
   const { data, isLoading, error } = useQuery({
-    queryKey: keys.containers(siteId!),
-    queryFn: () => queries.listContainers(siteId!),
+    queryKey: keys.containers(siteId!, { user: userFilter, nodeId }),
+    queryFn: () => queries.listContainers(siteId!, { user: userFilter, nodeId }),
     enabled: !!siteId,
   });
 
@@ -256,11 +270,27 @@ export function ContainersListPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Containers"
+        title={isAll ? 'All Containers' : 'Containers'}
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Container ownership scope"
+              className="inline-flex rounded-md border border-border p-0.5"
+            >
+              <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
+                <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
+                  Mine
+                </Button>
+              </Link>
+              <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
+                <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
+                  All
+                </Button>
+              </Link>
+            </div>
             {hasContainers && (
               <div
                 role="group"
@@ -328,7 +358,11 @@ export function ContainersListPage() {
       {data && data.length === 0 && (
         <Alert variant="info">
           <AlertTitle>No containers</AlertTitle>
-          <AlertDescription>Create your first container with the button above.</AlertDescription>
+          <AlertDescription>
+            {showOwner
+              ? 'No containers exist on this site yet.'
+              : 'Create your first container with the button above.'}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -355,6 +389,14 @@ export function ContainersListPage() {
                 <Meta label="Node">
                   <NodeLink c={c} />
                 </Meta>
+                {showOwner && (
+                  <Meta label="User">
+                    <span className="inline-flex items-center gap-1">
+                      <User className="size-3.5" aria-hidden="true" />
+                      {c.owner}
+                    </span>
+                  </Meta>
+                )}
                 <Meta label="Template">
                   <span className="font-mono" title={c.template || undefined}>
                     {templateTitle(c.template)}
@@ -379,6 +421,7 @@ export function ContainersListPage() {
               <TableHead>Hostname</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Node</TableHead>
+              {showOwner && <TableHead>User</TableHead>}
               <TableHead>Template</TableHead>
               <TableHead>HTTP</TableHead>
               <TableHead>SSH</TableHead>
@@ -395,6 +438,14 @@ export function ContainersListPage() {
                 <TableCell>
                   <NodeLink c={c} />
                 </TableCell>
+                {showOwner && (
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1">
+                      <User className="size-3.5" aria-hidden="true" />
+                      {c.owner}
+                    </span>
+                  </TableCell>
+                )}
                 <TableCell className="font-mono text-xs" title={c.template || undefined}>
                   {templateTitle(c.template)}
                 </TableCell>

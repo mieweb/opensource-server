@@ -26,7 +26,8 @@ export const keys = {
   nodes: (siteId: number | string) => ['sites', String(siteId), 'nodes'] as const,
   node: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'nodes', String(id)] as const,
-  containers: (siteId: number | string) => ['sites', String(siteId), 'containers'] as const,
+  containers: (siteId: number | string, params?: Record<string, string | undefined>) =>
+    ['sites', String(siteId), 'containers', params ?? {}] as const,
   container: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'containers', String(id)] as const,
   containerBootstrap: (siteId: number | string) =>
@@ -60,8 +61,20 @@ export const queries = {
     api.get<Node>(`/api/v1/sites/${siteId}/nodes/${id}`),
 
   // Containers
-  listContainers: (siteId: number | string) =>
-    api.get<Container[]>(`/api/v1/sites/${siteId}/containers`),
+  listContainers: (
+    siteId: number | string,
+    params?: { user?: string; nodeId?: string; hostname?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    // `user` is sent verbatim, including '*' (all owners, admin only) and ''
+    // (own containers). Only omit it when undefined so the default still maps
+    // to the requesting user server-side.
+    if (params?.user !== undefined) qs.set('user', params.user);
+    if (params?.nodeId) qs.set('nodeId', params.nodeId);
+    if (params?.hostname) qs.set('hostname', params.hostname);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<Container[]>(`/api/v1/sites/${siteId}/containers${suffix}`);
+  },
   getContainer: (siteId: number | string, id: number | string) =>
     api.get<Container>(`/api/v1/sites/${siteId}/containers/${id}`),
   containerBootstrap: (siteId: number | string) =>

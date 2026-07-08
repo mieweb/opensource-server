@@ -28,20 +28,19 @@ services:
           skopeo copy docker://$${IMAGE_REF} oci-archive:$${FILENAME}
         fi
 
-  # This service runs once when bringing the compose stack up to ensure the
-  # node_modules are populated in the user's create-a-container directory. This
-  # is usually handled by the manager's Dockerfile, but we're mounting over that
-  # directory so we need to be sure the user has them.
+# This service runs once when bringing the compose stack up to ensure the
+# node_modules are populated in the user's create-a-container directory. This
+# is usually handled by the manager's Dockerfile, but we're mounting over that
+# directory so we need to be sure that the user has them.
   node:
-    image: node:24-trixie-slim
+    image: node:24-trixie
     volumes:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        npm ci --omit=dev --no-audit --no-fund
-        exec npm --prefix client ci --no-audit --no-fund
+        exec npm ci --no-audit --no-fund
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically
@@ -60,6 +59,9 @@ services:
       - ./:/opt/opensource-server
     working_dir: /opt/opensource-server/create-a-container/client
     entrypoint: ["/bin/sh", "-c"]
+    # Owns the client's node_modules install (separate directory from the
+    # server, so it runs in parallel with the `node` service). Then builds once
+    # and watches.
     command:
       - |
         npm ci --no-audit --no-fund
