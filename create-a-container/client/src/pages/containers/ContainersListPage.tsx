@@ -190,14 +190,15 @@ export function ContainersListPage() {
     return opts.sort(byLabel);
   }, [isAdmin, allUsers, visibleContainers, sessionUser]);
 
-  const statusOptions = useMemo<FilterOption[]>(
-    () =>
-      (Object.keys(STATUS_LABELS) as ContainerStatus[]).map((s) => ({
-        value: s,
-        label: STATUS_LABELS[s],
-      })),
-    [],
-  );
+  // Only offer statuses that actually occur in the loaded rows, so the
+  // dropdown stays clean instead of listing every theoretical status.
+  const statusOptions = useMemo<FilterOption[]>(() => {
+    const seen = new Set<ContainerStatus>();
+    (data ?? []).forEach((c) => seen.add(c.status));
+    return [...seen]
+      .map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
 
   const templateOptions = useMemo<FilterOption[]>(() => {
     const seen = new Map<string, string>();

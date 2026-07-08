@@ -27,6 +27,12 @@ module.exports = {
       username: {
         type: Sequelize.STRING(255),
         allowNull: false,
+        // Existence checks are the database's job: an insert with an unknown
+        // username fails this foreign key, and deleting a user removes their
+        // collaborator grants via the cascade.
+        references: { model: 'Users', key: 'uid' },
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
       },
       createdAt: {
         allowNull: false,

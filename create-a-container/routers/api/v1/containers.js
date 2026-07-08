@@ -16,7 +16,6 @@ const {
   ExternalDomain,
   Job,
   Setting,
-  User,
   Sequelize,
   sequelize,
 } = require('../../../models');
@@ -273,31 +272,32 @@ function visibleToClauses(username) {
 }
 
 /**
- * Load a container by `:id` scoped to the request's site and authorize the
- * session against it. View access is enforced in the query itself: a non-admin
- * only ever loads a container they own or one shared with them, so an
- * unauthorized row never comes back and the route 404s without leaking the
- * existence of containers the caller may not see. Manage access (owner/admin,
- * for sharing/delete) is checked in-app and returns 403 — the caller can
- * already view the container, so it leaks nothing new and tells a collaborator
- * why they can't manage it.
- * @param {object} req - Express request.
+ * Load a container by id scoped to a site and authorize the session against
+ * it. View access is enforced in the query itself: a non-admin only ever loads
+ * a container they own or one shared with them, so an unauthorized row never
+ * comes back and the route 404s without leaking the existence of containers
+ * the caller may not see. Manage access (owner/admin, for sharing/delete) is
+ * checked in-app and returns 403 — the caller can already view the container,
+ * so it leaks nothing new and tells a collaborator why they can't manage it.
+ * @param {*} siteId - Candidate site id (typically `req.params.siteId`).
+ * @param {*} containerId - Candidate container id (typically `req.params.id`).
+ * @param {object} session - req.session ({ user, isAdmin }).
  * @param {object} [opts]
  * @param {boolean} [opts.requireManage=false] - Require owner/admin (sharing,
  *   delete). Fails with 403 rather than the looser view access.
  * @param {Array} [opts.include] - Override the eager-load graph.
  * @returns {Promise<{site: object, container: object}>}
  */
-async function loadContainerForSession(req, { requireManage = false, include } = {}) {
-  const site = await loadSite(req.params.siteId);
-  const id = parseInt(req.params.id, 10);
+async function loadContainerForSession(siteId, containerId, session, { requireManage = false, include } = {}) {
+  const site = await loadSite(siteId);
+  const id = parseInt(containerId, 10);
   if (!Number.isInteger(id) || id <= 0) {
-    throw new ApiError(404, 'not_found', 'Container not found');
+    throw new ApiError(400, 'invalid_request', 'Container id must be a positive integer');
   }
   const where = { id };
   // Enforce view access in the query so an unauthorized container never loads.
-  if (!req.session.isAdmin) {
-    where[Sequelize.Op.or] = visibleToClauses(req.session.user);
+  if (!session.isAdmin) {
+    where[Sequelize.Op.or] = visibleToClauses(session.user);
   }
   const container = await Container.findOne({
     where,
@@ -306,29 +306,38 @@ async function loadContainerForSession(req, { requireManage = false, include } =
   if (!container || !container.node || container.node.siteId !== site.id) {
     throw new ApiError(404, 'not_found', 'Container not found');
   }
-  if (requireManage && !(req.session.isAdmin || container.canEdit(req.session.user))) {
+  if (requireManage && !(session.isAdmin || container.canEdit(session.user))) {
     throw new ApiError(403, 'forbidden', 'Only the owner may manage this container');
   }
   return { site, container };
 }
 
 /**
- * Validate a username to share a container with. Confirms the user exists and
- * is not already the container's primary owner, and returns the canonical uid.
+ * Normalize a candidate collaborator username: trim it, require it non-empty,
+ * and reject the container's own owner. Existence is NOT checked here — the
+ * ContainerCollaborators.username foreign key to Users.uid enforces it at
+ * insert time (see isUnknownUserError for mapping that failure).
  * @param {*} rawUsername - Candidate username from the request body.
  * @param {object} container - The container being shared.
- * @param {object} [opts] - Optional { transaction } for the lookup.
- * @returns {Promise<string>} The canonical uid to store as a collaborator.
+ * @returns {string} The trimmed username to store as a collaborator.
  */
-async function resolveShareUsername(rawUsername, container, { transaction } = {}) {
+function normalizeShareUsername(rawUsername, container) {
   const username = typeof rawUsername === 'string' ? rawUsername.trim() : '';
   if (!username) throw new ApiError(400, 'invalid_request', 'A username is required');
-  const user = await User.findOne({ where: { uid: username }, transaction });
-  if (!user) throw new ApiError(404, 'user_not_found', `User "${username}" does not exist`);
-  if (user.uid === container.username) {
-    throw new ApiError(409, 'already_owner', `${user.uid} already owns this container`);
+  if (username === container.username) {
+    throw new ApiError(409, 'already_owner', `${username} already owns this container`);
   }
-  return user.uid;
+  return username;
+}
+
+/**
+ * Whether an insert failure means a collaborator username has no matching
+ * Users.uid row (foreign-key violation), as opposed to some other DB error.
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isUnknownUserError(err) {
+  return err?.name === 'SequelizeForeignKeyConstraintError';
 }
 
 /**
@@ -409,9 +418,12 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { site, container: c } = await loadContainerForSession(req, {
-      include: CONTAINER_INCLUDE,
-    });
+    const { site, container: c } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      { include: CONTAINER_INCLUDE },
+    );
     const status = await computeContainerStatus({ container: c, Job });
     return ok(res, serializeContainer(c, site, status));
   }),
@@ -496,22 +508,33 @@ router.post(
         { transaction: t },
       );
 
-      // Collaborators the creator chose to share with. Each must be an existing
-      // user and is validated up front so a typo fails the whole create (rolled
-      // back) rather than silently dropping a share. The creator is the owner
+      // Collaborators the creator chose to share with, inserted in one bulk
+      // statement. Deduplication happens in-process (and ignoreDuplicates
+      // maps to ON CONFLICT DO NOTHING for safety); existence is enforced by
+      // the ContainerCollaborators.username -> Users.uid foreign key, so an
+      // unknown username fails the insert and rolls back the whole create
+      // rather than silently dropping a share. The creator is the owner
       // already, so skip them if they list themselves.
       if (Array.isArray(collaborators) && collaborators.length > 0) {
-        const seen = new Set();
-        for (const raw of collaborators) {
-          const trimmed = typeof raw === 'string' ? raw.trim() : '';
-          if (!trimmed || trimmed === container.username) continue;
-          const username = await resolveShareUsername(raw, container, { transaction: t });
-          if (seen.has(username)) continue;
-          seen.add(username);
-          await ContainerCollaborator.create(
-            { containerId: container.id, username },
-            { transaction: t },
-          );
+        const rows = [
+          ...new Set(
+            collaborators
+              .map((raw) => (typeof raw === 'string' ? raw.trim() : ''))
+              .filter((u) => u && u !== container.username),
+          ),
+        ].map((username) => ({ containerId: container.id, username }));
+        if (rows.length > 0) {
+          try {
+            await ContainerCollaborator.bulkCreate(rows, {
+              transaction: t,
+              ignoreDuplicates: true,
+            });
+          } catch (err) {
+            if (isUnknownUserError(err)) {
+              throw new ApiError(404, 'user_not_found', 'One or more collaborators do not exist');
+            }
+            throw err;
+          }
         }
       }
 
@@ -592,7 +615,12 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { site, container } = await loadContainerForSession(req, { requireManage: true });
+    const { site, container } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      { requireManage: true },
+    );
 
     const { services, environmentVars, entrypoint } = req.body || {};
     const forceRestart = req.body?.restart === true || req.body?.restart === 'true';
@@ -739,17 +767,22 @@ router.delete(
   asyncHandler(async (req, res) => {
     // Deleting is owner/admin only; collaborators may use but not destroy a
     // shared container (requireManage -> 403 for a viewer who isn't the owner).
-    const { site, container } = await loadContainerForSession(req, {
-      requireManage: true,
-      include: [
-        { association: 'node' },
-        { association: 'collaborators' },
-        {
-          association: 'services',
-          include: [{ association: 'httpService', include: [{ association: 'externalDomain' }] }],
-        },
-      ],
-    });
+    const { site, container } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      {
+        requireManage: true,
+        include: [
+          { association: 'node' },
+          { association: 'collaborators' },
+          {
+            association: 'services',
+            include: [{ association: 'httpService', include: [{ association: 'externalDomain' }] }],
+          },
+        ],
+      },
+    );
     const node = container.node;
     let dnsWarnings = [];
     const httpServices = (container.services || [])
@@ -782,9 +815,8 @@ router.delete(
         console.log(`Node-side deletion skipped or failed: ${err.message}`);
       }
     }
-    // Remove sharing grants explicitly so the rows are gone regardless of
-    // whether the DB enforces the ON DELETE CASCADE foreign key.
-    await ContainerCollaborator.destroy({ where: { containerId: container.id } });
+    // Sharing grants are removed by the database via the containerId foreign
+    // key's ON DELETE CASCADE.
     await container.destroy();
 
     // Remove the VM from NetBox if the integration is configured
@@ -801,23 +833,35 @@ router.delete(
 router.get(
   '/:id/collaborators',
   asyncHandler(async (req, res) => {
-    const { container } = await loadContainerForSession(req);
-    return ok(res, { collaborators: await listCollaboratorUsernames(container.id) });
+    // The loader already eager-loads `collaborators`, so no second query.
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session);
+    const collaborators = (container.collaborators || [])
+      .map((c) => c.username)
+      .sort((a, b) => a.localeCompare(b));
+    return ok(res, { collaborators });
   }),
 );
 
 // POST /containers/:id/collaborators — share with another user (owner/admin).
-// Body: { username }. 404 user_not_found if the username doesn't exist.
+// Body: { username }. Idempotent: sharing with an existing collaborator is a
+// no-op that returns the current list. 404 user_not_found if the username
+// doesn't exist (enforced by the Users.uid foreign key).
 router.post(
   '/:id/collaborators',
   asyncHandler(async (req, res) => {
-    const { container } = await loadContainerForSession(req, { requireManage: true });
-    const username = await resolveShareUsername(req.body?.username, container);
-    const [, isNew] = await ContainerCollaborator.findOrCreate({
-      where: { containerId: container.id, username },
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
+      requireManage: true,
     });
-    if (!isNew) {
-      throw new ApiError(409, 'already_shared', `Already shared with ${username}`);
+    const username = normalizeShareUsername(req.body?.username, container);
+    try {
+      await ContainerCollaborator.findOrCreate({
+        where: { containerId: container.id, username },
+      });
+    } catch (err) {
+      if (isUnknownUserError(err)) {
+        throw new ApiError(404, 'user_not_found', `User "${username}" does not exist`);
+      }
+      throw err;
     }
     return created(res, { collaborators: await listCollaboratorUsernames(container.id) });
   }),
@@ -827,7 +871,9 @@ router.post(
 router.delete(
   '/:id/collaborators/:username',
   asyncHandler(async (req, res) => {
-    const { container } = await loadContainerForSession(req, { requireManage: true });
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
+      requireManage: true,
+    });
     const removed = await ContainerCollaborator.destroy({
       where: { containerId: container.id, username: req.params.username },
     });

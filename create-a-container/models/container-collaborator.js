@@ -26,6 +26,9 @@ module.exports = (sequelize, DataTypes) => {
       username: {
         type: DataTypes.STRING(255),
         allowNull: false,
+        // FK to Users.uid: the database enforces that collaborators exist and
+        // cascades user deletion to their grants.
+        references: { model: 'Users', key: 'uid' },
       },
     },
     {

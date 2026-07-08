@@ -395,7 +395,7 @@ paths:
       responses: { '200': { description: '{ collaborators: string[] }' } }
     post:
       tags: [Containers]
-      summary: Share a container with another user (owner/admin)
+      summary: Share a container with another user (owner/admin). Idempotent — sharing with an existing collaborator is a no-op.
       requestBody:
         required: true
         content:
@@ -408,7 +408,7 @@ paths:
         '201': { description: '{ collaborators: string[] }' }
         '403': { description: 'forbidden — only the owner/admin may share (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'user_not_found when the username does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-        '409': { description: 'already_shared / already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators/{username}:
     delete:
       tags: [Containers]
