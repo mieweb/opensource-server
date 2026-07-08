@@ -432,6 +432,13 @@ router.post(
 
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
 
+      // Contract: `collaborators`, when present, is an array of usernames.
+      // Validated here so the insert below can trust its shape.
+      collaborators ??= [];
+      if (!Array.isArray(collaborators) || !collaborators.every((c) => typeof c === 'string')) {
+        throw new ApiError(400, 'invalid_request', 'collaborators must be an array of usernames');
+      }
+
       const wantsNvidia = !!nvidiaRequested;
       // Only the user-defined env vars are persisted on the container record;
       // NVIDIA and admin-defined system defaults are merged in at configure-time.
@@ -491,34 +498,25 @@ router.post(
         { transaction: t },
       );
 
-      // Collaborators the creator chose to share with, inserted in one bulk
-      // statement. Deduplication happens in-process (and ignoreDuplicates
-      // maps to ON CONFLICT DO NOTHING for safety); existence is enforced by
-      // the ContainerCollaborators.username -> Users.uid foreign key, so an
-      // unknown username fails the insert and rolls back the whole create
-      // rather than silently dropping a share. The creator is the owner
-      // already, so skip them if they list themselves.
-      if (Array.isArray(collaborators) && collaborators.length > 0) {
-        const rows = [
-          ...new Set(
-            collaborators
-              .map((raw) => (typeof raw === 'string' ? raw.trim() : ''))
-              .filter((u) => u && u !== container.username),
-          ),
-        ].map((username) => ({ containerId: container.id, username }));
-        if (rows.length > 0) {
-          try {
-            await ContainerCollaborator.bulkCreate(rows, {
-              transaction: t,
-              ignoreDuplicates: true,
-            });
-          } catch (err) {
-            if (isUnknownUserError(err)) {
-              throw new ApiError(404, 'user_not_found', 'One or more collaborators do not exist');
-            }
-            throw err;
-          }
+      // Share with the requested collaborators (shape validated above). The
+      // creator already owns the container, so they're skipped if listed.
+      // Duplicates are absorbed by ignoreDuplicates (ON CONFLICT DO NOTHING /
+      // INSERT OR IGNORE, which also covers repeats within the statement);
+      // existence is enforced by the ContainerCollaborators.username ->
+      // Users.uid foreign key, so an unknown username rolls back the whole
+      // create rather than silently dropping a share. bulkCreate([]) is a no-op.
+      try {
+        await ContainerCollaborator.bulkCreate(
+          collaborators
+            .filter((username) => username !== container.username)
+            .map((username) => ({ containerId: container.id, username })),
+          { transaction: t, ignoreDuplicates: true },
+        );
+      } catch (err) {
+        if (isUnknownUserError(err)) {
+          throw new ApiError(404, 'user_not_found', 'One or more collaborators do not exist');
         }
+        throw err;
       }
 
       if (services && typeof services === 'object') {
