@@ -311,24 +311,6 @@ async function loadContainerForSession(siteId, containerId, session, { requireMa
 }
 
 /**
- * Normalize a candidate collaborator username: trim it, require it non-empty,
- * and reject the container's own owner. Existence is NOT checked here — the
- * ContainerCollaborators.username foreign key to Users.uid enforces it at
- * insert time (see isUnknownUserError for mapping that failure).
- * @param {*} rawUsername - Candidate username from the request body.
- * @param {object} container - The container being shared.
- * @returns {string} The trimmed username to store as a collaborator.
- */
-function normalizeShareUsername(rawUsername, container) {
-  const username = typeof rawUsername === 'string' ? rawUsername.trim() : '';
-  if (!username) throw new ApiError(400, 'invalid_request', 'A username is required');
-  if (username === container.username) {
-    throw new ApiError(409, 'already_owner', `${username} already owns this container`);
-  }
-  return username;
-}
-
-/**
  * Whether an insert failure means a collaborator username has no matching
  * Users.uid row (foreign-key violation), as opposed to some other DB error.
  * @param {Error} err
@@ -830,7 +812,15 @@ router.post(
     const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
       requireManage: true,
     });
-    const username = normalizeShareUsername(req.body?.username, container);
+    // Contract: `username` is a required non-empty string; existence is
+    // enforced by the Users.uid foreign key at insert (mapped to 404 below).
+    const username = req.body?.username;
+    if (typeof username !== 'string' || !username) {
+      throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
+    }
+    if (username === container.username) {
+      throw new ApiError(409, 'already_owner', `${username} already owns this container`);
+    }
     try {
       const [collaborator, isNew] = await ContainerCollaborator.findOrCreate({
         where: { containerId: container.id, username },
