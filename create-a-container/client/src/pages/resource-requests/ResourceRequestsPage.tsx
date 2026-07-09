@@ -122,6 +122,7 @@ export function ResourceRequestsPage() {
                   <table className="w-full text-sm" role="table" aria-label="Pending resource requests">
                     <thead>
                       <tr className="border-b border-border bg-muted/20">
+                        <th className="w-36 px-5 py-3.5 text-left font-medium">Site</th>
                         <th className="w-40 px-5 py-3.5 text-left font-medium">Container</th>
                         <th className="w-36 px-5 py-3.5 text-left font-medium">User</th>
                         <th className="w-32 px-5 py-3.5 text-left font-medium">Resource</th>
