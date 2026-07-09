@@ -5,11 +5,11 @@ import {
   Alert,
   AlertDescription,
   Badge,
-  Button,
   PageHeader,
   Spinner,
 } from '@mieweb/ui';
 import { ArrowLeft, Terminal } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { JobStatusRow } from '@/lib/types';
@@ -113,9 +113,7 @@ export function JobDetailPage() {
         subtitle={job.command}
         icon={<Terminal className="size-6" />}
         actions={
-          <Link to=".." relative="path">
-            <Button variant="ghost" leftIcon={<ArrowLeft className="size-4" />}>Back</Button>
-          </Link>
+          <ButtonLink as={Link} to=".." relative="path" variant="ghost" leftIcon={<ArrowLeft className="size-4" />}>Back</ButtonLink>
         }
       />
 

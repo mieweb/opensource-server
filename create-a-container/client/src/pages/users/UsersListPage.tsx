@@ -17,6 +17,7 @@ import {
   useToast,
 } from '@mieweb/ui';
 import { Mail, Megaphone, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { User } from '@/lib/types';
@@ -51,12 +52,8 @@ export function UsersListPage() {
             >
               Email all
             </Button>
-            <Link to="/users/invite">
-              <Button variant="outline" leftIcon={<Mail className="size-4" />}>Invite</Button>
-            </Link>
-            <Link to="/users/new">
-              <Button variant="primary" leftIcon={<Plus className="size-4" />}>New user</Button>
-            </Link>
+            <ButtonLink as={Link} to="/users/invite" variant="outline" leftIcon={<Mail className="size-4" />}>Invite</ButtonLink>
+            <ButtonLink as={Link} to="/users/new" variant="primary" leftIcon={<Plus className="size-4" />}>New user</ButtonLink>
           </div>
         }
       />
@@ -89,9 +86,7 @@ export function UsersListPage() {
                 </TableCell>
                 <TableCell>{u.isAdmin ? <Badge variant="warning">Admin</Badge> : '—'}</TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <Link to={`/users/${u.uidNumber}/edit`}>
-                    <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</Button>
-                  </Link>
+                  <ButtonLink as={Link} to={`/users/${u.uidNumber}/edit`} variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</ButtonLink>
                   <Button
                     variant="ghost"
                     size="sm"

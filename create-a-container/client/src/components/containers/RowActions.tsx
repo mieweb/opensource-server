@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { Button } from '@mieweb/ui';
 import { Pencil, Share2, Trash2 } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import type { Container } from '@/lib/types';
 
 /** Per-row actions for the containers list: logs, share, edit, delete. */
@@ -22,11 +23,9 @@ export function RowActions({
   return (
     <>
       {c.creationJobId && (
-        <Link to={`/jobs/${c.creationJobId}`}>
-          <Button variant="ghost" size="sm">
-            Logs
-          </Button>
-        </Link>
+        <ButtonLink as={Link} to={`/jobs/${c.creationJobId}`} variant="ghost" size="sm">
+          Logs
+        </ButtonLink>
       )}
       {canShare && (
         <Button
@@ -39,16 +38,16 @@ export function RowActions({
           <span className="hidden sm:inline">Share</span>
         </Button>
       )}
-      <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Edit"
-          leftIcon={<Pencil className="size-4" />}
-        >
-          <span className="hidden sm:inline">Edit</span>
-        </Button>
-      </Link>
+      <ButtonLink
+        as={Link}
+        to={`/sites/${siteId}/containers/${c.id}/edit`}
+        variant="ghost"
+        size="sm"
+        aria-label="Edit"
+        leftIcon={<Pencil className="size-4" />}
+      >
+        <span className="hidden sm:inline">Edit</span>
+      </ButtonLink>
       <Button
         variant="ghost"
         size="sm"

@@ -34,6 +34,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
+import { ButtonLink } from '@/components/ButtonLink';
 import { HttpLinks } from '@/components/containers/HttpLinks';
 import { Meta } from '@/components/containers/Meta';
 import { NodeLink } from '@/components/containers/NodeLink';
@@ -254,16 +255,12 @@ export function ContainersListPage() {
                 </Button>
               </div>
             )}
-            <Link to={`/sites/${siteId}/nodes`}>
-              <Button variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
-                <span className="hidden sm:inline">Nodes</span>
-              </Button>
-            </Link>
-            <Link to={`/sites/${siteId}/containers/new`}>
-              <Button variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
-                <span className="hidden sm:inline">New container</span>
-              </Button>
-            </Link>
+            <ButtonLink as={Link} to={`/sites/${siteId}/nodes`} variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
+              <span className="hidden sm:inline">Nodes</span>
+            </ButtonLink>
+            <ButtonLink as={Link} to={`/sites/${siteId}/containers/new`} variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
+              <span className="hidden sm:inline">New container</span>
+            </ButtonLink>
           </div>
         }
       />
