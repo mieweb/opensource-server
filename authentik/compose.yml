@@ -18,6 +18,23 @@ services:
         - CMD-SHELL
         - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
       timeout: 5s
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgresql
+      DB_PORT: 5432
+      DB_USER: ${PG_USER:-authentik}
+      DB_PASSWORD: ${PG_PASS:?database password required}
+      DB_NAME: ${PG_DB:-authentik}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 500
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: scram-sha-256
+      AUTH_QUERY: SELECT usename, passwd FROM pg_shadow WHERE usename=$$1
+    restart: unless-stopped
   server:
     image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
     depends_on:
@@ -28,10 +45,11 @@ services:
       - ./custom-templates:/templates
       - /etc/ssl/certs/ca-certificates.crt:/ak-root/.venv/lib/python3.14/site-packages/duo_client/ca_certs.pem
     environment:
-      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__HOST: pgbouncer
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__DISABLE_SERVER_SIDE_CURSORS: 'true'
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
     env_file:
       - .env
@@ -52,10 +70,11 @@ services:
       - ./certs:/certs
       - ./custom-templates:/templates
     environment:
-      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__HOST: pgbouncer
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__DISABLE_SERVER_SIDE_CURSORS: 'true'
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
     env_file:
       - .env
