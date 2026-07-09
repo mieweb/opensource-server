@@ -36,7 +36,7 @@ services:
       AUTH_QUERY: SELECT usename, passwd FROM pg_shadow WHERE usename=$$1
     restart: unless-stopped
   server:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.4}
     depends_on:
       postgresql:
         condition: service_healthy
@@ -60,7 +60,7 @@ services:
     restart: unless-stopped
     shm_size: 512mb
   worker:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.2}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.4}
     depends_on:
       postgresql:
         condition: service_healthy
