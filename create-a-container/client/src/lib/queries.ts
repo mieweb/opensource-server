@@ -26,7 +26,7 @@ export const keys = {
   nodes: (siteId: number | string) => ['sites', String(siteId), 'nodes'] as const,
   node: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'nodes', String(id)] as const,
-  containers: (siteId: number | string, params?: Record<string, string | undefined>) =>
+  containers: (siteId: number | string, params?: Record<string, string | string[] | undefined>) =>
     ['sites', String(siteId), 'containers', params ?? {}] as const,
   container: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'containers', String(id)] as const,
@@ -63,13 +63,13 @@ export const queries = {
   // Containers
   listContainers: (
     siteId: number | string,
-    params?: { user?: string; nodeId?: string; hostname?: string },
+    params?: { user?: string[]; nodeId?: string; hostname?: string },
   ) => {
     const qs = new URLSearchParams();
-    // `user` is sent verbatim, including '*' (all owners, admin only) and ''
-    // (own containers). Only omit it when undefined so the default still maps
-    // to the requesting user server-side.
-    if (params?.user !== undefined) qs.set('user', params.user);
+    // `user` is sent in bracket notation (user[0]=..., user[1]=...) so the
+    // server's 'extended' query parser always receives an array. Omitted/empty
+    // returns everything the caller may see server-side.
+    params?.user?.forEach((u, i) => qs.set(`user[${i}]`, u));
     if (params?.nodeId) qs.set('nodeId', params.nodeId);
     if (params?.hostname) qs.set('hostname', params.hostname);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
@@ -77,6 +77,17 @@ export const queries = {
   },
   getContainer: (siteId: number | string, id: number | string) =>
     api.get<Container>(`/api/v1/sites/${siteId}/containers/${id}`),
+  // Container sharing (collaborators). Both return the updated collaborator
+  // username list.
+  shareContainer: (siteId: number | string, id: number | string, username: string) =>
+    api.post<{ collaborators: string[] }>(
+      `/api/v1/sites/${siteId}/containers/${id}/collaborators`,
+      { username },
+    ),
+  unshareContainer: (siteId: number | string, id: number | string, username: string) =>
+    api.delete<{ collaborators: string[] }>(
+      `/api/v1/sites/${siteId}/containers/${id}/collaborators/${encodeURIComponent(username)}`,
+    ),
   containerBootstrap: (siteId: number | string) =>
     api.get<ContainerNewBootstrap>(`/api/v1/sites/${siteId}/containers/new`),
   containerMetadata: (siteId: number | string, image: string) =>

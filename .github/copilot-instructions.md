@@ -19,6 +19,9 @@
 - **Explain relationships**: If it’s not elegantly obvious how files fit together, add a README or note.
 - **Immediate clarity**: Opening a folder should make its organizing principle clear at a glance.
 
+### ⚛️ React Components
+- **One component per file**: Every React component lives in its own file named after the component (e.g. `MultiSelect.tsx`). No inline helper components inside another component's file — extract them.
+
 ### 🔄 Refactoring Guidelines
 - **Continuous improvement**: Refactor as you work, not as a separate task
 - **Safe refactoring**: Always run tests before and after refactoring

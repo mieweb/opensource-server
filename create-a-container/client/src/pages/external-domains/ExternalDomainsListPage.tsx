@@ -16,6 +16,7 @@ import {
   useToast,
 } from '@mieweb/ui';
 import { Globe, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { ExternalDomain } from '@/lib/types';
@@ -43,11 +44,9 @@ export function ExternalDomainsListPage() {
         subtitle="Public DNS zones with optional Cloudflare automation"
         icon={<Globe className="size-6" />}
         actions={
-          <Link to="/external-domains/new">
-            <Button variant="primary" leftIcon={<Plus className="size-4" />}>
-              New domain
-            </Button>
-          </Link>
+          <ButtonLink as={Link} to="/external-domains/new" variant="primary" leftIcon={<Plus className="size-4" />}>
+            New domain
+          </ButtonLink>
         }
       />
       {error && (
@@ -85,11 +84,9 @@ export function ExternalDomainsListPage() {
                 </TableCell>
                 <TableCell>{d.authServer || '—'}</TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <Link to={`/external-domains/${d.id}/edit`}>
-                    <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
-                      Edit
-                    </Button>
-                  </Link>
+                  <ButtonLink as={Link} to={`/external-domains/${d.id}/edit`} variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
+                    Edit
+                  </ButtonLink>
                   <Button
                     variant="ghost"
                     size="sm"

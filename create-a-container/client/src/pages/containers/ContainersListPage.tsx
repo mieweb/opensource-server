@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
   Button,
   Card,
   CardTitle,
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalHeader,
+  ModalTitle,
   PageHeader,
   Spinner,
   Table,
@@ -20,195 +24,30 @@ import {
   useToast,
 } from '@mieweb/ui';
 import {
-  Code2,
   Container as ContainerIcon,
-  ExternalLink,
   LayoutGrid,
-  Pencil,
   Plus,
   Rows3,
   Server,
-  Terminal,
-  Trash2,
   User,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
+import { ButtonLink } from '@/components/ButtonLink';
+import { HttpLinks } from '@/components/containers/HttpLinks';
+import { Meta } from '@/components/containers/Meta';
+import { NodeLink } from '@/components/containers/NodeLink';
+import { RowActions } from '@/components/containers/RowActions';
+import { STATUS_LABELS, StatusBadge } from '@/components/containers/StatusBadge';
+import { SshLinks } from '@/components/containers/SshLinks';
+import { templateTitle } from '@/components/containers/shared';
+import { CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { ContainerFilters, type FilterOption } from '@/components/containers/ContainerFilters';
 import type { Container, ContainerStatus } from '@/lib/types';
 
 type ViewMode = 'cards' | 'table';
 const VIEW_STORAGE_KEY = 'containers:view';
-
-function statusVariant(
-  s: ContainerStatus,
-): 'default' | 'success' | 'warning' | 'danger' | 'secondary' {
-  switch (s) {
-    case 'running':
-      return 'success';
-    case 'creating':
-      return 'warning';
-    case 'failed':
-      return 'danger';
-    case 'offline':
-    case 'missing':
-      return 'secondary';
-    default:
-      return 'default';
-  }
-}
-
-// Human-readable labels for the live status values.
-const STATUS_LABELS: Record<ContainerStatus, string> = {
-  running: 'Running',
-  offline: 'Offline',
-  creating: 'Creating',
-  failed: 'Failed',
-  missing: 'Missing',
-  unknown: 'Unknown',
-};
-
-/** Status badge. The status is the live value embedded in the list response. */
-function StatusBadge({ status }: { status: ContainerStatus }) {
-  return <Badge variant={statusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
-}
-
-const linkClass = 'text-(--color-primary,#1d4ed8) hover:underline';
-
-/** Shorten a full image ref to just its name+tag, e.g. ghcr.io/mieweb/base:latest -> base:latest */
-function templateTitle(template: string | null): string {
-  if (!template) return '—';
-  return template.split('/').pop() || template;
-}
-
-function NodeLink({ c }: { c: Container }) {
-  if (!c.nodeApiUrl) return <>{c.nodeName || '—'}</>;
-  return (
-    <a
-      href={`${c.nodeApiUrl}${c.containerId ? `/#v1:0:=lxc%2F${c.containerId}:4:::::::` : ''}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Open node in Proxmox web UI"
-      className={linkClass}
-    >
-      {c.nodeName || c.nodeApiUrl}
-    </a>
-  );
-}
-
-function HttpLinks({ c, limit }: { c: Container; limit?: number }) {
-  if (c.httpEntries.length === 0) return <span className="text-muted-foreground">—</span>;
-  const entries = limit ? c.httpEntries.slice(0, limit) : c.httpEntries;
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
-      {entries.map((h) =>
-        h.externalUrl ? (
-          <a
-            key={`${c.id}-${h.port}`}
-            href={h.externalUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex items-center gap-1 text-xs ${linkClass}`}
-          >
-            <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-            <span className="break-all">{h.externalUrl.replace(/^https?:\/\//, '')}</span>
-          </a>
-        ) : (
-          <span key={`${c.id}-${h.port}`} className="text-xs">
-            :{h.port}
-          </span>
-        ),
-      )}
-    </span>
-  );
-}
-
-function SshLinks({ c, sessionUser }: { c: Container; sessionUser?: string }) {
-  if (!c.sshHost || !c.sshPort) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="inline-flex items-center gap-2 font-mono text-xs">
-      <span className="whitespace-nowrap">
-        {c.sshHost}:{c.sshPort}
-      </span>
-      {sessionUser && (
-        <>
-          <a
-            href={`vscode://vscode-remote/ssh-remote+${sessionUser}@${c.sshHost}:${c.sshPort}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open in VS Code"
-            aria-label={`Open SSH in VS Code for container ${c.hostname}`}
-            className={linkClass}
-          >
-            <Code2 className="size-4" aria-hidden="true" />
-          </a>
-          <a
-            href={`ssh://${sessionUser}@${c.sshHost}:${c.sshPort}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open SSH in terminal"
-            aria-label={`Open SSH terminal for container ${c.hostname}`}
-            className={linkClass}
-          >
-            <Terminal className="size-4" aria-hidden="true" />
-          </a>
-        </>
-      )}
-    </span>
-  );
-}
-
-function RowActions({
-  c,
-  siteId,
-  onDelete,
-  deleting,
-}: {
-  c: Container;
-  siteId?: string;
-  onDelete: (id: number) => void;
-  deleting: boolean;
-}) {
-  return (
-    <>
-      {c.creationJobId && (
-        <Link to={`/jobs/${c.creationJobId}`}>
-          <Button variant="ghost" size="sm">
-            Logs
-          </Button>
-        </Link>
-      )}
-      <Link to={`/sites/${siteId}/containers/${c.id}/edit`}>
-        <Button variant="ghost" size="sm" aria-label="Edit" leftIcon={<Pencil className="size-4" />}>
-          <span className="hidden sm:inline">Edit</span>
-        </Button>
-      </Link>
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label="Delete"
-        leftIcon={<Trash2 className="size-4" />}
-        onClick={() => {
-          if (confirm(`Delete container "${c.hostname}"?`)) onDelete(c.id);
-        }}
-        disabled={deleting}
-      >
-        <span className="hidden sm:inline">Delete</span>
-      </Button>
-    </>
-  );
-}
-
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className="text-xs">{children}</span>
-    </span>
-  );
-}
 
 export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -218,24 +57,62 @@ export function ContainersListPage() {
   const sessionUser = session?.user;
   const isAdmin = !!session?.isAdmin;
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nodeId = searchParams.get('nodeId') || undefined;
-  // `user=*` lists every owner on the site for admins; for non-admins the
-  // server scopes it back to their own containers, so the toggle is available
-  // to everyone (ahead of future shareable/collaborative containers). The param
-  // is the single source of truth so the view is bookmarkable and slots in
-  // beside the existing hostname/nodeId filters.
-  const isAll = searchParams.get('user') === '*';
-  const userFilter = isAll ? '*' : undefined;
-  // Only admins ever see more than one owner in the `*` view, so the owner
-  // column is meaningful for them alone.
-  const showOwner = isAdmin && isAll;
+  // The URL is the single source of truth for the filter bar, so views are
+  // bookmarkable and shareable. `user` is a comma-separated owner list that
+  // drives the server query; an empty list returns everything the caller may
+  // see (all owners for admins; own + shared for non-admins).
+  // Status/template/hostname refine the loaded rows client-side.
+  const parseList = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
+  const selectedUsers = parseList(searchParams.get('user'));
+  const selectedStatuses = parseList(searchParams.get('status'));
+  const selectedTemplates = parseList(searchParams.get('template'));
+  const hostnameQuery = searchParams.get('q') ?? '';
+  // A row may belong to another owner unless the filter is narrowed to just
+  // the caller, so the owner column only disappears then.
+  const showOwner = selectedUsers.length === 0 || selectedUsers.some((u) => u !== sessionUser);
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
+
+  const setListParam = (key: string, values: string[]) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (values.length > 0) next.set(key, values.join(','));
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  const setTextParam = (key: string, value: string) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  // The unfiltered default already shows everything the caller may see;
+  // select-all in the dropdown is just an explicit form of the same thing.
+  const clearAllFilters = () =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        ['user', 'status', 'template', 'q'].forEach((k) => next.delete(k));
+        return next;
+      },
+      { replace: true },
+    );
 
   const [view, setView] = useState<ViewMode>(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
     return stored === 'table' ? 'table' : 'cards';
   });
+  // Container whose sharing dialog is open. Tracked by id so the dialog reflects
+  // live collaborator changes after the list query refetches.
+  const [shareTargetId, setShareTargetId] = useState<number | null>(null);
   const changeView = (next: ViewMode) => {
     setView(next);
     try {
@@ -250,10 +127,28 @@ export function ContainersListPage() {
     queryFn: () => queries.getSite(siteId!),
     enabled: !!siteId,
   });
+  // Empty selection returns everything the caller may see server-side.
+  const userParam = selectedUsers.length > 0 ? selectedUsers : undefined;
   const { data, isLoading, error } = useQuery({
-    queryKey: keys.containers(siteId!, { user: userFilter, nodeId }),
-    queryFn: () => queries.listContainers(siteId!, { user: userFilter, nodeId }),
+    queryKey: keys.containers(siteId!, { user: userParam, nodeId }),
+    queryFn: () => queries.listContainers(siteId!, { user: userParam, nodeId }),
     enabled: !!siteId,
+  });
+
+  // Options for the "User" filter. Admins may filter by any user; non-admins
+  // may only narrow to owners who have shared a container with them, so their
+  // option list is derived from the unfiltered list (own + shared). With no
+  // owner filter selected this is the same query as the list above, so React
+  // Query dedupes it into a single fetch.
+  const { data: allUsers } = useQuery({
+    queryKey: keys.users(),
+    queryFn: queries.listUsers,
+    enabled: !!siteId && isAdmin,
+  });
+  const { data: visibleContainers } = useQuery({
+    queryKey: keys.containers(siteId!, {}),
+    queryFn: () => queries.listContainers(siteId!),
+    enabled: !!siteId && !isAdmin,
   });
 
   const del = useMutation({
@@ -265,33 +160,74 @@ export function ContainersListPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  const hasContainers = !!data && data.length > 0;
+  // Client-side refinement of the loaded rows by status/template/hostname.
+  const visible = useMemo(() => {
+    const q = hostnameQuery.trim().toLowerCase();
+    return (data ?? []).filter(
+      (c) =>
+        (selectedStatuses.length === 0 || selectedStatuses.includes(c.status)) &&
+        (selectedTemplates.length === 0 ||
+          (c.template != null && selectedTemplates.includes(c.template))) &&
+        (q === '' || c.hostname.toLowerCase().includes(q)),
+    );
+  }, [data, selectedStatuses, selectedTemplates, hostnameQuery]);
+
+  const userOptions = useMemo<FilterOption[]>(() => {
+    const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
+    if (isAdmin) {
+      const opts = (allUsers ?? []).map((u) => ({
+        value: u.uid,
+        label: u.uid === sessionUser ? `${u.cn} (me)` : u.cn,
+      }));
+      return opts.sort(byLabel);
+    }
+    const owners = new Set<string>();
+    if (sessionUser) owners.add(sessionUser);
+    (visibleContainers ?? []).forEach((c) => owners.add(c.owner));
+    const opts = [...owners].map((o) => ({
+      value: o,
+      label: o === sessionUser ? `${o} (me)` : o,
+    }));
+    return opts.sort(byLabel);
+  }, [isAdmin, allUsers, visibleContainers, sessionUser]);
+
+  // Only offer statuses that actually occur in the loaded rows, so the
+  // dropdown stays clean instead of listing every theoretical status.
+  const statusOptions = useMemo<FilterOption[]>(() => {
+    const seen = new Set<ContainerStatus>();
+    (data ?? []).forEach((c) => seen.add(c.status));
+    return [...seen]
+      .map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  const templateOptions = useMemo<FilterOption[]>(() => {
+    const seen = new Map<string, string>();
+    (data ?? []).forEach((c) => {
+      if (c.template) seen.set(c.template, templateTitle(c.template));
+    });
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  const hasContainers = visible.length > 0;
+  const serverHasContainers = !!data && data.length > 0;
+
+  // Sharing is owner/admin only. Derive the open dialog's container from the
+  // live list so its collaborator chips update after add/remove.
+  const canShareContainer = (c: Container) => isAdmin || c.owner === sessionUser;
+  const shareTarget = data?.find((c) => c.id === shareTargetId) ?? null;
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={isAll ? 'All Containers' : 'Containers'}
+        title="Containers"
         subtitle={site ? `Site: ${site.name}` : undefined}
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="group"
-              aria-label="Container ownership scope"
-              className="inline-flex rounded-md border border-border p-0.5"
-            >
-              <Link to={`/sites/${siteId}/containers`} aria-label="My containers">
-                <Button variant={isAll ? 'ghost' : 'secondary'} size="sm" aria-pressed={!isAll}>
-                  Mine
-                </Button>
-              </Link>
-              <Link to={`/sites/${siteId}/containers?user=*`} aria-label="All containers">
-                <Button variant={isAll ? 'secondary' : 'ghost'} size="sm" aria-pressed={isAll}>
-                  All
-                </Button>
-              </Link>
-            </div>
-            {hasContainers && (
+            {serverHasContainers && (
               <div
                 role="group"
                 aria-label="Container view"
@@ -319,18 +255,29 @@ export function ContainersListPage() {
                 </Button>
               </div>
             )}
-            <Link to={`/sites/${siteId}/nodes`}>
-              <Button variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
-                <span className="hidden sm:inline">Nodes</span>
-              </Button>
-            </Link>
-            <Link to={`/sites/${siteId}/containers/new`}>
-              <Button variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
-                <span className="hidden sm:inline">New container</span>
-              </Button>
-            </Link>
+            <ButtonLink as={Link} to={`/sites/${siteId}/nodes`} variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
+              <span className="hidden sm:inline">Nodes</span>
+            </ButtonLink>
+            <ButtonLink as={Link} to={`/sites/${siteId}/containers/new`} variant="primary" aria-label="New container" leftIcon={<Plus className="size-4" />}>
+              <span className="hidden sm:inline">New container</span>
+            </ButtonLink>
           </div>
         }
+      />
+
+      <ContainerFilters
+        userOptions={userOptions}
+        selectedUsers={selectedUsers}
+        onUsersChange={(v) => setListParam('user', v)}
+        statusOptions={statusOptions}
+        selectedStatuses={selectedStatuses}
+        onStatusesChange={(v) => setListParam('status', v)}
+        templateOptions={templateOptions}
+        selectedTemplates={selectedTemplates}
+        onTemplatesChange={(v) => setListParam('template', v)}
+        hostname={hostnameQuery}
+        onHostnameChange={(v) => setTextParam('q', v)}
+        onClearAll={clearAllFilters}
       />
 
       {error && (
@@ -359,16 +306,22 @@ export function ContainersListPage() {
         <Alert variant="info">
           <AlertTitle>No containers</AlertTitle>
           <AlertDescription>
-            {showOwner
-              ? 'No containers exist on this site yet.'
+            {selectedUsers.length > 0
+              ? 'No containers match the selected users.'
               : 'Create your first container with the button above.'}
           </AlertDescription>
+        </Alert>
+      )}
+      {serverHasContainers && !hasContainers && (
+        <Alert variant="info">
+          <AlertTitle>No matches</AlertTitle>
+          <AlertDescription>No containers match the current filters.</AlertDescription>
         </Alert>
       )}
 
       {hasContainers && view === 'cards' && (
         <div className="grid gap-2">
-          {data.map((c: Container) => (
+          {visible.map((c: Container) => (
             <Card
               key={c.id}
               as="article"
@@ -383,7 +336,14 @@ export function ContainersListPage() {
                 <StatusBadge status={c.status} />
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
-                <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                <RowActions
+                  c={c}
+                  siteId={siteId}
+                  onDelete={del.mutate}
+                  deleting={del.isPending}
+                  canShare={canShareContainer(c)}
+                  onShare={(target) => setShareTargetId(target.id)}
+                />
               </div>
               <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:order-2 lg:w-auto lg:flex-1">
                 <Meta label="Node">
@@ -429,7 +389,7 @@ export function ContainersListPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((c: Container) => (
+            {visible.map((c: Container) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.hostname}</TableCell>
                 <TableCell>
@@ -456,13 +416,46 @@ export function ContainersListPage() {
                   <SshLinks c={c} sessionUser={sessionUser} />
                 </TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <RowActions c={c} siteId={siteId} onDelete={del.mutate} deleting={del.isPending} />
+                  <RowActions
+                    c={c}
+                    siteId={siteId}
+                    onDelete={del.mutate}
+                    deleting={del.isPending}
+                    canShare={canShareContainer(c)}
+                    onShare={(target) => setShareTargetId(target.id)}
+                  />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <Modal
+        open={shareTarget !== null}
+        onOpenChange={(open) => !open && setShareTargetId(null)}
+        size="md"
+      >
+        <ModalHeader>
+          <ModalTitle>
+            {shareTarget ? `Share ${shareTarget.hostname}` : 'Share container'}
+          </ModalTitle>
+          <ModalClose />
+        </ModalHeader>
+        <ModalBody className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Share this container with other users for collaboration. Shared users can find it
+            by filtering the containers list by your username.
+          </p>
+          {shareTarget && siteId && (
+            <CollaboratorsManager
+              siteId={siteId}
+              containerId={shareTarget.id}
+              collaborators={shareTarget.collaborators}
+            />
+          )}
+        </ModalBody>
+      </Modal>
     </div>
   );
 }

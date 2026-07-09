@@ -17,6 +17,7 @@ import {
   useToast,
 } from '@mieweb/ui';
 import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { useSession } from '@/lib/auth';
@@ -48,11 +49,9 @@ export function SitesListPage() {
         icon={<Building2 className="size-6" />}
         actions={
           session?.isAdmin && (
-            <Link to="/sites/new">
-              <Button variant="primary" leftIcon={<Plus className="size-4" />}>
-                New site
-              </Button>
-            </Link>
+            <ButtonLink as={Link} to="/sites/new" variant="primary" leftIcon={<Plus className="size-4" />}>
+              New site
+            </ButtonLink>
           )
         }
       />
@@ -107,11 +106,9 @@ export function SitesListPage() {
                 <TableCell className="flex flex-wrap justify-end gap-2">
                   {session?.isAdmin && (
                     <>
-                      <Link to={`/sites/${s.id}/edit`}>
-                        <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
-                          Edit
-                        </Button>
-                      </Link>
+                      <ButtonLink as={Link} to={`/sites/${s.id}/edit`} variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>
+                        Edit
+                      </ButtonLink>
                       <Button
                         variant="ghost"
                         size="sm"

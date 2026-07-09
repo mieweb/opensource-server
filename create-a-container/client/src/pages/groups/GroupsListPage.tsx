@@ -16,6 +16,7 @@ import {
   useToast,
 } from '@mieweb/ui';
 import { Pencil, Plus, Trash2, UsersRound } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { Group } from '@/lib/types';
@@ -39,11 +40,9 @@ export function GroupsListPage() {
         title="Groups"
         icon={<UsersRound className="size-6" />}
         actions={
-          <Link to="/groups/new">
-            <Button variant="primary" leftIcon={<Plus className="size-4" />}>
-              New group
-            </Button>
-          </Link>
+          <ButtonLink as={Link} to="/groups/new" variant="primary" leftIcon={<Plus className="size-4" />}>
+            New group
+          </ButtonLink>
         }
       />
       {error && <Alert variant="danger"><AlertDescription>{(error as ApiError).message}</AlertDescription></Alert>}
@@ -67,9 +66,7 @@ export function GroupsListPage() {
                 <TableCell>{g.isAdmin ? <Badge variant="warning">Admin</Badge> : <Badge variant="secondary">No</Badge>}</TableCell>
                 <TableCell>{g.userCount ?? 0}</TableCell>
                 <TableCell className="flex flex-wrap justify-end gap-2">
-                  <Link to={`/groups/${g.gidNumber}/edit`}>
-                    <Button variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</Button>
-                  </Link>
+                  <ButtonLink as={Link} to={`/groups/${g.gidNumber}/edit`} variant="ghost" size="sm" leftIcon={<Pencil className="size-4" />}>Edit</ButtonLink>
                   <Button
                     variant="ghost"
                     size="sm"
