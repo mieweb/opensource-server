@@ -67,7 +67,7 @@ export function ExternalDomainsListPage() {
               <TableHead>Domain</TableHead>
               <TableHead>Site</TableHead>
               <TableHead>Cloudflare</TableHead>
-              <TableHead>Auth server</TableHead>
+              <TableHead>oauth2-proxy</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
