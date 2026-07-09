@@ -52,6 +52,7 @@ const serviceSchema = z
     id: z.number().optional(),
     type: z.enum(['http', 'https', 'tcp', 'udp', 'srv']),
     internalPort: z.string(),
+    externalPort: z.number().optional(),
     externalHostname: z.string().optional(),
     externalDomainId: z.string().optional(),
     dnsName: z.string().optional(),
@@ -183,6 +184,7 @@ export function ContainerFormPage() {
                   : 'http'
                 : (s.transportService?.protocol ?? 'tcp'),
           internalPort: String(s.internalPort),
+          externalPort: s.transportService?.externalPort,
           externalHostname: s.httpService?.externalHostname || '',
           externalDomainId: s.httpService ? String(s.httpService.externalDomainId) : '',
           dnsName: s.dnsService?.dnsName || '',
@@ -625,6 +627,20 @@ export function ContainerFormPage() {
                           setValue(`services.${idx}.authRequired`, c)
                         }
                       />
+                    </div>
+                  )}
+                  {(svc.type === 'tcp' || svc.type === 'udp') && (
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        External port
+                      </p>
+                      <p className="font-mono text-sm">
+                        {svc.externalPort ?? (
+                          <span className="text-muted-foreground">
+                            Auto-assigned on save
+                          </span>
+                        )}
+                      </p>
                     </div>
                   )}
                   {svc.type === 'srv' && (
