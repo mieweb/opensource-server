@@ -175,5 +175,5 @@ jobs:
       - name: Remove preview container
         uses: mieweb/launchpad@main
         with:
-          api_key: ${{ secrets.LAUNCHPAD_API_KEY }}
-          api_url: ${{ secrets.LAUNCHPAD_API_URL }}
+          api_key: ${{ secrets.API_KEY }}
+          api_url: ${{ secrets.API_URL }}
