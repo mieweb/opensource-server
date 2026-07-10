@@ -413,6 +413,18 @@ router.post(
       } = req.body || {};
 
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
+      const existingContainer = await Container.findOne({
+        where: { siteId: site.id, hostname },
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+      if (existingContainer) {
+        throw new ApiError(
+          409,
+          'duplicate_hostname',
+          `Container with hostname "${hostname}" already exists in this site`,
+        );
+      }
 
       // Contract: `collaborators`, when present, is an array of usernames.
       // Validated here so the insert below can trust its shape.
@@ -748,6 +760,12 @@ router.delete(
     );
     const node = container.node;
     let dnsWarnings = [];
+    if (container.creationJobId) {
+      const creationJob = await Job.findByPk(container.creationJobId);
+      if (creationJob && (creationJob.status === 'pending' || creationJob.status === 'running')) {
+        await creationJob.update({ status: 'cancelled' });
+      }
+    }
     const httpServices = (container.services || [])
       .filter((s) => s.httpService?.externalDomain)
       .map((s) => ({
