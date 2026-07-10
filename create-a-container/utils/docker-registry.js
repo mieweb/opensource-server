@@ -154,6 +154,35 @@ async function authenticatedFetchJson(url, headers = {}) {
 }
 
 /**
+ * Retry an async operation on transient failures (timeout, network error, 5xx).
+ * @param {Function} fn - Async function to execute
+ * @param {number} maxRetries - Number of additional attempts after the first failure
+ * @param {number} retryDelay - Base delay in ms between attempts (doubles each retry)
+ * @returns {Promise} Resolved value of fn
+ */
+async function withRetry(fn, maxRetries = 2, retryDelay = 2000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt === maxRetries) break;
+      const isTransient =
+        err.message.includes('timeout') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('ECONNREFUSED') ||
+        err.message.includes('ETIMEDOUT') ||
+        err.message.includes('ENOTFOUND') ||
+        /HTTP 5\d\d/.test(err.message);
+      if (!isTransient) throw err;
+      await new Promise((resolve) => setTimeout(resolve, retryDelay * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Check if a template is a Docker image reference (contains '/')
  * @param {string} template - The template string
  * @returns {boolean} True if Docker image, false if Proxmox template
@@ -242,6 +271,10 @@ async function getImageDigest(registry, repo, tag) {
  * @returns {Promise<object>} Image config object
  */
 async function getImageConfig(registry, repo, tag) {
+  return withRetry(() => _getImageConfig(registry, repo, tag));
+}
+
+async function _getImageConfig(registry, repo, tag) {
   const registryHost = registry === 'docker.io' ? 'registry-1.docker.io' : registry;
   
   // First, fetch the manifest to get the config digest

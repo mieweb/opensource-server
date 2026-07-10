@@ -17,41 +17,12 @@ When configured, users can reset passwords via "Forgot your password?" on the lo
 !!! warning
     Without SMTP, password resets require manual admin intervention.
 
-## Push Notification 2FA
+## Authentication
 
-Two-factor authentication via push notifications using the [MieWeb Auth App](https://github.com/mieweb/mieweb_auth_app).
+The Manager authenticates users with internal username/password by default. To delegate authentication (and MFA) to an external identity provider, configure single sign-on — see [OIDC Single Sign-On](oidc.md). When OIDC is enabled, internal password login and self-registration are disabled.
 
-### Setup
-
-1. Enter the **Push Notification URL** (your notification service endpoint)
-2. Check **Enable Push Notification 2FA**
-3. Save
-
-Once a Push Notification URL is configured, an **MFA Admin** link appears at the bottom of the admin sidebar. It opens `${push_notification_url}/admin` in a new tab so admins can manage registered devices in the notification service.
-
-### Flow
-
-1. User enters username/password
-2. Push notification sent to registered device
-3. User approves/rejects on mobile
-4. Access granted or denied
-
-Users without a registered device see an error with a link to register.
-
-### Notification Service API
-
-```
-POST {notification_url}/send-notification
-{ "username": "user123" }
-```
-
-Responses:
-- `{"success": true, "action": "approve|reject|timeout"}`
-- `{"success": false, "message": "..."}`
-
-### LDAP Integration
-
-When enabled, `AUTH_BACKENDS` is set to `sql,notification` and `NOTIFICATION_URL` is propagated to the LDAP server environment variables automatically.
+!!! note "Push Notification 2FA removed"
+    Earlier releases offered push-notification two-factor authentication via the MieWeb Auth App. That feature has been removed in favor of delegating MFA to an OIDC identity provider.
 
 ## Access Control
 

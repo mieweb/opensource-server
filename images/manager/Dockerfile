@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM agent
 
 # Default environment for pull-config. The manager runs the app on localhost
@@ -8,9 +9,9 @@ ENV MANAGER_URL=http://localhost:3000
 # Install Postgres 18 from the PGDG repository and enable remote access only
 # for TLS encrypted connections. Debian creates a self-signed cert for this so
 # we don't have to make our own.
-RUN apt update && apt -y install postgresql-common \
+RUN apt-get update && apt-get -y install postgresql-common \
     && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
-    && apt -y install postgresql-18 \
+    && apt-get -y install postgresql-18 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && echo 'hostssl all all 0.0.0.0/0 scram-sha-256' >>/etc/postgresql/18/main/pg_hba.conf \
@@ -21,14 +22,16 @@ RUN apt update && apt -y install postgresql-common \
 # override prevents a race condition at boot.
 COPY images/manager/wait-proxmox-regenerate-snakeoil.conf /etc/systemd/system/postgresql@.service.d/
 
-# Directory for the create-a-container access log written by morgan
-# (see Environment=ACCESS_LOG in container-creator.service) and its
-# logrotate config.
-RUN mkdir -p /var/log/opensource-server
-COPY images/manager/opensource-server.logrotate /etc/logrotate.d/opensource-server
+# First-boot database initialization.
+COPY images/manager/container-creator-init.service /etc/systemd/system/container-creator-init.service
 
-# Install the software. We include the .git directory so that the software can
-# update itself without replacing the entire container.
-COPY . /opt/opensource-server
-RUN cd /opt/opensource-server \
-    && make install
+# Install the manager and docs packages built by the builder image (the agent
+# package is already present from the parent image; apt resolves the
+# opensource-server -> opensource-docs dependency), then enable the init
+# service.
+RUN --mount=from=builder,source=/dist,target=/dist \
+    apt-get update && \
+    apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-server_*.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    systemctl enable container-creator-init.service

@@ -2,5 +2,17 @@
 /create-a-container/certs/*
 !/create-a-container/certs/.gitignore
 /create-a-container/.env
+/create-a-container/client/dist
 /mie-opensource-landing/build
-*/node_modules
+/mie-opensource-landing/site
+/mie-opensource-landing/.venv
+/mie-opensource-landing/.cache
+**/node_modules
+**/__pycache__
+
+# packaging build artifacts (rebuilt inside the builder image)
+**/.pkg
+/dist
+**/*.deb
+**/*.rpm
+**/*.apk

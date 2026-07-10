@@ -1,6 +1,8 @@
 
 # Core Technologies
 
+{{ contributor_warning }}
+
 External documentation for core components.
 
 | Component | Links |
@@ -12,7 +14,7 @@ External documentation for core components.
 | **LDAP Gateway** | [GitHub](https://github.com/mieweb/LDAPServer) · [SSSD Docs](https://sssd.io/docs/) |
 | **DNSMasq** | [Docs](http://www.thekelleys.org.uk/dnsmasq/doc.html) · [Man Page](https://linux.die.net/man/8/dnsmasq) |
 | **NGINX** | [Docs](https://nginx.org/en/docs/) · [Reverse Proxy](https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/) |
-| **Node.js** | [Docs](https://nodejs.org/docs/) — 18+ LTS recommended |
+| **Node.js** | [Docs](https://nodejs.org/docs/) — 24.x LTS |
 | **Docker** | [Docs](https://docs.docker.com/) · [Compose](https://docs.docker.com/compose/) |
 
 ## Version Requirements

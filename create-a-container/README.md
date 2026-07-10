@@ -22,7 +22,6 @@ erDiagram
         int id PK
         string hostname UK "FQDN hostname"
         string username "Owner username"
-        string status "pending,creating,running,failed"
         string template "Template name"
         int creationJobId FK "References Job"
         int nodeId FK "References Node"
@@ -230,6 +229,22 @@ Delete a container from both Proxmox and the database
   - `404` - Container not found
   - `403` - User doesn't own the container
   - `500` - Proxmox API deletion failed or node not configured
+
+#### Container status (`status` field)
+Every container returned by the list, show, and create endpoints includes a
+**live** `status` field, computed on demand rather than read from a stored
+column. It is resolved by combining the container's run-state in Proxmox (from a
+single per-node cluster snapshot) with the state of its create job. Possible
+values:
+- `running` — online in Proxmox
+- `offline` — exists in Proxmox but stopped
+- `creating` — no Proxmox VM yet, active create job
+- `failed` — no Proxmox VM, create job failed
+- `missing` — no Proxmox VM, create succeeded or no create job found
+- `unknown` — Proxmox unreachable / node has no API credentials
+
+The create endpoint (`POST /containers`) returns `creating` immediately, since a
+create job is enqueued and there is no Proxmox VM yet.
 
 #### `GET /status/:jobId` (Auth Required)
 View container creation progress page

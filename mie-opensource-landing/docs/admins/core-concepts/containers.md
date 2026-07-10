@@ -20,5 +20,5 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 
 Users can expose HTTP services from containers using [external domains](external-domains.md). Services are automatically configured with SSL/TLS certificates, reverse proxy routing, and DNS records.
 
-HTTP services can optionally require authentication via the **Require auth** checkbox. When enabled, NGINX authenticates requests against the domain's [auth server](external-domains.md#authentication) before proxying. Authenticated requests include identity headers (`X-User-ID`, `X-Username`, etc.) forwarded to the backend. See [External Domains — Authentication](external-domains.md#authentication) for configuration details.
+HTTP services can optionally require authentication via the **Require auth** checkbox. When enabled, NGINX authenticates requests against the domain's [oauth2-proxy server](external-domains.md#authentication) before proxying. Authenticated requests include identity headers (`X-User`, `X-Preferred-Username`, `X-Email`, `X-Groups`) forwarded to the backend — see [Adding Authentication](../../users/consuming-auth.md) for how apps consume them. See [External Domains — Authentication](external-domains.md#authentication) for configuration details.
 

@@ -1,6 +1,8 @@
 
 # Contributing
 
+{{ contributor_warning }}
+
 ## Getting Started
 
 1. Review the [GitHub repository](https://github.com/mieweb/opensource-server) and open issues
@@ -10,7 +12,7 @@
 
 ## Pull Requests
 
-Before submitting: `npm test`, `npm run lint`, update docs if needed.
+Before submitting: verify the stack runs (`docker compose up -d`), manually test affected flows, and update docs if needed.
 
 Include in your PR: summary of changes, related issues, how you tested, screenshots for UI changes, and any breaking changes.
 
@@ -31,9 +33,7 @@ fix(auth): resolve LDAP authentication timeout issue
 
 ## Testing
 
-- Write unit tests for new functions
-- Test API endpoints end-to-end
-- Manually verify container creation/deletion, DNS resolution, NGINX routing, and LDAP auth
+There is currently no automated test suite. Manually verify your changes against a running stack (`docker compose up -d`) — container creation/deletion, DNS resolution, NGINX routing, and LDAP auth as relevant.
 
 ## License
 

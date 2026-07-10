@@ -217,5 +217,5 @@ module.exports = {
   createTransport,
   sendPasswordResetEmail,
   sendInviteEmail,
-  sendBulkEmail
+  sendBulkEmail,
 };

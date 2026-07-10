@@ -1,0 +1,126 @@
+name: Create Container
+description: Create a container via the Create-a-Container API and report its creation job.
+author: mieweb
+
+inputs:
+  api_url:
+    description: Base URL for the Container API (e.g. https://containers.example.com).
+    required: true
+  api_key:
+    description: API key used as a Bearer token for authentication.
+    required: true
+  site_id:
+    description: Site ID the container will belong to.
+    required: false
+    default: "1"
+  hostname:
+    description: Hostname for the new container.
+    required: true
+  template_name:
+    description: Container template/image (e.g. ghcr.io/mieweb/timeharbor:latest).
+    required: false
+    default: ""
+  services:
+    description: Services configuration (JSON array string).
+    required: false
+    default: ""
+  container_env_vars:
+    description: Environment variables for the container (JSON string).
+    required: false
+    default: ""
+
+outputs:
+  container_id:
+    description: The new (or existing, on conflict) container ID.
+    value: ${{ steps.create.outputs.container_id }}
+  job_id:
+    description: The asynchronous creation job ID (empty when created synchronously).
+    value: ${{ steps.create.outputs.job_id }}
+  created:
+    description: "'true' when an asynchronous creation job was enqueued (poll with wait-for-job)."
+    value: ${{ steps.create.outputs.created }}
+  ready:
+    description: "'true' when the container is already usable (created synchronously or already existed)."
+    value: ${{ steps.create.outputs.ready }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create container
+      id: create
+      shell: bash
+      env:
+        API_URL: ${{ inputs.api_url }}
+        API_KEY: ${{ inputs.api_key }}
+        SITE_ID: ${{ inputs.site_id }}
+        CONTAINER_HOSTNAME: ${{ inputs.hostname }}
+        TEMPLATE_NAME: ${{ inputs.template_name }}
+        SERVICES: ${{ inputs.services }}
+        CONTAINER_ENV_VARS: ${{ inputs.container_env_vars }}
+      run: |
+        set -uo pipefail
+        echo "Creating container '$CONTAINER_HOSTNAME' (site $SITE_ID)..."
+
+        CREATE_PAYLOAD=$(jq -n \
+          --arg hostname "$CONTAINER_HOSTNAME" \
+          --arg template "$TEMPLATE_NAME" \
+          --arg services "$SERVICES" \
+          --arg env_vars "$CONTAINER_ENV_VARS" \
+          '{
+            hostname: $hostname,
+            template: $template,
+            services: ($services | fromjson? // []),
+            environment: ($env_vars | fromjson? // {})
+          }')
+
+        echo "--- Create Payload ---"
+        echo "$CREATE_PAYLOAD"
+        echo "----------------------"
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST "$API_URL/api/v1/sites/$SITE_ID/containers" \
+          -H "Authorization: Bearer $API_KEY" \
+          -H "Accept: application/json" \
+          -H "Content-Type: application/json" \
+          -d "$CREATE_PAYLOAD")
+
+        BODY=$(echo "$RESPONSE" | sed '$d')
+        CODE=$(echo "$RESPONSE" | tail -1)
+
+        if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+          echo "--- Create Response ---"
+          echo "$BODY"
+          echo "----------------------"
+          NEW_ID=$(echo "$BODY" | jq -r '.data.containerId // .data.id // .container.id // .id // empty')
+          JOB_ID=$(echo "$BODY" | jq -r '.data.jobId // .data.job_id // .data.creationJobId // .jobId // .job_id // empty')
+          if [ -z "$NEW_ID" ] || [ "$NEW_ID" == "null" ]; then
+            echo "::error::Creation succeeded (HTTP $CODE) but the response contained no container ID. Response: $BODY"
+            exit 1
+          fi
+          echo "container_id=$NEW_ID" >> "$GITHUB_OUTPUT"
+          if [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]; then
+            echo "Container created (ID: $NEW_ID, Job ID: $JOB_ID)."
+            {
+              echo "job_id=$JOB_ID"
+              echo "created=true"
+              echo "ready=false"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "Container created synchronously (ID: $NEW_ID)."
+            {
+              echo "created=false"
+              echo "ready=true"
+            } >> "$GITHUB_OUTPUT"
+          fi
+        elif [ "$CODE" -eq 409 ]; then
+          EXISTING_ID=$(echo "$BODY" | jq -r '.data.containerId // .data.id // .container.id // empty')
+          echo "Container already exists (conflict). Using existing container ID: $EXISTING_ID"
+          {
+            echo "container_id=$EXISTING_ID"
+            echo "created=false"
+            echo "ready=true"
+          } >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::Failed to create container. HTTP $CODE — $BODY"
+          exit 1
+        fi

@@ -1,6 +1,8 @@
 
 # pull-config
 
+{{ contributor_warning }}
+
 Cron-based configuration management that pulls config files from the manager API. Installed on agent and manager containers. For deployment instructions, see [Deploying Agents](../admins/deploying-agents.md).
 
 ## Architecture
@@ -21,7 +23,7 @@ pull-config/
 │       ├── dnsmasq-hosts
 │       ├── dnsmasq-dhcp-opts
 │       └── dnsmasq-servers
-└── install.sh               # Copies scripts to /etc/
+└── Makefile                # Builds the opensource-agent package (see Release Pipeline)
 ```
 
 ## Environment Variables

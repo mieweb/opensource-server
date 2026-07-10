@@ -7,7 +7,7 @@ Nodes are Proxmox VE servers within a site that host containers.
 
 - **Name**: Must exactly match the Proxmox hostname
 - **IP Address**: For internal DNS resolution
-- **API URL**: e.g., `https://192.168.1.10:8006/api2/json`
+- **API URL**: e.g., `https://192.168.1.10:8006`
 - **Authentication**: Username/password or API token
 - **TLS Verification**: Enable/disable certificate validation
 - **Template Storage**: Proxmox storage for CT template images (`vztmpl` content)

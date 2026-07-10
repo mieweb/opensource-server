@@ -1,2 +1,7 @@
 node_modules
 .env
+.tmp-verify/
+.playwright-mcp/
+
+# packaging build artifacts
+/dist/

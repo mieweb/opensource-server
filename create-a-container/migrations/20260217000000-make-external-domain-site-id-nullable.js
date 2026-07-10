@@ -5,7 +5,7 @@ module.exports = {
     // Discover and remove all FK constraints on siteId
     const fks = await queryInterface.getForeignKeyReferencesForTable('ExternalDomains');
     for (const fk of fks) {
-      if (fk.columnName === 'siteId') {
+      if (fk.columnName === 'siteId' && fk.constraintName) {
         await queryInterface.removeConstraint('ExternalDomains', fk.constraintName);
       }
     }
@@ -30,7 +30,7 @@ module.exports = {
   async down(queryInterface, Sequelize) {
     const fks = await queryInterface.getForeignKeyReferencesForTable('ExternalDomains');
     for (const fk of fks) {
-      if (fk.columnName === 'siteId') {
+      if (fk.columnName === 'siteId' && fk.constraintName) {
         await queryInterface.removeConstraint('ExternalDomains', fk.constraintName);
       }
     }

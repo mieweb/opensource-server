@@ -1,3 +1,13 @@
 .env
 node_modules
 data/
+
+# test artifacts
+playwright-report/
+test-results/
+
+# packaging build artifacts
+/.pkg/
+/*.deb
+/*.rpm
+/*.apk

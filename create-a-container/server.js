@@ -5,16 +5,12 @@ const session = require('express-session');
 const morgan = require('morgan');
 const fs = require('fs');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
-const flash = require('connect-flash');
-const methodOverride = require('method-override');
 const path = require('path');
 const RateLimit = require('express-rate-limit');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
-const { requireAuth, loadSites } = require('./middlewares');
 
 
 // Function to get or create session secrets
@@ -38,10 +34,13 @@ async function getSessionSecrets() {
 async function main() {
   const app = express();
 
-  // setup views
+  // setup views (still used by templates router for nginx-conf / dnsmasq files)
   app.set('views', path.join(__dirname, 'views'));
   app.set('view engine', 'ejs');
   app.set('trust proxy', 1);
+  // Parse query strings with qs so bracket notation (e.g. `user[0]=alice`)
+  // yields real arrays. Express 5 defaults to the 'simple' parser.
+  app.set('query parser', 'extended');
 
   // setup middleware
   const accessLogStream = process.env.ACCESS_LOG
@@ -49,61 +48,31 @@ async function main() {
     : process.stdout;
   app.use(morgan('combined', { stream: accessLogStream }));
   app.use(express.json());
-  app.use(express.urlencoded({ extended: true })); // Parse form data
-  app.use(methodOverride((req, res) => {
-    if (req.body && typeof req.body === 'object' && '_method' in req.body) {
-      const method = req.body._method;
-      delete req.body._method;
-      return method;
-    }
-  }));
+  app.use(express.urlencoded({ extended: true }));
 
   // Configure session store
   const sessionStore = new SequelizeStore({
     db: sequelize,
   });
 
-  const isProduction = process.env.NODE_ENV === 'production';
-
   app.use(session({
     secret: await getSessionSecrets(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    // Dynamic cookie: drop the host part and set domain to the parent domain
-    // (e.g., manager.example.com → .example.com) so the session cookie is
-    // shared across sibling subdomains for nginx auth_request.
+    // `secure` is derived from the request protocol (honoring `trust proxy`
+    // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
+    // tracks the actual transport — set on HTTPS, omitted on plain HTTP
+    // bootstrap/dev access.
     cookie: function(req) {
-      const hostname = req.hostname || '';
-      const parts = hostname.split('.');
-      const domain = parts.length >= 2 ? '.' + parts.slice(1).join('.') : undefined;
       return {
-        secure: isProduction,
+        secure: req.secure,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: 'lax',
-        domain
       };
     }
   }));
 
-  app.use(flash());
-  // fix flash with postgres
-  app.use((req, res, next) => {
-    const _flash = req.flash;
-    req.flash = function(type, msg) {
-      const result = _flash.apply(this, arguments);
-      if (type && msg) {
-        return new Promise((resolve, reject) => {
-          this.session.save((err) => {
-            if (err) return reject(err);
-            resolve(result);
-          });
-        });
-      }
-      return result;
-    }
-    next();
-  });
   app.use(express.static('public'));
 
   // We rate limit unsuccessful (4xx/5xx statuses, excluding 404) to only 10 per 5 minutes, this
@@ -123,77 +92,34 @@ async function main() {
   const { getVersionInfo } = require('./utils');
   app.locals.versionInfo = getVersionInfo();
 
-  // Middleware to load sites for authenticated users
-  app.use((req, res, next) => {
-    if (req.session && req.session.user) {
-      return loadSites(req, res, next);
-    }
-    next();
-  });
-
-  // Redirect root to sites list
-  app.get('/', (req, res) => res.redirect('/sites'));
-
-  // --- Nodemailer Setup ---
-  const transporter = nodemailer.createTransport({
-    host: "opensource.mieweb.org",
-    port: 25,
-    secure: false, // use STARTTLS if supported
-    tls: {
-      rejectUnauthorized: false, // allow self-signed certs
-    },
-  });
-
   // --- Mount Routers ---
-  const loginRouter = require('./routers/login');
-  const registerRouter = require('./routers/register');
-  const verifyRouter = require('./routers/verify');
-  const usersRouter = require('./routers/users');
-  const groupsRouter = require('./routers/groups');
-  const sitesRouter = require('./routers/sites'); // Includes nested nodes and containers routers
-  const externalDomainsRouter = require('./routers/external-domains');
-  const jobsRouter = require('./routers/jobs');
-  const settingsRouter = require('./routers/settings');
-  const apikeysRouter = require('./routers/apikeys');
-  const resetPasswordRouter = require('./routers/reset-password');
-  
-  app.use('/jobs', jobsRouter);
-  app.use('/login', loginRouter);
-  app.use('/register', registerRouter);
-  app.use('/verify', verifyRouter);
-  app.use('/users', usersRouter);
-  app.use('/groups', groupsRouter);
-  app.use('/sites', sitesRouter); // /sites/:siteId/nodes and /sites/:siteId/containers routes nested here
-  app.use('/external-domains', externalDomainsRouter);
-  app.use('/settings', settingsRouter);
-  app.use('/apikeys', apikeysRouter);
-  app.use('/reset-password', resetPasswordRouter);
+  const apiV1Router = require('./routers/api/v1');
+  const templatesRouter = require('./routers/templates');
+
+  app.use('/api/v1', apiV1Router);
+  app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
-  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.yaml'));
+  // Swagger UI at /api documents the versioned v1 API (the spec also served at /api/v1/openapi.*).
+  const openapiSpec = YAML.load(path.join(__dirname, 'openapi.v1.yaml'));
   app.get('/api/openapi.json', (req, res) => res.json(openapiSpec));
   app.get('/api/openapi.yaml', (req, res) => {
-    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.yaml'));
+    res.type('text/yaml').sendFile(path.join(__dirname, 'openapi.v1.yaml'));
   });
   app.use('/api', swaggerUi.serve, swaggerUi.setup(openapiSpec, {
     customSiteTitle: 'Create-a-Container API',
   }));
 
+  // --- SPA: serve compiled React app for everything else ---
+  const clientDist = path.join(__dirname, 'client', 'dist');
+  app.use(express.static(clientDist));
+  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+
   // --- Routes ---
   const PORT = 3000;
   app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-
-  // Handles logout
-  app.post('/logout', (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Error destroying session:', err);
-        return res.status(500).json({ error: 'Failed to log out.' });
-      }
-      res.clearCookie('connect.sid'); // Clear the session cookie
-      return res.redirect('/');
-    });
-  });
 }
 
 main();

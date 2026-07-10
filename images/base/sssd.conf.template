@@ -1,0 +1,34 @@
+[sssd]
+domains = default
+
+[domain/default]
+id_provider = ldap
+auth_provider = ldap
+access_provider = ldap
+ldap_uri = ${SSSD_LDAP_URI}
+ldap_tls_reqcert = ${SSSD_LDAP_TLS_REQCERT}
+
+ldap_schema = ${SSSD_LDAP_SCHEMA}
+ldap_search_base = ${SSSD_LDAP_SEARCH_BASE}
+ldap_user_search_base = ${SSSD_LDAP_USER_SEARCH_BASE}
+ldap_group_search_base = ${SSSD_LDAP_GROUP_SEARCH_BASE}
+
+ldap_user_name = ${SSSD_LDAP_USER_NAME}
+ldap_user_gecos = ${SSSD_LDAP_USER_GECOS}
+
+# Expose the user's SSH public key (stored on the LDAP `sshPublicKey` attribute)
+# so it can be served to sshd via `sss_ssh_authorizedkeys`.
+ldap_user_ssh_public_key = sshPublicKey
+
+ldap_access_order = filter
+ldap_access_filter = ${SSSD_LDAP_ACCESS_FILTER}
+
+ldap_default_bind_dn = ${SSSD_LDAP_DEFAULT_BIND_DN}
+ldap_default_authtok_type = ${SSSD_DEFAULT_AUTHTOK_TYPE}
+ldap_default_authtok = ${SSSD_DEFAULT_AUTHTOK}
+
+# set a timeout long enough for a push notification to be responded to
+ldap_opt_timeout = 60
+
+fallback_homedir = /home/%u
+default_shell = /bin/bash

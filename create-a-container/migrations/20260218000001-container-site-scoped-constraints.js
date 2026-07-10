@@ -3,20 +3,22 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     // 1. Add siteId column to Containers (nullable initially for backfill)
-    await queryInterface.addColumn('Containers', 'siteId', {
-      type: Sequelize.INTEGER,
-      allowNull: true,
-      references: { model: 'Sites', key: 'id' },
-      onUpdate: 'CASCADE',
-      onDelete: 'RESTRICT'
-    });
+    try {
+      await queryInterface.addColumn('Containers', 'siteId', {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: { model: 'Sites', key: 'id' },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT'
+      });
+    } catch (err) {
+      if (!/duplicate column|already exists/i.test(err.message)) throw err;
+    }
 
     // 2. Backfill siteId from Node
     await queryInterface.sequelize.query(`
-      UPDATE "Containers" c
-      SET "siteId" = n."siteId"
-      FROM "Nodes" n
-      WHERE c."nodeId" = n.id
+      UPDATE "Containers"
+      SET "siteId" = (SELECT n."siteId" FROM "Nodes" n WHERE n.id = "Containers"."nodeId")
     `);
 
     // 3. Make siteId NOT NULL after backfill

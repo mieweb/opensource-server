@@ -1,29 +1,59 @@
-.PHONY: install install-create-container install-pull-config install-docs help
+.DEFAULT_GOAL := help
+
+COMPONENTS := pull-config mie-opensource-landing create-a-container
+PACKAGER   ?= deb
+
+# Forwarded to every component Makefile.
+MAKE_VARS = $(if $(PREFIX),PREFIX=$(PREFIX),) \
+            $(if $(DESTDIR),DESTDIR=$(DESTDIR),)
+
+.PHONY: help deps build install deb rpm apk clean dev
 
 help:
-	@echo "opensource-server installation"
+	@echo "opensource-server — delegates to each component's Makefile."
 	@echo ""
-	@echo "Available targets:"
-	@echo "  make install                - Install all components"
-	@echo "  make install-create-container - Install create-a-container web application"
-	@echo "  make install-pull-config    - Install pull-config system"
-	@echo "  make install-docs           - Install documentation server"
+	@echo "Targets (run across all components):"
+	@echo "  deps     install build/runtime dependencies"
+	@echo "  build    build all components"
+	@echo "  install  stage component files into DESTDIR (default /)"
+	@echo "  deb      build .deb packages, collected into ./dist"
+	@echo "  rpm      build .rpm packages, collected into ./dist"
+	@echo "  apk      build .apk packages, collected into ./dist"
+	@echo "  clean    remove build artifacts, staging, packages and ./dist"
+	@echo "  dev      run the Manager locally (SQLite, no Proxmox)"
+	@echo "  help     show this message"
 	@echo ""
+	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
+	@echo "The package version is derived from git by ./package-version."
 
-install: install-create-container install-pull-config install-docs
-
-SYSTEMD_DIR := create-a-container/systemd
-SERVICES    := $(wildcard $(SYSTEMD_DIR)/*.service)
-install-create-container:
-	cd create-a-container && npm install --omit=dev
-	install -m 644 -o root -g root $(SERVICES) /etc/systemd/system/
-	systemctl daemon-reload || true
-	@for service in $(notdir $(SERVICES)); do \
-		systemctl enable $$service; \
+deps build install:
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: $@"; \
+		$(MAKE) -C $$c $@ $(MAKE_VARS) || exit $$?; \
 	done
 
-install-pull-config:
-	cd pull-config && bash install.sh
+# Clean each component (which removes its built packages) and the dist/
+# collection directory.
+clean:
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: clean"; \
+		$(MAKE) -C $$c clean $(MAKE_VARS) || exit $$?; \
+	done
+	rm -rf dist
 
-install-docs:
-	cd mie-opensource-landing && uv run zensical build
+# Package every component, then collect the artifacts into ./dist.
+deb rpm apk:
+	@mkdir -p dist
+	@for c in $(COMPONENTS); do \
+		echo "==> $$c: $@"; \
+		$(MAKE) -C $$c $@ $(MAKE_VARS) || exit $$?; \
+		cp -f $$c/*.$@ dist/; \
+	done
+	@echo ""
+	@echo "Packages collected in dist/:"
+	@ls -1 dist/
+
+# Run the Manager locally (SQLite, no Proxmox). Delegates to create-a-container;
+# forwards LOG_LEVEL when provided (e.g. `make dev LOG_LEVEL=trace`).
+dev:
+	$(MAKE) -C create-a-container dev $(if $(LOG_LEVEL),LOG_LEVEL=$(LOG_LEVEL),)

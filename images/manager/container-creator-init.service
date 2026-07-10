@@ -1,0 +1,30 @@
+[Unit]
+Description=Initialize PostgreSQL for Container Creator
+Requires=postgresql.service
+After=postgresql.service
+Before=container-creator.service
+ConditionPathExists=!/etc/default/container-creator
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/opensource-server/create-a-container
+ExecStart=/bin/bash -e -c '\
+  for i in {1..30}; do pg_isready -h localhost && break || sleep 1; done; \
+  export DATABASE_DIALECT=postgres; \
+  export POSTGRES_PASSWORD=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 24); \
+  export POSTGRES_USER="cluster_manager"; \
+  export POSTGRES_DATABASE="cluster_manager"; \
+  export POSTGRES_HOST="localhost"; \
+  sudo -u postgres psql -c "CREATE USER $${POSTGRES_USER} WITH PASSWORD '"'"'$${POSTGRES_PASSWORD}'"'"';"; \
+  sudo -u postgres psql -c "CREATE DATABASE $${POSTGRES_DATABASE} OWNER $${POSTGRES_USER};"; \
+  echo "DATABASE_DIALECT=$${DATABASE_DIALECT}" > /etc/default/container-creator; \
+  echo "POSTGRES_HOST=$${POSTGRES_HOST}" >> /etc/default/container-creator; \
+  echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> /etc/default/container-creator; \
+  echo "POSTGRES_USER=$${POSTGRES_USER}" >> /etc/default/container-creator; \
+  echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> /etc/default/container-creator; \
+  node_modules/.bin/sequelize db:migrate; \
+  node_modules/.bin/sequelize db:seed:all;'
+
+[Install]
+WantedBy=multi-user.target

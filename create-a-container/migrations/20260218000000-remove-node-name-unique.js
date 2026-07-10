@@ -2,7 +2,11 @@
 
 module.exports = {
   async up(queryInterface) {
-    await queryInterface.removeConstraint('Nodes', 'Nodes_name_key');
+    try {
+      await queryInterface.removeConstraint('Nodes', 'Nodes_name_key');
+    } catch (err) {
+      if (!/does not exist|no such/i.test(err.message)) throw err;
+    }
   },
 
   async down(queryInterface) {

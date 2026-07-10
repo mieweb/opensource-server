@@ -1,14 +1,15 @@
+# syntax=docker/dockerfile:1
 FROM nodejs
 
-# Install all APT packages
-RUN apt-get update && \
-    apt-get install -y \
-        libnginx-mod-stream \
-        libnginx-mod-http-modsecurity \
-        ssl-cert \
-        make \
-        dnsmasq \
-    && \
+# Stage the release APT source so `apt upgrade` pulls future releases of the
+# opensource-* packages automatically
+COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
+
+# Install the agent package (and its dependencies: nginx with stream +
+# ModSecurity modules, dnsmasq, cron, ...) built by the builder image.
+RUN --mount=from=builder,source=/dist,target=/dist \
+    apt-get update && \
+    apt-get install -y /dist/opensource-agent_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +29,7 @@ COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
 COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
 COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
-# Install DNSMasq and configure it to only get it's config from our pull-config
+# Configure DNSMasq to only get its config from our pull-config
 RUN sed -i \
     -e 's/^CONFIG_DIR=\(.*\)$/#CONFIG_DIR=\1/' \
     -e 's/^#IGNORE_RESOLVCONF=\(.*\)$/IGNORE_RESOLVCONF=\1/' \
@@ -37,18 +38,6 @@ RUN sed -i \
 # Install acme.sh for ACME certificate management
 RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
-
-# Install uv for building the docs
-ARG UV_VERSION=0.11.6
-RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
-    | tar -xzf - --strip-components=1 -C /usr/local/bin \
-      uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx
-
-# Install the software. We include the .git directory so that the software can
-# update itself without replacing the entire container.
-COPY . /opt/opensource-server
-RUN cd /opt/opensource-server \
-    && make install-pull-config
 
 # Tag the exposed ports for services handled by the container
 # NGINX (http, https, quic)

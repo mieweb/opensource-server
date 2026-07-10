@@ -1,6 +1,6 @@
 # Getting Started
 
-To use the cluster, you need an account on the web interface at [https://manager.os.mieweb.org](https://manager.os.mieweb.org).
+To use the cluster, you need an account on the web interface at [{{ manager_url }}]({{ manager_url }}).
 
 ## Registering with an Invite
 

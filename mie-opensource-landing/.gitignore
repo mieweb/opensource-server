@@ -14,3 +14,9 @@ __pycache__/
 # Misc
 .DS_Store
 tmp/
+
+# packaging build artifacts
+/.pkg/
+/*.deb
+/*.rpm
+/*.apk

@@ -1,35 +1,47 @@
 {
   "nodemonConfig": {
     "ignore": [
-      "certs"
+      "certs",
+      "client"
     ]
   },
   "scripts": {
-    "dev": "nodemon server.js",
-    "db:migrate": "sequelize db:migrate && sequelize db:seed:all",
-    "job-runner": "node job-runner.js"
+    "postinstall": "patch-package",
+    "dev": "concurrently -n server,client -c blue,green \"nodemon server.js\" \"npm --prefix client run build:watch\"",
+    "dev:server": "nodemon server.js",
+    "db:migrate": "sequelize-cli db:migrate && sequelize-cli db:seed:all",
+    "job-runner": "node job-runner.js",
+    "client:install": "npm --prefix client install",
+    "client:dev": "npm --prefix client run dev",
+    "client:build": "npm --prefix client run build",
+    "client:build:watch": "npm --prefix client run build:watch",
+    "client:preview": "npm --prefix client run preview",
+    "client:type-check": "npm --prefix client run type-check"
   },
   "dependencies": {
     "argon2": "^0.44.0",
-    "axios": "^1.15.2",
-    "connect-flash": "^0.1.1",
+    "axios": "^1.16.0",
+    "cookie-parser": "^1.4.7",
+    "csrf-sync": "^4.2.1",
     "dotenv": "^17.2.3",
     "ejs": "^3.1.10",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.1",
     "express-session": "^1.19.0",
     "express-session-sequelize": "^2.3.0",
-    "method-override": "^3.0.0",
     "morgan": "^1.10.1",
-    "nodemailer": "^8.0.5",
+    "nodemailer": "^9.0.1",
+    "openid-client": "^5.7.1",
+    "patch-package": "^8.0.1",
     "pg": "^8.16.3",
-    "qrcode": "^1.5.4",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.3",
     "swagger-ui-express": "^5.0.1",
     "yamljs": "^0.3.0"
   },
   "devDependencies": {
+    "@vscode/sqlite3": "5.1.12-vscode",
+    "concurrently": "^9.2.3",
     "nodemon": "^3.1.10"
   }
 }

@@ -1,0 +1,18 @@
+[Unit]
+Description=Container Creator Node.js App
+After=container-creator-init.service
+Wants=container-creator-init.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/opensource-server/create-a-container
+ExecStart=/usr/bin/node /opt/opensource-server/create-a-container/server.js
+Restart=on-failure
+Environment=NODE_ENV=production
+Environment=ACCESS_LOG=/var/log/opensource-server/access.log
+EnvironmentFile=/etc/default/container-creator
+LogsDirectory=opensource-server
+
+[Install]
+WantedBy=multi-user.target

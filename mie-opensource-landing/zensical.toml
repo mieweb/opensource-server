@@ -21,6 +21,7 @@ nav = [
         { "API Keys" = "users/creating-containers/api-keys.md" },
       ] },
       { "Monitoring Containers" = "users/monitoring-container.md" },
+      { "Adding Authentication" = "users/consuming-auth.md" },
       { "Launchpad" = [
         { "What is Launchpad" = "users/proxmox-launchpad/what-is-proxmox-launchpad.md" },
         { "Getting Started" = "users/proxmox-launchpad/getting-started.md" },
@@ -40,16 +41,18 @@ nav = [
         { "Users and Groups" = "admins/core-concepts/users-and-groups.md" },
       ] },
       { "Settings" = "admins/settings.md" },
-      { "LDAP Servers" = "admins/ldap-servers.md" },
+      { "OIDC Single Sign-On" = "admins/oidc.md" },
+      { "LDAP Authentication" = "admins/ldap-servers.md" },
       { "Deploying Agents" = "admins/deploying-agents.md" },
       { "Kernel Keyring" = "admins/kernel-keyring.md" },
       { "NVIDIA Container Toolkit" = "admins/nvidia-container-toolkit.md" },
     ] },
-    { "Developers" = [
+    { "Contributors" = [
       { "System Architecture" = "developers/system-architecture.md" },
       { "Core Technologies" = "developers/core-technologies.md" },
       { "Development Workflow" = "developers/development-workflow.md" },
       { "Docker Images" = "developers/docker-images.md" },
+      { "Release Pipeline" = "developers/release-pipeline.md" },
       { "Database Schema" = "developers/database-schema.md" },
       { "Pull Config" = "developers/pull-config.md" },
       { "Contributing" = "developers/contributing.md" },
@@ -94,6 +97,7 @@ accent = "green"
 icon = "material/brightness-4"
 name = "Switch to light mode"
 
+[project.markdown_extensions.zensical.extensions.macros]
 [project.markdown_extensions.admonition]
 [project.markdown_extensions.pymdownx.details]
 [project.markdown_extensions.pymdownx.superfences]

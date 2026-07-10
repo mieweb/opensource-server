@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: Create-a-Container API v1
+  description: |
+    JSON-only REST API for the React SPA and external automation.
+    Co-exists with the legacy `/` (HTML) and `/apikeys` (mixed) routes during the React migration.
+
+    ## Authentication
+
+    Two mechanisms are supported:
+
+    - **Session cookie** — established by `POST /api/v1/auth/login`. Requires a CSRF token (see below) on every state-changing request.
+    - **API key** — `Authorization: Bearer <key>`. CSRF is skipped for Bearer-authenticated requests.
+
+    ## CSRF (session auth only)
+
+    Uses the synchroniser-token pattern (the token is stored in the session).
+
+    1. `GET /api/v1/csrf-token` → returns `{ "data": { "csrfToken": "..." } }`. The token is bound to your session and stays valid for its lifetime, so fetch it once and reuse it.
+    2. Send the token in the `X-CSRF-Token` header on every `POST`/`PUT`/`PATCH`/`DELETE`.
+
+    ## Response envelope
+
+    Success: `{ "data": <payload>, "meta"?: {...} }`.
+    Error:   `{ "error": { "code": "...", "message": "...", "fields"?: {...} } }`.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Auth
+  - name: Sites
+  - name: Containers
+  - name: Nodes
+  - name: Jobs
+  - name: External Domains
+  - name: Users
+  - name: Groups
+  - name: API Keys
+  - name: Settings
+  - name: Meta
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+  headers:
+    XCSRFToken:
+      description: CSRF token returned by GET /csrf-token. Required for state-changing requests under session auth.
+      schema: { type: string }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            fields:
+              type: object
+              additionalProperties: { type: string }
+    DataWrap:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+    Site:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        internalDomain: { type: string }
+        dhcpRange: { type: string }
+        subnetMask: { type: string }
+        gateway: { type: string }
+        dnsForwarders: { type: string }
+        externalIp: { type: string, nullable: true }
+    Container:
+      type: object
+      properties:
+        id: { type: integer }
+        hostname: { type: string }
+        owner: { type: string, description: Username of the user who created the container }
+        containerId: { type: integer, nullable: true }
+        status: { $ref: '#/components/schemas/ContainerStatus' }
+        template: { type: string }
+        ipv4Address: { type: string, nullable: true }
+        macAddress: { type: string, nullable: true }
+        creationJobId: { type: integer, nullable: true }
+        entrypoint: { type: string, nullable: true }
+        environmentVars:
+          type: object
+          additionalProperties: { type: string }
+        nvidiaRequested: { type: boolean }
+        sshPort: { type: integer, nullable: true }
+        nodeName: { type: string, nullable: true }
+        services:
+          type: array
+          items: { type: object }
+    ContainerStatus:
+      type: string
+      description: >-
+        Live container status, resolved on read from Proxmox run-state and the
+        create job.
+        running = online in Proxmox;
+        offline = exists in Proxmox but stopped;
+        creating = no Proxmox VM yet, active create job;
+        failed = no Proxmox VM, create job failed;
+        missing = no Proxmox VM, create succeeded or no create job;
+        unknown = Proxmox unreachable / no node credentials.
+      enum:
+        - running
+        - offline
+        - creating
+        - failed
+        - missing
+        - unknown
+    Node:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        siteId: { type: integer }
+        ipv4Address: { type: string, nullable: true }
+        apiUrl: { type: string, nullable: true }
+        tokenId: { type: string, nullable: true }
+        tlsVerify: { type: boolean, nullable: true }
+        imageStorage: { type: string }
+        volumeStorage: { type: string }
+        networkBridge: { type: string }
+        nvidiaAvailable: { type: boolean }
+        hasSecret: { type: boolean }
+    Job:
+      type: object
+      properties:
+        id: { type: integer }
+        command: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed] }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ApiKey:
+      type: object
+      properties:
+        id: { type: integer }
+        keyPrefix: { type: string }
+        description: { type: string, nullable: true }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+security:
+  - BearerAuth: []
+  - SessionCookie: []
+
+paths:
+  /csrf-token:
+    get:
+      tags: [Meta]
+      summary: Get a CSRF token
+      security: []
+      responses:
+        '200':
+          description: Token returned
+  /health:
+    get:
+      tags: [Meta]
+      summary: Health check
+      security: []
+      responses:
+        '200': { description: OK }
+
+  /session:
+    get:
+      tags: [Auth]
+      summary: Current session
+      responses:
+        '200': { description: Session payload }
+        '401': { description: Not authenticated, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Username/password login (disabled when OIDC SSO is enabled)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                redirect: { type: string }
+      responses:
+        '200': { description: Logged in }
+        '401': { description: Invalid credentials }
+        '403': { description: 'OIDC enabled (code: oidc_enabled) — use SSO instead' }
+  /auth/oidc/login:
+    get:
+      tags: [Auth]
+      summary: Begin OIDC single sign-on (redirects to the identity provider)
+      security: []
+      parameters:
+        - in: query
+          name: redirect
+          required: false
+          schema: { type: string }
+      responses:
+        '302': { description: Redirect to the identity provider authorization endpoint }
+        '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/oidc/callback:
+    get:
+      tags: [Auth]
+      summary: OIDC authorization-code callback (completes SSO and starts a session)
+      security: []
+      responses:
+        '302': { description: 'Redirect to the post-login destination on success, or /login?oidc_error=<code> on failure' }
+        '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      responses: { '200': { description: Logged out } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [uid, givenName, sn, mail, userPassword]
+              properties:
+                uid: { type: string }
+                givenName: { type: string }
+                sn: { type: string }
+                mail: { type: string, format: email }
+                userPassword: { type: string, format: password }
+                inviteToken: { type: string }
+      responses:
+        '201': { description: Account created }
+  /auth/register/invite/{token}:
+    get:
+      tags: [Auth]
+      security: []
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      responses: { '200': { description: Invite valid, returns email } }
+  /auth/password-reset/request:
+    post:
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [usernameOrEmail]
+              properties:
+                usernameOrEmail: { type: string }
+      responses: { '200': { description: Generic OK (does not reveal account existence) } }
+  /auth/password-reset/{token}:
+    get:
+      tags: [Auth]
+      security: []
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Token valid }
+        '404': { description: Invalid or expired }
+    post:
+      tags: [Auth]
+      security: []
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, confirmPassword]
+              properties:
+                password: { type: string }
+                confirmPassword: { type: string }
+      responses: { '200': { description: Password reset } }
+
+  /sites:
+    get: { tags: [Sites], summary: List sites, responses: { '200': { description: Array of sites } } }
+    post:
+      tags: [Sites]
+      summary: Create a site (admin)
+      responses: { '201': { description: Created } }
+  /sites/{id}:
+    get: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: Site } } }
+    put: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: Updated } } }
+    delete: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '204': { description: Deleted } } }
+
+  /sites/{siteId}/containers:
+    get:
+      tags: [Containers]
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: query, name: hostname, schema: { type: string } }
+        - { in: query, name: nodeId, schema: { type: integer }, description: Filter to a single node belonging to the site }
+        - in: query
+          name: user
+          schema:
+            type: array
+            items: { type: string }
+          description: >-
+            Owner filter, sent in bracket notation (`user[0]=alice&user[1]=bob`)
+            so it always parses as a list. Omitted/empty returns everything the
+            caller may see: every container on the site for admins, or their own
+            plus any shared with them for non-admins. A list of usernames
+            returns those owners' containers for admins; for non-admins the list
+            is intersected with what they may already see (own plus shared), so
+            it can only narrow visibility.
+      responses:
+        '200': { description: Array of containers }
+        '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    post:
+      tags: [Containers]
+      parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostname, template]
+              properties:
+                hostname: { type: string }
+                template: { type: string }
+                customTemplate: { type: string }
+                entrypoint: { type: string }
+                nvidiaRequested: { type: boolean }
+                collaborators:
+                  type: array
+                  items: { type: string }
+                  description: Usernames to share the new container with (must exist)
+                environmentVars:
+                  type: array
+                  items: { type: object, properties: { key: { type: string }, value: { type: string } } }
+                services:
+                  type: object
+                  additionalProperties: { type: object }
+      responses: { '201': { description: Creation job enqueued } }
+  /sites/{siteId}/containers/new:
+    get:
+      tags: [Containers]
+      summary: Form bootstrap data (domains + NVIDIA flag)
+      parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
+      responses: { '200': { description: Bootstrap payload } }
+  /sites/{siteId}/containers/metadata:
+    get:
+      tags: [Containers]
+      summary: Fetch Docker image metadata
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: query, name: image, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Image metadata }
+        '404': { description: Image not found }
+  /sites/{siteId}/containers/{id}:
+    parameters:
+      - { in: path, name: siteId, required: true, schema: { type: integer } }
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get: { tags: [Containers], responses: { '200': { description: Container } } }
+    put:
+      tags: [Containers]
+      responses:
+        '200': { description: Updated, optional restart job }
+        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      tags: [Containers]
+      responses:
+        '200': { description: Deleted, with DNS cleanup warnings }
+        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /sites/{siteId}/containers/{id}/collaborators:
+    parameters:
+      - { in: path, name: siteId, required: true, schema: { type: integer } }
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [Containers]
+      summary: List users a container is shared with (owner/collaborator/admin)
+      responses: { '200': { description: '{ collaborators: string[] }' } }
+    post:
+      tags: [Containers]
+      summary: Share a container with another user (owner/admin). Idempotent — sharing with an existing collaborator is a no-op.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties: { username: { type: string } }
+      responses:
+        '201': { description: '{ collaborators: string[] }' }
+        '403': { description: 'forbidden — only the owner/admin may share (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'user_not_found when the username does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /sites/{siteId}/containers/{id}/collaborators/{username}:
+    delete:
+      tags: [Containers]
+      summary: Stop sharing a container with a user (owner/admin)
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: username, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '{ collaborators: string[] }' }
+        '403': { description: 'forbidden — only the owner/admin may unshare (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /sites/{siteId}/nodes:
+    parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
+    get: { tags: [Nodes], responses: { '200': { description: Array of nodes } } }
+    post: { tags: [Nodes], responses: { '201': { description: Created (admin) } } }
+  /sites/{siteId}/nodes/import:
+    post:
+      tags: [Nodes]
+      summary: Bulk-import nodes + containers from a Proxmox cluster (admin)
+      parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiUrl, username, password]
+              properties:
+                apiUrl: { type: string, format: uri }
+                username: { type: string }
+                password: { type: string }
+                tlsVerify: { type: boolean }
+      responses: { '201': { description: Imported } }
+  /sites/{siteId}/nodes/{id}:
+    parameters:
+      - { in: path, name: siteId, required: true, schema: { type: integer } }
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get: { tags: [Nodes], responses: { '200': { description: Node } } }
+    put: { tags: [Nodes], responses: { '200': { description: Updated (admin) } } }
+    delete: { tags: [Nodes], responses: { '204': { description: Deleted (admin) } } }
+  /sites/{siteId}/nodes/{id}/storages:
+    get:
+      tags: [Nodes]
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses: { '200': { description: Array of Proxmox CT template storages } }
+
+  /jobs/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get: { tags: [Jobs], responses: { '200': { description: Job metadata } } }
+  /jobs/{id}/status:
+    get:
+      tags: [Jobs]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: offset, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses: { '200': { description: Status rows } }
+  /jobs/{id}/stream:
+    get:
+      tags: [Jobs]
+      summary: Server-sent events stream of job output
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: query, name: lastId, schema: { type: integer } }
+      responses:
+        '200':
+          description: SSE stream — events `log` and `status`
+          content: { text/event-stream: {} }
+
+  /external-domains:
+    get: { tags: [External Domains], responses: { '200': { description: List } } }
+    post: { tags: [External Domains], responses: { '201': { description: Created (admin) } } }
+  /external-domains/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get: { tags: [External Domains], responses: { '200': { description: Item } } }
+    put: { tags: [External Domains], responses: { '200': { description: Updated (admin) } } }
+    delete: { tags: [External Domains], responses: { '204': { description: Deleted (admin) } } }
+
+  /users:
+    get: { tags: [Users], responses: { '200': { description: List (admin) } } }
+    post: { tags: [Users], responses: { '201': { description: Created (admin) } } }
+  /users/invite:
+    post:
+      tags: [Users]
+      summary: Send an email invitation (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email } }
+      responses: { '200': { description: Invitation sent } }
+  /users/{uidNumber}:
+    parameters: [{ in: path, name: uidNumber, required: true, schema: { type: integer } }]
+    get: { tags: [Users], responses: { '200': { description: User } } }
+    put: { tags: [Users], responses: { '200': { description: Updated (admin) } } }
+    delete: { tags: [Users], responses: { '204': { description: Deleted (admin) } } }
+
+  /groups:
+    get: { tags: [Groups], responses: { '200': { description: List (admin) } } }
+    post: { tags: [Groups], responses: { '201': { description: Created (admin) } } }
+  /groups/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get: { tags: [Groups], responses: { '200': { description: Group } } }
+    put: { tags: [Groups], responses: { '200': { description: Updated (admin) } } }
+    delete: { tags: [Groups], responses: { '204': { description: Deleted (admin) } } }
+
+  /apikeys:
+    get: { tags: [API Keys], responses: { '200': { description: List of current user's keys } } }
+    post:
+      tags: [API Keys]
+      summary: Mint a new API key (plaintext returned ONCE)
+      responses: { '201': { description: Created with plaintext `key` } }
+  /apikeys/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get: { tags: [API Keys], responses: { '200': { description: Key metadata } } }
+    delete: { tags: [API Keys], responses: { '204': { description: Revoked } } }
+
+  /settings:
+    get: { tags: [Settings], responses: { '200': { description: System settings (admin) } } }
+    put: { tags: [Settings], responses: { '200': { description: Saved (admin) } } }

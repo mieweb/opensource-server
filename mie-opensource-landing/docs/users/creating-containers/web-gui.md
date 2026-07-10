@@ -85,7 +85,7 @@ Click **Create Container**. You'll be redirected to a page to watch the creation
 
 **HTTP:** `https://<hostname>.<domain>`
 
-**Proxmox Console:** [https://os.mieweb.org:8006](https://os.mieweb.org:8006)
+**Proxmox Console:** [{{ proxmox_url }}]({{ proxmox_url }})
 
 ## Managing Containers
 

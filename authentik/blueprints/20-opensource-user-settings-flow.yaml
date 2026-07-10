@@ -1,0 +1,247 @@
+version: 1
+metadata:
+  name: Opensource - User settings flow
+entries:
+  # Based on authentik's default-user-settings-flow, with two changes:
+  #   1. The username field is read-only (users cannot change their username).
+  #   2. A new SSH public keys field (one key per line) writes a LIST to the
+  #      user's `sshPublicKey` attribute, which SSSD exposes to SSH via
+  #      ldap_user_ssh_public_key as a multi-valued attribute.
+  - attrs:
+      designation: stage_configuration
+      name: Opensource User settings
+      title: Update your info
+      authentication: require_authenticated
+    identifiers:
+      slug: opensource-user-settings-flow
+    model: authentik_flows.flow
+    id: flow
+
+  # Username — read-only. Shown for reference but cannot be edited, and because a
+  # read-only field is not submitted, it is never written back.
+  - attrs:
+      order: 200
+      placeholder: Username
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.username
+        except:
+            return ''
+      initial_value_expression: true
+      required: false
+      type: text_read_only
+      field_key: username
+      label: Username
+    identifiers:
+      name: opensource-user-settings-field-username
+    id: prompt-field-username
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 201
+      placeholder: Name
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.name
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: text
+      field_key: name
+      label: Name
+    identifiers:
+      name: opensource-user-settings-field-name
+    id: prompt-field-name
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 202
+      placeholder: Email
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.email
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: email
+      field_key: email
+      label: Email
+    identifiers:
+      name: opensource-user-settings-field-email
+    id: prompt-field-email
+    model: authentik_stages_prompt.prompt
+
+  - attrs:
+      order: 203
+      placeholder: Locale
+      placeholder_expression: false
+      initial_value: |
+        try:
+            return user.attributes.get("settings", {}).get("locale", "")
+        except:
+            return ''
+      initial_value_expression: true
+      required: true
+      type: ak-locale
+      field_key: attributes.settings.locale
+      label: Locale
+    identifiers:
+      name: opensource-user-settings-field-locale
+    id: prompt-field-locale
+    model: authentik_stages_prompt.prompt
+
+  # New: SSH public key(s). Users enter one key per line in a text area. The
+  # submitted value is a single multiline string; the
+  # opensource-user-settings-ssh-keys policy (bound to the user-write stage
+  # below) splits it into a LIST before the value is written to the user's
+  # `sshPublicKey` attribute. Storing a list makes `sshPublicKey` a multi-valued
+  # LDAP attribute, so SSSD (ldap_user_ssh_public_key = sshPublicKey) exposes
+  # every key to sshd and a user can authenticate with any one of them.
+  - attrs:
+      order: 204
+      placeholder: "ssh-ed25519 AAAA... user@host"
+      placeholder_expression: false
+      # Pre-fill the editor with the user's existing keys, one per line. The
+      # stored attribute may be a list (multiple keys) or, for legacy records, a
+      # single string; handle both.
+      initial_value: |
+        try:
+            keys = user.attributes.get("sshPublicKey", [])
+            if isinstance(keys, str):
+                return keys
+            return "\n".join(keys)
+        except:
+            return ''
+      initial_value_expression: true
+      required: false
+      type: text_area
+      field_key: attributes.sshPublicKey
+      label: SSH Public Keys
+      sub_text: One key per line. Used for SSH public-key authentication on hosts.
+    identifiers:
+      name: opensource-user-settings-field-ssh-public-key
+    id: prompt-field-ssh-public-key
+    model: authentik_stages_prompt.prompt
+
+  # Authorization policy: enforces authentik's name/email change permissions.
+  # The username check from the upstream flow is intentionally omitted because the
+  # username field is read-only and is never submitted.
+  - attrs:
+      expression: |
+        from authentik.core.models import (
+            USER_ATTRIBUTE_CHANGE_EMAIL,
+            USER_ATTRIBUTE_CHANGE_NAME,
+        )
+        prompt_data = request.context.get("prompt_data")
+
+        if not request.user.group_attributes(request.http_request).get(
+            USER_ATTRIBUTE_CHANGE_EMAIL, request.http_request.tenant.default_user_change_email
+        ):
+            if prompt_data.get("email") != request.user.email:
+                ak_message("Not allowed to change email address.")
+                return False
+
+        if not request.user.group_attributes(request.http_request).get(
+            USER_ATTRIBUTE_CHANGE_NAME, request.http_request.tenant.default_user_change_name
+        ):
+            if prompt_data.get("name") != request.user.name:
+                ak_message("Not allowed to change name.")
+                return False
+
+        return True
+    identifiers:
+      name: opensource-user-settings-authorization
+    id: opensource-user-settings-authorization
+    model: authentik_policies_expression.expressionpolicy
+
+  # Converts the SSH public key text area into a LIST stored on the user's
+  # `sshPublicKey` attribute. Users enter one key per line; we split, trim,
+  # de-duplicate (preserving order), and drop blank lines.
+  #
+  # This is bound to the USER-WRITE stage (not the prompt stage) so it runs in
+  # the flow process after the prompt's data has been merged into the plan
+  # context, where mutating prompt_data in place persists to the User Write
+  # stage. (Policies on the prompt stage run against a separate validated-data
+  # dict, and process isolation can drop the mutation.)
+  #
+  # The submitted value lives at context["prompt_data"]["attributes"]["sshPublicKey"]
+  # (see goauthentik/authentik#3134). The conversion is idempotent: if the value
+  # is already a list (e.g. on a policy re-evaluation) it is left as-is. Always
+  # returns True; it normalizes the value and never blocks the stage.
+  - attrs:
+      expression: |
+        attributes = context["prompt_data"].get("attributes", {})
+        value = attributes.get("sshPublicKey", [])
+
+        if not isinstance(value, list):
+            keys = []
+            for line in value.split("\n"):
+                key = line.strip()
+                if key and key not in keys:
+                    keys.append(key)
+            attributes["sshPublicKey"] = keys
+
+        return True
+    identifiers:
+      name: opensource-user-settings-ssh-keys
+    id: opensource-user-settings-ssh-keys
+    model: authentik_policies_expression.expressionpolicy
+
+  - identifiers:
+      name: opensource-user-settings-write
+    attrs:
+      user_creation_mode: never_create
+    id: opensource-user-settings-write
+    model: authentik_stages_user_write.userwritestage
+
+  - attrs:
+      fields:
+        - !KeyOf prompt-field-username
+        - !KeyOf prompt-field-name
+        - !KeyOf prompt-field-email
+        - !KeyOf prompt-field-locale
+        - !KeyOf prompt-field-ssh-public-key
+      validation_policies:
+        - !KeyOf opensource-user-settings-authorization
+    identifiers:
+      name: opensource-user-settings
+    id: opensource-user-settings
+    model: authentik_stages_prompt.promptstage
+
+  - identifiers:
+      order: 20
+      stage: !KeyOf opensource-user-settings
+      target: !KeyOf flow
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      order: 100
+      stage: !KeyOf opensource-user-settings-write
+      target: !KeyOf flow
+    # re_evaluate_policies makes the flow re-run this binding's policies at
+    # execution time (when prompt_data is populated), rather than only at plan
+    # time. This is what lets opensource-user-settings-ssh-keys normalize the
+    # submitted SSH keys into a list just before they are written to the user.
+    attrs:
+      re_evaluate_policies: true
+      evaluate_on_plan: false
+    id: opensource-user-settings-write-binding
+    model: authentik_flows.flowstagebinding
+
+  # Run the SSH-key normalization policy immediately before the user-write
+  # stage. Bound to the stage binding above so it executes in the flow process
+  # with access to the live prompt_data.
+  - identifiers:
+      target: !KeyOf opensource-user-settings-write-binding
+      policy: !KeyOf opensource-user-settings-ssh-keys
+      order: 0
+    attrs:
+      enabled: true
+      negate: false
+      timeout: 30
+    model: authentik_policies.policybinding

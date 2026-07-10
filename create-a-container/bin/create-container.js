@@ -28,12 +28,13 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, Job } = db;
+const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, ResourceRequest, Job } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
+const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -47,6 +48,23 @@ function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
+}
+
+/**
+ * Parse the disk size in gigabytes from a Proxmox LXC `rootfs` config value.
+ * Example input: "local-lvm:vm-123-disk-0,size=50G" → 50
+ * Supports T/G/M/K suffixes; defaults to gigabytes when no suffix is present.
+ * @param {string} [rootfs] - The rootfs config string from lxcConfig
+ * @returns {number|null} Disk size rounded to whole gigabytes, or null if unparseable
+ */
+function parseRootfsSizeGb(rootfs) {
+  if (!rootfs) return null;
+  const match = /size=(\d+(?:\.\d+)?)([TGMK])?/i.exec(rootfs);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  const unit = (match[2] || 'G').toUpperCase();
+  const gb = { T: value * 1024, G: value, M: value / 1024, K: value / (1024 * 1024) }[unit];
+  return Number.isFinite(gb) ? Math.round(gb) : null;
 }
 
 /**
@@ -159,9 +177,14 @@ async function main() {
     console.error(`Container with ID ${containerId} not found`);
     process.exit(1);
   }
-  
-  if (container.status !== 'pending') {
-    console.error(`Container is not in pending status (current: ${container.status})`);
+
+  // Guard against double-provisioning. The status column no longer exists, so
+  // we use the Proxmox VMID as the signal: once a VMID has been allocated and
+  // stored, creation has already run for this container.
+  if (container.containerId) {
+    console.error(
+      `Container already has a Proxmox VMID (${container.containerId}); refusing to re-create`,
+    );
     process.exit(1);
   }
   
@@ -182,15 +205,23 @@ async function main() {
   console.log(`Node: ${node.name}`);
   console.log(`Site: ${site.name} (${site.internalDomain})`);
   console.log(`Template: ${container.template}`);
-  
+
+  // Look up approved resource requests for this container identity
+  const approvedResources = await ResourceRequest.getApprovedResources(
+    site.id,
+    container.hostname,
+    container.username,
+  );
+  const cores = approvedResources.cpus || 4;
+  const memory = approvedResources.memory || 4096;
+  const swap = approvedResources.swap || 0;
+  const rootfsSize = approvedResources.rootfs || 50;
+  console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
+
   const isDocker = isDockerImage(container.template);
   console.log(`Template type: ${isDocker ? 'Docker image' : 'Proxmox template'}`);
   
   try {
-    // Update status to 'creating'
-    await container.update({ status: 'creating' });
-    console.log('Status updated to: creating');
-    
     // Get the Proxmox API client
     const client = await node.api();
     console.log('Proxmox API client initialized');
@@ -257,16 +288,16 @@ async function main() {
         hostname: container.hostname,
         ostemplate,
         description: `Created from Docker image ${container.template}`,
-        cores: 4,
+        cores,
         features: 'nesting=1,keyctl=1,fuse=1',
-        memory: 4096,
+        memory,
         net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
-        swap: 0,
+        swap,
         onboot: 1,
         tags: container.username,
         unprivileged: 1,
-        rootfs: `${rootfsStorage}:50`
+        rootfs: `${rootfsStorage}:${rootfsSize}`
       });
       console.log(`Create task started: ${createUpid}`);
       
@@ -307,12 +338,12 @@ async function main() {
       // Configure the container (Docker containers are configured at creation time)
       console.log('Configuring container...');
       await client.updateLxcConfig(node.name, vmid, {
-        cores: 4,
+        cores,
         features: 'nesting=1,keyctl=1,fuse=1',
-        memory: 4096,
+        memory,
         net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
         searchdomain: site.internalDomain,
-        swap: 0,
+        swap,
         onboot: 1,
         tags: container.username
       });
@@ -334,64 +365,23 @@ async function main() {
       process.exit(1);
     }
 
-    // Apply environment variables and entrypoint
-    // First read defaults from the image, then merge with user-specified values
-    const defaultConfig = await client.lxcConfig(node.name, vmid);
-    const defaultEntrypoint = defaultConfig['entrypoint'] || null;
-    const defaultEnvStr = defaultConfig['env'] || null;
-    
-    // Parse default env vars
-    let mergedEnvVars = {};
-    if (defaultEnvStr) {
-      const pairs = defaultEnvStr.split('\0');
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf('=');
-        if (eqIndex > 0) {
-          mergedEnvVars[pair.substring(0, eqIndex)] = pair.substring(eqIndex + 1);
-        }
-      }
-    }
-    
-    // Merge user-specified env vars (user values override defaults)
-    const userEnvVars = container.environmentVars ? JSON.parse(container.environmentVars) : {};
+    // Snapshot the template's env/entrypoint onto the container record now, as
+    // if the user had supplied them (user-supplied values still win). Templates
+    // are mutable Docker refs we can't re-query on a later reconfigure, so we
+    // persist them here; otherwise a future reconfigure (which uses
+    // deleteMissing) would unset template-provided values that were never
+    // stored. System/NVIDIA defaults are intentionally left out — they stay
+    // configure-time-only.
+    const templateConfig = await client.lxcConfig(node.name, vmid);
+    await container.persistTemplateDefaults(templateConfig);
 
-    // Load system-wide default env vars from Settings.
-    // Descriptions are metadata only and are not passed into the container.
-    let systemDefaultEnvVars = {};
-    try {
-      const entries = await Setting.getDefaultContainerEnvVars();
-      for (const entry of entries) {
-        if (entry.key && entry.key.trim()) {
-          systemDefaultEnvVars[entry.key.trim()] = entry.value || '';
-        }
-      }
-    } catch (_) {
-      console.warn('Could not load default_container_env_vars from settings, skipping');
-    }
-
-    // Merge priority: image defaults < system defaults < per-container user values
-    mergedEnvVars = { ...mergedEnvVars, ...systemDefaultEnvVars, ...userEnvVars };
-    
-    // Use user entrypoint if specified, otherwise keep default
-    const finalEntrypoint = container.entrypoint || defaultEntrypoint;
-    
-    // Build config to apply
-    const envConfig = {};
-    if (finalEntrypoint) {
-      envConfig.entrypoint = finalEntrypoint;
-    }
-    if (Object.keys(mergedEnvVars).length > 0) {
-      envConfig.env = Object.entries(mergedEnvVars)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\0');
-    }
-    
+    // Apply environment variables and entrypoint. Use the default
+    // (deleteMissing=false): only explicit values are pushed, nothing is unset.
+    // The record now already includes the template's values, and system/NVIDIA
+    // defaults are merged in by buildLxcEnvConfig.
+    const envConfig = await container.buildLxcEnvConfig();
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
-      if (defaultEntrypoint) console.log(`Default entrypoint: ${defaultEntrypoint}`);
-      if (defaultEnvStr) console.log(`Image default env vars: ${Object.keys(mergedEnvVars).length - Object.keys(userEnvVars).length - Object.keys(systemDefaultEnvVars).length}`);
-      if (Object.keys(systemDefaultEnvVars).length > 0) console.log(`System default env vars: ${Object.keys(systemDefaultEnvVars).length} from settings`);
-      if (Object.keys(userEnvVars).length > 0) console.log(`Per-container env vars: ${Object.keys(userEnvVars).length}`);
       await client.updateLxcConfig(node.name, vmid, envConfig);
       console.log('Environment/entrypoint configuration applied');
     }
@@ -441,33 +431,17 @@ async function main() {
       throw new Error('Could not extract MAC address from container configuration');
     }
     
-    // Read back entrypoint and environment variables from config
+    // Read back configuration from Proxmox.
     console.log('Querying container configuration...');
     const config = await client.lxcConfig(node.name, vmid);
-    const actualEntrypoint = config['entrypoint'] || null;
-    const actualEnv = config['env'] || null;
-    
-    // Parse NUL-separated env string back to JSON object
-    let environmentVars = {};
-    if (actualEnv) {
-      const pairs = actualEnv.split('\0');
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf('=');
-        if (eqIndex > 0) {
-          const key = pair.substring(0, eqIndex);
-          const value = pair.substring(eqIndex + 1);
-          environmentVars[key] = value;
-        }
-      }
-    }
-    
-    if (actualEntrypoint) {
-      console.log(`Entrypoint: ${actualEntrypoint}`);
-    }
-    if (Object.keys(environmentVars).length > 0) {
-      console.log(`Environment variables: ${Object.keys(environmentVars).length} vars`);
-    }
-    
+
+    // Read back the actual provisioned resources so downstream systems
+    // (e.g. NetBox) mirror what the container really has rather than assuming
+    // the values requested at creation time.
+    const actualCores = config['cores'] != null ? parseInt(config['cores'], 10) : null;
+    const actualMemoryMb = config['memory'] != null ? parseInt(config['memory'], 10) : null;
+    const actualDiskGb = parseRootfsSizeGb(config['rootfs']);
+
     // Get IP address from Proxmox interfaces API
     const ipv4Address = await client.getLxcIpAddress(node.name, vmid);
     
@@ -479,10 +453,7 @@ async function main() {
     console.log('Updating container record...');
     await container.update({
       macAddress,
-      ipv4Address,
-      entrypoint: actualEntrypoint,
-      environmentVars: JSON.stringify(environmentVars),
-      status: 'running'
+      ipv4Address
     });
     
     console.log('Container creation completed successfully!');
@@ -504,7 +475,27 @@ async function main() {
       const warnings = await manageDnsRecords(httpServices, site);
       for (const w of warnings) console.warn(`[DNS WARNING] ${w}`);
     }
-    
+
+    // Register the container in NetBox if the integration is configured
+    await withNetbox(Setting, async (baseUrl, token) => {
+      console.log(`Registering container in NetBox (site: ${site.name})...`);
+      try {
+        await createVirtualMachine(baseUrl, token, {
+          hostname: container.hostname,
+          clusterName: site.name,
+          ipv4Address,
+          createdBy: container.username,
+          nodeName: container.node?.name,
+          vcpus: actualCores,
+          memoryMb: actualMemoryMb,
+          diskGb: actualDiskGb,
+        });
+        console.log(`NetBox: VM "${container.hostname}" created`);
+      } catch (err) {
+        console.warn(`NetBox: VM creation failed (non-fatal): ${err.message}`);
+      }
+    });
+
     process.exit(0);
   } catch (err) {
     console.error('Container creation failed:', err.message);
@@ -513,15 +504,7 @@ async function main() {
     if (err.response?.data) {
       console.error('API Error Details:', JSON.stringify(err.response.data, null, 2));
     }
-    
-    // Update status to failed
-    try {
-      await container.update({ status: 'failed' });
-      console.log('Status updated to: failed');
-    } catch (updateErr) {
-      console.error('Failed to update container status:', updateErr.message);
-    }
-    
+
     process.exit(1);
   }
 }

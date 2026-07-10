@@ -1,0 +1,163 @@
+---
+x-proxmox-service: &proxmox-service
+  image: ghcr.io/mieweb/opensource-server/proxmox-ve:latest
+  build: images/proxmox-ve
+  environment:
+    MANAGER_TAG: ${MANAGER_TAG:-latest}
+
+services:
+  # This service runs once when bringing the compose stack up to ensure the
+  # latest manager image (overridable by .env) is installed into the Proxmox
+  # template cache. This can run in parallel with other build tasks, slightly
+  # speeding up the overall time to a complete setup. It prefers to pull from
+  # the local docker image storage, but if the requested tag isn't available
+  # there it will fallback to pulling from the registry.
+  pull-image:
+    <<: *proxmox-service
+    volumes:
+      - local:/var/lib/vz
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        MANAGER_TAG=$${MANAGER_TAG:-latest}
+        FILENAME=/var/lib/vz/template/cache/manager_$${MANAGER_TAG}.tar
+        IMAGE_REF=ghcr.io/mieweb/opensource-server/manager:$${MANAGER_TAG}
+        if [ ! -f "$$FILENAME" ]; then
+          skopeo copy docker-daemon:$${IMAGE_REF} oci-archive:$${FILENAME} || \
+          skopeo copy docker://$${IMAGE_REF} oci-archive:$${FILENAME}
+        fi
+
+# This service runs once when bringing the compose stack up to ensure the
+# node_modules are populated in the user's create-a-container directory. This
+# is usually handled by the manager's Dockerfile, but we're mounting over that
+# directory so we need to be sure that the user has them.
+  node:
+    image: node:24-trixie
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/create-a-container
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        exec npm ci --no-audit --no-fund
+
+  # Watches the React client and rebuilds the production bundle on change. The
+  # Manager LXC inside Proxmox serves create-a-container/client/dist statically
+  # (via `nodemon server.js`), but the repo is mounted into Proxmox read-only,
+  # so Vite can't write the build output from there. Instead this service mounts
+  # the repo read-write and rebuilds client/dist on the host; the read-only
+  # bind mount inside Proxmox still sees those updated files, so the running
+  # server picks them up on the next request (no nodemon restart needed).
+  #
+  # Like zensical, this is a development convenience and not a hard dependency:
+  # it does an initial build so a dist always exists, then watches for changes.
+  # The server itself runs inside Proxmox, so this only runs the client watcher.
+  client:
+    image: node:24-trixie-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/create-a-container/client
+    entrypoint: ["/bin/sh", "-c"]
+    # Owns the client's node_modules install (separate directory from the
+    # server, so it runs in parallel with the `node` service). Then builds once
+    # and watches.
+    command:
+      - |
+        npm ci --no-audit --no-fund
+        npm run build
+        exec npm run build:watch
+    # Healthy once an initial bundle exists, so Proxmox can wait for it on a
+    # fresh checkout (where client/dist isn't present yet) before serving.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /opt/opensource-server/create-a-container/client/dist/index.html"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
+
+  # This service will watch the documentation for any changes and rebuild when
+  # needed. Technically it's listening on port 8000, but we only care about the
+  # HTML being placed in ./mie-opensource-landing/site which is shared with the
+  # Manager LXC running in the Proxmox. The Proxmox service doesn't have a
+  # direct dependency on this because it's meant to be a development convenience
+  # not a hard dependency. The Proxmox service works just fine if the docs are
+  # not getting rebuilt or even if they were never built in the first place.
+  zensical:
+    image: astral/uv:0.11.14-trixie-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server/mie-opensource-landing
+    command: uv run --active zensical serve
+    environment:
+      VIRTUAL_ENV: /opt/zensical
+      PROXMOX_URL: https://localhost:8006
+      MANAGER_URL: https://manager.localhost
+
+  # This is the only long-running service in the stack that isn't a development
+  # watcher (cf. zensical and client). On startup it creates
+  # the manager container as CTID 100 (if it needs to) with the current
+  # directory mounted over the /opt/opensource-server in the container so local
+  # changes easily propogate inwards. `npm install` and the documentation build
+  # should be managed by their respective services above so there's no questions
+  # about environment or permissions. TODO: add a second Proxmox to test
+  # multiple nodes.
+  proxmox:
+    <<: *proxmox-service
+    volumes:
+      - local:/var/lib/vz
+      - proxmox:/var/lib/pve-cluster
+      - ./:/opt/opensource-server:ro
+    privileged: true
+    devices:
+      - /dev/loop-control:/dev/loop-control
+    ports:
+      - 127.0.0.1:80:80
+      - 127.0.0.1:443:443
+      - 127.0.0.1:8006:8006
+    hostname: proxmox
+    domainname: cluster.internal
+    dns:
+      - 10.254.0.2  # Manager IP, enables ldap container lookup
+    dns_search: cluster.internal
+    security_opt:
+      - label=disable
+      - seccomp=unconfined
+    depends_on:
+      pull-image:
+        condition: service_completed_successfully
+      node:
+        condition: service_completed_successfully
+      client:
+        condition: service_healthy
+
+  # After the Proxmox (which includes the manager LXC) is healthy we have to
+  # bootstrap the Manager setup. The commands below were derived from doing a
+  # manual bootstrap and copying the network requests.
+  #
+  #   - Will try to recreate everything each up/start even if they already exist
+  #   - Doesn't work after the last step because the "proxmox" hostname no
+  #     longer routes to the container-creator instance
+  #   - TODO: This step should be the one to configure the ldap container(s) and
+  #     set the Proxmox up to allow login through them
+  #   - Can we move create-manager.service from the Proxmox image to here?
+  #
+  bootstrap-manager:
+    image: ghcr.io/taskmedia/curl-jq:latest
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        alias curl='curl -c cookies.txt -b cookies.txt -k'
+        CSRF="$(curl https://proxmox/api/v1/csrf-token | jq -r '.data.csrfToken')"
+        curl -H "X-CSRF-Token: $${CSRF}" --json '{"role":"admin"}' https://proxmox/api/v1/auth/dev
+        curl -H "X-CSRF-Token: $${CSRF}" --json '{"name":"Development","internalDomain":"cluster.internal","dhcpRange":"10.254.1.1,10.254.254.254","subnetMask":"255.255.0.0","gateway":"10.254.0.1","dnsForwarders":"8.8.8.8,1.1.1.1","externalIp":"127.0.0.1"}' https://proxmox/api/v1/sites
+        curl -H "X-CSRF-Token: $${CSRF}" --json '{"apiUrl":"https://10.254.0.1:8006","username":"root@pam","password":"root","tlsVerify":false}' https://proxmox/api/v1/sites/1/nodes/import
+        curl -H "X-CSRF-Token: $${CSRF}" --json '{"name":"localhost","siteId":1,"acmeEmail":"","acmeDirectoryUrl":"","cloudflareApiEmail":"","cloudflareApiKey":"","authServer":""}' https://proxmox/api/v1/external-domains
+        curl -H "X-CSRF-Token: $${CSRF}" -X PUT --json '{"hostname":"manager","template":"","entrypoint":"","nvidiaRequested":false,"services":{"s0":{"type":"http","internalPort":3000,"externalHostname":"manager","externalDomainId":1,"dnsName":"","authRequired":false}},"environmentVars":[],"restart":false}' https://proxmox/api/v1/sites/1/containers/1
+    depends_on:
+      proxmox:
+        condition: service_healthy
+
+volumes:
+  local:
+  proxmox:

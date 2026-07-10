@@ -48,6 +48,150 @@ module.exports = (sequelize, DataTypes) => {
       this.userPassword = plainPassword;
       await this.save();
     }
+
+    /**
+     * Generate a unique `uid` from a desired base, appending a numeric suffix
+     * if the base is already taken.
+     * @param {string} base - Desired username
+     * @returns {Promise<string>}
+     */
+    static async uniqueUid(base) {
+      const sanitized = (base || 'user')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]/g, '')
+        .replace(/^[._-]+/, '') || 'user';
+      let candidate = sanitized;
+      let suffix = 1;
+      // eslint-disable-next-line no-await-in-loop
+      while (await User.findOne({ where: { uid: candidate } })) {
+        candidate = `${sanitized}${suffix}`;
+        suffix += 1;
+      }
+      return candidate;
+    }
+
+    /**
+     * Resolve a local account from validated OIDC claims, optionally creating
+     * one when just-in-time provisioning is enabled.
+     *
+     * Matching order:
+     *   1. existing link by (oidcIssuer, oidcSubject)
+     *   2. existing local user by email — only when that account is not already
+     *      linked to a *different* OIDC identity (otherwise reject, to prevent
+     *      account takeover via a reused/mutable email)
+     *   3. JIT-provisioned new user (only when jitEnabled)
+     *
+     * OIDC subjects are only unique within an issuer, so identity matching is
+     * always scoped to (issuer, subject) rather than subject alone.
+     *
+     * @param {object} claims - Normalized claims from utils/oidc handleCallback
+     * @param {object} opts
+     * @param {boolean} opts.jitEnabled - Whether provisioning is permitted
+     * @returns {Promise<{user: User|null, code?: string}>}
+     */
+    static async findOrProvisionFromOidc(claims, { jitEnabled } = {}) {
+      const includeGroups = { include: [{ association: 'groups' }] };
+      const issuer = claims.issuer || null;
+
+      // 1. Existing link, scoped to the issuer so subjects can't collide across
+      //    different IdPs.
+      if (claims.sub) {
+        const linked = await User.findOne({
+          where: { oidcSubject: claims.sub, oidcIssuer: issuer },
+          ...includeGroups,
+        });
+        if (linked) return { user: linked };
+      }
+
+      // 2. Existing local user by email. Only link/return when the account is
+      //    not already bound to a different OIDC identity; otherwise reject so a
+      //    matching email can never hijack an account linked elsewhere.
+      if (claims.email) {
+        const byEmail = await User.findOne({
+          where: { mail: claims.email },
+          ...includeGroups,
+        });
+        if (byEmail) {
+          const linkedToOther =
+            byEmail.oidcSubject &&
+            (byEmail.oidcSubject !== claims.sub || byEmail.oidcIssuer !== issuer);
+          if (linkedToOther) {
+            return { user: null, code: 'account_conflict' };
+          }
+          // Link the OIDC identity to the existing, unlinked local account.
+          if (!byEmail.oidcSubject && claims.sub) {
+            byEmail.oidcSubject = claims.sub;
+            byEmail.oidcIssuer = issuer;
+            await byEmail.save();
+          }
+          return { user: byEmail };
+        }
+      }
+
+      if (!jitEnabled) {
+        return { user: null, code: 'no_account' };
+      }
+
+      if (!claims.email) {
+        return { user: null, code: 'missing_email' };
+      }
+
+      const crypto = require('crypto');
+      const base = claims.preferredUsername || claims.email.split('@')[0];
+      const givenName = (claims.givenName || claims.name || base).trim();
+      const familyName = (claims.familyName || '').trim() || givenName;
+
+      // JIT provisioning can be triggered by login bursts, so the unique-uid
+      // lookup is inherently racy. Retry on a unique-constraint violation,
+      // recomputing the uid each attempt, instead of failing the login.
+      const buildParams = async () => {
+        const uid = await User.uniqueUid(base);
+        return {
+          uidNumber: await User.nextUidNumber(),
+          uid,
+          givenName,
+          sn: familyName,
+          cn: claims.name?.trim() || `${givenName} ${familyName}`.trim(),
+          mail: claims.email,
+          // OIDC users authenticate via the IdP; store a random unusable secret
+          // so the NOT NULL password column is satisfied without a known password.
+          userPassword: crypto.randomBytes(32).toString('hex'),
+          status: 'active',
+          homeDirectory: `/home/${uid}`,
+          oidcSubject: claims.sub || null,
+          oidcIssuer: issuer,
+        };
+      };
+
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const params = await buildParams();
+          // eslint-disable-next-line no-await-in-loop
+          const created = await User.create(params);
+          // eslint-disable-next-line no-await-in-loop
+          return {
+            user: await User.findOne({ where: { uid: created.uid }, ...includeGroups }),
+          };
+        } catch (err) {
+          if (err?.name !== 'SequelizeUniqueConstraintError') throw err;
+          lastErr = err;
+          // A concurrent request may have just provisioned this same identity
+          // (issuer + subject). If so, return that account instead of retrying.
+          if (claims.sub) {
+            // eslint-disable-next-line no-await-in-loop
+            const raced = await User.findOne({
+              where: { oidcSubject: claims.sub, oidcIssuer: issuer },
+              ...includeGroups,
+            });
+            if (raced) return { user: raced };
+          }
+          // Otherwise the collision was on the generated uid; loop to recompute.
+        }
+      }
+      throw lastErr;
+    }
   }
   User.init({
     uidNumber: {
@@ -103,12 +247,29 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(50),
       allowNull: false,
       defaultValue: 'pending'
+    },
+    oidcSubject: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    oidcIssuer: {
+      type: DataTypes.STRING(255),
+      allowNull: true
     }
   }, {
     sequelize,
     modelName: 'User',
     tableName: 'Users',
     timestamps: true,
+    indexes: [
+      // OIDC subjects are only unique per issuer, so enforce uniqueness on the
+      // (issuer, subject) pair rather than on subject alone.
+      {
+        name: 'users_oidc_issuer_subject_unique',
+        unique: true,
+        fields: ['oidcIssuer', 'oidcSubject'],
+      },
+    ],
     hooks: {
       beforeCreate: async (user, options) => {
         // Hash password

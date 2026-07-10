@@ -1,0 +1,95 @@
+name: Get Container
+description: Fetch a container's details by hostname from the Create-a-Container API.
+author: mieweb
+
+inputs:
+  api_url:
+    description: Base URL for the Container API (e.g. https://containers.example.com).
+    required: true
+  api_key:
+    description: API key used as a Bearer token for authentication.
+    required: true
+  site_id:
+    description: Site ID that owns the container.
+    required: false
+    default: "1"
+  hostname:
+    description: Container hostname to look up.
+    required: true
+
+outputs:
+  found:
+    description: "'true' if a container was found, otherwise 'false'."
+    value: ${{ steps.query.outputs.found }}
+  container_id:
+    description: The container's numeric ID (empty if not found).
+    value: ${{ steps.query.outputs.container_id }}
+  status:
+    description: Container status (e.g. running); empty if not found.
+    value: ${{ steps.query.outputs.status }}
+  ipv4_address:
+    description: Container IPv4 address.
+    value: ${{ steps.query.outputs.ipv4_address }}
+  ssh_port:
+    description: Mapped SSH port.
+    value: ${{ steps.query.outputs.ssh_port }}
+  http_port:
+    description: Mapped HTTP port.
+    value: ${{ steps.query.outputs.http_port }}
+  node_name:
+    description: Proxmox node hosting the container.
+    value: ${{ steps.query.outputs.node_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Query container by hostname
+      id: query
+      shell: bash
+      env:
+        API_URL: ${{ inputs.api_url }}
+        API_KEY: ${{ inputs.api_key }}
+        SITE_ID: ${{ inputs.site_id }}
+        CONTAINER_HOSTNAME: ${{ inputs.hostname }}
+      run: |
+        set -uo pipefail
+        echo "Querying container '$CONTAINER_HOSTNAME' (site $SITE_ID)..."
+
+        RAW=$(curl -s -w "\n%{http_code}" \
+          -H "Authorization: Bearer $API_KEY" \
+          -H "Accept: application/json" \
+          "$API_URL/api/v1/sites/$SITE_ID/containers?hostname=$CONTAINER_HOSTNAME")
+
+        HTTP_CODE=$(echo "$RAW" | tail -1)
+        BODY=$(echo "$RAW" | sed '$d')
+
+        if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+          echo "::error::Failed to query container. HTTP $HTTP_CODE — $BODY"
+          exit 1
+        fi
+
+        CONTAINER_ID=$(echo "$BODY" | jq -r '.data[0].id // .data[0].containerId // .containers[0].id // empty')
+
+        if [ -z "$CONTAINER_ID" ] || [ "$CONTAINER_ID" == "null" ]; then
+          echo "No container found for '$CONTAINER_HOSTNAME'."
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        STATUS=$(echo "$BODY" | jq -r '.data[0].status // .containers[0].status // "unknown"')
+        IPV4=$(echo "$BODY" | jq -r '.data[0].ipv4Address // .containers[0].ipv4Address // empty')
+        SSH_PORT=$(echo "$BODY" | jq -r '.data[0].sshPort // .containers[0].sshPort // empty')
+        HTTP_PORT=$(echo "$BODY" | jq -r '.data[0].httpPort // .containers[0].httpPort // empty')
+        NODE_NAME=$(echo "$BODY" | jq -r '.data[0].nodeName // .containers[0].nodeName // empty')
+
+        {
+          echo "found=true"
+          echo "container_id=$CONTAINER_ID"
+          echo "status=$STATUS"
+          echo "ipv4_address=$IPV4"
+          echo "ssh_port=$SSH_PORT"
+          echo "http_port=$HTTP_PORT"
+          echo "node_name=$NODE_NAME"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Found container '$CONTAINER_HOSTNAME' (ID: $CONTAINER_ID, status: $STATUS)."
