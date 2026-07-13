@@ -88,6 +88,22 @@ function task(kind, id = '') {
   return `docker:${kind}:${id}`;
 }
 
+function isSystemContainer(options = {}) {
+  const entrypoint = Array.isArray(options.entrypoint)
+    ? options.entrypoint.join(' ')
+    : options.entrypoint || '';
+
+  const image = options.ostemplate || options.reference || '';
+
+  return (
+    entrypoint.includes('/sbin/init') ||
+    entrypoint.includes('systemd') ||
+    image.includes('/base:') ||
+    image.includes('/base@') ||
+    image.endsWith('/base')
+  );
+}
+
 class DockerApi {
   constructor(node = {}) {
     if (!node.apiUrl) {
@@ -310,6 +326,16 @@ class DockerApi {
         NetworkMode: 'bridge',
       },
     };
+
+    if (isSystemContainer(options)) {
+      body.HostConfig.Privileged = true;
+      body.HostConfig.CgroupnsMode = 'host';
+      body.HostConfig.Tmpfs = {
+        '/run': 'rw,nosuid,nodev,mode=755',
+        '/run/lock': 'rw,nosuid,nodev,noexec,mode=755',
+        '/tmp': 'rw,nosuid,nodev',
+      };
+    }
 
     if (options.memory) {
       body.HostConfig.Memory = Number(options.memory) * 1024 * 1024;
