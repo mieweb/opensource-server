@@ -3,33 +3,56 @@ const axios = require('axios');
 const MANAGER_NODE_LABEL = 'org.mieweb.opensource-server.node-id';
 const MANAGER_CONTAINER_LABEL = 'org.mieweb.opensource-server.container-id';
 
-function parseDockerHost(host) {
-  const raw = host || process.env.DOCKER_HOST || 'unix:///var/run/docker.sock';
+function isValidDockerHost(host) {
+  if (typeof host !== 'string' || host.trim() === '') return false;
 
-  if (raw.startsWith('unix://')) {
-    const url = new URL(raw);
+  try {
+    const url = new URL(host.trim());
+
+    if (url.protocol === 'unix:') {
+      return !!url.pathname && url.pathname !== '/';
+    }
+
+    if (url.protocol === 'tcp:') {
+      return !!url.hostname && !!url.port && (url.pathname === '' || url.pathname === '/');
+    }
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return !!url.hostname && (url.pathname === '' || url.pathname === '/');
+    }
+
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+function parseDockerHost(host) {
+  if (!isValidDockerHost(host)) {
+    throw new Error(
+      'Invalid Docker host. Supported formats: unix:///var/run/docker.sock, tcp://host:2375, http://host:2375, https://host:2376',
+    );
+  }
+
+  const raw = host.trim();
+  const url = new URL(raw);
+
+  if (url.protocol === 'unix:') {
     return {
       baseURL: 'http://docker',
       socketPath: decodeURIComponent(url.pathname),
     };
   }
 
-  if (raw.startsWith('tcp://')) {
-    const url = new URL(raw);
+  if (url.protocol === 'tcp:') {
     return {
       baseURL: `http://${url.host}`,
     };
   }
 
-  if (raw.startsWith('http://') || raw.startsWith('https://')) {
-    return {
-      baseURL: raw.replace(/\/$/, ''),
-    };
-  }
-
-  throw new Error(
-    `Unsupported Docker host "${raw}". Supported formats: unix://, tcp://, http://, https://`,
-  );
+  return {
+    baseURL: raw.replace(/\/$/, ''),
+  };
 }
 
 function parseEnvString(envStr) {
@@ -452,3 +475,4 @@ class DockerApi {
 }
 
 module.exports = DockerApi;
+module.exports.isValidDockerHost = isValidDockerHost;
