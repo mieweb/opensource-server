@@ -5,10 +5,6 @@
 //   - SSSD_LDAP_USER_GECOS   (full-name/gecos attribute; defaults to cn)
 //   - SSSD_LDAP_ACCESS_FILTER (login access filter)
 //
-// This is a separate seeder (rather than an edit to 20260604000000) because
-// that seeder is already released and recorded as executed in existing
-// databases, so editing it in place would not back-fill the new keys.
-//
 // SSSD_LDAP_ACCESS_FILTER defaults to a permissive filter that every directory
 // entry matches, so out of the box all directory-authenticated users may log
 // in. This is deliberate: with access_provider=ldap and

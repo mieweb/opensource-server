@@ -1,9 +1,9 @@
 'use strict';
 
-// Variables seeded into the default_container_env_vars setting for the
-// base/sssd.conf.template. Only SSSD_LDAP_URI and SSSD_LDAP_TLS_REQCERT
-// carry default values; the remaining variables are intentionally left
-// blank so that sssd falls back to its builtin defaults.
+// Seeds the SSSD env vars for the base/sssd.conf.template into the
+// default_container_env_vars setting. Only SSSD_LDAP_URI and
+// SSSD_LDAP_TLS_REQCERT carry default values; the remaining variables are
+// intentionally left blank so that sssd falls back to its builtin defaults.
 const SSSD_DEFAULTS = [
   {
     key: 'SSSD_LDAP_URI',

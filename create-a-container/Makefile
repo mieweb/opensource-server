@@ -53,9 +53,10 @@ build: deps
 # --no-package-lock`. This is a fast, incremental install that keeps
 # devDependencies and runs the server's patch-package postinstall, but never
 # rewrites package-lock.json (so `make dev` leaves the lockfile untouched even
-# when the local npm would otherwise renormalize it). Then run migrations, seed
-# a localhost site + dummy node, build the client once, and run three processes
-# together via concurrently:
+# when the local npm would otherwise renormalize it). Then run migrations (which
+# also runs the dev-only seeders, e.g. a localhost site + dummy node, via
+# `db:seed:all`), build the client once, and run three processes together via
+# concurrently:
 #   - server (nodemon, restarts on change)
 #   - job-runner (so container creation exercises the real POST /containers ->
 #     Job -> job-runner -> bin/create-container.js -> DummyApi path)
@@ -72,7 +73,6 @@ dev:
 	npm install --no-package-lock
 	npm --prefix client install --no-package-lock
 	npm run db:migrate
-	node bin/dev-bootstrap.js
 	npm --prefix client run build
 	@echo "Starting Manager (server + job-runner + client watch) at http://localhost:3000 ..."
 	$(LOG_LEVEL_PREFIX)npx concurrently -n server,jobs,client -c blue,magenta,green \
