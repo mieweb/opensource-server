@@ -11,7 +11,7 @@ INSTALL_PROG := $(INSTALL) -m 0755
 
 ERROR_PAGES := ../error-pages
 
-.PHONY: help deps build dev install deb rpm apk package clean
+.PHONY: help deps build dev test install deb rpm apk package clean
 
 help:
 	@echo "pull-config — builds the opensource-agent package."
@@ -19,6 +19,7 @@ help:
 	@echo "Targets:"
 	@echo "  deps     install dependencies (none; plain bash)"
 	@echo "  build    build the component (nothing to compile)"
+	@echo "  test     run tests (none; plain bash)"
 	@echo "  install  stage files into DESTDIR (default /)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
@@ -28,10 +29,11 @@ help:
 	@echo ""
 	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
 
-# Plain bash; nothing to install, compile, or watch.
+# Plain bash; nothing to install, compile, test, or watch.
 deps:
 build: deps
 dev: deps
+test:
 
 install: build
 	$(INSTALL) -D -m 0755 bin/pull-config $(DESTDIR)$(PREFIX)/pull-config/bin/pull-config

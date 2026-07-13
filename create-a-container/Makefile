@@ -17,7 +17,7 @@ APP_FILES := server.js job-runner.js package.json package-lock.json openapi.v1.y
 APP_DIRS  := bin config data middlewares migrations models node_modules \
              public routers seeders utils views
 
-.PHONY: help deps build dev install deb rpm apk package clean
+.PHONY: help deps build dev test install deb rpm apk package clean
 
 help:
 	@echo "create-a-container — builds the opensource-server package."
@@ -27,6 +27,7 @@ help:
 	@echo "  build       build the web client bundle"
 	@echo "  install     stage the app into DESTDIR (default /)"
 	@echo "  dev         run the Manager locally (SQLite, no Proxmox)"
+	@echo "  test        run the server test suite (jest)"
 	@echo "  deb         build the .deb package"
 	@echo "  rpm         build the .rpm package"
 	@echo "  apk         build the .apk package"
@@ -79,6 +80,14 @@ dev:
 		"npx nodemon server.js" \
 		"node job-runner.js" \
 		"npm --prefix client run build:watch"
+
+# Run the server test suite (jest + supertest against a throwaway SQLite DB in
+# $TMPDIR; see jest.config.js / tests/setup-env.js). Like `dev`, tests need
+# devDependencies, so install with `npm install --no-package-lock` — fast,
+# incremental, and never rewrites package-lock.json.
+test:
+	npm install --no-package-lock
+	npm test
 
 install: build
 	$(INSTALL) -d $(DESTBIN)
