@@ -7,6 +7,7 @@
   },
   "scripts": {
     "postinstall": "patch-package",
+    "test": "jest",
     "dev": "concurrently -n server,client -c blue,green \"nodemon server.js\" \"npm --prefix client run build:watch\"",
     "dev:server": "nodemon server.js",
     "db:migrate": "sequelize-cli db:migrate && sequelize-cli db:seed:all",
@@ -37,12 +38,15 @@
     "sequelize": "^6.37.8",
     "swagger-ui-express": "^5.0.1",
     "umzug": "^2.3.0",
-    "yamljs": "^0.3.0"
+    "yamljs": "^0.3.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@vscode/sqlite3": "5.1.12-vscode",
     "concurrently": "^9.2.3",
+    "jest": "^30.4.2",
     "nodemon": "^3.1.10",
-    "sequelize-cli": "^6.6.3"
+    "sequelize-cli": "^6.6.3",
+    "supertest": "^7.2.2"
   }
 }

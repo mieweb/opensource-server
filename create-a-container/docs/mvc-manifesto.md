@@ -156,31 +156,14 @@ const createApiKey = z.object({
 module.exports = { createApiKey };
 ```
 
-### `middlewares/validate.js` (shared, written once)
+### `middlewares/validate.js` (shared, already written — see the file)
 
 ```js
-const { ApiError } = require('./api');
-
-// validate(schema) / validate({ body, params, query })
-function validate(schemas) {
-  const map = schemas._def ? { body: schemas } : schemas;
-  return (req, _res, next) => {
-    for (const [part, schema] of Object.entries(map)) {
-      const result = schema.safeParse(req[part] || {});
-      if (!result.success) {
-        const fields = {};
-        for (const issue of result.error.issues) {
-          fields[issue.path.join('.') || part] = issue.message;
-        }
-        return next(new ApiError(400, 'invalid_request', 'Invalid request', fields));
-      }
-      req.validated = { ...req.validated, [part]: result.data };
-    }
-    next();
-  };
-}
-
-module.exports = { validate };
+// validate(schema)                     -> validates req.body
+// validate({ body, params, query })    -> validates each part
+// Parsed values land on req.validated.{body,params,query}; failures become
+// ApiError(400, 'invalid_request') with per-field messages.
+router.post('/', validate(createApiKey), ctrl.create);
 ```
 
 ### `resources/apikeys/repository.js`
