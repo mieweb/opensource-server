@@ -9,4 +9,6 @@ module.exports = {
   setupFiles: ['<rootDir>/tests/setup-env.js'],
   // DB-backed suites share one sqlite file; keep workers serialized.
   maxWorkers: 1,
+  // List every individual test, not just suite results.
+  verbose: true,
 };

@@ -21,8 +21,11 @@ describe('/api/v1/apikeys', () => {
   let bobAuthKey;
 
   beforeAll(async () => {
-    app = buildApp();
+    // Order matters: resetDb() first. buildApp() constructs the session
+    // store, which fires an unawaited CREATE TABLE for Sessions; running it
+    // before the force-sync in resetDb() races the schema rebuild.
     await resetDb();
+    app = buildApp();
     // First user created gets auto-promoted to sysadmins (User.afterCreate);
     // burn that on a throwaway so alice/bob are regular users.
     await createUser({ uid: 'firstadmin' });

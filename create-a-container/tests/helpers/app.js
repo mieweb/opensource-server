@@ -11,6 +11,11 @@
  * Tests normally authenticate with a Bearer API key (apiAuth accepts it and
  * csrfGuard exempts Bearer-only requests), so no session/CSRF choreography
  * is needed.
+ *
+ * IMPORTANT: call (and await) resetDb() BEFORE buildApp(). The session store
+ * fires an unawaited CREATE TABLE for Sessions at construction; building the
+ * app first races that against resetDb's force-sync schema rebuild and can
+ * fail the whole suite intermittently.
  */
 
 const { buildApp: buildRealApp } = require('../../app');
