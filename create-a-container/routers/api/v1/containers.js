@@ -343,7 +343,7 @@ router.post(
       // provisioned.
       const nodeWhere = {
         siteId: site.id,
-        ...Node.provisionableWhere(Sequelize),
+        ...Node.provisionableWhere(),
       };
       if (wantsNvidia) nodeWhere.nvidiaAvailable = true;
       const node = await Node.findOne({

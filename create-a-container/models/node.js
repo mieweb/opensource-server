@@ -1,6 +1,7 @@
 'use strict';
 const {
-  Model
+  Model,
+  Op
 } = require('sequelize');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
@@ -31,19 +32,19 @@ module.exports = (sequelize, DataTypes) => {
       return !!(this.apiUrl && this.tokenId && this.secret);
     }
 
-    static provisionableWhere(Sequelize) {
+    static provisionableWhere() {
       return {
-        [Sequelize.Op.or]: [
+        [Op.or]: [
           { nodeType: 'dummy' },
           {
             nodeType: 'docker',
-            apiUrl: { [Sequelize.Op.ne]: null },
+            apiUrl: { [Op.ne]: null },
           },
           {
             nodeType: 'proxmox',
-            apiUrl: { [Sequelize.Op.ne]: null },
-            tokenId: { [Sequelize.Op.ne]: null },
-            secret: { [Sequelize.Op.ne]: null },
+            apiUrl: { [Op.ne]: null },
+            tokenId: { [Op.ne]: null },
+            secret: { [Op.ne]: null },
           },
         ],
       };
