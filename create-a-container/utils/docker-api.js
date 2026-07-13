@@ -1,7 +1,7 @@
 const axios = require('axios');
 
-const MANAGER_NODE_LABEL = 'manager-os.node-id';
-const MANAGER_CONTAINER_LABEL = 'manager-os.container-id';
+const MANAGER_NODE_LABEL = 'org.mieweb.opensource-server.node-id';
+const MANAGER_CONTAINER_LABEL = 'org.mieweb.opensource-server.container-id';
 
 function parseDockerHost(host) {
   const raw = host || process.env.DOCKER_HOST || 'unix:///var/run/docker.sock';
