@@ -493,6 +493,9 @@ class DockerApi {
   }
 
   async waitForTask() {
+    // Docker Engine API calls used here either complete synchronously or stream
+    // until completion before returning. There is no Proxmox-style background UPID
+    // to poll, so this satisfies the shared NodeApi task contract as a no-op.
     return { status: 'stopped', exitstatus: 'OK' };
   }
 
