@@ -205,8 +205,29 @@ class DockerApi {
     }
   }
 
-  async nodeNetwork() {
-    return [];
+  async nodeNetwork(nodeName) {
+    try {
+      const swarmNodes = await this.request('get', '/nodes');
+      const swarmNode = swarmNodes.find((n) => n.Description?.Hostname === nodeName || n.ID === nodeName);
+
+      if (!swarmNode) return [];
+
+      const inspected = await this.request('get', `/nodes/${swarmNode.ID}`);
+      const address = inspected.Status?.Addr || null;
+
+      return address
+        ? [
+            {
+              iface: 'docker-swarm',
+              type: 'docker',
+              active: true,
+              address,
+            },
+          ]
+        : [];
+    } catch (err) {
+      return [];
+    }
   }
 
   async clusterResources(type = null) {
