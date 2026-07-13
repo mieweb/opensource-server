@@ -292,15 +292,17 @@ class DockerApi {
   }
 
   async createLxc(node, options = {}) {
-    if (!this.lastPulledImage) {
-      throw new Error('No Docker image has been pulled for this create operation');
+    const image = this.lastPulledImage || options.reference || options.ostemplate;
+
+    if (!image) {
+      throw new Error('Docker image reference is required');
     }
 
     const vmid = options.vmid;
     const name = options.hostname || `manager-${vmid}`;
 
     const body = {
-      Image: this.lastPulledImage,
+      Image: image,
       Hostname: name,
       Labels: this.labels(vmid),
       Env: [],
