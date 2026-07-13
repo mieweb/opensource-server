@@ -13,9 +13,9 @@ INSTALL_DATA := $(INSTALL) -m 0644
 
 # Server runtime files and directories. Client sources, dev tooling and repo
 # metadata are intentionally excluded; only the built client/dist ships.
-APP_FILES := server.js job-runner.js package.json package-lock.json openapi.v1.yaml
+APP_FILES := server.js app.js job-runner.js package.json package-lock.json openapi.v1.yaml
 APP_DIRS  := bin config data middlewares migrations models node_modules \
-             public routers seeders utils views
+             public resources routers seeders utils views
 
 .PHONY: help deps build dev test install deb rpm apk package clean
 
@@ -93,6 +93,7 @@ install: build
 	$(INSTALL) -d $(DESTBIN)
 	$(INSTALL_DATA) $(APP_FILES) $(DESTBIN)/
 	cp -a $(APP_DIRS) $(DESTBIN)/
+	find $(DESTBIN) -type d -name __tests__ -prune -exec rm -rf {} +
 	$(INSTALL) -d $(DESTBIN)/client
 	cp -a client/dist $(DESTBIN)/client/
 	$(INSTALL) -d $(UNIT_DIR)

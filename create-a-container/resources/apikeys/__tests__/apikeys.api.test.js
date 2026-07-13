@@ -144,6 +144,15 @@ describe('/api/v1/apikeys', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.description).toBeNull();
     });
+
+    test('201 with an explicit JSON null description (legacy contract)', async () => {
+      const res = await request(app)
+        .post('/api/v1/apikeys')
+        .set(...bearer(authKey.plainKey))
+        .send({ description: null });
+      expect(res.status).toBe(201);
+      expect(res.body.data.description).toBeNull();
+    });
   });
 
   describe('DELETE /:id', () => {
