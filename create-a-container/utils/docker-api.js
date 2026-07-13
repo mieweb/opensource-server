@@ -94,6 +94,14 @@ class DockerApi {
       throw new Error('DockerApi requires node.apiUrl');
     }
 
+    if (!node.id) {
+      throw new Error('DockerApi requires node.id');
+    }
+
+    if (!node.name) {
+      throw new Error('DockerApi requires node.name');
+    }
+
     this.node = node;
     const dockerConfig = parseDockerHost(node.apiUrl);
 
@@ -118,7 +126,7 @@ class DockerApi {
 
   labels(vmid) {
     return {
-      [MANAGER_NODE_LABEL]: String(this.node.id || this.node.name || 'docker'),
+      [MANAGER_NODE_LABEL]: String(this.node.id),
       [MANAGER_CONTAINER_LABEL]: String(vmid),
     };
   }
@@ -126,7 +134,7 @@ class DockerApi {
   labelFilters(extra = {}) {
     return JSON.stringify({
       label: [
-        `${MANAGER_NODE_LABEL}=${String(this.node.id || this.node.name || 'docker')}`,
+        `${MANAGER_NODE_LABEL}=${String(this.node.id)}`,
         ...Object.entries(extra).map(([k, v]) => `${k}=${v}`),
       ],
     });
