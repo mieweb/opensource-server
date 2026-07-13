@@ -265,6 +265,9 @@ class DockerApi {
   }
 
   async storageContents() {
+    // Docker images are cached by Docker Engine itself. The create-container job
+    // uses storageContents() to skip Proxmox OCI pulls, but Docker's image create
+    // endpoint already reuses local images/layers when available.
     return [];
   }
 
