@@ -536,9 +536,12 @@ class DockerApi {
   }
 
   async getLxcNetworkInfo(node, vmid) {
+    const interfaces = await this.lxcInterfaces(node, vmid);
+    const eth0 = interfaces[0];
+
     return {
-      macAddress: await this.getLxcMacAddress(node, vmid),
-      ipv4Address: await this.getLxcIpAddress(node, vmid),
+      macAddress: eth0?.hwaddr || null,
+      ipv4Address: eth0?.['ip-addresses']?.[0]?.['ip-address'] || null,
     };
   }
 
