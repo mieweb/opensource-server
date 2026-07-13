@@ -181,14 +181,28 @@ class DockerApi {
   }
 
   async nodes() {
-    const info = await this.request('get', '/info');
-    return [
-      {
-        node: this.node.name || info.Name || 'docker',
-        status: 'online',
+    try {
+      const swarmNodes = await this.request('get', '/nodes');
+      return swarmNodes.map((n) => ({
+        node: n.Description?.Hostname || n.ID,
+        status: n.Status?.State === 'ready' ? 'online' : n.Status?.State || 'unknown',
         type: 'node',
-      },
-    ];
+      }));
+    } catch (err) {
+      if (err.response?.status && err.response.status !== 404 && err.response.status !== 503) {
+        throw err;
+      }
+
+      const info = await this.request('get', '/info');
+      return [
+        {
+          node: this.node.name,
+          status: 'online',
+          type: 'node',
+          id: info.ID,
+        },
+      ];
+    }
   }
 
   async nodeNetwork() {
