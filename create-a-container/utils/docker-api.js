@@ -67,9 +67,12 @@ function task(kind, id = '') {
 
 class DockerApi {
   constructor(node = {}) {
+    if (!node.apiUrl) {
+      throw new Error('DockerApi requires node.apiUrl');
+    }
+
     this.node = node;
-    const dockerHost = node.apiUrl || process.env.DOCKER_HOST || 'unix:///var/run/docker.sock';
-    const dockerConfig = parseDockerHost(dockerHost);
+    const dockerConfig = parseDockerHost(node.apiUrl);
 
     this.http = axios.create({
       ...dockerConfig,
