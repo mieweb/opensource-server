@@ -68,16 +68,16 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    // `secure` is derived from the request protocol (honoring `trust proxy`
-    // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
-    // tracks the actual transport — set on HTTPS, omitted on plain HTTP
-    // bootstrap/dev access.
-    cookie: function(req) {
-      return {
-        secure: req.secure,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: 'lax',
-      };
+    cookie: {
+      // 'auto' derives `secure` from the request protocol (honoring `trust
+      // proxy` and X-Forwarded-Proto from nginx) rather than NODE_ENV, so
+      // the flag tracks the actual transport — set on HTTPS, omitted on
+      // plain HTTP bootstrap/dev access. Same semantics as the previous
+      // per-request function form, but statically analyzable (CodeQL
+      // js/clear-text-cookie).
+      secure: 'auto',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: 'lax',
     }
   }));
 
@@ -96,6 +96,17 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
       requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
     }));
   }
+
+  // CSRF guard for every handler that can see the session cookie (CodeQL
+  // js/missing-token-validation). Behavior-preserving: csrfGuard skips
+  // GET/HEAD/OPTIONS and Bearer-only requests, and every state-changing
+  // route lives under /api/v1 where the v1 router already applies it — this
+  // additionally covers the GET-only surfaces (templates, swagger, SPA,
+  // static) and rejects mutations to unknown paths early. Mounted after the
+  // rate limiter so CSRF 403s still count against the failure budget; the
+  // v1 router keeps its own csrfGuard so it stays safe mounted standalone.
+  const { csrfGuard, jsonErrorHandler } = require('./middlewares/api');
+  app.use(csrfGuard);
 
   // Set version info once at startup in app.locals
   // Note: Version info is cached at startup. Server restart required to update version.
@@ -126,6 +137,13 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
   app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
+
+  // Final error handler. Failures inside /api/v1 are already formatted by the
+  // v1 router's own jsonErrorHandler; this catches errors raised before the
+  // router is reached (notably the app-level csrfGuard) and errors from the
+  // non-API surfaces, keeping the JSON error envelope instead of Express's
+  // default HTML page with a stack trace.
+  app.use(jsonErrorHandler);
 
   return app;
 }
