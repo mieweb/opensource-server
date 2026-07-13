@@ -5,6 +5,7 @@
 const express = require('express');
 const https = require('https');
 const { Node, Site, Container } = require('../../../models');
+const { isValidDockerHost } = require('../../../utils/docker-api');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
 
@@ -34,6 +35,28 @@ async function loadSite(req) {
   const site = await Site.findByPk(parseInt(req.params.siteId, 10));
   if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
   return site;
+}
+
+function normalizeNodeType(nodeType) {
+  return nodeType || 'proxmox';
+}
+
+function validateNodeInput({ nodeType, apiUrl }) {
+  const type = normalizeNodeType(nodeType);
+
+  if (!['proxmox', 'docker', 'dummy'].includes(type)) {
+    throw new ApiError(400, 'invalid_node_type', 'Node type must be proxmox, docker, or dummy');
+  }
+
+  if (type === 'docker' && (!apiUrl || !isValidDockerHost(apiUrl))) {
+    throw new ApiError(
+      400,
+      'invalid_docker_host',
+      'Docker host must use unix://, tcp://, http://, or https:// without extra path components',
+    );
+  }
+
+  return type;
 }
 
 router.get(
@@ -83,9 +106,10 @@ router.post(
     const site = await loadSite(req);
     const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
+    const type = validateNodeInput({ nodeType, apiUrl });
     const node = await Node.create({
       name,
-      nodeType: nodeType || 'proxmox',
+      nodeType: type,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
@@ -113,9 +137,13 @@ router.put(
     if (!node) throw new ApiError(404, 'not_found', 'Node not found');
     const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
+    const type = validateNodeInput({
+      nodeType: nodeType || node.nodeType,
+      apiUrl,
+    });
     const update = {
       name,
-      nodeType: nodeType || node.nodeType || 'proxmox',
+      nodeType: type,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
