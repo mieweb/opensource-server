@@ -141,7 +141,7 @@ components:
           additionalProperties: { type: string }
         nvidiaRequested: { type: boolean }
         sshPort: { type: integer, nullable: true, description: 'External port of the TCP service on internal port 22, if any' }
-        sshHost: { type: string, nullable: true, description: 'Hostname of the primary HTTP service, falling back to the site external IP' }
+        sshHost: { type: string, nullable: true, description: 'Hostname to use with sshPort when connecting over SSH, falling back to the site external IP' }
         httpEntries:
           type: array
           description: One entry per HTTP service
@@ -590,7 +590,7 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { data: { type: object, properties: { username: { type: string } } } } }
-        '404': { description: 'Invalid or expired (code: invalid_token)' }
+        '404': { description: 'Invalid or expired (code: invalid_token)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
       tags: [Auth]
       security: []
@@ -608,7 +608,7 @@ paths:
       responses:
         '200': { description: Password reset }
         '400': { description: 'invalid_request, mismatch, or weak_password', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-        '404': { description: 'Invalid or expired (code: invalid_token)' }
+        '404': { description: 'Invalid or expired (code: invalid_token)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites:
     get:
@@ -762,7 +762,7 @@ paths:
       responses:
         '200': { description: Image metadata }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '404': { description: 'Image not found (code: image_not_found)' }
+        '404': { description: 'Image not found (code: image_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '502': { description: 'Registry lookup failed (code: registry_error)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}:
     parameters:
