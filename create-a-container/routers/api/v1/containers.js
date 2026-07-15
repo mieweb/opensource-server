@@ -16,7 +16,6 @@ const {
   ExternalDomain,
   Job,
   Setting,
-  User,
   Sequelize,
   sequelize,
 } = require('../../../models');
@@ -417,14 +416,15 @@ router.post(
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
 
       // Admins may specify a `username` to create the container on behalf of another user.
-      // Non-admins always own their own containers.
+      // Non-admins may not specify a different username — that is a 403.
       let ownerUsername = req.session.user;
-      if (req.session.isAdmin && bodyUsername !== undefined) {
+      if (bodyUsername !== undefined) {
         if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
           throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
         }
-        const ownerUser = await User.findOne({ where: { uid: bodyUsername.trim() } });
-        if (!ownerUser) throw new ApiError(404, 'user_not_found', `User "${bodyUsername.trim()}" does not exist`);
+        if (!req.session.isAdmin) {
+          throw new ApiError(403, 'forbidden', 'only admins may create containers for other users');
+        }
         ownerUsername = bodyUsername.trim();
       }
 
@@ -604,13 +604,15 @@ router.put(
     const isRestartOnly = forceRestart && !services && !environmentVars && entrypoint === undefined;
 
     // Admins may reassign the container to another user by passing `username`.
+    // Non-admins may not pass a different username — that is a 403.
     let newOwnerUsername = null;
-    if (req.session.isAdmin && bodyUsername !== undefined) {
+    if (bodyUsername !== undefined) {
       if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
         throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
       }
-      const newOwner = await User.findOne({ where: { uid: bodyUsername.trim() } });
-      if (!newOwner) throw new ApiError(404, 'user_not_found', `User "${bodyUsername.trim()}" does not exist`);
+      if (!req.session.isAdmin) {
+        throw new ApiError(403, 'forbidden', 'only admins may reassign container ownership');
+      }
       newOwnerUsername = bodyUsername.trim();
     }
 

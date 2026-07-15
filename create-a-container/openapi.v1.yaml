@@ -358,7 +358,7 @@ paths:
                   additionalProperties: { type: object }
       responses:
         '201': { description: Creation job enqueued }
-        '404': { description: 'user_not_found when the specified username does not exist (admin only)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — non-admins may not create containers for other users', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
       tags: [Containers]
@@ -399,8 +399,7 @@ paths:
                 restart: { type: boolean }
       responses:
         '200': { description: Updated, optional restart job }
-        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-        '404': { description: 'user_not_found when the specified username does not exist (admin only)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Containers]
       responses:
