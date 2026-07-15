@@ -23,7 +23,19 @@ info:
 
     Success: `{ "data": <payload>, "meta"?: {...} }`.
     Error:   `{ "error": { "code": "...", "message": "...", "fields"?: {...} } }`.
-  version: 1.0.0
+
+    ## Common errors (any endpoint)
+
+    Not repeated on every operation below:
+
+    - `401 unauthorized` — missing/invalid session or API key (any authenticated endpoint).
+    - `403 forbidden` — admin-only endpoint called by a non-admin.
+    - `403 csrf_invalid` — missing/invalid `X-CSRF-Token` on a state-changing request under session auth.
+    - `409 conflict` — unique-constraint violation (`fields` names the offending columns).
+    - `422 validation_failed` — model-level validation failure (`fields` maps column → message).
+    - `429` — rate limited (repeated 4xx/5xx responses trigger a temporary block).
+    - `500 internal_error` — unhandled server error.
+  version: 1.1.0
 servers:
   - url: /api/v1
 
@@ -38,6 +50,7 @@ tags:
   - name: Groups
   - name: API Keys
   - name: Settings
+  - name: Resource Requests
   - name: Meta
 
 components:
@@ -53,6 +66,16 @@ components:
     XCSRFToken:
       description: CSRF token returned by GET /csrf-token. Required for state-changing requests under session auth.
       schema: { type: string }
+  responses:
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Forbidden
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadRequest:
+      description: 'Invalid request (code: invalid_request)'
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
   schemas:
     Error:
       type: object
@@ -83,13 +106,30 @@ components:
         gateway: { type: string }
         dnsForwarders: { type: string }
         externalIp: { type: string, nullable: true }
+        nodeCount:
+          type: integer
+          description: Number of nodes in the site. Present on list/show responses; absent from create/update responses.
+    SiteInput:
+      type: object
+      properties:
+        name: { type: string }
+        internalDomain: { type: string }
+        dhcpRange: { type: string }
+        subnetMask: { type: string }
+        gateway: { type: string }
+        dnsForwarders: { type: string }
+        externalIp: { type: string, nullable: true }
     Container:
       type: object
       properties:
         id: { type: integer }
         hostname: { type: string }
         owner: { type: string, description: Username of the user who created the container }
-        containerId: { type: integer, nullable: true }
+        collaborators:
+          type: array
+          items: { type: string }
+          description: Usernames the container is shared with
+        containerId: { type: integer, nullable: true, description: Proxmox VMID (null until provisioned) }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
         ipv4Address: { type: string, nullable: true }
@@ -100,11 +140,52 @@ components:
           type: object
           additionalProperties: { type: string }
         nvidiaRequested: { type: boolean }
-        sshPort: { type: integer, nullable: true }
+        sshPort: { type: integer, nullable: true, description: 'External port of the TCP service on internal port 22, if any' }
+        sshHost: { type: string, nullable: true, description: 'Hostname to use with sshPort when connecting over SSH, falling back to the site external IP' }
+        httpEntries:
+          type: array
+          description: One entry per HTTP service
+          items:
+            type: object
+            properties:
+              port: { type: integer }
+              externalUrl: { type: string, nullable: true }
         nodeName: { type: string, nullable: true }
+        nodeApiUrl: { type: string, nullable: true }
         services:
           type: array
-          items: { type: object }
+          items: { $ref: '#/components/schemas/ContainerService' }
+        createdAt: { type: string, format: date-time }
+    ContainerService:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string, enum: [http, transport, dns] }
+        internalPort: { type: integer }
+        httpService:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            externalHostname: { type: string }
+            externalDomainId: { type: integer }
+            backendProtocol: { type: string, enum: [http, https] }
+            authRequired: { type: boolean }
+            domain: { type: string, nullable: true }
+        transportService:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            protocol: { type: string, enum: [tcp, udp] }
+            externalPort: { type: integer }
+        dnsService:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            recordType: { type: string, enum: [SRV] }
+            dnsName: { type: string }
     ContainerStatus:
       type: string
       description: >-
@@ -123,6 +204,34 @@ components:
         - failed
         - missing
         - unknown
+    ServiceInput:
+      type: object
+      required: [type, internalPort]
+      properties:
+        type:
+          type: string
+          enum: [http, https, tcp, udp, srv]
+          description: >-
+            http/https create an HTTP service (https sets backendProtocol to
+            https); srv creates a DNS SRV service; tcp/udp create a transport
+            service with an auto-assigned external port.
+        internalPort: { type: integer }
+        externalHostname: { type: string, description: Required for http/https }
+        externalDomainId: { type: integer, description: Required for http/https }
+        dnsName: { type: string, description: Required for srv }
+        authRequired: { type: boolean }
+    ServiceUpdate:
+      allOf:
+        - $ref: '#/components/schemas/ServiceInput'
+        - type: object
+          properties:
+            id: { type: integer, description: Existing service id. Omit to create a new service. }
+            deleted: { type: boolean, description: 'true deletes the service identified by `id`' }
+    EnvVar:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: string }
     Node:
       type: object
       properties:
@@ -138,23 +247,167 @@ components:
         networkBridge: { type: string }
         nvidiaAvailable: { type: boolean }
         hasSecret: { type: boolean }
+    NodeInput:
+      type: object
+      properties:
+        name: { type: string }
+        ipv4Address: { type: string, nullable: true }
+        apiUrl: { type: string, nullable: true }
+        tokenId: { type: string, nullable: true }
+        secret:
+          type: string
+          writeOnly: true
+          description: Proxmox API token secret. Never returned (see `hasSecret`). On update, blank/omitted keeps the existing secret.
+        tlsVerify: { type: boolean, nullable: true }
+        imageStorage: { type: string, default: local }
+        volumeStorage: { type: string, default: local-lvm }
+        networkBridge: { type: string, default: vmbr0 }
+        nvidiaAvailable: { type: boolean, default: false }
     Job:
       type: object
       properties:
         id: { type: integer }
         command: { type: string }
-        status: { type: string, enum: [pending, running, completed, failed] }
+        status: { type: string, enum: [pending, running, success, failure, cancelled] }
         createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    JobStatusRow:
+      type: object
+      properties:
+        id: { type: integer }
+        jobId: { type: integer }
+        output: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     ApiKey:
       type: object
       properties:
-        id: { type: integer }
+        id: { type: string, format: uuid }
         keyPrefix: { type: string }
         description: { type: string, nullable: true }
         lastUsedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    User:
+      type: object
+      properties:
+        uidNumber: { type: integer }
+        uid: { type: string, description: Username }
+        givenName: { type: string }
+        sn: { type: string }
+        cn: { type: string, description: Full name (derived from givenName + sn) }
+        mail: { type: string, format: email }
+        status: { type: string, description: 'Account status: `pending` until approved, `active` allows login' }
+        groups:
+          type: array
+          description: Present when group memberships are loaded
+          items:
+            type: object
+            properties:
+              gidNumber: { type: integer }
+              cn: { type: string }
+              isAdmin: { type: boolean }
+        isAdmin: { type: boolean }
+    UserInput:
+      type: object
+      properties:
+        uid: { type: string }
+        givenName: { type: string }
+        sn: { type: string }
+        mail: { type: string, format: email }
+        userPassword:
+          type: string
+          format: password
+          writeOnly: true
+          description: On update, blank/omitted keeps the existing password.
+        status: { type: string, description: Defaults to `pending` on create }
+        groupIds:
+          type: array
+          items: { type: integer }
+          description: gidNumbers. When provided, replaces the user's group memberships.
+    Group:
+      type: object
+      properties:
+        gidNumber: { type: integer }
+        cn: { type: string }
+        isAdmin: { type: boolean }
+        userCount:
+          type: integer
+          description: Present on list/show responses; absent from create/update responses.
+    ExternalDomain:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        acmeEmail: { type: string, nullable: true }
+        acmeDirectoryUrl: { type: string, nullable: true }
+        cloudflareApiEmail: { type: string, nullable: true }
+        siteId: { type: integer, nullable: true }
+        site:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+        authServer: { type: string, nullable: true }
+        hasCloudflareApiKey: { type: boolean }
+    ExternalDomainInput:
+      type: object
+      properties:
+        name: { type: string }
+        acmeEmail: { type: string, nullable: true }
+        acmeDirectoryUrl: { type: string, nullable: true }
+        cloudflareApiEmail: { type: string, nullable: true }
+        cloudflareApiKey:
+          type: string
+          writeOnly: true
+          description: Never returned (see `hasCloudflareApiKey`). On update, blank/omitted keeps the existing key.
+        siteId: { type: integer, nullable: true }
+        authServer: { type: string, nullable: true }
+    Settings:
+      type: object
+      properties:
+        smtpUrl: { type: string }
+        smtpNoreplyAddress: { type: string }
+        defaultContainerEnvVars:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              value: { type: string }
+              description: { type: string }
+        netboxUrl: { type: string }
+        netboxToken: { type: string }
+    ResourceRequest:
+      type: object
+      properties:
+        id: { type: integer }
+        siteId: { type: integer }
+        hostname: { type: string }
+        username: { type: string }
+        resourceType: { type: string, enum: [memory, swap, cpus, rootfs] }
+        value: { type: integer, description: 'memory/swap in MB, rootfs in GB, cpus as a count' }
+        status: { type: string, enum: [pending, approved, denied] }
+        comment: { type: string, nullable: true }
+        adminComment: { type: string, nullable: true }
+        reviewedBy: { type: string, nullable: true, description: 'Reviewer username, or `system` for auto-approvals' }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        site:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+    CollaboratorList:
+      type: object
+      properties:
+        collaborators:
+          type: array
+          items: { type: string }
 
 security:
   - BearerAuth: []
@@ -169,22 +422,49 @@ paths:
       responses:
         '200':
           description: Token returned
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { csrfToken: { type: string } } } } }
   /health:
     get:
       tags: [Meta]
       summary: Health check
       security: []
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { status: { type: string }, isDev: { type: boolean }, oidcEnabled: { type: boolean } } } } }
+  /openapi.json:
+    get:
+      tags: [Meta]
+      summary: This OpenAPI specification (JSON)
+      security: []
+      responses:
+        '200': { description: OpenAPI document, content: { application/json: {} } }
+  /openapi.yaml:
+    get:
+      tags: [Meta]
+      summary: This OpenAPI specification (YAML)
+      security: []
+      responses:
+        '200': { description: OpenAPI document, content: { text/yaml: {} } }
 
   /session:
     get:
       tags: [Auth]
       summary: Current session
       responses:
-        '200': { description: Session payload }
+        '200':
+          description: Session payload
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { user: { type: string }, isAdmin: { type: boolean } } } } }
         '401': { description: Not authenticated, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
+  # POST /auth/dev (one-click dev login) exists only when NODE_ENV !== 'production'
+  # and is intentionally undocumented here.
   /auth/login:
     post:
       tags: [Auth]
@@ -202,9 +482,14 @@ paths:
                 password: { type: string, format: password }
                 redirect: { type: string }
       responses:
-        '200': { description: Logged in }
-        '401': { description: Invalid credentials }
-        '403': { description: 'OIDC enabled (code: oidc_enabled) — use SSO instead' }
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { user: { type: string }, isAdmin: { type: boolean }, redirect: { type: string } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: 'Invalid credentials (code: invalid_credentials)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'OIDC enabled (code: oidc_enabled) — use SSO instead; or account not active (code: account_inactive)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/oidc/login:
     get:
       tags: [Auth]
@@ -229,10 +514,18 @@ paths:
   /auth/logout:
     post:
       tags: [Auth]
-      responses: { '200': { description: Logged out } }
+      summary: Log out (clears the session; returns an IdP end-session URL when OIDC is enabled)
+      security: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { loggedOut: { type: boolean }, logoutUrl: { type: string, nullable: true } } } } }
   /auth/register:
     post:
       tags: [Auth]
+      summary: Self-register (disabled when OIDC SSO is enabled)
       security: []
       requestBody:
         required: true
@@ -249,13 +542,27 @@ paths:
                 userPassword: { type: string, format: password }
                 inviteToken: { type: string }
       responses:
-        '201': { description: Account created }
+        '201':
+          description: Account created (`status` is `active` for the first user or invited users, otherwise `pending`)
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { uid: { type: string }, status: { type: string }, message: { type: string } } } } }
+        '400': { description: 'invalid_request, invalid_invite, or email_mismatch', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'OIDC enabled (code: oidc_enabled) — self-registration disabled', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/register/invite/{token}:
     get:
       tags: [Auth]
+      summary: Validate an invitation token
       security: []
       parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
-      responses: { '200': { description: Invite valid, returns email } }
+      responses:
+        '200':
+          description: Invite valid, returns email
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { email: { type: string } } } } }
+        '403': { description: 'OIDC enabled (code: oidc_enabled)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'Invalid or expired invitation (code: invalid_invite)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/password-reset/request:
     post:
       tags: [Auth]
@@ -269,15 +576,21 @@ paths:
               required: [usernameOrEmail]
               properties:
                 usernameOrEmail: { type: string }
-      responses: { '200': { description: Generic OK (does not reveal account existence) } }
+      responses:
+        '200': { description: Generic OK (does not reveal account existence) }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /auth/password-reset/{token}:
     get:
       tags: [Auth]
       security: []
       parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
       responses:
-        '200': { description: Token valid }
-        '404': { description: Invalid or expired }
+        '200':
+          description: Token valid, returns username
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { username: { type: string } } } } }
+        '404': { description: 'Invalid or expired (code: invalid_token)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
       tags: [Auth]
       security: []
@@ -290,20 +603,71 @@ paths:
               type: object
               required: [password, confirmPassword]
               properties:
-                password: { type: string }
+                password: { type: string, description: Minimum 8 characters }
                 confirmPassword: { type: string }
-      responses: { '200': { description: Password reset } }
+      responses:
+        '200': { description: Password reset }
+        '400': { description: 'invalid_request, mismatch, or weak_password', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'Invalid or expired (code: invalid_token)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites:
-    get: { tags: [Sites], summary: List sites, responses: { '200': { description: Array of sites } } }
+    get:
+      tags: [Sites]
+      summary: List sites
+      responses:
+        '200':
+          description: Array of sites
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Site' } } } }
     post:
       tags: [Sites]
       summary: Create a site (admin)
-      responses: { '201': { description: Created } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SiteInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Site' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /sites/{id}:
-    get: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: Site } } }
-    put: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '200': { description: Updated } } }
-    delete: { tags: [Sites], parameters: [{ in: path, name: id, required: true, schema: { type: integer } }], responses: { '204': { description: Deleted } } }
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      tags: [Sites]
+      responses:
+        '200':
+          description: Site
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Site' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Sites]
+      summary: Update a site (admin). Full update — omitted optional fields are cleared.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SiteInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Site' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Sites]
+      summary: Delete a site (admin)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Site still has nodes (code: has_nodes)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites/{siteId}/containers:
     get:
@@ -326,8 +690,12 @@ paths:
             is intersected with what they may already see (own plus shared), so
             it can only narrow visibility.
       responses:
-        '200': { description: Array of containers }
-        '403': { description: 'Admin access required', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '200':
+          description: Array of containers
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Container' } } } }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
       tags: [Containers]
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
@@ -339,8 +707,8 @@ paths:
               required: [hostname, template]
               properties:
                 hostname: { type: string }
-                template: { type: string }
-                customTemplate: { type: string }
+                template: { type: string, description: 'Docker image reference, or `custom` to use `customTemplate`' }
+                customTemplate: { type: string, description: Image reference used when `template` is `custom` }
                 entrypoint: { type: string }
                 nvidiaRequested: { type: boolean }
                 collaborators:
@@ -349,17 +717,41 @@ paths:
                   description: Usernames to share the new container with (must exist)
                 environmentVars:
                   type: array
-                  items: { type: object, properties: { key: { type: string }, value: { type: string } } }
+                  items: { $ref: '#/components/schemas/EnvVar' }
                 services:
                   type: object
-                  additionalProperties: { type: object }
-      responses: { '201': { description: Creation job enqueued } }
+                  description: Keyed map of services to create (keys are arbitrary)
+                  additionalProperties: { $ref: '#/components/schemas/ServiceInput' }
+      responses:
+        '201':
+          description: Creation job enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      containerId: { type: integer, description: Database id of the new container }
+                      jobId: { type: integer }
+                      hostname: { type: string }
+                      status: { $ref: '#/components/schemas/ContainerStatus' }
+        '400': { description: 'invalid_request or invalid_service', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'site_not_found, or user_not_found when a collaborator does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'No provisionable node available (code: no_node or no_nvidia_node)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
       tags: [Containers]
       summary: Form bootstrap data (domains + NVIDIA flag)
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
-      responses: { '200': { description: Bootstrap payload } }
+      responses:
+        '200':
+          description: Bootstrap payload
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { siteId: { type: integer }, externalDomains: { type: array, items: { type: object } }, nvidiaAvailable: { type: boolean } } } } }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:
       tags: [Containers]
@@ -369,22 +761,73 @@ paths:
         - { in: query, name: image, required: true, schema: { type: string } }
       responses:
         '200': { description: Image metadata }
-        '404': { description: Image not found }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: 'Image not found (code: image_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '502': { description: 'Registry lookup failed (code: registry_error)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
-    get: { tags: [Containers], responses: { '200': { description: Container } } }
-    put:
+    get:
       tags: [Containers]
       responses:
-        '200': { description: Updated, optional restart job }
+        '200':
+          description: Container
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Container' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Containers]
+      summary: Update services/env/entrypoint; enqueues a restart job when needed (owner/admin)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                services:
+                  type: object
+                  description: >-
+                    Keyed map of service changes (keys are arbitrary). Entries
+                    with `deleted: true` remove the service `id`; entries with an
+                    `id` may toggle `authRequired`; entries without an `id`
+                    create a new service.
+                  additionalProperties: { $ref: '#/components/schemas/ServiceUpdate' }
+                environmentVars:
+                  type: array
+                  items: { $ref: '#/components/schemas/EnvVar' }
+                  description: Full replacement set. Omitting it clears all user env vars (unless the request is restart-only).
+                entrypoint: { type: string, nullable: true, description: Omitting/blank clears the entrypoint (unless the request is restart-only) }
+                restart: { type: boolean, description: 'true forces a restart even with no config changes; alone, it performs a restart-only request' }
+      responses:
+        '200':
+          description: Updated, optional restart job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      containerId: { type: integer }
+                      jobId: { type: integer, nullable: true, description: 'Restart job id, when a restart was enqueued' }
+                      dnsWarnings: { type: array, items: { type: string } }
+                      message: { type: string }
         '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Containers]
       responses:
-        '200': { description: Deleted, with DNS cleanup warnings }
+        '200':
+          description: Deleted, with DNS cleanup warnings
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { deleted: { type: boolean }, dnsWarnings: { type: array, items: { type: string } } } } } }
         '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'DB/Proxmox hostname mismatch — delete aborted (code: hostname_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
@@ -392,7 +835,13 @@ paths:
     get:
       tags: [Containers]
       summary: List users a container is shared with (owner/collaborator/admin)
-      responses: { '200': { description: '{ collaborators: string[] }' } }
+      responses:
+        '200':
+          description: Collaborator list
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Containers]
       summary: Share a container with another user (owner/admin). Idempotent — sharing with an existing collaborator is a no-op.
@@ -405,7 +854,12 @@ paths:
               required: [username]
               properties: { username: { type: string } }
       responses:
-        '201': { description: '{ collaborators: string[] }' }
+        '201':
+          description: Collaborator list
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '403': { description: 'forbidden — only the owner/admin may share (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'user_not_found when the username does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '409': { description: 'already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
@@ -418,13 +872,39 @@ paths:
         - { in: path, name: id, required: true, schema: { type: integer } }
         - { in: path, name: username, required: true, schema: { type: string } }
       responses:
-        '200': { description: '{ collaborators: string[] }' }
+        '200':
+          description: Collaborator list
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
         '403': { description: 'forbidden — only the owner/admin may unshare (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'Container or collaborator not found', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
-    get: { tags: [Nodes], responses: { '200': { description: Array of nodes } } }
-    post: { tags: [Nodes], responses: { '201': { description: Created (admin) } } }
+    get:
+      tags: [Nodes]
+      responses:
+        '200':
+          description: Array of nodes
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Node' } } } }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    post:
+      tags: [Nodes]
+      summary: Create a node (admin)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Node' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /sites/{siteId}/nodes/import:
     post:
       tags: [Nodes]
@@ -442,33 +922,92 @@ paths:
                 username: { type: string }
                 password: { type: string }
                 tlsVerify: { type: boolean }
-      responses: { '201': { description: Imported } }
+      responses:
+        '201':
+          description: Imported
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { nodes: { type: array, items: { $ref: '#/components/schemas/Node' } }, importedContainerCount: { type: integer } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { description: 'Proxmox import failed (code: import_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/nodes/{id}:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
-    get: { tags: [Nodes], responses: { '200': { description: Node } } }
-    put: { tags: [Nodes], responses: { '200': { description: Updated (admin) } } }
-    delete: { tags: [Nodes], responses: { '204': { description: Deleted (admin) } } }
+    get:
+      tags: [Nodes]
+      responses:
+        '200':
+          description: Node
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Node' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Nodes]
+      summary: Update a node (admin). Full update — omitted fields are reset to defaults/null (except `secret`, which is kept when blank/omitted).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Node' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Nodes]
+      summary: Delete a node (admin)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Node still has containers (code: has_containers)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/nodes/{id}/storages:
     get:
       tags: [Nodes]
+      summary: List Proxmox CT template storages (empty array when the node has no API credentials or the query fails)
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: path, name: id, required: true, schema: { type: integer } }
-      responses: { '200': { description: Array of Proxmox CT template storages } }
+      responses:
+        '200':
+          description: Array of Proxmox CT template storages
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { type: object, properties: { name: { type: string }, total: { type: integer }, available: { type: integer } } } } } }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /jobs/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    get: { tags: [Jobs], responses: { '200': { description: Job metadata } } }
+    get:
+      tags: [Jobs]
+      summary: Job metadata (creator or admin; others receive 404)
+      responses:
+        '200':
+          description: Job metadata
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Job' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{id}/status:
     get:
       tags: [Jobs]
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
-        - { in: query, name: offset, schema: { type: integer } }
-        - { in: query, name: limit, schema: { type: integer } }
-      responses: { '200': { description: Status rows } }
+        - { in: query, name: offset, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: limit, schema: { type: integer, maximum: 1000, default: 1000 } }
+      responses:
+        '200':
+          description: Status rows
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/JobStatusRow' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{id}/stream:
     get:
       tags: [Jobs]
@@ -478,21 +1017,101 @@ paths:
         - { in: query, name: lastId, schema: { type: integer } }
       responses:
         '200':
-          description: SSE stream — events `log` and `status`
+          description: >-
+            SSE stream — `log` events (`{id, output, timestamp}`) and a final
+            `status` event (`{status}`) when the job leaves pending/running.
           content: { text/event-stream: {} }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /external-domains:
-    get: { tags: [External Domains], responses: { '200': { description: List } } }
-    post: { tags: [External Domains], responses: { '201': { description: Created (admin) } } }
+    get:
+      tags: [External Domains]
+      summary: List external domains (admin)
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ExternalDomain' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [External Domains]
+      summary: Create an external domain (admin)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalDomainInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ExternalDomain' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /external-domains/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    get: { tags: [External Domains], responses: { '200': { description: Item } } }
-    put: { tags: [External Domains], responses: { '200': { description: Updated (admin) } } }
-    delete: { tags: [External Domains], responses: { '204': { description: Deleted (admin) } } }
+    get:
+      tags: [External Domains]
+      responses:
+        '200':
+          description: Item
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ExternalDomain' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [External Domains]
+      summary: Update an external domain (admin). Full update — omitted optional fields are cleared (except `cloudflareApiKey`, which is kept when blank/omitted).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalDomainInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ExternalDomain' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [External Domains]
+      summary: Delete an external domain (admin)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /users:
-    get: { tags: [Users], responses: { '200': { description: List (admin) } } }
-    post: { tags: [Users], responses: { '201': { description: Created (admin) } } }
+    get:
+      tags: [Users]
+      summary: List users (admin)
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/User' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Users]
+      summary: Create a user (admin)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/UserInput'
+                - required: [uid, givenName, sn, mail, userPassword]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/User' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /users/invite:
     post:
       tags: [Users]
@@ -505,33 +1124,331 @@ paths:
               type: object
               required: [email]
               properties: { email: { type: string, format: email } }
-      responses: { '200': { description: Invitation sent } }
+      responses:
+        '200':
+          description: Invitation sent
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { email: { type: string }, message: { type: string } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: 'smtp_not_configured or duplicate_email', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '502': { description: 'Email delivery failed (code: email_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /users/email-all:
+    post:
+      tags: [Users]
+      summary: Broadcast an email to every user with an address (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, message]
+              properties:
+                subject: { type: string }
+                message: { type: string }
+      responses:
+        '200':
+          description: Broadcast result
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { sent: { type: integer }, failed: { type: integer }, recipients: { type: integer } } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: 'smtp_not_configured or no_recipients', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /users/{uidNumber}:
     parameters: [{ in: path, name: uidNumber, required: true, schema: { type: integer } }]
-    get: { tags: [Users], responses: { '200': { description: User } } }
-    put: { tags: [Users], responses: { '200': { description: Updated (admin) } } }
-    delete: { tags: [Users], responses: { '204': { description: Deleted (admin) } } }
+    get:
+      tags: [Users]
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/User' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Users]
+      summary: Update a user (admin). Partial — omitted/blank fields keep their current values.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/User' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Users]
+      summary: Delete a user (admin)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /groups:
-    get: { tags: [Groups], responses: { '200': { description: List (admin) } } }
-    post: { tags: [Groups], responses: { '201': { description: Created (admin) } } }
+    get:
+      tags: [Groups]
+      summary: List groups (admin)
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Group' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Groups]
+      summary: Create a group (admin)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gidNumber, cn]
+              properties:
+                gidNumber: { type: integer }
+                cn: { type: string }
+                isAdmin: { type: boolean }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Group' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /groups/{id}:
-    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    get: { tags: [Groups], responses: { '200': { description: Group } } }
-    put: { tags: [Groups], responses: { '200': { description: Updated (admin) } } }
-    delete: { tags: [Groups], responses: { '204': { description: Deleted (admin) } } }
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer }, description: gidNumber }]
+    get:
+      tags: [Groups]
+      responses:
+        '200':
+          description: Group
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Group' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Groups]
+      summary: Update a group (admin)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cn: { type: string }
+                isAdmin: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Group' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Groups]
+      summary: Delete a group (admin)
+      responses:
+        '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /apikeys:
-    get: { tags: [API Keys], responses: { '200': { description: List of current user's keys } } }
+    get:
+      tags: [API Keys]
+      summary: List the current user's API keys
+      responses:
+        '200':
+          description: List of current user's keys
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ApiKey' } } } }
     post:
       tags: [API Keys]
       summary: Mint a new API key (plaintext returned ONCE)
-      responses: { '201': { description: Created with plaintext `key` } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string }
+      responses:
+        '201':
+          description: Created with plaintext `key`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/ApiKey'
+                      - type: object
+                        properties:
+                          key: { type: string, description: Plaintext API key — this is the only time it is returned }
+                          warning: { type: string }
   /apikeys/{id}:
-    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    get: { tags: [API Keys], responses: { '200': { description: Key metadata } } }
-    delete: { tags: [API Keys], responses: { '204': { description: Revoked } } }
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [API Keys]
+      responses:
+        '200':
+          description: Key metadata
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ApiKey' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [API Keys]
+      responses:
+        '204': { description: Revoked }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /settings:
-    get: { tags: [Settings], responses: { '200': { description: System settings (admin) } } }
-    put: { tags: [Settings], responses: { '200': { description: Saved (admin) } } }
+    get:
+      tags: [Settings]
+      summary: Read system settings (admin)
+      responses:
+        '200':
+          description: System settings
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/Settings' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Settings]
+      summary: Save system settings (admin). Full update — omitted fields are cleared.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Settings' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { saved: { type: boolean } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /resource-requests:
+    get:
+      tags: [Resource Requests]
+      summary: List resource requests (admins see all; users see only their own)
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, approved, denied, closed] }
+          description: '`closed` matches approved + denied'
+        - { in: query, name: siteId, schema: { type: integer } }
+      responses:
+        '200':
+          description: Array of resource requests
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ResourceRequest' } } } }
+    post:
+      tags: [Resource Requests]
+      summary: >-
+        Request a resource adjustment for a container. Auto-approved (and
+        applied to matching provisioned containers) when the caller is an admin
+        or the value is at or below the default (memory 4096 MB, swap 0 MB,
+        cpus 4, rootfs 50 GB); otherwise left pending for admin review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteId, hostname, resourceType, value]
+              properties:
+                siteId: { type: integer }
+                hostname: { type: string }
+                resourceType: { type: string, enum: [memory, swap, cpus, rootfs] }
+                value: { type: integer, minimum: 0, description: 'memory/swap in MB, rootfs in GB, cpus as a count' }
+                comment: { type: string }
+      responses:
+        '201':
+          description: Request created (`status` reflects any auto-approval)
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ResourceRequest' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /resource-requests/count:
+    get:
+      tags: [Resource Requests]
+      summary: Count pending resource requests (for badge display)
+      responses:
+        '200':
+          description: Pending count
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { count: { type: integer } } } } }
+  /resource-requests/effective/{siteId}/{hostname}/{username}:
+    get:
+      tags: [Resource Requests]
+      summary: Effective approved resources for a container identity (defaults merged with the most recent approval per type)
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: hostname, required: true, schema: { type: string } }
+        - { in: path, name: username, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Effective resource values
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { memory: { type: integer }, swap: { type: integer }, cpus: { type: integer }, rootfs: { type: integer } } } } }
+        '403': { description: 'forbidden — non-admins may only query their own username', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /resource-requests/{id}/approve:
+    put:
+      tags: [Resource Requests]
+      summary: Approve a pending request and apply it to matching provisioned containers (admin)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                adminComment: { type: string }
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ResourceRequest' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Request already reviewed (code: already_reviewed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: 'No provisioned container matches the request (code: container_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /resource-requests/{id}/deny:
+    put:
+      tags: [Resource Requests]
+      summary: Deny a pending request (admin)
+      parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                adminComment: { type: string }
+      responses:
+        '200':
+          description: Denied
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ResourceRequest' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Request already reviewed (code: already_reviewed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
