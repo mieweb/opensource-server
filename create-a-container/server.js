@@ -38,9 +38,6 @@ async function main() {
 
   const app = express();
 
-  // setup views (still used by templates router for nginx-conf / dnsmasq files)
-  app.set('views', path.join(__dirname, 'views'));
-  app.set('view engine', 'ejs');
   app.set('trust proxy', 1);
   // Parse query strings with qs so bracket notation (e.g. `user[0]=alice`)
   // yields real arrays. Express 5 defaults to the 'simple' parser.
@@ -98,10 +95,8 @@ async function main() {
 
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
-  const templatesRouter = require('./routers/templates');
 
   app.use('/api/v1', apiV1Router);
-  app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
   // Swagger UI at /api documents the versioned v1 API (the spec also served at /api/v1/openapi.*).
@@ -117,7 +112,7 @@ async function main() {
   // --- SPA: serve compiled React app for everything else ---
   const clientDist = path.join(__dirname, 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+  app.get(/^\/(?!api(\/|$)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 

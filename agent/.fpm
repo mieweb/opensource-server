@@ -5,13 +5,13 @@
 --vendor "Medical Informatics Engineering"
 --url "https://github.com/mieweb/opensource-server"
 --category admin
---description "MIE opensource-server edge agent (pull-config): cron-driven distribution of nginx and dnsmasq configuration to edge nodes. Also ships the static error pages referenced by the manager-rendered nginx config."
+--description "MIE opensource-server site agent: checks in with the manager every 30 seconds, reports host and service status, and renders and applies nginx and dnsmasq configuration. Also ships the static error pages referenced by the rendered nginx config."
+--depends nodejs
 --depends nginx
 --depends libnginx-mod-stream
 --depends libnginx-mod-http-modsecurity
 --depends modsecurity-crs
 --depends ssl-cert
 --depends dnsmasq
---depends curl
---depends cron
 --deb-no-default-config-files
+--after-install contrib/postinstall.sh

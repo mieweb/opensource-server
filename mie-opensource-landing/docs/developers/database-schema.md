@@ -11,6 +11,7 @@ The cluster management system uses Sequelize ORM with PostgreSQL. While Sequeliz
 erDiagram
     Sites ||--o{ Nodes : contains
     Sites ||--o{ ExternalDomains : "default site"
+    Sites ||--o{ Agents : "checked in by"
     Nodes ||--o{ Containers : hosts
     Containers ||--o{ Services : exposes
     Containers }o--o| Jobs : "created by"
@@ -49,6 +50,15 @@ erDiagram
         string networkBridge "default: vmbr0"
         boolean nvidiaAvailable "default: false"
         int siteId FK
+    }
+
+    Agents {
+        int id PK
+        int siteId FK
+        string hostname "unique per site"
+        string ipv4Address
+        json services "per-service state + lastApply"
+        date lastCheckinAt
     }
 
     Containers {
@@ -178,6 +188,9 @@ Top-level organizational unit. Has many Nodes. Has many ExternalDomains (as defa
 
 ### Node
 Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). `networkBridge` defaults to `'vmbr0'` (Proxmox bridge used in container net0 config). `nvidiaAvailable` indicates the node has NVIDIA drivers and nvidia-container-toolkit configured for GPU passthrough. Belongs to Site, has many Containers.
+
+### Agent
+Site agent registered by its check-in (`POST /api/v1/agents`, every 30s). Unique composite index on `(siteId, hostname)`. `services` stores the per-service status reported by the agent (`{ nginx: { state, lastApply }, ... }`); `lastCheckinAt` drives the online/offline health shown on the web client's Agents page. Belongs to Site. See [agent](agent.md).
 
 ### Container
 LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. `nvidiaRequested` indicates GPU passthrough was requested — the container is assigned to an NVIDIA-capable node and the nvidia hookscript is attached. Belongs to Node and optionally to a Job.

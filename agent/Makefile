@@ -2,45 +2,56 @@
 
 PREFIX  ?= /opt/opensource-server
 DESTDIR ?= /
+DESTBIN  := $(DESTDIR)$(PREFIX)/agent
+UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
+# Staging directory for packaging
 STAGE := $(CURDIR)/.pkg/buildroot
 
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
-INSTALL_PROG := $(INSTALL) -m 0755
 
 ERROR_PAGES := ../error-pages
 
 .PHONY: help deps build dev install deb rpm apk package clean
 
 help:
-	@echo "pull-config — builds the opensource-agent package."
+	@echo "agent — builds the opensource-agent package."
 	@echo ""
 	@echo "Targets:"
-	@echo "  deps     install dependencies (none; plain bash)"
-	@echo "  build    build the component (nothing to compile)"
+	@echo "  deps     install dependencies (npm ci)"
+	@echo "  build    compile the TypeScript sources"
 	@echo "  install  stage files into DESTDIR (default /)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
 	@echo "  apk      build the .apk package"
-	@echo "  clean    remove the staging dir and built packages"
+	@echo "  clean    remove build output, staging dir and built packages"
 	@echo "  help     show this message"
 	@echo ""
 	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
 
-# Plain bash; nothing to install, compile, or watch.
 deps:
+	npm ci
+
+# Compile, then drop devDependencies so only the runtime node_modules
+# (ejs) is staged into the package.
 build: deps
-dev: deps
+	npm run build
+	npm prune --omit=dev
+
+dev: build
 
 install: build
-	$(INSTALL) -D -m 0755 bin/pull-config $(DESTDIR)$(PREFIX)/pull-config/bin/pull-config
-	$(INSTALL) -d $(DESTDIR)/etc/pull-config.d
-	$(INSTALL_PROG) etc/pull-config.d/* $(DESTDIR)/etc/pull-config.d/
-	$(INSTALL) -D -m 0644 etc/cron.d/pull-config $(DESTDIR)/etc/cron.d/pull-config
+	$(INSTALL) -d $(DESTBIN)
+	$(INSTALL_DATA) package.json $(DESTBIN)/
+	cp -a dist templates node_modules $(DESTBIN)/
+	$(INSTALL) -d $(UNIT_DIR)
+	$(INSTALL_DATA) contrib/systemd/opensource-agent.service $(UNIT_DIR)/
+	$(INSTALL_DATA) contrib/systemd/opensource-agent.timer $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/error-pages
 	$(INSTALL_DATA) $(ERROR_PAGES)/* $(DESTDIR)$(PREFIX)/error-pages/
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
+	$(INSTALL) -d -m 0755 $(DESTDIR)/var/lib/opensource-agent
 
 PACKAGER ?= deb
 package:
@@ -57,5 +68,5 @@ apk:
 	$(MAKE) package PACKAGER=apk
 
 clean:
-	rm -rf $(STAGE)
+	rm -rf $(STAGE) node_modules dist
 	rm -f *.deb *.rpm *.apk

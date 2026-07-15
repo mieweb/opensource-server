@@ -15,7 +15,7 @@ INSTALL_DATA := $(INSTALL) -m 0644
 # metadata are intentionally excluded; only the built client/dist ships.
 APP_FILES := server.js job-runner.js package.json package-lock.json openapi.v1.yaml
 APP_DIRS  := bin config data middlewares migrations models node_modules \
-             public routers seeders utils views
+             public routers seeders utils
 
 .PHONY: help deps build dev install deb rpm apk package clean
 

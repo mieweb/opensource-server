@@ -19,7 +19,7 @@ Full documentation lives in [`mie-opensource-landing/docs/`](mie-opensource-land
 | Path | Purpose |
 |---|---|
 | [`create-a-container/`](create-a-container/) | Manager web application (Node.js + Express + Sequelize) |
-| [`pull-config/`](pull-config/) | Cron-driven config distribution for nginx and dnsmasq on agents — see [pull-config docs](mie-opensource-landing/docs/developers/pull-config.md) |
+| [`agent/`](agent/) | Site agent: systemd-timer check-in that reports status and applies nginx/dnsmasq config — see [agent docs](mie-opensource-landing/docs/developers/agent.md) |
 | [`images/`](images/) | Docker Bake definitions for the `base`, `nodejs`, `agent`, and `manager` images — see [Docker Images](mie-opensource-landing/docs/developers/docker-images.md) |
 | [`manager-control-program/`](manager-control-program/) | MCP server for AI-assisted container management — see [MCP Server](mie-opensource-landing/docs/users/mcp-server.md) |
 | [`mie-opensource-landing/`](mie-opensource-landing/) | Documentation site source |

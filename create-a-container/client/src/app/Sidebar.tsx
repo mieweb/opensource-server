@@ -19,6 +19,7 @@ import {
   Container as ContainerIcon,
   Globe,
   KeyRound,
+  Radio,
   Server,
   Settings,
   Users,
@@ -57,6 +58,7 @@ const ADMIN: NavLink[] = [
     icon: <Globe className="size-4" />,
     adminOnly: true,
   },
+  { to: '/agents', label: 'Agents', icon: <Radio className="size-4" />, adminOnly: true },
   { to: '/apikeys', label: 'API Keys', icon: <KeyRound className="size-4" /> },
   { to: '/settings', label: 'Settings', icon: <Settings className="size-4" />, adminOnly: true },
 ];

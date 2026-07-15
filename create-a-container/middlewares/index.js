@@ -73,10 +73,9 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden: Admin access required');
 }
 
-// Localhost-or-admin middleware
-// Allows localhost requests through without auth. Remote requests must authenticate
-// as an admin user (via session or API key).
-function requireLocalhostOrAdmin(req, res, next) {
+// True when the request comes directly from localhost (and was not proxied
+// on behalf of a remote client, per X-Real-IP).
+function isLocalhostRequest(req) {
   const isLocalhost = (ip) => {
     return ip === '127.0.0.1' || 
            ip === '::1' || 
@@ -90,8 +89,14 @@ function requireLocalhostOrAdmin(req, res, next) {
 
   const realIp = req.get('X-Real-IP');
 
-  // If direct connection is from localhost and no non-localhost X-Real-IP, allow through
-  if (isLocalhost(directIp) && (!realIp || isLocalhost(realIp))) {
+  return isLocalhost(directIp) && (!realIp || isLocalhost(realIp));
+}
+
+// Localhost-or-admin middleware
+// Allows localhost requests through without auth. Remote requests must authenticate
+// as an admin user (via session or API key).
+function requireLocalhostOrAdmin(req, res, next) {
+  if (isLocalhostRequest(req)) {
     return next();
   }
 
@@ -106,6 +111,7 @@ const { setCurrentSite, loadSites } = require('./currentSite');
 
 module.exports = { 
   isApiRequest,
+  isLocalhostRequest,
   requireAuth, 
   requireAdmin, 
   requireLocalhostOrAdmin,

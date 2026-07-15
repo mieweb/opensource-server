@@ -6,7 +6,7 @@ FROM nodejs
 COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
 # Install the agent package (and its dependencies: nginx with stream +
-# ModSecurity modules, dnsmasq, cron, ...) built by the builder image.
+# ModSecurity modules, dnsmasq, ...) built by the builder image.
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
     apt-get install -y /dist/opensource-agent_*.deb && \
@@ -29,7 +29,7 @@ COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
 COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
 COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
-# Configure DNSMasq to only get its config from our pull-config
+# Configure DNSMasq to only get its config from our agent
 RUN sed -i \
     -e 's/^CONFIG_DIR=\(.*\)$/#CONFIG_DIR=\1/' \
     -e 's/^#IGNORE_RESOLVCONF=\(.*\)$/IGNORE_RESOLVCONF=\1/' \

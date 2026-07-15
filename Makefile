@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-COMPONENTS := pull-config mie-opensource-landing create-a-container
+COMPONENTS := agent mie-opensource-landing create-a-container
 PACKAGER   ?= deb
 
 # Forwarded to every component Makefile.

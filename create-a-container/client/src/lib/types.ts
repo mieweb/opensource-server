@@ -30,6 +30,24 @@ export interface Node {
   hasSecret: boolean;
 }
 
+export interface AgentServiceStatus {
+  /** systemd ActiveState: active, inactive, failed, ... */
+  state: string;
+  /** Outcome of the agent's last config apply for this service. */
+  lastApply: 'success' | 'failure' | 'unknown';
+}
+
+export interface Agent {
+  id: number;
+  siteId: number;
+  siteName: string | null;
+  hostname: string;
+  ipv4Address: string | null;
+  services: Record<string, AgentServiceStatus> | null;
+  lastCheckinAt: string | null;
+  online: boolean;
+}
+
 export interface ExternalDomain {
   id: number;
   name: string;

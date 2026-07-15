@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM agent
 
-# Default environment for pull-config. The manager runs the app on localhost
-# so it doesn't need an API key. Remote agents must set these explicitly.
+# Default environment for the site agent. The manager runs the app on
+# localhost so it doesn't need an API key. Remote agents must set these
+# explicitly.
 ENV SITE_ID=1
 ENV MANAGER_URL=http://localhost:3000
 

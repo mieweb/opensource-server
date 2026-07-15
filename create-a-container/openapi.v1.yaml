@@ -32,6 +32,7 @@ tags:
   - name: Sites
   - name: Containers
   - name: Nodes
+  - name: Agents
   - name: Jobs
   - name: External Domains
   - name: Users
@@ -480,6 +481,50 @@ paths:
         '200':
           description: SSE stream — events `log` and `status`
           content: { text/event-stream: {} }
+
+  /agents:
+    post:
+      tags: [Agents]
+      summary: Agent check-in
+      description: |
+        Site agents POST their system info and per-service status every 30
+        seconds. The response carries the site's config snapshot with a strong
+        `ETag`; send it back via `If-None-Match` to receive `304 Not Modified`
+        when nothing changed. Allowed from localhost without credentials
+        (manager bootstrap) or with an admin API key.
+      parameters:
+        - in: header
+          name: If-None-Match
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [siteId, hostname]
+              properties:
+                siteId: { type: integer }
+                hostname: { type: string }
+                currentTime: { type: integer, description: Agent time, epoch seconds UTC }
+                ipv4Address: { type: string, nullable: true }
+                services:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      state: { type: string, description: 'systemd ActiveState: active, inactive, failed, ...' }
+                      lastApply: { type: string, enum: [success, failure, unknown] }
+      responses:
+        '200':
+          description: Config snapshot (`{ data: { site, nginx } }`) with `ETag` header
+        '304': { description: Config unchanged since If-None-Match }
+        '422': { description: Missing siteId/hostname }
+    get:
+      tags: [Agents]
+      summary: Current status of all agents (admin)
+      responses: { '200': { description: 'List of agents with lastCheckinAt, services and online flag' } }
 
   /external-domains:
     get: { tags: [External Domains], responses: { '200': { description: List } } }

@@ -1,5 +1,0 @@
-# packaging build artifacts
-/.pkg/
-/*.deb
-/*.rpm
-/*.apk

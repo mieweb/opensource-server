@@ -170,8 +170,8 @@ http {
   }
 
   <%_ httpServices.forEach((service, index) => { _%>
-  <%_ const authRequired = service.httpService.authRequired; _%>
-  <%_ const authServer = service.httpService.externalDomain.authServer; _%>
+  <%_ const authRequired = service.authRequired; _%>
+  <%_ const authServer = service.externalDomain.authServer; _%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -180,11 +180,11 @@ http {
     http2 on;
     http3 on;
     
-    server_name <%= service.httpService.externalHostname %>.<%= service.httpService.externalDomain.name %>;
+    server_name <%= service.externalHostname %>.<%= service.externalDomain.name %>;
   
     <%_ /* SSL certificates */ -%>
-    ssl_certificate /etc/ssl/certs/<%= service.httpService.externalDomain.name %>.crt;
-    ssl_certificate_key /etc/ssl/private/<%= service.httpService.externalDomain.name %>.key;
+    ssl_certificate /etc/ssl/certs/<%= service.externalDomain.name %>.crt;
+    ssl_certificate_key /etc/ssl/private/<%= service.externalDomain.name %>.key;
 
     error_page 403 @403;
     location @403 {
@@ -281,7 +281,7 @@ http {
       proxy_set_header X-Email              $auth_email;
       proxy_set_header X-Access-Token       $auth_token;
       <%_ } _%>
-      proxy_pass <%= service.httpService.backendProtocol %>://<%= service.Container.ipv4Address %>:<%= service.internalPort %>;
+      proxy_pass <%= service.backendProtocol %>://<%= service.container.ipv4Address %>:<%= service.internalPort %>;
       proxy_http_version 1.1;
       
       <%_ /* Proxy headers */ -%>
@@ -408,8 +408,8 @@ stream {
 
   <%_ streamServices.forEach((service, index) => { _%>
   server {
-    listen <%= service.transportService.externalPort %><%= service.transportService.protocol === 'udp' ? ' udp' : '' %>;
-    proxy_pass <%= service.Container.ipv4Address %>:<%= service.internalPort %>;
+    listen <%= service.externalPort %><%= service.protocol === 'udp' ? ' udp' : '' %>;
+    proxy_pass <%= service.container.ipv4Address %>:<%= service.internalPort %>;
   }
   <%_ }) _%>
 }
