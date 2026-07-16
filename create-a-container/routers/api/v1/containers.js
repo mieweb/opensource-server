@@ -743,6 +743,21 @@ router.put(
       }
     });
 
+    // Keep the Proxmox tag in sync with the owner — create-container.js tags
+    // the LXC with `container.username`, so a reassignment must update it too.
+    // Best-effort: the NodeApi abstraction (`node.api()`) hides the provider,
+    // and a tag mismatch is cosmetic, so failures are logged rather than fatal.
+    if (ownerChanged && container.containerId) {
+      try {
+        const api = await container.node.api();
+        await api.updateLxcConfig(container.node.name, container.containerId, {
+          tags: newOwnerUsername,
+        });
+      } catch (err) {
+        console.log(`Node-side tag update skipped or failed: ${err.message}`);
+      }
+    }
+
     return ok(res, {
       containerId: container.id,
       jobId: restartJob ? restartJob.id : null,
