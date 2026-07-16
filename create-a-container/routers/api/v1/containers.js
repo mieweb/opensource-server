@@ -410,9 +410,23 @@ router.post(
         entrypoint,
         nvidiaRequested,
         collaborators,
+        username: bodyUsername,
       } = req.body || {};
 
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
+
+      // Admins may specify a `username` to create the container on behalf of another user.
+      // Non-admins may not specify a different username — that is a 403.
+      let ownerUsername = req.session.user;
+      if (bodyUsername !== undefined) {
+        if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
+          throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
+        }
+        if (!req.session.isAdmin) {
+          throw new ApiError(403, 'forbidden', 'only admins may create containers for other users');
+        }
+        ownerUsername = bodyUsername.trim();
+      }
 
       // Contract: `collaborators`, when present, is an array of usernames.
       // Validated here so the insert below can trust its shape.
@@ -466,7 +480,7 @@ router.post(
       const container = await Container.create(
         {
           hostname,
-          username: req.session.user,
+          username: ownerUsername,
           template: templateName,
           nodeId: node.id,
           siteId: site.id,
@@ -585,9 +599,22 @@ router.put(
       { requireManage: true },
     );
 
-    const { services, environmentVars, entrypoint } = req.body || {};
+    const { services, environmentVars, entrypoint, username: bodyUsername } = req.body || {};
     const forceRestart = req.body?.restart === true || req.body?.restart === 'true';
     const isRestartOnly = forceRestart && !services && !environmentVars && entrypoint === undefined;
+
+    // Admins may reassign the container to another user by passing `username`.
+    // Non-admins may not pass a different username — that is a 403.
+    let newOwnerUsername = null;
+    if (bodyUsername !== undefined) {
+      if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
+        throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
+      }
+      if (!req.session.isAdmin) {
+        throw new ApiError(403, 'forbidden', 'only admins may reassign container ownership');
+      }
+      newOwnerUsername = bodyUsername.trim();
+    }
 
     let envVarsJson = container.environmentVars;
     if (!isRestartOnly && Array.isArray(environmentVars)) {
@@ -600,6 +627,7 @@ router.put(
       : entrypoint && entrypoint.trim()
         ? entrypoint.trim()
         : null;
+    const ownerChanged = newOwnerUsername !== null && newOwnerUsername !== container.username;
     const envChanged = !isRestartOnly && container.environmentVars !== envVarsJson;
     const entrypointChanged = !isRestartOnly && container.entrypoint !== newEntrypoint;
     const needsRestart = forceRestart || envChanged || entrypointChanged;
@@ -607,11 +635,11 @@ router.put(
     let restartJob = null;
     const dnsWarnings = [];
     await sequelize.transaction(async (t) => {
-      if (envChanged || entrypointChanged) {
+      if (envChanged || entrypointChanged || ownerChanged) {
         await container.update(
           {
-            environmentVars: envVarsJson,
-            entrypoint: newEntrypoint,
+            ...(envChanged || entrypointChanged ? { environmentVars: envVarsJson, entrypoint: newEntrypoint } : {}),
+            ...(ownerChanged ? { username: newOwnerUsername } : {}),
           },
           { transaction: t },
         );
@@ -714,6 +742,21 @@ router.put(
         }
       }
     });
+
+    // Keep the Proxmox tag in sync with the owner — create-container.js tags
+    // the LXC with `container.username`, so a reassignment must update it too.
+    // Best-effort: the NodeApi abstraction (`node.api()`) hides the provider,
+    // and a tag mismatch is cosmetic, so failures are logged rather than fatal.
+    if (ownerChanged && container.containerId) {
+      try {
+        const api = await container.node.api();
+        await api.updateLxcConfig(container.node.name, container.containerId, {
+          tags: newOwnerUsername,
+        });
+      } catch (err) {
+        console.log(`Node-side tag update skipped or failed: ${err.message}`);
+      }
+    }
 
     return ok(res, {
       containerId: container.id,

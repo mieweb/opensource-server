@@ -343,6 +343,9 @@ paths:
                 customTemplate: { type: string }
                 entrypoint: { type: string }
                 nvidiaRequested: { type: boolean }
+                username:
+                  type: string
+                  description: '(Admin only) Create the container attributed to this existing user instead of the authenticated admin'
                 collaborators:
                   type: array
                   items: { type: string }
@@ -353,7 +356,9 @@ paths:
                 services:
                   type: object
                   additionalProperties: { type: object }
-      responses: { '201': { description: Creation job enqueued } }
+      responses:
+        '201': { description: Creation job enqueued }
+        '403': { description: 'forbidden — non-admins may not create containers for other users', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
       tags: [Containers]
@@ -377,9 +382,24 @@ paths:
     get: { tags: [Containers], responses: { '200': { description: Container } } }
     put:
       tags: [Containers]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: '(Admin only) Reassign ownership of this container to the specified existing user'
+                services: { type: object, additionalProperties: { type: object } }
+                environmentVars:
+                  type: array
+                  items: { type: object, properties: { key: { type: string }, value: { type: string } } }
+                entrypoint: { type: string }
+                restart: { type: boolean }
       responses:
         '200': { description: Updated, optional restart job }
-        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Containers]
       responses:
