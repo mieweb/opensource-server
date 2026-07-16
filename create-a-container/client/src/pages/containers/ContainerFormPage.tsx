@@ -97,6 +97,8 @@ type FormData = z.infer<typeof schema>;
 const COMMON_TEMPLATES = [
   { value: 'ghcr.io/mieweb/opensource-server/base:latest', label: 'Debian 13' },
   { value: 'ghcr.io/mieweb/opensource-server/nodejs:latest', label: 'NodeJS 24' },
+  { value: 'ghcr.io/mieweb/opensource-server/docker:latest', label: 'Debian 13 + Docker' },
+  { value: 'ghcr.io/mieweb/opensource-server/docker-nodejs:latest', label: 'NodeJS 24 + Docker' },
   { value: 'ghcr.io/mieweb/ozwell-studio:latest', label: 'Ozwell Studio' },
 ];
 

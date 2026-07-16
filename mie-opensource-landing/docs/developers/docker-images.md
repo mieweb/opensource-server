@@ -22,6 +22,18 @@ Extends base with Node.js 24 from NodeSource. Inherits LDAP authentication.
 
 **Registry:** `ghcr.io/mieweb/opensource-server/nodejs` · **Source:** [`images/nodejs/`](https://github.com/mieweb/opensource-server/tree/main/images/nodejs)
 
+### Debian 13 + Docker (`docker`)
+
+Extends base with Docker Engine (Community Edition) from Docker's official APT repository. Membership of the LDAP `ldapusers` group implies membership of the local `docker` group: a `pam_group` rule (`*;*;%ldapusers;Al0000-2400;docker` in `/etc/security/group.conf`) grants the `docker` group to LDAP users' sessions at login, matched by group name on both sides, so every LDAP user can use the Docker socket without per-user group management.
+
+**Registry:** `ghcr.io/mieweb/opensource-server/docker` · **Source:** [`images/docker/`](https://github.com/mieweb/opensource-server/tree/main/images/docker)
+
+### NodeJS 24 + Docker (`docker-nodejs`)
+
+The same Dockerfile as `docker`, built on top of the `nodejs` image instead of the Debian base (the bake target swaps the named `base` build context). Inherits Node.js 24 and LDAP authentication.
+
+**Registry:** `ghcr.io/mieweb/opensource-server/docker-nodejs` · **Source:** [`images/docker/`](https://github.com/mieweb/opensource-server/tree/main/images/docker)
+
 ### Agent (`agent`)
 
 Extends nodejs with the `opensource-agent` package (pull-config, nginx with ModSecurity/OWASP CRS, dnsmasq) and [acme.sh](https://github.com/acmesh-official/acme.sh) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
