@@ -32,6 +32,8 @@ Select a standard image or choose "Custom Docker Image..." for any registry imag
 
 - **Debian 13**: `ghcr.io/mieweb/opensource-server/base:latest`
 - **NodeJS 24**: `ghcr.io/mieweb/opensource-server/nodejs:latest`
+- **Debian 13 + Docker**: `ghcr.io/mieweb/opensource-server/docker:latest` — Docker Engine (CE); every LDAP user can use the Docker socket
+- **NodeJS 24 + Docker**: `ghcr.io/mieweb/opensource-server/docker-nodejs:latest`
 - **Custom**: Full registry path (e.g., `docker.io/library/nginx:latest`)
 
 ### Services (Optional)

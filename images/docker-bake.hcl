@@ -1,5 +1,5 @@
 group "default" {
-    targets = ["base", "nodejs", "docs", "agent", "manager", "proxmox-ve"]
+    targets = ["base", "nodejs", "docker", "docker-nodejs", "docs", "agent", "manager", "proxmox-ve"]
 }
 
 target "base" {
@@ -10,6 +10,24 @@ target "nodejs" {
     context = "./nodejs"
     contexts = {
         base = "target:base"
+    }
+}
+
+# Docker Engine (CE) on the plain Debian base. docker/Dockerfile builds FROM
+# the named `base` context, so the same Dockerfile also produces the
+# docker-nodejs image below by swapping that context.
+target "docker" {
+    context = "./docker"
+    contexts = {
+        base = "target:base"
+    }
+}
+
+# Docker Engine (CE) layered on the NodeJS image instead of the Debian base.
+target "docker-nodejs" {
+    context = "./docker"
+    contexts = {
+        base = "target:nodejs"
     }
 }
 
