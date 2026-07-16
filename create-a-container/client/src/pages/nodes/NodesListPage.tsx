@@ -19,6 +19,7 @@ import {
   useToast,
 } from '@mieweb/ui';
 import { Download, LayoutGrid, Pencil, Plus, Rows3, Server, Trash2 } from 'lucide-react';
+import { ButtonLink } from '@/components/ButtonLink';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { Node } from '@/lib/types';
@@ -70,11 +71,16 @@ function RowActions({
 }) {
   return (
     <>
-      <Link to={`/sites/${siteId}/nodes/${n.id}/edit`}>
-        <Button variant="ghost" size="sm" aria-label="Edit" leftIcon={<Pencil className="size-4" />}>
-          <span className="hidden sm:inline">Edit</span>
-        </Button>
-      </Link>
+      <ButtonLink
+        as={Link}
+        to={`/sites/${siteId}/nodes/${n.id}/edit`}
+        variant="ghost"
+        size="sm"
+        aria-label="Edit"
+        leftIcon={<Pencil className="size-4" />}
+      >
+        <span className="hidden sm:inline">Edit</span>
+      </ButtonLink>
       <Button
         variant="ghost"
         size="sm"
@@ -162,16 +168,24 @@ export function NodesListPage() {
                 </Button>
               </div>
             )}
-            <Link to={`/sites/${siteId}/nodes/import`}>
-              <Button variant="outline" aria-label="Import from Proxmox" leftIcon={<Download className="size-4" />}>
-                <span className="hidden sm:inline">Import from Proxmox</span>
-              </Button>
-            </Link>
-            <Link to={`/sites/${siteId}/nodes/new`}>
-              <Button variant="primary" aria-label="New node" leftIcon={<Plus className="size-4" />}>
-                <span className="hidden sm:inline">New node</span>
-              </Button>
-            </Link>
+            <ButtonLink
+              as={Link}
+              to={`/sites/${siteId}/nodes/import`}
+              variant="outline"
+              aria-label="Import from Proxmox"
+              leftIcon={<Download className="size-4" />}
+            >
+              <span className="hidden sm:inline">Import from Proxmox</span>
+            </ButtonLink>
+            <ButtonLink
+              as={Link}
+              to={`/sites/${siteId}/nodes/new`}
+              variant="primary"
+              aria-label="New node"
+              leftIcon={<Plus className="size-4" />}
+            >
+              <span className="hidden sm:inline">New node</span>
+            </ButtonLink>
           </div>
         }
       />

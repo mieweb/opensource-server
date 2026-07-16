@@ -23,9 +23,11 @@ import {
 import { Container, Dices, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
+import { useSession } from '@/lib/auth';
 import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
-import { ResourcesSection } from './ResourcesSection';
+import { ResourcesSection } from '@/components/containers/ResourcesSection';
+import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 function useDebouncedValue<T>(value: T, delay = 500): T {
@@ -50,6 +52,7 @@ const serviceSchema = z
     id: z.number().optional(),
     type: z.enum(['http', 'https', 'tcp', 'udp', 'srv']),
     internalPort: z.string(),
+    externalPort: z.number().optional(),
     externalHostname: z.string().optional(),
     externalDomainId: z.string().optional(),
     dnsName: z.string().optional(),
@@ -85,6 +88,9 @@ const schema = z.object({
   restart: z.boolean().optional(),
   services: z.array(serviceSchema),
   environmentVars: z.array(envVarSchema),
+  // Usernames to share a new container with (collaborators). Existence is
+  // validated server-side on submit. Unused in edit mode (live manager instead).
+  collaborators: z.array(z.string()),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -104,6 +110,7 @@ export function ContainerFormPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  const { data: session } = useSession();
 
   const { data: bootstrap, isLoading: bootstrapLoading } = useQuery({
     queryKey: keys.containerBootstrap(siteId!),
@@ -115,18 +122,26 @@ export function ContainerFormPage() {
     queryFn: () => queries.getContainer(siteId!, id!),
     enabled: isEdit,
   });
+  // Collaborators get a read-only view of a shared container: the whole form is
+  // disabled and the save footer hidden. The server enforces the same rule
+  // (PUT is owner/admin only), so this is purely presentational.
+  const isReadOnly =
+    isEdit && !!container && !!session && !session.isAdmin && container.owner !== session.user;
 
   const { register, handleSubmit, control, reset, watch, setValue, formState } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       services: [],
       environmentVars: [],
+      collaborators: [],
       nvidiaRequested: false,
       restart: false,
     },
   });
   const services = useFieldArray({ control, name: 'services' });
   const envVars = useFieldArray({ control, name: 'environmentVars' });
+  // Guards the one-time form initialization from the loaded container (edit).
+  const initializedRef = useRef(false);
 
   // Default external domain for new HTTP services. The bootstrap endpoint
   // returns domains already sorted so the site's default domains come first,
@@ -143,9 +158,15 @@ export function ContainerFormPage() {
   const hostname = watch('hostname');
   const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
+  const collaborators = watch('collaborators') || [];
 
   useEffect(() => {
-    if (container && isEdit) {
+    if (container && isEdit && !initializedRef.current) {
+      // Initialize the form from the loaded container exactly once. Re-running
+      // reset on every `container` change would wipe unsaved edits whenever the
+      // container query refetches (e.g. after the Sharing manager adds/removes a
+      // collaborator and invalidates this query).
+      initializedRef.current = true;
       reset({
         hostname: container.hostname,
         template: container.template || '',
@@ -163,6 +184,7 @@ export function ContainerFormPage() {
                   : 'http'
                 : (s.transportService?.protocol ?? 'tcp'),
           internalPort: String(s.internalPort),
+          externalPort: s.transportService?.externalPort,
           externalHostname: s.httpService?.externalHostname || '',
           externalDomainId: s.httpService ? String(s.httpService.externalDomainId) : '',
           dnsName: s.dnsService?.dnsName || '',
@@ -173,6 +195,7 @@ export function ContainerFormPage() {
           key,
           value,
         })),
+        collaborators: [],
       });
     }
   }, [container, isEdit, reset]);
@@ -272,6 +295,8 @@ export function ContainerFormPage() {
         services: servicesObj,
         environmentVars: values.environmentVars.filter((e) => e.key.trim()),
         restart: values.restart,
+        // Only meaningful on create; the edit form manages sharing live.
+        collaborators: values.collaborators,
       };
       type UpdateResult = {
         containerId: number;
@@ -345,8 +370,17 @@ export function ContainerFormPage() {
           backTo={{ label: 'Back to containers', to: `/sites/${siteId}/containers` }}
         />
 
+        {isReadOnly && (
+          <Alert variant="info">
+            <AlertDescription>
+              This container is shared with you. Only the owner ({container?.owner}) can make
+              changes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <fieldset
-          disabled={metadataMutation.isPending}
+          disabled={metadataMutation.isPending || isReadOnly}
           className={`flex flex-col gap-6 border-0 p-0 m-0 ${
             metadataMutation.isPending ? 'pointer-events-none opacity-60' : ''
           }`}
@@ -595,6 +629,20 @@ export function ContainerFormPage() {
                       />
                     </div>
                   )}
+                  {(svc.type === 'tcp' || svc.type === 'udp') && (
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        External port
+                      </p>
+                      <p className="font-mono text-sm">
+                        {svc.externalPort ?? (
+                          <span className="text-muted-foreground">
+                            Auto-assigned on save
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                   {svc.type === 'srv' && (
                     <Input
                       label="DNS name"
@@ -612,6 +660,7 @@ export function ContainerFormPage() {
         <ResourcesSection
           siteId={siteId!}
           hostname={debouncedHostname}
+          owner={isEdit ? container?.owner : undefined}
           isNewContainer={!isEdit}
           sectionCardClass={sectionCardClass}
           sectionHeaderClass={sectionHeaderClass}
@@ -667,18 +716,65 @@ export function ContainerFormPage() {
               </div>
             ))}
           </CardContent>
-          <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => navigate(`/sites/${siteId}/containers`)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" isLoading={mutation.isPending}>
-              {isEdit ? 'Save changes' : 'Create container'}
-            </Button>
-          </CardFooter>
+        </Card>
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Sharing</CardTitle>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            {isEdit && container ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Share this container with other users for collaboration. They will see it in
+                  their All containers tab.
+                </p>
+                <CollaboratorsManager
+                  siteId={siteId!}
+                  containerId={container.id}
+                  collaborators={container.collaborators}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Optionally add other users as collaborators. They will see this container in
+                  their All containers tab once it is created.
+                </p>
+                <CollaboratorChips
+                  usernames={collaborators}
+                  emptyText="No collaborators."
+                  onRemove={(u) =>
+                    setValue(
+                      'collaborators',
+                      collaborators.filter((x) => x !== u),
+                    )
+                  }
+                />
+                <AddCollaboratorField
+                  label="Collaborator"
+                  onAdd={(u) => {
+                    if (!collaborators.includes(u)) {
+                      setValue('collaborators', [...collaborators, u]);
+                    }
+                  }}
+                />
+              </>
+            )}
+          </CardContent>
+          {!isReadOnly && (
+            <CardFooter className="flex flex-wrap justify-end gap-2 border-t border-border bg-muted/30 px-6 py-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => navigate(`/sites/${siteId}/containers`)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" isLoading={mutation.isPending}>
+                {isEdit ? 'Save changes' : 'Create container'}
+              </Button>
+            </CardFooter>
+          )}
         </Card>
         </fieldset>
 

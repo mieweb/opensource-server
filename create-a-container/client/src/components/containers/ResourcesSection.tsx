@@ -30,6 +30,13 @@ interface ResourcesSectionProps {
   siteId: string;
   hostname: string;
   username?: string;
+  /**
+   * The container's owner (uid). When set and different from the session user
+   * (i.e. the viewer is a collaborator on a shared container), resource
+   * requests are disabled — requests are keyed to the requesting user, so only
+   * the owner's requests can apply to the container.
+   */
+  owner?: string;
   isNewContainer?: boolean;
   sectionCardClass: string;
   sectionHeaderClass: string;
@@ -40,6 +47,7 @@ export function ResourcesSection({
   siteId,
   hostname,
   username,
+  owner,
   isNewContainer,
   sectionCardClass,
   sectionHeaderClass,
@@ -49,12 +57,13 @@ export function ResourcesSection({
   const qc = useQueryClient();
   const toast = useToast();
   const currentUser = username || session?.user || '';
+  const isOwner = !owner || owner === session?.user;
   const [pendingNote, setPendingNote] = useState<string | null>(null);
 
   const { data: effective, isLoading } = useQuery({
     queryKey: keys.effectiveResources(siteId, hostname, currentUser),
     queryFn: () => queries.getEffectiveResources(siteId, hostname, currentUser),
-    enabled: !!siteId && !!hostname && !!currentUser,
+    enabled: !!siteId && !!hostname && !!currentUser && isOwner,
   });
 
   const [editingResource, setEditingResource] = useState<string | null>(null);
@@ -131,6 +140,11 @@ export function ResourcesSection({
         <p className="text-xs text-muted-foreground">
           Resource allocations for this container. Changes above the default require admin approval.
         </p>
+        {!isOwner && (
+          <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Only owners can make resource requests on their containers.
+          </p>
+        )}
         {pendingNote && (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300/80">
             {pendingNote}
@@ -219,6 +233,7 @@ export function ResourcesSection({
                     type="button"
                     size="sm"
                     variant="outline"
+                    disabled={!isOwner}
                     onClick={() => {
                       setEditingResource(opt.key);
                       setEditValue(currentValue);

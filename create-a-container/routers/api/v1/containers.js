@@ -6,6 +6,7 @@
 const express = require('express');
 const {
   Container,
+  ContainerCollaborator,
   Service,
   HTTPService,
   TransportService,
@@ -85,8 +86,13 @@ function normalizeDockerRef(ref) {
   return `${host}/${org}/${image}:${tag}`;
 }
 
-async function loadSite(req) {
-  const site = await Site.findByPk(parseInt(req.params.siteId, 10));
+/**
+ * Load a site by id (typically `req.params.siteId`) or 404.
+ * @param {*} siteId - Candidate site id; parsed as a base-10 integer.
+ * @returns {Promise<object>} The Site instance.
+ */
+async function loadSite(siteId) {
+  const site = await Site.findByPk(parseInt(siteId, 10));
   if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
   return site;
 }
@@ -117,6 +123,9 @@ function serializeContainer(c, site, status) {
     // "all containers" view can show a User column; for the per-user list it
     // simply equals the requesting user.
     owner: c.username,
+    // Additional users this container is shared with. Present on every
+    // payload so consumers can render/manage sharing.
+    collaborators: c.collaboratorNames(),
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).
@@ -176,18 +185,35 @@ const CONTAINER_INCLUDE = [
   { association: 'node' },
   // Eager-load the create job so status resolution needs no per-container query.
   { association: 'creationJob' },
+  // Users the container is shared with, for the serializer's `collaborators`.
+  { association: 'collaborators' },
 ];
 
 /**
- * Build the `where` clause for a container list query, scoped to the given
- * site's nodes and narrowed by the supported query-string filters
- * (`hostname`, `nodeId`). The `nodeId` filter is intersected with the site's
- * own nodes so it can never widen the result set beyond the site.
+ * Build the `where` clause for a container list query — the single arbiter of
+ * what a list request may return. Scopes to the given site's nodes, narrows by
+ * the supported query-string filters (`hostname`, `nodeId`, `user`), and
+ * enforces ownership visibility, folding in shared containers.
+ *
+ * The `nodeId` filter is intersected with the site's own nodes so it can never
+ * widen the result set beyond the site.
+ *
+ * `query.user` must be an array (callers capture `req.query` once and default
+ * it with `query.user ??= []` — Express 5 re-parses req.query on each access;
+ * clients send bracket notation, e.g. `user[0]=alice`, which the 'extended'
+ * query parser coerces to an array). Empty -> everything the caller
+ * may see: every container on the site for admins, their own plus any shared
+ * with them for non-admins. A list of names -> those owners for admins; for
+ * non-admins the same list intersected with what they may already see (own
+ * plus shared), so a non-admin can only narrow down to owners who have shared
+ * a container with them and never widen their visibility.
+ *
  * @param {object} query - req.query
  * @param {number[]} nodeIds - IDs of the nodes belonging to the site
+ * @param {object} session - req.session ({ user, isAdmin })
  * @returns {object} Sequelize where clause
  */
-function buildContainerListWhere(query, nodeIds) {
+function buildContainerListWhere(query, nodeIds, session) {
   const where = { nodeId: nodeIds };
   if (query.hostname) where.hostname = query.hostname;
   if (query.nodeId) {
@@ -196,34 +222,102 @@ function buildContainerListWhere(query, nodeIds) {
     // otherwise force an empty result rather than leaking other sites' nodes.
     where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
   }
+
+  const names = query.user;
+  if (session.isAdmin) {
+    // Admins may see every owner on the site; a name list simply narrows it.
+    if (names.length > 0) where.username = names;
+    return where;
+  }
+  // Non-admins may only see their own containers plus any shared with them.
+  const visible = visibleToClauses(session.user);
+  if (names.length === 0) {
+    where[Sequelize.Op.or] = visible;
+  } else {
+    // Intersect the requested owners with what the caller may already see.
+    where[Sequelize.Op.and] = [{ [Sequelize.Op.or]: visible }, { username: names }];
+  }
   return where;
 }
 
 /**
- * Resolve the `user` list filter into a Sequelize `username` constraint,
- * enforcing authorization. The rules mirror the existing `hostname` filter in
- * shape (a plain query param) but add ownership scoping:
- *   - absent/empty -> the requesting user's own containers (default for all)
- *   - '*'          -> every owner on the site (admin), or just your own (non-admin)
- *   - '<username>' -> that specific owner (admin only, unless it's yourself)
- * Non-admins may use `*`, but it is scoped to their own containers rather than
- * returning a 403. This keeps the "All" toggle usable for everyone today and
- * leaves room for future shareable/collaborative containers to widen what a
- * non-admin sees here. Requesting a specific *other* owner still 403s.
- * @param {string|undefined} requestedUser - req.query.user
- * @param {{ user: string, isAdmin: boolean }} session - req.session
- * @returns {string|undefined} username to filter by, or undefined for "all"
+ * The owner-or-shared visibility rule, as a fragment of Sequelize clauses to
+ * OR together: a container is visible to a user if they own it or it has been
+ * shared with them. This is the single source of that rule, consumed by both
+ * the list query (`buildContainerListWhere`) and the single-container loader
+ * (`loadContainerForSession`).
+ *
+ * The shared set is expressed as an `IN (SELECT …)` subquery so the whole
+ * visibility check resolves inside the caller's query — a single round trip —
+ * instead of a separate lookup. (A plain JOIN on the eager-loaded
+ * `collaborators` association would filter the joined rows and truncate the
+ * serialized collaborator list, so a subquery is used.) It is built with the
+ * dialect's query generator so identifier quoting and value escaping stay
+ * correct across sqlite/mysql/postgres; selectQuery emits a trailing ';' which
+ * is invalid inside IN (…), hence the slice.
+ * @param {string} username - The requesting user's uid.
+ * @returns {object[]} Clauses to OR together (own + shared).
  */
-function resolveUsernameFilter(requestedUser, session) {
-  if (!requestedUser) return session.user;
-  if (requestedUser === '*') {
-    // Admins see every owner; non-admins are scoped to their own containers.
-    return session.isAdmin ? undefined : session.user;
+function visibleToClauses(username) {
+  const shared = sequelize.dialect.queryGenerator
+    .selectQuery(
+      ContainerCollaborator.getTableName(),
+      { attributes: ['containerId'], where: { username } },
+      ContainerCollaborator,
+    )
+    .slice(0, -1);
+  return [{ username }, { id: { [Sequelize.Op.in]: Sequelize.literal(`(${shared})`) } }];
+}
+
+/**
+ * Load a container by id scoped to a site and authorize the session against
+ * it. View access is enforced in the query itself: a non-admin only ever loads
+ * a container they own or one shared with them, so an unauthorized row never
+ * comes back and the route 404s without leaking the existence of containers
+ * the caller may not see. Manage access (owner/admin, for sharing/delete) is
+ * checked in-app and returns 403 — the caller can already view the container,
+ * so it leaks nothing new and tells a collaborator why they can't manage it.
+ * @param {*} siteId - Candidate site id (typically `req.params.siteId`).
+ * @param {*} containerId - Candidate container id (typically `req.params.id`).
+ * @param {object} session - req.session ({ user, isAdmin }).
+ * @param {object} [opts]
+ * @param {boolean} [opts.requireManage=false] - Require owner/admin (sharing,
+ *   delete). Fails with 403 rather than the looser view access.
+ * @param {Array} [opts.include] - Override the eager-load graph.
+ * @returns {Promise<{site: object, container: object}>}
+ */
+async function loadContainerForSession(siteId, containerId, session, { requireManage = false, include } = {}) {
+  const site = await loadSite(siteId);
+  const id = parseInt(containerId, 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new ApiError(400, 'invalid_request', 'Container id must be a positive integer');
   }
-  if (requestedUser !== session.user && !session.isAdmin) {
-    throw new ApiError(403, 'forbidden', 'Admin access required');
+  const where = { id };
+  // Enforce view access in the query so an unauthorized container never loads.
+  if (!session.isAdmin) {
+    where[Sequelize.Op.or] = visibleToClauses(session.user);
   }
-  return requestedUser;
+  const container = await Container.findOne({
+    where,
+    include: include || [{ association: 'node' }, { association: 'collaborators' }],
+  });
+  if (!container || !container.node || container.node.siteId !== site.id) {
+    throw new ApiError(404, 'not_found', 'Container not found');
+  }
+  if (requireManage && !(session.isAdmin || container.canEdit(session.user))) {
+    throw new ApiError(403, 'forbidden', 'Only the owner may manage this container');
+  }
+  return { site, container };
+}
+
+/**
+ * Whether an insert failure means a collaborator username has no matching
+ * Users.uid row (foreign-key violation), as opposed to some other DB error.
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isUnknownUserError(err) {
+  return err?.name === 'SequelizeForeignKeyConstraintError';
 }
 
 // GET /containers/metadata?image=...
@@ -250,7 +344,7 @@ router.get(
 router.get(
   '/new',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const externalDomains = await site.getSortedExternalDomains();
     const nvidiaAvailable =
       (await Node.count({ where: { siteId: site.id, nvidiaAvailable: true } })) > 0;
@@ -262,16 +356,18 @@ router.get(
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    const where = buildContainerListWhere(req.query, nodeIds);
-    // `user` filter: defaults to the requesting user, so everyone (incl. admins)
-    // sees their own containers by default. `user=*` lists every owner for admins
-    // and stays scoped to the requester for non-admins; `user=<name>` targets a
-    // specific owner (admin-only). undefined means "all owners".
-    const username = resolveUsernameFilter(req.query.user, req.session);
-    if (username !== undefined) where.username = username;
+    // `user` filter backs the list page's User filter: omitted, it returns
+    // everything the caller may see (all owners for admins; own + shared for
+    // non-admins); `user[0]=<name>` narrows to specific owners. See
+    // buildContainerListWhere. Express 5's req.query is a getter that re-parses
+    // on every access, so capture it once — defaulting `req.query.user` directly
+    // would mutate a throwaway object.
+    const query = req.query;
+    query.user ??= [];
+    const where = buildContainerListWhere(query, nodeIds, req.session);
     const rows = await Container.findAll({ where, include: CONTAINER_INCLUDE });
     // Resolve live statuses for the whole page in one pass: one Proxmox snapshot
     // per node (shared), and no per-container DB queries (create job is loaded above).
@@ -287,21 +383,12 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
-    // Guard against non-numeric ids (e.g. "undefined", "NaN"): parseInt would
-    // yield NaN and reach the DB as an invalid integer comparison, surfacing as
-    // a 500. Treat anything non-numeric as "not found".
-    const containerId = parseInt(req.params.id, 10);
-    if (!Number.isInteger(containerId) || containerId <= 0) {
-      throw new ApiError(404, 'not_found', 'Container not found');
-    }
-    const c = await Container.findOne({
-      where: { id: containerId, username: req.session.user },
-      include: CONTAINER_INCLUDE,
-    });
-    if (!c || !c.node || c.node.siteId !== site.id) {
-      throw new ApiError(404, 'not_found', 'Container not found');
-    }
+    const { site, container: c } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      { include: CONTAINER_INCLUDE },
+    );
     const status = await computeContainerStatus({ container: c, Job });
     return ok(res, serializeContainer(c, site, status));
   }),
@@ -311,7 +398,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
+    const site = await loadSite(req.params.siteId);
     const t = await sequelize.transaction();
     try {
       let {
@@ -322,9 +409,17 @@ router.post(
         environmentVars,
         entrypoint,
         nvidiaRequested,
+        collaborators,
       } = req.body || {};
 
       if (!hostname || !hostname.trim()) throw new ApiError(400, 'invalid_request', 'hostname is required');
+
+      // Contract: `collaborators`, when present, is an array of usernames.
+      // Validated here so the insert below can trust its shape.
+      collaborators ??= [];
+      if (!Array.isArray(collaborators) || !collaborators.every((c) => typeof c === 'string')) {
+        throw new ApiError(400, 'invalid_request', 'collaborators must be an array of usernames');
+      }
 
       const wantsNvidia = !!nvidiaRequested;
       // Only the user-defined env vars are persisted on the container record;
@@ -377,6 +472,27 @@ router.post(
         },
         { transaction: t },
       );
+
+      // Share with the requested collaborators (shape validated above). The
+      // creator already owns the container, so they're skipped if listed.
+      // Duplicates are absorbed by ignoreDuplicates (ON CONFLICT DO NOTHING /
+      // INSERT OR IGNORE, which also covers repeats within the statement);
+      // existence is enforced by the ContainerCollaborators.username ->
+      // Users.uid foreign key, so an unknown username rolls back the whole
+      // create rather than silently dropping a share. bulkCreate([]) is a no-op.
+      try {
+        await ContainerCollaborator.bulkCreate(
+          collaborators
+            .filter((username) => username !== container.username)
+            .map((username) => ({ containerId: container.id, username })),
+          { transaction: t, ignoreDuplicates: true },
+        );
+      } catch (err) {
+        if (isUnknownUserError(err)) {
+          throw new ApiError(404, 'user_not_found', 'One or more collaborators do not exist');
+        }
+        throw err;
+      }
 
       if (services && typeof services === 'object') {
         for (const key in services) {
@@ -450,16 +566,17 @@ router.post(
   }),
 );
 
-// PUT /containers/:id — service add/delete + env/entrypoint changes + optional restart job
+// PUT /containers/:id — service add/delete + env/entrypoint changes + optional restart job.
+// Owner/admin only; collaborators get a read-only view of a shared container.
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
-    const container = await Container.findOne({
-      where: { id: parseInt(req.params.id, 10), username: req.session.user },
-      include: [{ model: Node, as: 'node', where: { siteId: site.id } }],
-    });
-    if (!container) throw new ApiError(404, 'not_found', 'Container not found');
+    const { site, container } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      { requireManage: true },
+    );
 
     const { services, environmentVars, entrypoint } = req.body || {};
     const forceRestart = req.body?.restart === true || req.body?.restart === 'true';
@@ -604,27 +721,24 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const site = await loadSite(req);
-    const container = await Container.findOne({
-      where: { id: parseInt(req.params.id, 10), username: req.session.user },
-      include: [
-        { model: Node, as: 'node' },
-        {
-          model: Service,
-          as: 'services',
-          include: [
-            {
-              model: HTTPService,
-              as: 'httpService',
-              include: [{ model: ExternalDomain, as: 'externalDomain' }],
-            },
-          ],
-        },
-      ],
-    });
-    if (!container || !container.node || container.node.siteId !== site.id) {
-      throw new ApiError(404, 'not_found', 'Container not found');
-    }
+    // Deleting is owner/admin only; collaborators may use but not destroy a
+    // shared container (requireManage -> 403 for a viewer who isn't the owner).
+    const { site, container } = await loadContainerForSession(
+      req.params.siteId,
+      req.params.id,
+      req.session,
+      {
+        requireManage: true,
+        include: [
+          { association: 'node' },
+          { association: 'collaborators' },
+          {
+            association: 'services',
+            include: [{ association: 'httpService', include: [{ association: 'externalDomain' }] }],
+          },
+        ],
+      },
+    );
     const node = container.node;
     let dnsWarnings = [];
     const httpServices = (container.services || [])
@@ -657,6 +771,8 @@ router.delete(
         console.log(`Node-side deletion skipped or failed: ${err.message}`);
       }
     }
+    // Sharing grants are removed by the database via the containerId foreign
+    // key's ON DELETE CASCADE.
     await container.destroy();
 
     // Remove the VM from NetBox if the integration is configured
@@ -665,6 +781,72 @@ router.delete(
     );
 
     return ok(res, { deleted: true, dnsWarnings });
+  }),
+);
+
+// GET /containers/:id/collaborators — list users a container is shared with.
+// Visible to anyone who can access the container (owner, collaborator, admin).
+router.get(
+  '/:id/collaborators',
+  asyncHandler(async (req, res) => {
+    // The loader already eager-loads `collaborators`, so no second query.
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session);
+    return ok(res, { collaborators: container.collaboratorNames() });
+  }),
+);
+
+// POST /containers/:id/collaborators — share with another user (owner/admin).
+// Body: { username }. Idempotent: sharing with an existing collaborator is a
+// no-op that returns the current list. 404 user_not_found if the username
+// doesn't exist (enforced by the Users.uid foreign key).
+router.post(
+  '/:id/collaborators',
+  asyncHandler(async (req, res) => {
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
+      requireManage: true,
+    });
+    // Contract: `username` is a required non-empty string; existence is
+    // enforced by the Users.uid foreign key at insert (mapped to 404 below).
+    const username = req.body?.username;
+    if (typeof username !== 'string' || !username) {
+      throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
+    }
+    if (username === container.username) {
+      throw new ApiError(409, 'already_owner', `${username} already owns this container`);
+    }
+    try {
+      const [collaborator, isNew] = await ContainerCollaborator.findOrCreate({
+        where: { containerId: container.id, username },
+      });
+      // The eager load predates the insert; push the new row in place (the
+      // association shares one array with dataValues) instead of re-querying.
+      if (isNew) container.collaborators.push(collaborator);
+    } catch (err) {
+      if (isUnknownUserError(err)) {
+        throw new ApiError(404, 'user_not_found', `User "${username}" does not exist`);
+      }
+      throw err;
+    }
+    return created(res, { collaborators: container.collaboratorNames() });
+  }),
+);
+
+// DELETE /containers/:id/collaborators/:username — stop sharing (owner/admin).
+router.delete(
+  '/:id/collaborators/:username',
+  asyncHandler(async (req, res) => {
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
+      requireManage: true,
+    });
+    const removed = await ContainerCollaborator.destroy({
+      where: { containerId: container.id, username: req.params.username },
+    });
+    if (!removed) throw new ApiError(404, 'not_found', 'Collaborator not found');
+    // Splice the removed row out of the eager-loaded association in place (it
+    // shares one array with dataValues; reassignment would desync them).
+    const idx = container.collaborators.findIndex((c) => c.username === req.params.username);
+    if (idx !== -1) container.collaborators.splice(idx, 1);
+    return ok(res, { collaborators: container.collaboratorNames() });
   }),
 );
 

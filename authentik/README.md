@@ -15,7 +15,7 @@ notification service" refers to that provider.
 
 | Path | Purpose |
 |---|---|
-| `compose.yml` | Server + worker + PostgreSQL services |
+| `compose.yml` | Server + worker + PostgreSQL + PgBouncer services |
 | `blueprints/` | Declarative flows, stages, providers, and applications |
 | `certs/` | LDAPS / outpost certificates (git-ignored) |
 | `custom-templates/` | Email and flow template overrides (git-ignored) |

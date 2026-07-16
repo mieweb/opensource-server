@@ -8,10 +8,10 @@ const SequelizeStore = require('express-session-sequelize')(session.Store);
 const path = require('path');
 const RateLimit = require('express-rate-limit');
 const crypto = require('crypto');
-const net = require('net');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize, SessionSecret } = require('./models');
+const { runMigrations } = require('./utils/migrate');
 
 
 // Function to get or create session secrets
@@ -33,12 +33,18 @@ async function getSessionSecrets() {
 }
 
 async function main() {
+  // Apply any pending database migrations before serving traffic
+  await runMigrations(sequelize);
+
   const app = express();
 
   // setup views (still used by templates router for nginx-conf / dnsmasq files)
   app.set('views', path.join(__dirname, 'views'));
   app.set('view engine', 'ejs');
   app.set('trust proxy', 1);
+  // Parse query strings with qs so bracket notation (e.g. `user[0]=alice`)
+  // yields real arrays. Express 5 defaults to the 'simple' parser.
+  app.set('query parser', 'extended');
 
   // setup middleware
   const accessLogStream = process.env.ACCESS_LOG
@@ -58,25 +64,15 @@ async function main() {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    // Dynamic cookie: drop the host part and set domain to the parent domain
-    // (e.g., manager.example.com → .example.com) so the session cookie is
-    // shared across sibling subdomains for nginx auth_request.
-    // For IP addresses (IPv4/IPv6) and single-label hosts like "localhost",
-    // omit the domain attribute so the browser scopes the cookie to the
-    // exact host (RFC 6265 forbids domain attributes on IP literals).
     // `secure` is derived from the request protocol (honoring `trust proxy`
     // and X-Forwarded-Proto from nginx) rather than NODE_ENV, so the flag
     // tracks the actual transport — set on HTTPS, omitted on plain HTTP
     // bootstrap/dev access.
     cookie: function(req) {
-      const hostname = req.hostname || '';
-      const parts = hostname.split('.');
-      const shouldDropHost = !net.isIP(hostname) && parts.length > 2;
       return {
         secure: req.secure,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         sameSite: 'lax',
-        domain: shouldDropHost ? `.${parts.slice(1).join('.')}` : hostname
       };
     }
   }));
@@ -103,10 +99,8 @@ async function main() {
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
   const templatesRouter = require('./routers/templates');
-  const verifyRouter = require('./routers/verify');
 
   app.use('/api/v1', apiV1Router);
-  app.use('/verify', verifyRouter); // nginx auth_request subrequest endpoint
   app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
@@ -123,7 +117,7 @@ async function main() {
   // --- SPA: serve compiled React app for everything else ---
   const clientDist = path.join(__dirname, 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api(\/|$)|verify(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 
@@ -132,4 +126,7 @@ async function main() {
   app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 }
 
-main();
+main().catch(err => {
+  console.error('Fatal: server failed to start:', err);
+  process.exit(1);
+});

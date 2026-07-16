@@ -18,6 +18,35 @@ module.exports = (sequelize, DataTypes) => {
       Container.belongsTo(models.Site, { foreignKey: 'siteId', as: 'site' });
       // a container may have a creation job
       Container.belongsTo(models.Job, { foreignKey: 'creationJobId', as: 'creationJob' });
+      // a container may be shared with additional users (collaborators)
+      Container.hasMany(models.ContainerCollaborator, {
+        foreignKey: 'containerId',
+        as: 'collaborators',
+        onDelete: 'CASCADE',
+      });
+    }
+
+    /**
+     * Whether a user may edit this container — change its configuration,
+     * manage its sharing (add/remove collaborators), or delete it: only its
+     * primary owner. Collaborators can use a shared container but have a
+     * read-only view of it.
+     * @param {string} username - The candidate user's uid.
+     * @returns {boolean}
+     */
+    canEdit(username) {
+      return this.username === username;
+    }
+
+    /**
+     * Usernames this container is shared with, sorted for a stable UI. The
+     * shared shape of the `collaborators` field across container payloads and
+     * the share/unshare endpoints. Requires the `collaborators` association to
+     * be eager-loaded.
+     * @returns {string[]}
+     */
+    collaboratorNames() {
+      return this.collaborators.map((c) => c.username).sort((a, b) => a.localeCompare(b));
     }
 
     /**

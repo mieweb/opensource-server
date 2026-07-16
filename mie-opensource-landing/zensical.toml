@@ -21,6 +21,7 @@ nav = [
         { "API Keys" = "users/creating-containers/api-keys.md" },
       ] },
       { "Monitoring Containers" = "users/monitoring-container.md" },
+      { "Adding Authentication" = "users/consuming-auth.md" },
       { "Launchpad" = [
         { "What is Launchpad" = "users/proxmox-launchpad/what-is-proxmox-launchpad.md" },
         { "Getting Started" = "users/proxmox-launchpad/getting-started.md" },
