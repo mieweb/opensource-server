@@ -89,7 +89,7 @@ components:
         id: { type: integer }
         hostname: { type: string }
         owner: { type: string, description: Username of the user who created the container }
-        containerId: { type: integer, nullable: true }
+        containerId: { type: string, nullable: true }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
         ipv4Address: { type: string, nullable: true }
