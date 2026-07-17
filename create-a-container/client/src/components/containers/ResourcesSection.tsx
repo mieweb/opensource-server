@@ -16,12 +16,34 @@ import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { useSession } from '@/lib/auth';
 import type { EffectiveResources, ResourceRequest } from '@/lib/types';
+import { ResourceValueInput } from './ResourceValueInput';
 
 const RESOURCE_OPTIONS = [
-  { key: 'memory', label: 'RAM', unit: 'MB', step: 512, min: 256 },
-  { key: 'swap', label: 'Swap', unit: 'MB', step: 512, min: 0 },
-  { key: 'cpus', label: 'CPUs', unit: '', step: 1, min: 1 },
-  { key: 'rootfs', label: 'RootFS Storage', unit: 'GB', step: 10, min: 5 },
+  {
+    key: 'memory',
+    label: 'RAM',
+    unit: 'MB',
+    step: 1024,
+    min: 256,
+    presets: [256, 512, 1024, 2048, 4096, 8192, 16384, 32768],
+  },
+  {
+    key: 'swap',
+    label: 'Swap',
+    unit: 'MB',
+    step: 1024,
+    min: 0,
+    presets: [0, 512, 1024, 2048, 4096, 8192, 16384],
+  },
+  { key: 'cpus', label: 'CPUs', unit: '', step: 1, min: 1, presets: [1, 2, 4, 8, 16, 32] },
+  {
+    key: 'rootfs',
+    label: 'RootFS Storage',
+    unit: 'GB',
+    step: 10,
+    min: 5,
+    presets: [5, 10, 20, 50, 100, 200, 500],
+  },
 ] as const;
 
 const DEFAULTS: EffectiveResources = { memory: 4096, swap: 0, cpus: 4, rootfs: 50 };
@@ -179,19 +201,15 @@ export function ResourcesSection({
                 </div>
                 {isEditing ? (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <Input
-                      type="number"
-                      size="sm"
+                    <ResourceValueInput
+                      label={opt.label}
+                      unit={opt.unit}
                       min={opt.min}
                       step={opt.step}
+                      presets={opt.presets}
                       value={editValue}
-                      onChange={(e) => setEditValue(parseInt(e.target.value, 10) || 0)}
-                      className="w-24"
-                      aria-label={`New ${opt.label} value`}
+                      onChange={setEditValue}
                     />
-                    {opt.unit && (
-                      <span className="text-xs text-muted-foreground">{opt.unit}</span>
-                    )}
                     <Input
                       placeholder="Reason (optional)"
                       size="sm"
