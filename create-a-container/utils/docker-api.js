@@ -1,7 +1,6 @@
 const axios = require('axios');
 
 const MANAGER_NODE_LABEL = 'org.mieweb.opensource-server.node-id';
-const MANAGER_CONTAINER_LABEL = 'org.mieweb.opensource-server.container-id';
 
 function isValidDockerHost(host) {
   if (typeof host !== 'string' || host.trim() === '') return false;
@@ -132,10 +131,17 @@ class DockerApi {
     return response.data;
   }
 
-  labels(vmid) {
+  containerId(vmid) {
+    if (!vmid) {
+      throw new Error('Docker container id is required');
+    }
+
+    return String(vmid);
+  }
+
+  labels() {
     return {
       [MANAGER_NODE_LABEL]: String(this.node.id),
-      [MANAGER_CONTAINER_LABEL]: String(vmid),
     };
   }
 
@@ -149,43 +155,17 @@ class DockerApi {
   }
 
   async findContainerByVmid(vmid) {
-    const containers = await this.request('get', '/containers/json', {
-      params: {
-        all: true,
-        filters: this.labelFilters({ [MANAGER_CONTAINER_LABEL]: String(vmid) }),
-      },
-    });
-
-    if (!containers.length) {
-      throw new Error(`Docker container for manager id ${vmid} not found`);
-    }
-
-    return containers[0];
+    const inspect = await this.inspectByVmid(vmid);
+    return { Id: inspect.Id };
   }
 
   async inspectByVmid(vmid) {
-    const container = await this.findContainerByVmid(vmid);
-    return this.request('get', `/containers/${container.Id}/json`);
+    return this.request('get', `/containers/${this.containerId(vmid)}/json`);
   }
 
   async nextId() {
-    const existing = await this.request('get', '/containers/json', {
-      params: {
-        all: true,
-        filters: this.labelFilters(),
-      },
-    });
-
-    const used = new Set(
-      existing
-        .map((c) => c.Labels?.[MANAGER_CONTAINER_LABEL])
-        .filter(Boolean)
-        .map(Number),
-    );
-
-    let candidate = Date.now() % 1000000000;
-    while (used.has(candidate)) candidate += 1;
-    return candidate;
+    // Docker Engine assigns the real container ID during create.
+    return null;
   }
 
   async nodes() {
@@ -253,11 +233,11 @@ class DockerApi {
     });
 
     return containers.map((c) => ({
-      vmid: Number(c.Labels?.[MANAGER_CONTAINER_LABEL]),
+      vmid: c.Id,
       name: (c.Names?.[0] || '').replace(/^\//, ''),
       type: 'lxc',
       status: c.State === 'running' ? 'running' : 'stopped',
-      node: this.node.name || 'docker',
+      node: this.node.name,
     }));
   }
 
@@ -314,7 +294,7 @@ class DockerApi {
     const body = {
       Image: this.lastPulledImage,
       Hostname: name,
-      Labels: this.labels(vmid),
+      Labels: this.labels(),
       Env: [],
       HostConfig: {
         NetworkMode: 'bridge',
@@ -380,11 +360,11 @@ class DockerApi {
   }
 
   async recreateForConfig(vmid, config = {}) {
-    const inspect = await this.inspectByVmid(vmid);
-    const existing = await this.findContainerByVmid(vmid);
+    const containerId = this.containerId(vmid);
+    const inspect = await this.inspectByVmid(containerId);
 
     const wasRunning = inspect.State?.Running;
-    const name = inspect.Name?.replace(/^\//, '') || inspect.Config?.Hostname || `manager-${vmid}`;
+    const name = inspect.Name?.replace(/^\//, '') || inspect.Config?.Hostname || `manager-${containerId}`;
 
     const env = envArrayToObject(inspect.Config?.Env || []);
     const deleteList = typeof config.delete === 'string' ? config.delete.split(',') : [];
@@ -400,10 +380,10 @@ class DockerApi {
     if (config.entrypoint) entrypoint = config.entrypoint.split(' ');
 
     if (wasRunning) {
-      await this.request('post', `/containers/${existing.Id}/stop`).catch(() => {});
+      await this.request('post', `/containers/${containerId}/stop`).catch(() => {});
     }
 
-    await this.request('delete', `/containers/${existing.Id}`, {
+    await this.request('delete', `/containers/${containerId}`, {
       params: { force: true },
     });
 
@@ -412,7 +392,7 @@ class DockerApi {
       Hostname: inspect.Config.Hostname,
       Labels: {
         ...(inspect.Config.Labels || {}),
-        ...this.labels(vmid),
+        [MANAGER_NODE_LABEL]: String(this.node.id),
       },
       Env: envObjectToArray(env),
       Entrypoint: entrypoint,
@@ -426,10 +406,12 @@ class DockerApi {
     delete body.HostConfig.Mounts;
     delete body.HostConfig.PortBindings;
 
-    await this.request('post', '/containers/create', {
+    const created = await this.request('post', '/containers/create', {
       params: { name },
       data: body,
     });
+
+    return created.Id;
   }
 
   async updateLxcConfig(node, vmid, config = {}) {
@@ -439,35 +421,38 @@ class DockerApi {
       String(config.delete || '').includes('env') ||
       String(config.delete || '').includes('entrypoint');
 
+    let containerId = this.containerId(vmid);
+
     if (hasContainerConfigChanges) {
-      await this.recreateForConfig(vmid, config);
+      containerId = await this.recreateForConfig(containerId, config);
     }
 
-    const container = await this.findContainerByVmid(vmid);
     const update = {};
 
     if (config.memory) update.Memory = Number(config.memory) * 1024 * 1024;
     if (config.cores) update.NanoCpus = Number(config.cores) * 1000000000;
 
     if (Object.keys(update).length > 0) {
-      await this.request('post', `/containers/${container.Id}/update`, {
+      await this.request('post', `/containers/${containerId}/update`, {
         data: update,
       });
     }
+
+    return task(hasContainerConfigChanges ? 'recreate' : 'update', containerId);
   }
 
   async startLxc(node, vmid) {
-    const container = await this.findContainerByVmid(vmid);
-    await this.request('post', `/containers/${container.Id}/start`);
-    return task('start', container.Id);
+    const containerId = this.containerId(vmid);
+    await this.request('post', `/containers/${containerId}/start`);
+    return task('start', containerId);
   }
 
   async stopLxc(node, vmid) {
-    const container = await this.findContainerByVmid(vmid);
-    await this.request('post', `/containers/${container.Id}/stop`).catch((err) => {
+    const containerId = this.containerId(vmid);
+    await this.request('post', `/containers/${containerId}/stop`).catch((err) => {
       if (err.response?.status !== 304) throw err;
     });
-    return task('stop', container.Id);
+    return task('stop', containerId);
   }
 
   async getLxcStatus(node, vmid) {
@@ -479,8 +464,7 @@ class DockerApi {
   }
 
   async deleteContainer(node, vmid, force = false) {
-    const container = await this.findContainerByVmid(vmid);
-    await this.request('delete', `/containers/${container.Id}`, {
+    await this.request('delete', `/containers/${this.containerId(vmid)}`, {
       params: { force: !!force },
     });
     return { data: null };
