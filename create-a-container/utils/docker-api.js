@@ -93,15 +93,7 @@ function isSystemContainer(options = {}) {
     ? options.entrypoint.join(' ')
     : options.entrypoint || '';
 
-  const image = options.ostemplate || options.reference || '';
-
-  return (
-    entrypoint.includes('/sbin/init') ||
-    entrypoint.includes('systemd') ||
-    image.includes('/base:') ||
-    image.includes('/base@') ||
-    image.endsWith('/base')
-  );
+  return entrypoint.includes('/sbin/init') || entrypoint.includes('systemd');
 }
 
 class DockerApi {
