@@ -42,6 +42,11 @@ export function ResourceValueInput({
 }: ResourceValueInputProps) {
   const [isCustom, setIsCustom] = useState(() => !presets.includes(value));
 
+  // Show the editable number input when the user explicitly chose "Custom…" or
+  // when the current value doesn't match any preset (e.g. an existing custom
+  // allocation being edited).
+  const showCustom = isCustom || !presets.includes(value);
+
   const options = [
     ...presets.map((preset) => ({
       value: String(preset),
@@ -50,7 +55,7 @@ export function ResourceValueInput({
     { value: CUSTOM_OPTION, label: 'Custom…' },
   ];
 
-  const selectValue = isCustom || !presets.includes(value) ? CUSTOM_OPTION : String(value);
+  const selectValue = showCustom ? CUSTOM_OPTION : String(value);
 
   return (
     <div className="flex items-center gap-2">
@@ -69,7 +74,7 @@ export function ResourceValueInput({
         }}
         className="w-32"
       />
-      {(isCustom || !presets.includes(value)) && (
+      {showCustom && (
         <div className="flex items-center gap-1">
           <Input
             type="number"
