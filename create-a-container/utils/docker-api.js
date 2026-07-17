@@ -242,7 +242,11 @@ class DockerApi {
           ]
         : [];
     } catch (err) {
-      return [];
+      if (err.response?.status === 404 || err.response?.status === 503) {
+        return [];
+      }
+
+      throw err;
     }
   }
 
