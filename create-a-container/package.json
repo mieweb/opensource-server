@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "argon2": "^0.44.0",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "cookie-parser": "^1.4.7",
     "csrf-sync": "^4.2.1",
     "dotenv": "^17.2.3",
