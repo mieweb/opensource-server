@@ -405,6 +405,8 @@ class DockerApi {
     delete body.HostConfig.Binds;
     delete body.HostConfig.Mounts;
     delete body.HostConfig.PortBindings;
+    delete body.HostConfig.CpuPeriod;
+    delete body.HostConfig.CpuQuota;
 
     const created = await this.request('post', '/containers/create', {
       params: { name },
