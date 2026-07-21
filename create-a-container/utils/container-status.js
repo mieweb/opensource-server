@@ -72,7 +72,7 @@ function isActiveJob(job) {
  */
 function findInSnapshot(snapshot, vmid) {
   if (!Array.isArray(snapshot) || vmid == null) return null;
-  return snapshot.find((r) => Number(r.vmid) === Number(vmid)) || null;
+  return snapshot.find((r) => r.vmid === vmid) || null;
 }
 
 /**
