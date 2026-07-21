@@ -5,6 +5,7 @@
 const express = require('express');
 const https = require('https');
 const { Node, Site, Container } = require('../../../models');
+const { isValidDockerHost } = require('../../../utils/docker-api');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
 
@@ -16,6 +17,7 @@ function serialize(n) {
   return {
     id: n.id,
     name: n.name,
+    nodeType: n.nodeType,
     siteId: n.siteId,
     ipv4Address: n.ipv4Address,
     apiUrl: n.apiUrl,
@@ -33,6 +35,28 @@ async function loadSite(req) {
   const site = await Site.findByPk(parseInt(req.params.siteId, 10));
   if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
   return site;
+}
+
+function normalizeNodeType(nodeType) {
+  return nodeType || 'proxmox';
+}
+
+function validateNodeInput({ nodeType, apiUrl }) {
+  const type = normalizeNodeType(nodeType);
+
+  if (!['proxmox', 'docker', 'dummy'].includes(type)) {
+    throw new ApiError(400, 'invalid_node_type', 'Node type must be proxmox, docker, or dummy');
+  }
+
+  if (type === 'docker' && (!apiUrl || !isValidDockerHost(apiUrl))) {
+    throw new ApiError(
+      400,
+      'invalid_docker_host',
+      'Docker host must use unix://, tcp://, http://, or https:// without extra path components',
+    );
+  }
+
+  return type;
 }
 
 router.get(
@@ -63,7 +87,7 @@ router.get(
     const node = await Node.findOne({
       where: { id: parseInt(req.params.id, 10), siteId: site.id },
     });
-    if (!node || !node.apiUrl || !node.tokenId || !node.secret) return ok(res, []);
+    if (!node || !node.hasApiAccess()) return ok(res, []);
     try {
       const client = await node.api();
       const storages = await client.datastores(node.name, 'vztmpl', true);
@@ -80,10 +104,12 @@ router.post(
   apiAdmin,
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
+    const type = validateNodeInput({ nodeType, apiUrl });
     const node = await Node.create({
       name,
+      nodeType: type,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,
@@ -109,10 +135,15 @@ router.put(
       where: { id: parseInt(req.params.id, 10), siteId: site.id },
     });
     if (!node) throw new ApiError(404, 'not_found', 'Node not found');
-    const { name, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
+    const type = validateNodeInput({
+      nodeType: nodeType || node.nodeType,
+      apiUrl,
+    });
     const update = {
       name,
+      nodeType: type,
       ipv4Address: ipv4Address || null,
       apiUrl: apiUrl || null,
       tokenId: tokenId || null,

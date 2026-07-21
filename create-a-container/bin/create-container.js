@@ -147,6 +147,16 @@ async function setupContainerAcl(client, nodeName, vmid, username) {
   }
 }
 
+function parseDockerTaskId(taskId, expectedKind = null) {
+  if (typeof taskId !== 'string') return null;
+
+  const parts = taskId.split(':');
+  if (parts[0] !== 'docker' || parts.length < 3) return null;
+  if (expectedKind && parts[1] !== expectedKind) return null;
+
+  return parts.slice(2).join(':');
+}
+
 /**
  * Main function
  */
@@ -178,12 +188,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Guard against double-provisioning. The status column no longer exists, so
-  // we use the Proxmox VMID as the signal: once a VMID has been allocated and
-  // stored, creation has already run for this container.
+  // Guard against double-provisioning. Once a provider container ID has been
+  // allocated and stored, creation has already run for this container.
   if (container.containerId) {
     console.error(
-      `Container already has a Proxmox VMID (${container.containerId}); refusing to re-create`,
+      `Container already has a provider container ID (${container.containerId}); refusing to re-create`,
     );
     process.exit(1);
   }
@@ -219,17 +228,25 @@ async function main() {
   console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
 
   const isDocker = isDockerImage(container.template);
+  const isDockerNode = node.nodeType === 'docker';
   console.log(`Template type: ${isDocker ? 'Docker image' : 'Proxmox template'}`);
   
   try {
     // Get the Proxmox API client
     const client = await node.api();
-    console.log('Proxmox API client initialized');
+    console.log('Node API client initialized');
     
-    // Allocate VMID right before creating to minimize race condition window
-    console.log('Allocating VMID from Proxmox...');
-    const vmid = await client.nextId();
-    console.log(`Allocated VMID: ${vmid}`);
+    // Allocate the provider ID right before creating to minimize race condition window.
+    // Proxmox requires us to allocate a VMID first; Docker returns its real container
+    // ID after create.
+    let vmid = null;
+    if (isDockerNode) {
+      console.log('Docker node selected; Docker will allocate the container ID during create.');
+    } else {
+      console.log('Allocating VMID from Proxmox...');
+      vmid = await client.nextId();
+      console.log(`Allocated VMID: ${vmid}`);
+    }
     
     if (isDocker) {
       // Docker image: pull from OCI registry, then create container
@@ -291,6 +308,16 @@ async function main() {
         rootfs: `${rootfsStorage}:${rootfsSize}`
       });
       console.log(`Create task started: ${createUpid}`);
+
+      if (isDockerNode) {
+        const dockerContainerId = parseDockerTaskId(createUpid, 'create');
+        if (!dockerContainerId) {
+          throw new Error(`Docker create did not return a container ID: ${createUpid}`);
+        }
+
+        vmid = dockerContainerId;
+        console.log(`Docker container ID: ${vmid}`);
+      }
       
       // Wait for create to complete
       await client.waitForTask(node.name, createUpid);
@@ -358,7 +385,12 @@ async function main() {
     const envConfig = await container.buildLxcEnvConfig();
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
-      await client.updateLxcConfig(node.name, vmid, envConfig);
+      const updateTask = await client.updateLxcConfig(node.name, vmid, envConfig);
+      const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(updateTask) : null;
+      if (updatedDockerContainerId) {
+        vmid = updatedDockerContainerId;
+        console.log(`Docker container ID after reconfigure: ${vmid}`);
+      }
       console.log('Environment/entrypoint configuration applied');
     }
     
@@ -380,16 +412,21 @@ async function main() {
         console.warn('   NVIDIA GPU passthrough may not function. See admin docs for setup instructions.');
       }
 
-      await client.updateLxcConfig(node.name, vmid, { hookscript: hookscriptVolid });
+      const nvidiaUpdateTask = await client.updateLxcConfig(node.name, vmid, { hookscript: hookscriptVolid });
+      const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(nvidiaUpdateTask) : null;
+      if (updatedDockerContainerId) {
+        vmid = updatedDockerContainerId;
+        console.log(`Docker container ID after NVIDIA update: ${vmid}`);
+      }
       console.log('NVIDIA hookscript attached');
     }
 
     // Setup ACL for container owner
     await setupContainerAcl(client, node.name, vmid, container.username);
     
-    // Store the VMID now that creation succeeded
-    await container.update({ containerId: vmid });
-    console.log(`Container VMID ${vmid} stored in database`);
+    // Store the provider container ID now that creation succeeded.
+    await container.update({ containerId: String(vmid) });
+    console.log(`Container provider ID ${vmid} stored in database`);
     
     // Start the container
     console.log('Starting container...');
@@ -434,7 +471,7 @@ async function main() {
     
     console.log('Container creation completed successfully!');
     console.log(`  Hostname: ${container.hostname}`);
-    console.log(`  VMID: ${vmid}`);
+    console.log(`  Provider ID: ${vmid}`);
     console.log(`  MAC: ${macAddress}`);
     console.log(`  IP: ${ipv4Address}`);
     console.log(`  Status: running`);

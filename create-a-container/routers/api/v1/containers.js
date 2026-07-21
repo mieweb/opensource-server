@@ -452,14 +452,7 @@ router.post(
       // provisioned.
       const nodeWhere = {
         siteId: site.id,
-        [Sequelize.Op.or]: [
-          { nodeType: 'dummy' },
-          {
-            apiUrl: { [Sequelize.Op.ne]: null },
-            tokenId: { [Sequelize.Op.ne]: null },
-            secret: { [Sequelize.Op.ne]: null },
-          },
-        ],
+        ...Node.provisionableWhere(),
       };
       if (wantsNvidia) nodeWhere.nvidiaAvailable = true;
       const node = await Node.findOne({
