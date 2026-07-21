@@ -9,27 +9,16 @@
 
 const express = require('express');
 const { Agent, Site } = require('../../../models');
-const { isLocalhostRequest } = require('../../../middlewares');
+const { requireLocalhostOrAdmin } = require('../../../middlewares');
 const { apiAuth, apiAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
 const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
 
 const router = express.Router();
 
-// An agent is online if it checked in within three 30-second timer intervals.
-const ONLINE_WINDOW_MS = 90 * 1000;
-
-// The manager's own agent checks in over localhost without credentials
-// (bootstrap: no site, no API key exist yet). Remote agents authenticate
-// with an admin API key.
-function agentAuth(req, res, next) {
-  if (isLocalhostRequest(req)) return next();
-  return apiAuth(req, res, (err) => {
-    if (err) return next(err);
-    return apiAdmin(req, res, next);
-  });
-}
-
-router.post('/', agentAuth, asyncHandler(async (req, res) => {
+// Check-in auth: the manager's own agent checks in over localhost without
+// credentials (bootstrap: no site, no API key exist yet); remote agents
+// authenticate with an admin API key.
+router.post('/', requireLocalhostOrAdmin, asyncHandler(async (req, res) => {
   const { siteId, hostname, ipv4Address, services } = req.body || {};
   const parsedSiteId = parseInt(siteId, 10);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {
@@ -51,6 +40,9 @@ router.post('/', agentAuth, asyncHandler(async (req, res) => {
   }
 
   const config = await buildAgentConfig(parsedSiteId);
+  // Manual conditional-request handling: Express's built-in ETag/fresh logic
+  // (res.send + req.fresh) only produces 304s for GET/HEAD, and the check-in
+  // is a POST.
   const etag = computeConfigEtag(config);
   res.set('ETag', etag);
   if (req.get('If-None-Match') === etag) {
@@ -73,7 +65,11 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
     ipv4Address: a.ipv4Address,
     services: a.services,
     lastCheckinAt: a.lastCheckinAt,
-    online: !!a.lastCheckinAt && now - new Date(a.lastCheckinAt).getTime() <= ONLINE_WINDOW_MS,
+    // Computed server-side so UI staleness judgments don't depend on the
+    // client's clock.
+    secondsSinceCheckin: a.lastCheckinAt
+      ? Math.max(0, Math.round((now - new Date(a.lastCheckinAt).getTime()) / 1000))
+      : null,
   })));
 }));
 

@@ -18,6 +18,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     siteId,
     managerUrl: managerUrl.replace(/\/+$/, ''),
     apiKey: env.API_KEY || undefined,
-    stateDir: env.STATE_DIR || '/var/lib/opensource-agent',
+    // Set by systemd from StateDirectory=; fallback for manual runs.
+    stateDir: env.STATE_DIRECTORY || '/var/lib/opensource-agent',
   };
 }

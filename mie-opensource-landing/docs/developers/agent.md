@@ -9,23 +9,7 @@ Node.js (TypeScript) check-in agent that reports host/service status to the mana
 
 A systemd timer launches the oneshot agent every 30 seconds. Each run checks in with the manager (`POST /api/v1/agents`), applies any config changes, and exits.
 
-```
-agent/
-├── src/                     # TypeScript sources (compiled to dist/)
-│   ├── index.ts             # Oneshot entry point: check-in loop
-│   ├── config.ts            # Environment configuration
-│   ├── state.ts             # Persisted ETag + last apply results
-│   ├── system.ts            # Hostname/IP/systemd state collection
-│   ├── api.ts               # Check-in HTTP client
-│   └── apply.ts             # Managed services: render/test/apply/reload
-├── templates/               # EJS templates rendered locally
-│   ├── nginx.conf.ejs
-│   └── dnsmasq/             # conf, dhcp-hosts, hosts, dhcp-opts, servers
-├── contrib/
-│   ├── systemd/             # opensource-agent.service + .timer (30s)
-│   └── postinstall.sh       # Enables the timer on package install
-└── Makefile                 # Builds the opensource-agent package (see Release Pipeline)
-```
+TypeScript sources live in `agent/src` (compiled to `dist/`), the locally rendered EJS templates in `agent/templates`, and the systemd service/timer units in `agent/contrib/systemd`. The `agent/Makefile` builds the `opensource-agent` package (see Release Pipeline). Service reloads and state queries go through the systemd D-Bus API; config validation uses `nginx -t` and `dnsmasq --test`.
 
 ## Check-in Protocol
 
@@ -75,7 +59,7 @@ Read from the process environment (systemd loads `/etc/environment`). Set via co
 | `SITE_ID` | Yes | Numeric site ID from the manager |
 | `MANAGER_URL` | Yes | Base URL of the manager (e.g., `http://192.168.1.10:3000`) |
 | `API_KEY` | No | Admin API key for remote agents. Not needed on the manager (localhost is trusted). |
-| `STATE_DIR` | No | State directory (default `/var/lib/opensource-agent`) |
+| `STATE_DIRECTORY` | No | State directory, set by systemd via `StateDirectory=` (default `/var/lib/opensource-agent`) |
 
 The agent Dockerfile defaults to `SITE_ID=1` and `MANAGER_URL=http://localhost:3000` so the manager container works without configuration.
 

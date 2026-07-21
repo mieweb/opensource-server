@@ -12,8 +12,8 @@
 
 import os from 'os';
 import { loadConfig, type AgentConfig } from './config';
-import { loadState, saveState, type AgentState } from './state';
-import { getPrimaryIpv4, getServiceState } from './system';
+import { State } from './state';
+import { getPrimaryIpv4, getServiceState, disconnectSystemBus } from './system';
 import { checkin } from './api';
 import { services, applyService } from './apply';
 import type { CheckinRequest, ServiceStatus } from './types';
@@ -22,11 +22,11 @@ import type { CheckinRequest, ServiceStatus } from './types';
 // forever; the timer starts a fresh run 30s later anyway.
 const MAX_PASSES = 5;
 
-function buildCheckinBody(cfg: AgentConfig, state: AgentState): CheckinRequest {
+async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<CheckinRequest> {
   const serviceStatus: Record<string, ServiceStatus> = {};
   for (const svc of services) {
     serviceStatus[svc.unit] = {
-      state: getServiceState(svc.unit),
+      state: await getServiceState(svc.unit),
       lastApply: state.lastApply[svc.unit] ?? 'unknown',
     };
   }
@@ -41,10 +41,10 @@ function buildCheckinBody(cfg: AgentConfig, state: AgentState): CheckinRequest {
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  const state = loadState(cfg.stateDir);
+  const state = State.load(cfg.stateDir);
 
   for (let pass = 0; pass < MAX_PASSES; pass++) {
-    const result = await checkin(cfg, buildCheckinBody(cfg, state), state.etag);
+    const result = await checkin(cfg, await buildCheckinBody(cfg, state), state.etag);
     if (result.notModified) return;
 
     for (const svc of services) {
@@ -55,11 +55,18 @@ async function main(): Promise<void> {
     // fix itself without a server-side change (which changes the ETag), and
     // the failure has been reported via lastApply.
     state.etag = result.etag;
-    saveState(cfg.stateDir, state);
+    state.save();
   }
+
+  // MAX_PASSES exhausted (flapping server-side config): check in once more so
+  // the final pass' apply results reach the manager instead of going stale
+  // until the next timer run.
+  await checkin(cfg, await buildCheckinBody(cfg, state), state.etag);
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+main()
+  .then(() => disconnectSystemBus())
+  .catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });

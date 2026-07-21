@@ -45,7 +45,8 @@ export interface Agent {
   ipv4Address: string | null;
   services: Record<string, AgentServiceStatus> | null;
   lastCheckinAt: string | null;
-  online: boolean;
+  /** Server-computed, so it is immune to client clock drift. */
+  secondsSinceCheckin: number | null;
 }
 
 export interface ExternalDomain {

@@ -92,7 +92,7 @@ cat /etc/nginx/nginx.conf
 cat /etc/dnsmasq.conf
 
 # Run a check-in manually
-node /opt/opensource-server/agent/dist/index.js
+systemctl start opensource-agent.service
 ```
 
 The agent also appears on the manager's **Agents** page (`/agents`, admin only) with its last check-in time and service health.

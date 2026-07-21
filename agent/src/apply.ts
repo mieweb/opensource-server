@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import ejs from 'ejs';
+import { reloadOrRestartService, restartService, sighupService } from './system';
 import type { ApplyResult, SiteConfig } from './types';
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
@@ -27,7 +28,7 @@ export interface ManagedService {
   /** Command that validates the staged config before it is kept. */
   test?: string[];
   /** Reload/restart after a successful apply. */
-  reload(changedFiles: string[]): void;
+  reload(changedFiles: string[]): Promise<void>;
 }
 
 function renderTemplate(template: string, data: object): Promise<string> {
@@ -49,14 +50,20 @@ export const services: ManagedService[] = [
     },
     test: ['nginx', '-t'],
     reload() {
-      run(['systemctl', 'reload-or-restart', 'nginx']);
+      return reloadOrRestartService('nginx');
     },
   },
   {
     unit: 'dnsmasq',
     async render(config) {
-      if (!config.site) return null;
-      const data = { site: config.site };
+      const site = config.site;
+      // Skip dnsmasq management until the site's DHCP/DNS settings are fully
+      // configured — the templates need all of these fields.
+      if (!site?.internalDomain || !site.dhcpRange || !site.subnetMask
+        || !site.gateway || !site.dnsForwarders) {
+        return null;
+      }
+      const data = { site };
       return [
         { dest: '/etc/dnsmasq.conf', content: await renderTemplate('dnsmasq/conf.ejs', data) },
         { dest: '/var/lib/dnsmasq/dhcp-hosts', content: await renderTemplate('dnsmasq/dhcp-hosts.ejs', data) },
@@ -70,10 +77,9 @@ export const services: ManagedService[] = [
       // The main config requires a full restart; the auxiliary files under
       // /var/lib/dnsmasq are re-read on SIGHUP.
       if (changedFiles.includes('/etc/dnsmasq.conf')) {
-        run(['systemctl', 'restart', 'dnsmasq']);
-      } else {
-        run(['systemctl', 'kill', '--signal=SIGHUP', 'dnsmasq']);
+        return restartService('dnsmasq');
       }
+      return sighupService('dnsmasq');
     },
   },
 ];
@@ -118,9 +124,14 @@ export async function applyService(svc: ManagedService, config: SiteConfig): Pro
   }
 
   try {
-    svc.reload(changed);
+    await svc.reload(changed);
   } catch (err) {
-    console.error(`${svc.unit}: reload failed: ${(err as Error).message}`);
+    // The new config passed its test but the service couldn't pick it up:
+    // restore the previous files and reload again (best effort) so the
+    // service keeps running the last known-good config.
+    rollback();
+    await svc.reload(changed).catch(() => { /* reported via service state at next check-in */ });
+    console.error(`${svc.unit}: reload failed, rolled back: ${(err as Error).message}`);
     return 'failure';
   }
 

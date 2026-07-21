@@ -524,7 +524,7 @@ paths:
     get:
       tags: [Agents]
       summary: Current status of all agents (admin)
-      responses: { '200': { description: 'List of agents with lastCheckinAt, services and online flag' } }
+      responses: { '200': { description: 'List of agents with lastCheckinAt, services and server-computed secondsSinceCheckin' } }
 
   /external-domains:
     get: { tags: [External Domains], responses: { '200': { description: List } } }

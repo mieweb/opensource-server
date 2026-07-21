@@ -33,14 +33,17 @@ export interface SiteNode {
   containers: SiteContainer[];
 }
 
+/** Mirrors the manager's Site model, where every field except id is
+ * nullable — a site can be partially configured. Consumers must guard
+ * before using these values (see the dnsmasq render skip in apply.ts). */
 export interface SiteInfo {
   id: number;
-  name: string;
-  internalDomain: string;
-  dhcpRange: string;
-  subnetMask: string;
-  gateway: string;
-  dnsForwarders: string;
+  name: string | null;
+  internalDomain: string | null;
+  dhcpRange: string | null;
+  subnetMask: string | null;
+  gateway: string | null;
+  dnsForwarders: string | null;
   nodes: SiteNode[];
 }
 

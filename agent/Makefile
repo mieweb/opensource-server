@@ -51,7 +51,6 @@ install: build
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/error-pages
 	$(INSTALL_DATA) $(ERROR_PAGES)/* $(DESTDIR)$(PREFIX)/error-pages/
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache
-	$(INSTALL) -d -m 0755 $(DESTDIR)/var/lib/opensource-agent
 
 PACKAGER ?= deb
 package:

@@ -5,25 +5,38 @@ import fs from 'fs';
 import path from 'path';
 import type { ApplyResult } from './types';
 
-export interface AgentState {
+export class State {
   etag?: string;
-  lastApply: Record<string, ApplyResult>;
-}
+  lastApply: Record<string, ApplyResult> = {};
 
-function stateFile(stateDir: string): string {
-  return path.join(stateDir, 'state.json');
-}
+  private constructor(private readonly file: string) {}
 
-export function loadState(stateDir: string): AgentState {
-  try {
-    const raw = JSON.parse(fs.readFileSync(stateFile(stateDir), 'utf8'));
-    return { lastApply: {}, ...raw };
-  } catch {
-    return { lastApply: {} };
+  static load(stateDir: string): State {
+    const state = new State(path.join(stateDir, 'state.json'));
+    let raw: string;
+    try {
+      raw = fs.readFileSync(state.file, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return state; // first run
+      throw err;
+    }
+    try {
+      const data = JSON.parse(raw) as { etag?: string; lastApply?: Record<string, ApplyResult> };
+      state.etag = data.etag;
+      state.lastApply = data.lastApply ?? {};
+    } catch (err) {
+      if (!(err instanceof SyntaxError)) throw err;
+      // A corrupt state file just means a full re-apply on this run.
+      console.error(`Ignoring unparsable state file ${state.file}: ${err.message}`);
+    }
+    return state;
   }
-}
 
-export function saveState(stateDir: string, state: AgentState): void {
-  fs.mkdirSync(stateDir, { recursive: true });
-  fs.writeFileSync(stateFile(stateDir), JSON.stringify(state, null, 2));
+  save(): void {
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    fs.writeFileSync(
+      this.file,
+      JSON.stringify({ etag: this.etag, lastApply: this.lastApply }, null, 2),
+    );
+  }
 }

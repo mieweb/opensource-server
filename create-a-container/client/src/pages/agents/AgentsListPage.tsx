@@ -19,17 +19,22 @@ import type { Agent } from '@/lib/types';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { AgentServiceBadges } from './AgentServiceBadges';
 
-function formatLastCheckin(lastCheckinAt: string | null): string {
-  if (!lastCheckinAt) return 'never';
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(lastCheckinAt).getTime()) / 1000));
+// Agents check in every 30 seconds; three missed intervals means offline.
+const OFFLINE_AFTER_SECONDS = 90;
+
+function formatLastCheckin(agent: Agent): string {
+  const seconds = agent.secondsSinceCheckin;
+  if (seconds === null || !agent.lastCheckinAt) return 'never';
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return new Date(lastCheckinAt).toLocaleString();
+  return new Date(agent.lastCheckinAt).toLocaleString();
 }
 
 function OnlineBadge({ agent }: { agent: Agent }) {
-  return agent.online ? (
+  const online =
+    agent.secondsSinceCheckin !== null && agent.secondsSinceCheckin <= OFFLINE_AFTER_SECONDS;
+  return online ? (
     <Badge variant="success">Online</Badge>
   ) : (
     <Badge variant="danger">Offline</Badge>
@@ -96,7 +101,7 @@ export function AgentsListPage() {
                 <TableCell>
                   <AgentServiceBadges services={agent.services} />
                 </TableCell>
-                <TableCell>{formatLastCheckin(agent.lastCheckinAt)}</TableCell>
+                <TableCell>{formatLastCheckin(agent)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
