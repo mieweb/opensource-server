@@ -1,7 +1,7 @@
 /** Host system info and systemd unit control via the systemd D-Bus API. */
 
 import os from 'os';
-import dbus, { type MessageBus, type ProxyObject, type Variant } from '@jellybrick/dbus-next';
+import dbus, { type MessageBus, type ProxyObject, type Variant } from '@particle/dbus-next';
 
 /** First non-internal IPv4 address, or null when none is configured. */
 export function getPrimaryIpv4(): string | null {
