@@ -92,6 +92,28 @@ async function resolveStorage(client, nodeName, preferred, contentType) {
 }
 
 /**
+ * Build the mp0 mount point value for the shared read-only volume.
+ * Assumes the node's template storage is a directory storage mounted at
+ * /mnt/pve/<storage> (i.e. container templates are downloaded to
+ * /mnt/pve/<storage>/template/cache), so shared volumes live at
+ * /mnt/pve/<storage>/volumes/<name>.
+ *
+ * TODO(#421): Replace this hardcoded 'quick_and_dirty' volume with a proper
+ * feature where users can define their own volumes and attach them with
+ * per-volume permissions (read-only/read-write). The host path should be
+ * derived from the storage's actual configured path instead of assuming the
+ * /mnt/pve/<storage> layout. See:
+ * https://github.com/mieweb/opensource-server/issues/421
+ *
+ * @param {string} templateStorage - Resolved template storage name for the node
+ * @returns {string} Proxmox mp0 config value (bind mount, read-only)
+ */
+function buildSharedVolumeMp0(templateStorage) {
+  const volumeName = 'quick_and_dirty';
+  return `/mnt/pve/${templateStorage}/volumes/${volumeName},mp=/mnt/${volumeName},ro=1`;
+}
+
+/**
  * Setup ACL for container owner
  * Grants PVEVMUser role to username@ldap on /vms/{vmid}
  * Non-blocking: logs errors but continues on failure
@@ -305,7 +327,9 @@ async function main() {
         onboot: 1,
         tags: container.username,
         unprivileged: 1,
-        rootfs: `${rootfsStorage}:${rootfsSize}`
+        rootfs: `${rootfsStorage}:${rootfsSize}`,
+        // TODO(#421): hardcoded shared volume; see buildSharedVolumeMp0()
+        mp0: buildSharedVolumeMp0(templateStorage)
       });
       console.log(`Create task started: ${createUpid}`);
 
@@ -339,6 +363,17 @@ async function main() {
       const rootfsStorage = await resolveStorage(client, node.name, node.volumeStorage || 'local-lvm', 'rootdir');
       console.log(`Using rootfs storage: ${rootfsStorage}`);
       
+      // Resolve the template storage to locate the shared volume mount (mp0).
+      // Non-fatal: cloning does not otherwise require a template storage.
+      // TODO(#421): hardcoded shared volume; see buildSharedVolumeMp0()
+      let mp0 = null;
+      try {
+        const templateStorage = await resolveStorage(client, node.name, node.imageStorage || 'local', 'vztmpl');
+        mp0 = buildSharedVolumeMp0(templateStorage);
+      } catch (err) {
+        console.warn(`Skipping shared volume mount (mp0): ${err.message}`);
+      }
+      
       // Clone the template
       console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
       const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
@@ -363,7 +398,8 @@ async function main() {
         searchdomain: site.internalDomain,
         swap,
         onboot: 1,
-        tags: container.username
+        tags: container.username,
+        ...(mp0 ? { mp0 } : {})
       });
       console.log('Container configured');
     }
