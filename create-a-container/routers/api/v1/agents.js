@@ -20,7 +20,7 @@ const router = express.Router();
 // authenticate with an admin API key.
 router.post('/', requireLocalhostOrAdmin, asyncHandler(async (req, res) => {
   const { siteId, hostname, ipv4Address, services } = req.body || {};
-  const parsedSiteId = parseInt(siteId, 10);
+  const parsedSiteId = typeof siteId === 'number' ? siteId : Number(siteId);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {
     return fail(res, 422, 'validation_failed', 'siteId and hostname are required');
   }
