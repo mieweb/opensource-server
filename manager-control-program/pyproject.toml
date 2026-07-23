@@ -11,3 +11,11 @@ dependencies = [
 
 [project.scripts]
 "manager-control-program" = "manager_control_program.server:main"
+
+# Without a build-system, uv treats this as a virtual (non-installable)
+# project: `uv sync` never installs the package, so the console script above
+# doesn't exist and `uv run manager-control-program` / `uvx --from git+...`
+# fail to spawn.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
