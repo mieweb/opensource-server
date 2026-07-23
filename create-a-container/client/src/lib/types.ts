@@ -18,6 +18,7 @@ export interface Site {
 export interface Node {
   id: number;
   name: string;
+  nodeType: 'proxmox' | 'dummy' | 'docker';
   siteId: number;
   ipv4Address: string | null;
   apiUrl: string | null;

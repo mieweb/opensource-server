@@ -124,6 +124,13 @@ services:
     security_opt:
       - label=disable
       - seccomp=unconfined
+    healthcheck:
+      test: ["CMD", "curl", "-Ik", "https://10.254.0.2"]
+      interval: 30s
+      timeout: 30s
+      start_period: 60s
+      start_interval: 5s
+      retries: 5
     depends_on:
       pull-image:
         condition: service_completed_successfully

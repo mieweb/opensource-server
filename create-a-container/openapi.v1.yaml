@@ -90,7 +90,7 @@ components:
         id: { type: integer }
         hostname: { type: string }
         owner: { type: string, description: Username of the user who created the container }
-        containerId: { type: integer, nullable: true }
+        containerId: { type: string, nullable: true }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
         ipv4Address: { type: string, nullable: true }
@@ -129,9 +129,13 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
+        nodeType: { type: string, enum: [proxmox, dummy, docker] }
         siteId: { type: integer }
         ipv4Address: { type: string, nullable: true }
-        apiUrl: { type: string, nullable: true }
+        apiUrl:
+          type: string
+          nullable: true
+          description: Proxmox API URL or Docker host, e.g. unix:///var/run/docker.sock, tcp://host:2375, http://host:2375, https://host:2376
         tokenId: { type: string, nullable: true }
         tlsVerify: { type: boolean, nullable: true }
         imageStorage: { type: string }
@@ -139,6 +143,24 @@ components:
         networkBridge: { type: string }
         nvidiaAvailable: { type: boolean }
         hasSecret: { type: boolean }
+    NodeInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        nodeType: { type: string, enum: [proxmox, dummy, docker], default: proxmox }
+        ipv4Address: { type: string, nullable: true }
+        apiUrl:
+          type: string
+          nullable: true
+          description: Proxmox API URL or Docker host, e.g. unix:///var/run/docker.sock, tcp://host:2375, http://host:2375, https://host:2376
+        tokenId: { type: string, nullable: true }
+        secret: { type: string, nullable: true, format: password }
+        tlsVerify: { type: boolean, nullable: true }
+        imageStorage: { type: string }
+        volumeStorage: { type: string }
+        networkBridge: { type: string }
+        nvidiaAvailable: { type: boolean }
     Job:
       type: object
       properties:
@@ -344,6 +366,9 @@ paths:
                 customTemplate: { type: string }
                 entrypoint: { type: string }
                 nvidiaRequested: { type: boolean }
+                username:
+                  type: string
+                  description: '(Admin only) Create the container attributed to this existing user instead of the authenticated admin'
                 collaborators:
                   type: array
                   items: { type: string }
@@ -354,7 +379,9 @@ paths:
                 services:
                   type: object
                   additionalProperties: { type: object }
-      responses: { '201': { description: Creation job enqueued } }
+      responses:
+        '201': { description: Creation job enqueued }
+        '403': { description: 'forbidden — non-admins may not create containers for other users', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
       tags: [Containers]
@@ -378,9 +405,24 @@ paths:
     get: { tags: [Containers], responses: { '200': { description: Container } } }
     put:
       tags: [Containers]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: '(Admin only) Reassign ownership of this container to the specified existing user'
+                services: { type: object, additionalProperties: { type: object } }
+                environmentVars:
+                  type: array
+                  items: { type: object, properties: { key: { type: string }, value: { type: string } } }
+                entrypoint: { type: string }
+                restart: { type: boolean }
       responses:
         '200': { description: Updated, optional restart job }
-        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Containers]
       responses:
@@ -425,7 +467,14 @@ paths:
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
     get: { tags: [Nodes], responses: { '200': { description: Array of nodes } } }
-    post: { tags: [Nodes], responses: { '201': { description: Created (admin) } } }
+    post:
+      tags: [Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeInput' }
+      responses: { '201': { description: Created (admin) } }
   /sites/{siteId}/nodes/import:
     post:
       tags: [Nodes]
@@ -449,7 +498,14 @@ paths:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
     get: { tags: [Nodes], responses: { '200': { description: Node } } }
-    put: { tags: [Nodes], responses: { '200': { description: Updated (admin) } } }
+    put:
+      tags: [Nodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NodeInput' }
+      responses: { '200': { description: Updated (admin) } }
     delete: { tags: [Nodes], responses: { '204': { description: Deleted (admin) } } }
   /sites/{siteId}/nodes/{id}/storages:
     get:

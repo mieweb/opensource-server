@@ -1,10 +1,12 @@
 'use strict';
 const {
-  Model
+  Model,
+  Op
 } = require('sequelize');
 const https = require('https');
 const ProxmoxApi = require('../utils/proxmox-api');
 const DummyApi = require('../utils/dummy-api');
+const DockerApi = require('../utils/docker-api');
 
 module.exports = (sequelize, DataTypes) => {
   class Node extends Model {
@@ -24,6 +26,30 @@ module.exports = (sequelize, DataTypes) => {
       });
     }
 
+    hasApiAccess() {
+      if (this.nodeType === 'dummy') return true;
+      if (this.nodeType === 'docker') return !!this.apiUrl;
+      return !!(this.apiUrl && this.tokenId && this.secret);
+    }
+
+    static provisionableWhere() {
+      return {
+        [Op.or]: [
+          { nodeType: 'dummy' },
+          {
+            nodeType: 'docker',
+            apiUrl: { [Op.ne]: null },
+          },
+          {
+            nodeType: 'proxmox',
+            apiUrl: { [Op.ne]: null },
+            tokenId: { [Op.ne]: null },
+            secret: { [Op.ne]: null },
+          },
+        ],
+      };
+    }
+
     /**
      * Create an API client for this node, selected by `nodeType`.
      *
@@ -40,6 +66,13 @@ module.exports = (sequelize, DataTypes) => {
       // Dummy nodes have no real hypervisor; return the simulated client.
       if (this.nodeType === 'dummy') {
         return new DummyApi(this);
+      }
+
+      if (this.nodeType === 'docker') {
+        if (!this.apiUrl) {
+          throw new Error(`Node ${this.name}: Missing Docker configuration (apiUrl / DOCKER_HOST is required)`);
+        }
+        return new DockerApi(this);
       }
 
       if (!this.apiUrl || !this.tokenId || !this.secret) {

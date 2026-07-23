@@ -21,8 +21,9 @@ import type { Node } from '@/lib/types';
 
 const schema = z.object({
   name: z.string().min(1, 'Required'),
+  nodeType: z.enum(['proxmox', 'dummy', 'docker']).default('proxmox'),
   ipv4Address: z.string().optional(),
-  apiUrl: z.string().url('Must be a valid URL').or(z.literal('')).optional(),
+  apiUrl: z.string().optional(),
   tokenId: z.string().optional(),
   secret: z.string().optional(),
   tlsVerify: z.boolean().optional(),
@@ -49,6 +50,10 @@ export function NodeFormPage() {
   const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
+      name: '',
+      nodeType: 'proxmox',
+      ipv4Address: '',
+      apiUrl: '',
       tlsVerify: true,
       nvidiaAvailable: false,
       imageStorage: 'local',
@@ -58,11 +63,13 @@ export function NodeFormPage() {
   });
   const tlsVerify = watch('tlsVerify');
   const nvidiaAvailable = watch('nvidiaAvailable');
+  const nodeType = watch('nodeType');
 
   useEffect(() => {
     if (node) {
       reset({
         name: node.name,
+        nodeType: node.nodeType || 'proxmox',
         ipv4Address: node.ipv4Address || '',
         apiUrl: node.apiUrl || '',
         tokenId: node.tokenId || '',
@@ -107,8 +114,8 @@ export function NodeFormPage() {
         title={isEdit ? 'Edit node' : 'New node'}
         subtitle={
           isEdit
-            ? 'Update Proxmox connection details and storage settings.'
-            : 'Register a Proxmox node with API credentials and default storage.'
+            ? 'Update node connection details and storage settings.'
+            : 'Register a node with connection details and default storage.'
         }
         backTo={{ label: 'Back to nodes', to: `/sites/${siteId}/nodes` }}
         maxWidth="3xl"
@@ -135,6 +142,14 @@ export function NodeFormPage() {
           hasError={!!formState.errors.name}
           {...register('name')}
         />
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Node type</label>
+          <select className="border rounded-md px-3 py-2" {...register('nodeType')}>
+            <option value="proxmox">Proxmox</option>
+            <option value="docker">Docker</option>
+            <option value="dummy">Dummy</option>
+          </select>
+        </div>
         <Input
           label="IPv4 address"
           placeholder="10.0.0.1"
@@ -143,33 +158,40 @@ export function NodeFormPage() {
           {...register('ipv4Address')}
         />
         <Input
-          label="Proxmox API URL"
-          type="url"
-          placeholder="https://pve.example.com:8006"
+          label={nodeType === 'docker' ? 'Docker host' : 'Proxmox API URL'}
+          placeholder={
+            nodeType === 'docker'
+              ? 'unix:///var/run/docker.sock'
+              : 'https://pve.example.com:8006'
+          }
           error={formState.errors.apiUrl?.message}
           hasError={!!formState.errors.apiUrl}
           {...register('apiUrl')}
         />
-        <Input
-          label="API token ID"
-          placeholder="root@pam!my-token"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          {...register('tokenId')}
-        />
-        <Input
-          label="API token secret"
-          type="password"
-          autoComplete="new-password"
-          helperText={isEdit && node?.hasSecret ? 'Leave blank to keep existing secret' : undefined}
-          {...register('secret')}
-        />
-        <Switch
-          label="Verify TLS certificate"
-          checked={tlsVerify ?? true}
-          onCheckedChange={(c) => setValue('tlsVerify', c)}
-        />
+        {nodeType === 'proxmox' && (
+          <>
+            <Input
+              label="API token ID"
+              placeholder="root@pam!my-token"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              {...register('tokenId')}
+            />
+            <Input
+              label="API token secret"
+              type="password"
+              autoComplete="new-password"
+              helperText={isEdit && node?.hasSecret ? 'Leave blank to keep existing secret' : undefined}
+              {...register('secret')}
+            />
+            <Switch
+              label="Verify TLS certificate"
+              checked={tlsVerify ?? true}
+              onCheckedChange={(c) => setValue('tlsVerify', c)}
+            />
+          </>
+        )}
         <div className="grid gap-4 sm:grid-cols-3">
           <Input label="Image storage" required {...register('imageStorage')} />
           <Input label="Volume storage" required {...register('volumeStorage')} />

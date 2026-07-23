@@ -43,14 +43,3 @@ COPY interfaces /etc/network/interfaces
 
 # Set the entrypoint so all the Proxmox services will run
 ENTRYPOINT ["/sbin/init"]
-
-# The healthcheck checks for the Manager container to be up and running not just
-# the Proxmox. This is used to delay running the bootstrap script in the compose
-# file until the manager is ready for API calls.
-HEALTHCHECK \
-    --interval=30s \
-    --timeout=30s \
-    --start-period=60s \
-    --start-interval=5s \
-    --retries=5 \
-    CMD curl -Ik https://10.254.0.2

@@ -72,6 +72,34 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
+      - name: Docker Meta (Docker)
+        id: meta-docker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/docker
+          bake-target: docker
+          flavor: latest=false
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+
+      - name: Docker Meta (Docker + NodeJS)
+        id: meta-docker-nodejs
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/docker-nodejs
+          bake-target: docker-nodejs
+          flavor: latest=false
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+
       - name: Docker Meta (Docs)
         id: meta-docs
         uses: docker/metadata-action@v5
@@ -134,6 +162,8 @@ jobs:
             ./docker-bake.hcl
             ${{ steps.meta-base.outputs.bake-file }}
             ${{ steps.meta-nodejs.outputs.bake-file }}
+            ${{ steps.meta-docker.outputs.bake-file }}
+            ${{ steps.meta-docker-nodejs.outputs.bake-file }}
             ${{ steps.meta-docs.outputs.bake-file }}
             ${{ steps.meta-agent.outputs.bake-file }}
             ${{ steps.meta-manager.outputs.bake-file }}
@@ -143,6 +173,10 @@ jobs:
             base.cache-to=type=gha,mode=max,scope=base-${{ github.ref_name }}
             nodejs.cache-from=type=gha,scope=nodejs-${{ github.ref_name }}
             nodejs.cache-to=type=gha,mode=max,scope=nodejs-${{ github.ref_name }}
+            docker.cache-from=type=gha,scope=docker-${{ github.ref_name }}
+            docker.cache-to=type=gha,mode=max,scope=docker-${{ github.ref_name }}
+            docker-nodejs.cache-from=type=gha,scope=docker-nodejs-${{ github.ref_name }}
+            docker-nodejs.cache-to=type=gha,mode=max,scope=docker-nodejs-${{ github.ref_name }}
             docs.cache-from=type=gha,scope=docs-${{ github.ref_name }}
             docs.cache-to=type=gha,mode=max,scope=docs-${{ github.ref_name }}
             agent.cache-from=type=gha,scope=agent-${{ github.ref_name }}

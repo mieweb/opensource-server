@@ -1,0 +1,6 @@
+Name: Grant group memberships from /etc/security/group.conf (pam_group)
+Default: yes
+Priority: 0
+Auth-Type: Additional
+Auth:
+	optional			pam_group.so

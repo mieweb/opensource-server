@@ -1,0 +1,538 @@
+const axios = require('axios');
+
+const MANAGER_NODE_LABEL = 'org.mieweb.opensource-server.node-id';
+
+function isValidDockerHost(host) {
+  if (typeof host !== 'string' || host.trim() === '') return false;
+
+  try {
+    const url = new URL(host.trim());
+
+    if (url.protocol === 'unix:') {
+      return !!url.pathname && url.pathname !== '/';
+    }
+
+    if (url.protocol === 'tcp:') {
+      return !!url.hostname && !!url.port && (url.pathname === '' || url.pathname === '/');
+    }
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return !!url.hostname && (url.pathname === '' || url.pathname === '/');
+    }
+
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+function parseDockerHost(host) {
+  if (!isValidDockerHost(host)) {
+    throw new Error(
+      'Invalid Docker host. Supported formats: unix:///var/run/docker.sock, tcp://host:2375, http://host:2375, https://host:2376',
+    );
+  }
+
+  const raw = host.trim();
+  const url = new URL(raw);
+
+  if (url.protocol === 'unix:') {
+    return {
+      baseURL: 'http://docker',
+      socketPath: decodeURIComponent(url.pathname),
+    };
+  }
+
+  if (url.protocol === 'tcp:') {
+    return {
+      baseURL: `http://${url.host}`,
+    };
+  }
+
+  return {
+    baseURL: raw.replace(/\/$/, ''),
+  };
+}
+
+function parseEnvString(envStr) {
+  const env = {};
+  if (!envStr || typeof envStr !== 'string') return env;
+
+  for (const pair of envStr.split('\0')) {
+    const eq = pair.indexOf('=');
+    if (eq > 0) {
+      env[pair.substring(0, eq)] = pair.substring(eq + 1);
+    }
+  }
+
+  return env;
+}
+
+function envObjectToArray(envObj) {
+  return Object.entries(envObj || {}).map(([key, value]) => `${key}=${value}`);
+}
+
+function envArrayToObject(envArray) {
+  const env = {};
+  for (const pair of envArray || []) {
+    const eq = pair.indexOf('=');
+    if (eq > 0) {
+      env[pair.substring(0, eq)] = pair.substring(eq + 1);
+    }
+  }
+  return env;
+}
+
+function task(kind, id = '') {
+  return `docker:${kind}:${id}`;
+}
+
+function isSystemContainer(options = {}) {
+  const entrypoint = Array.isArray(options.entrypoint)
+    ? options.entrypoint.join(' ')
+    : options.entrypoint || '';
+
+  return entrypoint.includes('/sbin/init') || entrypoint.includes('systemd');
+}
+
+class DockerApi {
+  constructor(node = {}) {
+    if (!node.apiUrl) {
+      throw new Error('DockerApi requires node.apiUrl');
+    }
+
+    if (!node.id) {
+      throw new Error('DockerApi requires node.id');
+    }
+
+    if (!node.name) {
+      throw new Error('DockerApi requires node.name');
+    }
+
+    this.node = node;
+    const dockerConfig = parseDockerHost(node.apiUrl);
+
+    this.http = axios.create({
+      ...dockerConfig,
+      timeout: 120000,
+    });
+
+    this.lastPulledImage = null;
+  }
+
+  async request(method, url, options = {}) {
+    const response = await this.http.request({
+      method,
+      url,
+      params: options.params,
+      data: options.data,
+      responseType: options.responseType,
+    });
+    return response.data;
+  }
+
+  containerId(vmid) {
+    if (!vmid) {
+      throw new Error('Docker container id is required');
+    }
+
+    return String(vmid);
+  }
+
+  labels() {
+    return {
+      [MANAGER_NODE_LABEL]: String(this.node.id),
+    };
+  }
+
+  labelFilters(extra = {}) {
+    return JSON.stringify({
+      label: [
+        `${MANAGER_NODE_LABEL}=${String(this.node.id)}`,
+        ...Object.entries(extra).map(([k, v]) => `${k}=${v}`),
+      ],
+    });
+  }
+
+  async findContainerByVmid(vmid) {
+    const inspect = await this.inspectByVmid(vmid);
+    return { Id: inspect.Id };
+  }
+
+  async inspectByVmid(vmid) {
+    return this.request('get', `/containers/${this.containerId(vmid)}/json`);
+  }
+
+  async nextId() {
+    // Docker Engine assigns the real container ID during create.
+    return null;
+  }
+
+  async nodes() {
+    try {
+      const swarmNodes = await this.request('get', '/nodes');
+      return swarmNodes.map((n) => ({
+        node: n.Description?.Hostname || n.ID,
+        status: n.Status?.State === 'ready' ? 'online' : n.Status?.State || 'unknown',
+        type: 'node',
+      }));
+    } catch (err) {
+      if (err.response?.status && err.response.status !== 404 && err.response.status !== 503) {
+        throw err;
+      }
+
+      const info = await this.request('get', '/info');
+      return [
+        {
+          node: this.node.name,
+          status: 'online',
+          type: 'node',
+          id: info.ID,
+        },
+      ];
+    }
+  }
+
+  async nodeNetwork(nodeName) {
+    try {
+      const swarmNodes = await this.request('get', '/nodes');
+      const swarmNode = swarmNodes.find((n) => n.Description?.Hostname === nodeName || n.ID === nodeName);
+
+      if (!swarmNode) return [];
+
+      const inspected = await this.request('get', `/nodes/${swarmNode.ID}`);
+      const address = inspected.Status?.Addr || null;
+
+      return address
+        ? [
+            {
+              iface: 'docker-swarm',
+              type: 'docker',
+              active: true,
+              address,
+            },
+          ]
+        : [];
+    } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 503) {
+        return [];
+      }
+
+      throw err;
+    }
+  }
+
+  async clusterResources(type = null) {
+    if (type && type !== 'lxc' && type !== 'vm') return [];
+
+    const containers = await this.request('get', '/containers/json', {
+      params: {
+        all: true,
+        filters: this.labelFilters(),
+      },
+    });
+
+    return containers.map((c) => ({
+      vmid: c.Id,
+      name: (c.Names?.[0] || '').replace(/^\//, ''),
+      type: 'lxc',
+      status: c.State === 'running' ? 'running' : 'stopped',
+      node: this.node.name,
+    }));
+  }
+
+  async datastores() {
+    return [
+      {
+        storage: 'docker',
+        type: 'docker',
+        content: 'container',
+        enabled: 1,
+        active: 1,
+        total: 0,
+        avail: 0,
+        used: 0,
+      },
+    ];
+  }
+
+  async storageContents() {
+    // Docker images are cached by Docker Engine itself. The create-container job
+    // uses storageContents() to skip Proxmox OCI pulls, but Docker's image create
+    // endpoint already reuses local images/layers when available.
+    return [];
+  }
+
+  async pullOciImage(node, storage, options = {}) {
+    const image = options.reference;
+    if (!image) throw new Error('Docker image reference is required');
+
+    this.lastPulledImage = image;
+
+    const stream = await this.request('post', '/images/create', {
+      params: { fromImage: image },
+      responseType: 'stream',
+    });
+
+    await new Promise((resolve, reject) => {
+      stream.on('data', () => {});
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+
+    return task('pull', image);
+  }
+
+  async createLxc(node, options = {}) {
+    if (!this.lastPulledImage) {
+      throw new Error('No Docker image has been pulled for this create operation');
+    }
+
+    const vmid = options.vmid;
+    const name = options.hostname || `manager-${vmid}`;
+
+    const body = {
+      Image: this.lastPulledImage,
+      Hostname: name,
+      Labels: this.labels(),
+      Env: [],
+      HostConfig: {
+        NetworkMode: 'bridge',
+      },
+    };
+
+    if (isSystemContainer(options)) {
+      body.HostConfig.Privileged = true;
+      body.HostConfig.CgroupnsMode = 'host';
+      body.HostConfig.Tmpfs = {
+        '/run': 'rw,nosuid,nodev,mode=755',
+        '/run/lock': 'rw,nosuid,nodev,noexec,mode=755',
+        '/tmp': 'rw,nosuid,nodev',
+      };
+    }
+
+    if (options.memory) {
+      body.HostConfig.Memory = Number(options.memory) * 1024 * 1024;
+    }
+
+    if (options.cores) {
+      body.HostConfig.NanoCpus = Number(options.cores) * 1000000000;
+    }
+
+    const created = await this.request('post', '/containers/create', {
+      params: { name },
+      data: body,
+    });
+
+    return task('create', created.Id);
+  }
+
+  async getLxcTemplates() {
+    return [];
+  }
+
+  async cloneLxc() {
+    throw new Error('Docker nodes do not support cloning Proxmox LXC templates; use a Docker image template');
+  }
+
+  async lxcConfig(node, vmid) {
+    const inspect = await this.inspectByVmid(vmid);
+
+    const network = Object.values(inspect.NetworkSettings?.Networks || {})[0] || {};
+    const env = (inspect.Config?.Env || []).join('\0');
+    const entrypoint = Array.isArray(inspect.Config?.Entrypoint)
+      ? inspect.Config.Entrypoint.join(' ')
+      : inspect.Config?.Entrypoint || null;
+
+    return {
+      hostname: inspect.Config?.Hostname || inspect.Name?.replace(/^\//, ''),
+      env,
+      entrypoint,
+      cores: inspect.HostConfig?.NanoCpus
+        ? Math.round(inspect.HostConfig.NanoCpus / 1000000000)
+        : null,
+      memory: inspect.HostConfig?.Memory
+        ? Math.round(inspect.HostConfig.Memory / 1024 / 1024)
+        : null,
+      rootfs: null,
+      net0: `name=eth0,hwaddr=${network.MacAddress || ''},ip=${network.IPAddress || 'dhcp'},bridge=docker0`,
+    };
+  }
+
+  async recreateForConfig(vmid, config = {}) {
+    const containerId = this.containerId(vmid);
+    const inspect = await this.inspectByVmid(containerId);
+
+    const wasRunning = inspect.State?.Running;
+    const name = inspect.Name?.replace(/^\//, '') || inspect.Config?.Hostname || `manager-${containerId}`;
+
+    const env = envArrayToObject(inspect.Config?.Env || []);
+    const deleteList = typeof config.delete === 'string' ? config.delete.split(',') : [];
+
+    if (deleteList.includes('env')) {
+      for (const key of Object.keys(env)) delete env[key];
+    }
+
+    Object.assign(env, parseEnvString(config.env));
+
+    let entrypoint = inspect.Config?.Entrypoint || undefined;
+    if (deleteList.includes('entrypoint')) entrypoint = undefined;
+    if (config.entrypoint) entrypoint = config.entrypoint.split(' ');
+
+    if (wasRunning) {
+      await this.request('post', `/containers/${containerId}/stop`).catch(() => {});
+    }
+
+    await this.request('delete', `/containers/${containerId}`, {
+      params: { force: true },
+    });
+
+    const body = {
+      Image: inspect.Config.Image,
+      Hostname: inspect.Config.Hostname,
+      Labels: {
+        ...(inspect.Config.Labels || {}),
+        [MANAGER_NODE_LABEL]: String(this.node.id),
+      },
+      Env: envObjectToArray(env),
+      Entrypoint: entrypoint,
+      HostConfig: {
+        ...(inspect.HostConfig || {}),
+        NetworkMode: inspect.HostConfig?.NetworkMode || 'bridge',
+      },
+    };
+
+    delete body.HostConfig.Binds;
+    delete body.HostConfig.Mounts;
+    delete body.HostConfig.PortBindings;
+    delete body.HostConfig.CpuPeriod;
+    delete body.HostConfig.CpuQuota;
+
+    const created = await this.request('post', '/containers/create', {
+      params: { name },
+      data: body,
+    });
+
+    return created.Id;
+  }
+
+  async updateLxcConfig(node, vmid, config = {}) {
+    const hasContainerConfigChanges =
+      config.env !== undefined ||
+      config.entrypoint !== undefined ||
+      String(config.delete || '').includes('env') ||
+      String(config.delete || '').includes('entrypoint');
+
+    let containerId = this.containerId(vmid);
+
+    if (hasContainerConfigChanges) {
+      containerId = await this.recreateForConfig(containerId, config);
+    }
+
+    const update = {};
+
+    if (config.memory) update.Memory = Number(config.memory) * 1024 * 1024;
+    if (config.cores) update.NanoCpus = Number(config.cores) * 1000000000;
+
+    if (Object.keys(update).length > 0) {
+      await this.request('post', `/containers/${containerId}/update`, {
+        data: update,
+      });
+    }
+
+    return task(hasContainerConfigChanges ? 'recreate' : 'update', containerId);
+  }
+
+  async startLxc(node, vmid) {
+    const containerId = this.containerId(vmid);
+    await this.request('post', `/containers/${containerId}/start`);
+    return task('start', containerId);
+  }
+
+  async stopLxc(node, vmid) {
+    const containerId = this.containerId(vmid);
+    await this.request('post', `/containers/${containerId}/stop`).catch((err) => {
+      if (err.response?.status !== 304) throw err;
+    });
+    return task('stop', containerId);
+  }
+
+  async getLxcStatus(node, vmid) {
+    const inspect = await this.inspectByVmid(vmid);
+    return {
+      status: inspect.State?.Running ? 'running' : 'stopped',
+      vmid,
+    };
+  }
+
+  async deleteContainer(node, vmid, force = false) {
+    await this.request('delete', `/containers/${this.containerId(vmid)}`, {
+      params: { force: !!force },
+    });
+    return { data: null };
+  }
+
+  async waitForTask() {
+    // Docker Engine API calls used here either complete synchronously or stream
+    // until completion before returning. There is no Proxmox-style background UPID
+    // to poll, so this satisfies the shared NodeApi task contract as a no-op.
+    return { status: 'stopped', exitstatus: 'OK' };
+  }
+
+  async lxcInterfaces(node, vmid) {
+    const inspect = await this.inspectByVmid(vmid);
+    const network = Object.values(inspect.NetworkSettings?.Networks || {})[0] || {};
+
+    return [
+      {
+        name: 'eth0',
+        hwaddr: network.MacAddress || null,
+        inet: network.IPAddress ? `${network.IPAddress}/24` : null,
+        'ip-addresses': network.IPAddress
+          ? [{ 'ip-address-type': 'inet', 'ip-address': network.IPAddress }]
+          : [],
+      },
+    ];
+  }
+
+  async getLxcMacAddress(node, vmid) {
+    const interfaces = await this.lxcInterfaces(node, vmid);
+    return interfaces[0]?.hwaddr || null;
+  }
+
+  async getLxcIpAddress(node, vmid, maxRetries = 10, retryDelay = 3000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      const interfaces = await this.lxcInterfaces(node, vmid);
+      const ip = interfaces[0]?.['ip-addresses']?.[0]?.['ip-address'];
+
+      if (ip) return ip;
+
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    }
+
+    return null;
+  }
+
+  async getLxcNetworkInfo(node, vmid) {
+    const interfaces = await this.lxcInterfaces(node, vmid);
+    const eth0 = interfaces[0];
+
+    return {
+      macAddress: eth0?.hwaddr || null,
+      ipv4Address: eth0?.['ip-addresses']?.[0]?.['ip-address'] || null,
+    };
+  }
+
+  async updateAcl() {
+    // Docker has no Proxmox-style ACL path. No-op to keep NodeApi contract.
+  }
+
+  async syncLdapRealm() {
+    // Docker has no Proxmox LDAP realm. No-op to keep NodeApi contract.
+  }
+}
+
+module.exports = DockerApi;
+module.exports.isValidDockerHost = isValidDockerHost;

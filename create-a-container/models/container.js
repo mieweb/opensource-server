@@ -326,7 +326,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     containerId: {
-      type: DataTypes.INTEGER.UNSIGNED,
+      type: DataTypes.STRING(255),
       allowNull: true
     },
     macAddress: {

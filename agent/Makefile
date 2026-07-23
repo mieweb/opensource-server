@@ -13,7 +13,7 @@ INSTALL_DATA := $(INSTALL) -m 0644
 
 ERROR_PAGES := ../error-pages
 
-.PHONY: help deps build dev install deb rpm apk package clean
+.PHONY: help deps build dev test install deb rpm apk package clean
 
 help:
 	@echo "agent — builds the opensource-agent package."
@@ -21,6 +21,7 @@ help:
 	@echo "Targets:"
 	@echo "  deps     install dependencies (npm ci)"
 	@echo "  build    compile the TypeScript sources"
+	@echo "  test     run tests (none yet)"
 	@echo "  install  stage files into DESTDIR (default /)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
@@ -40,6 +41,9 @@ build: deps
 	npm prune --omit=dev
 
 dev: build
+
+# No test suite yet; kept as a no-op so the repo-wide `make test` passes.
+test:
 
 install: build
 	$(INSTALL) -d $(DESTBIN)
