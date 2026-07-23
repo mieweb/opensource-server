@@ -20,9 +20,12 @@ uv sync
 | Variable | Required | Description |
 |---|---|---|
 | `API_BASE_URL` | **Yes** | Base URL of the `create-a-container` instance (e.g., `https://containers.example.com`) |
-| `AUTH_TOKEN` | **Yes** | Bearer token for API authentication (create one at `/apikeys` in `create-a-container`) |
+| `AUTH_TOKEN` | stdio only | Bearer token for API authentication (create one at `/apikeys` in `create-a-container`). Not needed in HTTP mode, where each caller sends their own token |
+| `SERVER_TRANSPORT` | No | `stdio` (default), `http` (streamable HTTP), or `sse` (legacy) |
+| `SERVER_HOST` | No | Bind address in HTTP mode (default `127.0.0.1`) |
+| `SERVER_PORT` | No | Port in HTTP mode (default `8000`) |
 
-The server automatically sets `API_SPEC_URL` to `${API_BASE_URL}/api/openapi.json` and `AUTH_TYPE` to `bearer`.
+The server automatically sets `API_SPEC_URL` to `${API_BASE_URL}/api/openapi.json`, and `AUTH_TYPE` to `bearer` (stdio) or `none` (HTTP).
 
 ## Usage
 
@@ -63,11 +66,39 @@ Add to your MCP client config (e.g., Claude Desktop, VS Code):
 }
 ```
 
+### HTTP Mode (Shared Server, Per-Request Auth)
+
+Run one shared MCP server over streamable HTTP instead of one stdio process per client:
+
+```bash
+API_BASE_URL=https://containers.example.com SERVER_TRANSPORT=http SERVER_PORT=8000 \
+  uv run manager-control-program
+```
+
+In HTTP mode no `AUTH_TOKEN` is needed at startup. Instead, each MCP client sends its own API key in the `Authorization` header, and the server forwards that header to the API on every request — so every caller acts under their own identity and permissions:
+
+```json
+{
+  "mcpServers": {
+    "container-manager": {
+      "url": "http://mcp.example.com:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-key"
+      }
+    }
+  }
+}
+```
+
+Requests without an `Authorization` header are rejected by the API (401) unless you explicitly configure a static fallback by setting `AUTH_TYPE=bearer` and `AUTH_TOKEN` alongside `SERVER_TRANSPORT=http`.
+
+> **Note:** The MCP server itself does not validate tokens — it forwards them for the API to verify. Bind it to `127.0.0.1` (the default) or otherwise restrict network access, and use HTTPS via a reverse proxy if exposing it beyond localhost.
+
 ## How It Works
 
 ```mermaid
 graph LR
-    A[MCP Client<br/>e.g. Claude] -->|MCP protocol<br/>stdio| B[manager-control-program]
+    A[MCP Client<br/>e.g. Claude] -->|MCP protocol<br/>stdio or HTTP| B[manager-control-program]
     B -->|GET /api/openapi.json| C[create-a-container]
     B -->|REST API calls<br/>Bearer auth| C
 ```
