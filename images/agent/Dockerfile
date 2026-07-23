@@ -5,29 +5,13 @@ FROM nodejs
 # opensource-* packages automatically
 COPY images/opensource-server.sources /etc/apt/sources.list.d/opensource-server.sources
 
-# Install the agent package (and its dependencies: nginx with stream +
-# ModSecurity modules, dnsmasq, ...) built by the builder image.
+# Install the agent package (and its dependencies: nginx with the stream
+# module, dnsmasq, ...) built by the builder image.
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
     apt-get install -y /dist/opensource-agent_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# configure nginx ModSecurity defaults
-RUN sed -i \
-        -e 's!^#\(include /usr/share/modsecurity-crs/owasp-crs.load\)$!\1!' \
-        /etc/nginx/modsecurity_includes.conf \
-    && sed -i -e 's/IncludeOptional/Include/' /usr/share/modsecurity-crs/owasp-crs.load \
-    && sed -i -e 's/^SecRuleEngine .*$/SecRuleEngine DetectionOnly/' /etc/nginx/modsecurity.conf
-
-# Logrotate overrides for NGINX and ModSecurity to work around a logrotate
-# repoen bug at https://github.com/owasp-modsecurity/ModSecurity-nginx/issues/351
-COPY ./images/agent/nginx.logrotate /etc/logrotate.d/nginx
-
-# Apply custom ModSecurity configurations. See the blame on that file for
-# details on what's been changed from stock.
-COPY ./images/agent/crs-setup.conf /etc/modsecurity/crs/crs-setup.conf
-COPY ./images/agent/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf /etc/modsecurity/crs/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
 # Configure DNSMasq to only get its config from our agent
 RUN sed -i \
