@@ -20,7 +20,7 @@ import {
   Tooltip,
   useToast,
 } from '@mieweb/ui';
-import { Container, Dices, Plus, Search, Trash2 } from 'lucide-react';
+import { Container, Dices, ExternalLink, Plus, Search, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { useSession } from '@/lib/auth';
@@ -94,12 +94,34 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+// Built-in templates. `definition` points to the source that defines the image
+// (Dockerfile directory) so users can inspect installed packages and versions.
 const COMMON_TEMPLATES = [
-  { value: 'ghcr.io/mieweb/opensource-server/base:latest', label: 'Debian 13' },
-  { value: 'ghcr.io/mieweb/opensource-server/nodejs:latest', label: 'NodeJS 24' },
-  { value: 'ghcr.io/mieweb/opensource-server/docker:latest', label: 'Debian 13 + Docker' },
-  { value: 'ghcr.io/mieweb/opensource-server/docker-nodejs:latest', label: 'NodeJS 24 + Docker' },
-  { value: 'ghcr.io/mieweb/ozwell-studio:latest', label: 'Ozwell Studio' },
+  {
+    value: 'ghcr.io/mieweb/opensource-server/base:latest',
+    label: 'Debian 13',
+    definition: 'https://github.com/mieweb/opensource-server/tree/main/images/base',
+  },
+  {
+    value: 'ghcr.io/mieweb/opensource-server/nodejs:latest',
+    label: 'NodeJS 24',
+    definition: 'https://github.com/mieweb/opensource-server/tree/main/images/nodejs',
+  },
+  {
+    value: 'ghcr.io/mieweb/opensource-server/docker:latest',
+    label: 'Debian 13 + Docker',
+    definition: 'https://github.com/mieweb/opensource-server/tree/main/images/docker',
+  },
+  {
+    value: 'ghcr.io/mieweb/opensource-server/docker-nodejs:latest',
+    label: 'NodeJS 24 + Docker',
+    definition: 'https://github.com/mieweb/opensource-server/tree/main/images/docker',
+  },
+  {
+    value: 'ghcr.io/mieweb/ozwell-studio:latest',
+    label: 'Ozwell Studio',
+    definition: 'https://github.com/mieweb/ozwell-studio',
+  },
 ];
 
 const sectionCardClass = 'overflow-hidden shadow-sm';
@@ -478,6 +500,21 @@ export function ContainerFormPage() {
                 {metadataMsg && (
                   <p className="text-xs text-muted-foreground">{metadataMsg}</p>
                 )}
+                {(() => {
+                  const definition = COMMON_TEMPLATES.find((t) => t.value === template)?.definition;
+                  if (!definition) return null;
+                  return (
+                    <a
+                      href={definition}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-fit items-center gap-1 text-xs text-(--color-primary,#1d4ed8) hover:underline"
+                    >
+                      <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+                      <span>View template definition</span>
+                    </a>
+                  );
+                })()}
               </>
             )}
             <Input
