@@ -7,6 +7,10 @@ export type CheckinResult =
   | { notModified: true }
   | { notModified: false; etag?: string; config: SiteConfig };
 
+// Fail fast if the manager is unreachable or the connection stalls, so the
+// oneshot unit exits predictably instead of hanging and queueing timer runs.
+const CHECKIN_TIMEOUT_MS = 30_000;
+
 export async function checkin(
   cfg: AgentConfig,
   body: CheckinRequest,
@@ -20,6 +24,7 @@ export async function checkin(
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(CHECKIN_TIMEOUT_MS),
   });
 
   if (res.status === 304) return { notModified: true };

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
   AlertDescription,
-  Badge,
   PageHeader,
   Spinner,
   Table,
@@ -18,9 +17,7 @@ import { keys, queries } from '@/lib/queries';
 import type { Agent } from '@/lib/types';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { AgentServiceBadges } from './AgentServiceBadges';
-
-// Agents check in every 30 seconds; three missed intervals means offline.
-const OFFLINE_AFTER_SECONDS = 90;
+import { OnlineBadge } from './OnlineBadge';
 
 function formatLastCheckin(agent: Agent): string {
   const seconds = agent.secondsSinceCheckin;
@@ -29,16 +26,6 @@ function formatLastCheckin(agent: Agent): string {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return new Date(agent.lastCheckinAt).toLocaleString();
-}
-
-function OnlineBadge({ agent }: { agent: Agent }) {
-  const online =
-    agent.secondsSinceCheckin !== null && agent.secondsSinceCheckin <= OFFLINE_AFTER_SECONDS;
-  return online ? (
-    <Badge variant="success">Online</Badge>
-  ) : (
-    <Badge variant="danger">Offline</Badge>
-  );
 }
 
 export function AgentsListPage() {

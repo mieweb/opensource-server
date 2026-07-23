@@ -1,8 +1,9 @@
 /**
  * Managed services: how to render, test, apply and reload each service's
- * configuration. Files are written in place with backup/rollback — if the
- * test command rejects the new config, the previous files are restored and
- * the apply is reported as a failure at the next check-in.
+ * configuration. Files are written atomically (temp file + rename) with
+ * backup/rollback — if the test command rejects the new config, the
+ * previous files are restored and the apply is reported as a failure at the
+ * next check-in.
  */
 
 import fs from 'fs';
@@ -92,6 +93,14 @@ function readIfExists(file: string): string | null {
   }
 }
 
+// Write via temp file + rename so a crash mid-write can never leave a
+// truncated config on disk.
+function writeFileAtomic(dest: string, content: string): void {
+  const tmp = `${dest}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, dest);
+}
+
 export async function applyService(svc: ManagedService, config: SiteConfig): Promise<ApplyResult> {
   const files = await svc.render(config);
   if (!files) return 'success';
@@ -103,13 +112,13 @@ export async function applyService(svc: ManagedService, config: SiteConfig): Pro
   // Stage the new files (previous contents kept in memory for rollback).
   for (const f of files) {
     fs.mkdirSync(path.dirname(f.dest), { recursive: true });
-    fs.writeFileSync(f.dest, f.content);
+    writeFileAtomic(f.dest, f.content);
   }
 
   const rollback = () => {
     for (const [dest, prev] of current) {
       if (prev === null) fs.rmSync(dest, { force: true });
-      else fs.writeFileSync(dest, prev);
+      else writeFileAtomic(dest, prev);
     }
   };
 

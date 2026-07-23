@@ -74,7 +74,7 @@ function requireAdmin(req, res, next) {
 }
 
 // True when the request comes directly from localhost (and was not proxied
-// on behalf of a remote client, per X-Real-IP).
+// on behalf of a remote client, per X-Real-IP / X-Forwarded-For).
 function isLocalhostRequest(req) {
   const isLocalhost = (ip) => {
     return ip === '127.0.0.1' || 
@@ -88,23 +88,13 @@ function isLocalhostRequest(req) {
                    req.ip;
 
   const realIp = req.get('X-Real-IP');
+  // First hop of X-Forwarded-For is the original client (covers proxies that
+  // set it without also setting X-Real-IP).
+  const forwardedFor = (req.get('X-Forwarded-For') || '').split(',')[0].trim();
 
-  return isLocalhost(directIp) && (!realIp || isLocalhost(realIp));
-}
-
-// Localhost-or-admin middleware
-// Allows localhost requests through without auth. Remote requests must authenticate
-// as an admin user (via session or API key).
-function requireLocalhostOrAdmin(req, res, next) {
-  if (isLocalhostRequest(req)) {
-    return next();
-  }
-
-  // Not localhost — require auth + admin
-  requireAuth(req, res, (err) => {
-    if (err) return next(err);
-    requireAdmin(req, res, next);
-  });
+  return isLocalhost(directIp)
+    && (!realIp || isLocalhost(realIp))
+    && (!forwardedFor || isLocalhost(forwardedFor));
 }
 
 const { setCurrentSite, loadSites } = require('./currentSite');
@@ -114,7 +104,6 @@ module.exports = {
   isLocalhostRequest,
   requireAuth, 
   requireAdmin, 
-  requireLocalhostOrAdmin,
   setCurrentSite, 
   loadSites 
 };
