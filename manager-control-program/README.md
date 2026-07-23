@@ -25,6 +25,23 @@ API_BASE_URL=https://containers.example.com AUTH_TOKEN=your-api-key uv run manag
 End users don't need a clone — `uvx` runs it straight from git (see the
 [MCP Server guide](../mie-opensource-landing/docs/users/mcp-server.md)).
 
+### Production (packaged)
+
+This component ships inside the `opensource-server` package built by
+[create-a-container](../create-a-container/): its `make install` calls this
+directory's `install` target, which stages the app at
+`/opt/opensource-server/manager-control-program` with **all Python
+dependencies vendored** (uv exports the lockfile and installs prebuilt wheels
+for Debian 13 / amd64 / CPython 3.13). The target host needs only
+`/usr/bin/python3` — no uv, pip, venv, or network access.
+
+It runs as the `manager-control-program.service` systemd unit: HTTP transport
+on `127.0.0.1:8100`, started via `python3 -m manager_control_program.server`
+with `PYTHONPATH` pointed at the vendored directory. The Manager
+reverse-proxies `/mcp` to it, so MCP clients connect through the Manager's
+public origin with TLS. Optional overrides (e.g. `SERVER_PORT`) go in
+`/etc/default/manager-control-program`.
+
 ## Configuration
 
 Configuration is read from environment variables:

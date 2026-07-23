@@ -101,6 +101,9 @@ install: build
 	$(INSTALL_DATA) contrib/systemd/job-runner.service $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
 	$(INSTALL_DATA) contrib/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
+	# The MCP server ships inside this package (vendored Python deps, no uv
+	# on the target); the Manager proxies /mcp to it (see MCP_SERVER_URL).
+	$(MAKE) -C ../manager-control-program install DESTDIR=$(DESTDIR) PREFIX=$(PREFIX)
 
 PACKAGER ?= deb
 package:

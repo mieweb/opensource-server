@@ -5,7 +5,7 @@ Use the MCP (Model Context Protocol) server to manage your containers through AI
 There are two ways to use it:
 
 - **Run it locally (stdio)** — VS Code launches a private copy of the server for you, authenticated with your API key from the environment.
-- **Connect to a shared server (HTTP)** — someone hosts one MCP server for everyone; you connect to its URL and send your own API key with each request.
+- **Connect to the built-in server (HTTP)** — packaged deployments already serve MCP at `{{ manager_url }}/mcp`; you just send your API key with each request. Nothing to install, so start here.
 
 **Prerequisites:**
 - VS Code with an MCP-capable AI extension (e.g., [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), [Claude for VS Code](https://marketplace.visualstudio.com/items?itemName=AnthropicPublicBeta.claude-for-vscode))
@@ -46,16 +46,16 @@ Open your VS Code settings (`Ctrl+Shift+P` → "Preferences: Open User Settings 
 
     You can also add this to a **workspace-level** `.vscode/settings.json` to share the config with your team (omit `AUTH_TOKEN` and set it as a system environment variable instead).
 
-## Option B: Connect to a Shared Server (HTTP)
+## Option B: Connect to the Built-in Server (HTTP)
 
-If a shared MCP server is available, you don't need `uv` or any local install — point VS Code at its URL and send your API key in the `Authorization` header. The server forwards that header to the API on every request, so you act under your own account and permissions:
+Every packaged deployment ships the MCP server as a system service and exposes it at `/mcp` on the same domain as the web UI. Nothing to install — point VS Code at that URL and send your API key in the `Authorization` header. Your key is forwarded to the API on every request, so you act under your own account and permissions:
 
 ```json
 {
   "mcp": {
     "servers": {
       "container-manager": {
-        "url": "https://your-mcp-host:8000/mcp",
+        "url": "{{ manager_url }}/mcp",
         "headers": {
           "Authorization": "Bearer your-api-key"
         }
@@ -65,9 +65,16 @@ If a shared MCP server is available, you don't need `uv` or any local install �
 }
 ```
 
-### Hosting a Shared Server
+### How the Built-in Server Is Hosted
 
-Start the server with an HTTP transport instead of the default stdio:
+The `opensource-server` package installs the MCP server with vendored Python dependencies at `/opt/opensource-server/manager-control-program` and runs it as the `manager-control-program.service` systemd unit, listening on loopback (`127.0.0.1:8100`). The Manager reverse-proxies `/mcp` to it, providing the public hostname and TLS. It is enabled by default; admins can:
+
+- override settings (e.g. `SERVER_PORT`) in `/etc/default/manager-control-program`, then restart the service
+- disable it entirely with `systemctl disable --now manager-control-program.service` (and unset `MCP_SERVER_URL` for `container-creator.service` to remove the proxy route)
+
+### Hosting a Standalone Server
+
+Outside a packaged deployment, the same HTTP mode runs anywhere `uv` is available:
 
 ```bash
 API_BASE_URL=https://your-server-domain SERVER_TRANSPORT=http \
