@@ -8,7 +8,7 @@ SITE_DEST := $(DESTDIR)$(PREFIX)/mie-opensource-landing/site
 
 STAGE := $(CURDIR)/.pkg/buildroot
 
-.PHONY: help deps build dev install deb rpm apk package clean
+.PHONY: help deps build dev test install deb rpm apk package clean
 
 help:
 	@echo "mie-opensource-landing — builds the opensource-docs package."
@@ -18,6 +18,7 @@ help:
 	@echo "  build    build the documentation site (zensical build)"
 	@echo "  install  stage the site into DESTDIR (default /)"
 	@echo "  dev      run the live-reloading docs server (zensical serve)"
+	@echo "  test     run tests (none; the docs site is validated by build)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
 	@echo "  apk      build the .apk package"
@@ -34,6 +35,11 @@ build: deps
 
 dev: deps
 	uv run zensical serve
+
+# No test suite; the site is validated by `build` (zensical build fails on
+# broken config/references). Kept as a no-op so the repo-wide `make test`
+# loop stays uniform.
+test:
 
 install: build
 	install -d $(SITE_DEST)
