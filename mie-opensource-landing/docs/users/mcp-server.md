@@ -1,13 +1,18 @@
-# MCP Server for VS Code
+# MCP Server
 
 Use the MCP (Model Context Protocol) server to manage your containers through AI assistants like GitHub Copilot or Claude directly inside VS Code.
 
+There are two ways to use it:
+
+- **Run it locally (stdio)** — VS Code launches a private copy of the server for you, authenticated with your API key from the environment.
+- **Connect to a shared server (HTTP)** — someone hosts one MCP server for everyone; you connect to its URL and send your own API key with each request.
+
 **Prerequisites:**
 - VS Code with an MCP-capable AI extension (e.g., [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), [Claude for VS Code](https://marketplace.visualstudio.com/items?itemName=AnthropicPublicBeta.claude-for-vscode))
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) installed
 - An API key from [your server]({{ manager_url }}/apikeys) (see [API Keys](./creating-containers/api-keys.md))
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) installed (local stdio mode only)
 
-## 1. Configure VS Code
+## Option A: Run It Locally (stdio)
 
 Open your VS Code settings (`Ctrl+Shift+P` → "Preferences: Open User Settings (JSON)") and add the MCP server:
 
@@ -41,11 +46,52 @@ Open your VS Code settings (`Ctrl+Shift+P` → "Preferences: Open User Settings 
 
     You can also add this to a **workspace-level** `.vscode/settings.json` to share the config with your team (omit `AUTH_TOKEN` and set it as a system environment variable instead).
 
-## 2. Verify the Connection
+## Option B: Connect to a Shared Server (HTTP)
+
+If a shared MCP server is available, you don't need `uv` or any local install — point VS Code at its URL and send your API key in the `Authorization` header. The server forwards that header to the API on every request, so you act under your own account and permissions:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "container-manager": {
+        "url": "https://your-mcp-host:8000/mcp",
+        "headers": {
+          "Authorization": "Bearer your-api-key"
+        }
+      }
+    }
+  }
+}
+```
+
+### Hosting a Shared Server
+
+Start the server with an HTTP transport instead of the default stdio:
+
+```bash
+API_BASE_URL=https://your-server-domain SERVER_TRANSPORT=http \
+  uvx --from "manager-control-program @ git+https://github.com/mieweb/opensource-server.git#subdirectory=manager-control-program" \
+  manager-control-program
+```
+
+| Variable | Description |
+|----------|-------------|
+| `SERVER_TRANSPORT` | `http` (streamable HTTP), or `sse` for legacy clients. Defaults to `stdio` |
+| `SERVER_HOST` | Bind address (default `127.0.0.1`) |
+| `SERVER_PORT` | Port (default `8000`) |
+
+No `AUTH_TOKEN` is required at startup: each caller authenticates with their own key, and requests without an `Authorization` header are rejected by the API.
+
+!!! warning
+
+    The MCP server forwards tokens without validating them and serves plain HTTP. If you expose it beyond localhost, put it behind an HTTPS reverse proxy and restrict who can reach it.
+
+## Verify the Connection
 
 After saving the config, restart VS Code. Open the MCP server list (`Ctrl+Shift+P` → "MCP: List Servers") to confirm `container-manager` shows a green status.
 
-## 3. Use It
+## Use It
 
 Ask your AI assistant to interact with your containers using natural language. Example prompts:
 
