@@ -16,6 +16,7 @@ import { NodeFormPage } from '@/pages/nodes/NodeFormPage';
 import { NodeImportPage } from '@/pages/nodes/NodeImportPage';
 import { ExternalDomainsListPage } from '@/pages/external-domains/ExternalDomainsListPage';
 import { ExternalDomainFormPage } from '@/pages/external-domains/ExternalDomainFormPage';
+import { AgentsListPage } from '@/pages/agents/AgentsListPage';
 import { JobDetailPage } from '@/pages/jobs/JobDetailPage';
 import { UsersListPage } from '@/pages/users/UsersListPage';
 import { UserFormPage } from '@/pages/users/UserFormPage';
@@ -64,6 +65,8 @@ export const router = createBrowserRouter([
           { path: '/external-domains', element: <ExternalDomainsListPage /> },
           { path: '/external-domains/new', element: <ExternalDomainFormPage /> },
           { path: '/external-domains/:id/edit', element: <ExternalDomainFormPage /> },
+
+          { path: '/agents', element: <AgentsListPage /> },
 
           { path: '/jobs/:id', element: <JobDetailPage /> },
 

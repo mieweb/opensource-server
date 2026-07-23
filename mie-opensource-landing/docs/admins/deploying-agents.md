@@ -16,7 +16,7 @@ Agents are deployed **manually in Proxmox** (not through the manager UI) and sho
 
 ```mermaid
 graph LR
-    A[Configure site<br/>in manager] --> B[Generate<br/>admin API key] --> C[Deploy agent<br/>on Proxmox node] --> D[Verify agent<br/>pulls config] --> E[Import node<br/>in manager]
+    A[Configure site<br/>in manager] --> B[Generate<br/>admin API key] --> C[Deploy agent<br/>on Proxmox node] --> D[Verify agent<br/>checks in] --> E[Import node<br/>in manager]
 
     classDef step fill:#f9f9f9,stroke:#333,stroke-width:1px
     class A,B,C,D,E step
@@ -69,7 +69,7 @@ lxc.environment = API_KEY=<admin-api-key>
 |----------|-------------|
 | `SITE_ID` | Numeric site ID from the manager (visible in the URL when viewing the site) |
 | `MANAGER_URL` | Base URL of the manager container (e.g., `http://192.168.1.10:3000`) |
-| `API_KEY` | API key from an admin account. Used to authenticate config pulls. |
+| `API_KEY` | API key from an admin account. Used to authenticate check-ins. |
 
 ## 4. Start and Verify
 
@@ -77,24 +77,25 @@ lxc.environment = API_KEY=<admin-api-key>
 pct start <vmid>
 ```
 
-Verify pull-config is working by checking that nginx and dnsmasq configs were fetched:
+Verify the agent is checking in and applied its configs:
 
 ```bash
 # Enter the container
 pct enter <vmid>
 
-# Check that configs were pulled
+# Timer and last runs
+systemctl status opensource-agent.timer
+journalctl -u opensource-agent.service
+
+# Check that configs were applied
 cat /etc/nginx/nginx.conf
 cat /etc/dnsmasq.conf
 
-# Test manually
-/etc/pull-config.d/nginx
-/etc/pull-config.d/dnsmasq-conf
-/etc/pull-config.d/dnsmasq-dhcp-hosts
-/etc/pull-config.d/dnsmasq-hosts
-/etc/pull-config.d/dnsmasq-dhcp-opts
-/etc/pull-config.d/dnsmasq-servers
+# Run a check-in manually
+systemctl start opensource-agent.service
 ```
+
+The agent also appears on the manager's **Agents** page (`/agents`, admin only) with its last check-in time and service health.
 
 ## 5. Forward Network Traffic
 
@@ -113,25 +114,24 @@ With the agent running, proceed to [import the node](core-concepts/nodes.md#impo
 
 ## How It Works
 
-The agent uses **pull-config**, a cron-based system that fetches configuration files from the manager every minute.
+A systemd timer launches the agent every 30 seconds. It checks in with the manager, reporting host info and service status, and receives the site's config snapshot in return — see the [agent developer reference](../developers/agent.md) for the protocol and apply/rollback details.
 
 ```mermaid
 sequenceDiagram
-    participant Cron
-    participant pull-config
+    participant Timer as systemd timer
+    participant Agent
     participant Manager
 
-    Cron->>pull-config: run-parts /etc/pull-config.d
-    pull-config->>Manager: GET /sites/{SITE_ID}/nginx<br/>Authorization: Bearer {API_KEY}<br/>If-None-Match: {etag}
+    Timer->>Agent: start (every 30s)
+    Agent->>Manager: POST /api/v1/agents<br/>Authorization: Bearer {API_KEY}<br/>If-None-Match: {etag}
     alt Config changed
-        Manager-->>pull-config: 200 OK + new config
-        pull-config->>pull-config: Validate (nginx -t)
-        pull-config->>pull-config: Apply + reload
+        Manager-->>Agent: 200 OK + config snapshot + ETag
+        Agent->>Agent: Render, validate (nginx -t), apply + reload
+        Agent->>Manager: POST again (reports apply results)
+        Manager-->>Agent: 304 Not Modified
     else No changes
-        Manager-->>pull-config: 304 Not Modified
+        Manager-->>Agent: 304 Not Modified
     end
 ```
 
-Each service (nginx, dnsmasq) has its own instance script(s) in `/etc/pull-config.d/` that run independently. ETag caching ensures configs are only downloaded when they change.
-
-Dnsmasq is split into 5 pull-config instances: the main config (`dnsmasq-conf`) triggers a full restart, while the auxiliary files (`dnsmasq-dhcp-hosts`, `dnsmasq-hosts`, `dnsmasq-dhcp-opts`, `dnsmasq-servers`) trigger a SIGHUP reload. This avoids restarting dnsmasq when only DHCP leases or host records change.
+Each check-in is recorded by the manager, so admins can monitor agent health on the **Agents** page. ETag caching keeps unchanged configs to a single 304 round trip. Dnsmasq's main config triggers a full restart when it changes, while the auxiliary files (DHCP hosts, host records, options, upstream servers) only trigger a SIGHUP reload.

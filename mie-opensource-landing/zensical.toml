@@ -54,7 +54,7 @@ nav = [
       { "Docker Images" = "developers/docker-images.md" },
       { "Release Pipeline" = "developers/release-pipeline.md" },
       { "Database Schema" = "developers/database-schema.md" },
-      { "Pull Config" = "developers/pull-config.md" },
+      { "Agent" = "developers/agent.md" },
       { "Contributing" = "developers/contributing.md" },
     ] },
   ] },

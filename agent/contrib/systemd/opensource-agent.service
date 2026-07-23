@@ -1,0 +1,14 @@
+[Unit]
+Description=MIE opensource-server agent check-in
+Wants=network-online.target
+# environment.service (container images) writes the runtime env into
+# /etc/environment; harmless ordering hint when the unit doesn't exist.
+After=network-online.target environment.service
+
+[Service]
+Type=oneshot
+# Runtime config (SITE_ID, MANAGER_URL, API_KEY) lives in /etc/environment.
+EnvironmentFile=-/etc/environment
+# systemd creates /var/lib/opensource-agent and passes it as $STATE_DIRECTORY.
+StateDirectory=opensource-agent
+ExecStart=/usr/bin/node /opt/opensource-server/agent/dist/index.js

@@ -12,11 +12,11 @@ are reused by local development, the container images, and CI.
 |---|---|---|---|
 | [`create-a-container/`](https://github.com/mieweb/opensource-server/tree/main/create-a-container) | `opensource-server` | amd64 | Manager web app, job runner, systemd units |
 | [`mie-opensource-landing/`](https://github.com/mieweb/opensource-server/tree/main/mie-opensource-landing) | `opensource-docs` | all | Prebuilt documentation site |
-| [`pull-config/`](https://github.com/mieweb/opensource-server/tree/main/pull-config) | `opensource-agent` | all | pull-config engine, instances, error pages |
+| [`agent/`](https://github.com/mieweb/opensource-server/tree/main/agent) | `opensource-agent` | all | Check-in agent, config templates, systemd timer, error pages |
 
 Everything installs under the `/opt/opensource-server` prefix, matching the
-paths referenced by the systemd units, the pull-config instances, and the
-manager-rendered nginx configuration. `opensource-server` depends on
+paths referenced by the systemd units and the agent-rendered nginx
+configuration. `opensource-server` depends on
 `opensource-agent` and `opensource-docs` because the manager's nginx config
 serves the agent's error pages and the docs site.
 
@@ -51,7 +51,7 @@ is stripped if present (`v2026.6.3` and `2026.6.3` are equivalent).
 
 ```bash
 # Build and stage a component anywhere:
-make -C pull-config install DESTDIR=/tmp/agent-root
+make -C agent install DESTDIR=/tmp/agent-root
 
 # Build one package:
 make -C create-a-container deb        # -> create-a-container/*.deb
@@ -78,7 +78,7 @@ make -C mie-opensource-landing dev    # docs live server
 Each component has a `.fpm` options file holding the static package metadata (name, architecture, dependencies, description, scripts, config files). The Makefile's `package` target stages the component into a `.pkg/buildroot` and runs [fpm](https://fpm.readthedocs.io/) with the dynamic options on the command line — output type, version (composed per format by `./package-version`), and the staging dir. fpm's `dir` input copies the staged tree verbatim from `-C .pkg/buildroot`, preserving symlinks (e.g. `node_modules/.bin/sequelize`) and the directory layout. The same definition produces deb, rpm, and apk, so `make rpm` and `make apk` also work.
 
 - `opensource-server` ships the `container-creator` and `job-runner` systemd units and enables them via an `after-install` script (`before-remove` disables them on real removal). The log directory is created on demand by the unit's `LogsDirectory`, not shipped in the package. The logrotate drop-in is the only config file. The `container-creator-init` unit (which provisions a *local* PostgreSQL) is **not** in the package — it is part of the manager image, since the package only suggests postgresql and works with a remote database too.
-- `opensource-agent` ships the pull-config engine, instances, cron schedule and the static error pages. These are program code, not configuration (runtime config comes from `/etc/environment`), so nothing is marked as a config file.
+- `opensource-agent` ships the compiled check-in agent, its config templates, the systemd service + 30s timer (enabled via an `after-install` script) and the static error pages. These are program code, not configuration (runtime config comes from `/etc/environment`), so nothing is marked as a config file.
 - `opensource-docs` ships content only.
 
 Config files are marked explicitly with `--config-files`; `--deb-no-default-config-files` stops fpm/dpkg from auto-marking everything under `/etc` as a conffile.

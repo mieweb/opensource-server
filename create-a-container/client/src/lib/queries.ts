@@ -4,6 +4,7 @@
  */
 import { api } from './api';
 import type {
+  Agent,
   ApiKey,
   Container,
   ContainerMetadata,
@@ -35,6 +36,7 @@ export const keys = {
   containerMetadata: (image: string) => ['container-metadata', image] as const,
   externalDomains: () => ['external-domains'] as const,
   externalDomain: (id: number | string) => ['external-domains', String(id)] as const,
+  agents: () => ['agents'] as const,
   users: () => ['users'] as const,
   user: (uid: number | string) => ['users', String(uid)] as const,
   groups: () => ['groups'] as const,
@@ -59,6 +61,9 @@ export const queries = {
     api.get<Node[]>(`/api/v1/sites/${siteId}/nodes`),
   getNode: (siteId: number | string, id: number | string) =>
     api.get<Node>(`/api/v1/sites/${siteId}/nodes/${id}`),
+
+  // Agents
+  listAgents: () => api.get<Agent[]>('/api/v1/agents'),
 
   // Containers
   listContainers: (

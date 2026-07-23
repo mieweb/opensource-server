@@ -51,6 +51,11 @@ router.get('/openapi.yaml', (_req, res) => {
   res.type('text/yaml').sendFile(path.join(__dirname, '..', '..', '..', 'openapi.v1.yaml'));
 });
 
+// Agent check-in — mounted before the CSRF guard because the manager's own
+// agent posts from localhost with neither a session cookie nor a Bearer token
+// (auth is handled inside the router: localhost or admin API key).
+router.use('/agents', require('./agents'));
+
 // CSRF guard before any state-changing route below
 router.use(csrfGuard);
 

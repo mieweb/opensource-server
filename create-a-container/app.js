@@ -34,9 +34,6 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
 
   const app = express();
 
-  // setup views (still used by templates router for nginx-conf / dnsmasq files)
-  app.set('views', path.join(__dirname, 'views'));
-  app.set('view engine', 'ejs');
   app.set('trust proxy', 1);
   // Parse query strings with qs so bracket notation (e.g. `user[0]=alice`)
   // yields real arrays. Express 5 defaults to the 'simple' parser.
@@ -101,8 +98,8 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
   // js/missing-token-validation). Behavior-preserving: csrfGuard skips
   // GET/HEAD/OPTIONS and Bearer-only requests, and every state-changing
   // route lives under /api/v1 where the v1 router already applies it — this
-  // additionally covers the GET-only surfaces (templates, swagger, SPA,
-  // static) and rejects mutations to unknown paths early. Mounted after the
+  // additionally covers the GET-only surfaces (swagger, SPA, static) and
+  // rejects mutations to unknown paths early. Mounted after the
   // rate limiter so CSRF 403s still count against the failure budget; the
   // v1 router keeps its own csrfGuard so it stays safe mounted standalone.
   const { csrfGuard, jsonErrorHandler } = require('./middlewares/api');
@@ -115,10 +112,8 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
 
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
-  const templatesRouter = require('./routers/templates');
 
   app.use('/api/v1', apiV1Router);
-  app.use('/', templatesRouter); // serves /sites/:siteId/nginx and /sites/:siteId/dnsmasq/:file
 
   // --- API Documentation (Swagger UI) ---
   // Swagger UI at /api documents the versioned v1 API (the spec also served at /api/v1/openapi.*).
@@ -134,7 +129,7 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
   // --- SPA: serve compiled React app for everything else ---
   const clientDist = path.join(__dirname, 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api(\/|$)|sites\/[^/]+\/(nginx$|dnsmasq\/)).*$/, (req, res) => {
+  app.get(/^\/(?!api(\/|$)).*$/, (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 
