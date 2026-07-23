@@ -11,6 +11,11 @@ export interface ServerInfo {
   isDev: boolean;
   /** True when an OIDC identity provider is configured for SSO. */
   oidcEnabled: boolean;
+  /**
+   * Admin-configured announcement shown at the top of the app (set on the
+   * Settings page). Supports [text](url) links. Null/empty hides the banner.
+   */
+  banner?: string | null;
 }
 
 export const sessionKey = ['session'] as const;

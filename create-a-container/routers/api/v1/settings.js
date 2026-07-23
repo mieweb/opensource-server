@@ -16,6 +16,7 @@ const KEYS = [
   'default_container_env_vars',
   'netbox_url',
   'netbox_token',
+  'banner_message',
 ];
 
 router.get(
@@ -34,6 +35,7 @@ router.get(
       defaultContainerEnvVars,
       netboxUrl: settings.netbox_url || '',
       netboxToken: settings.netbox_token || '',
+      bannerMessage: settings.banner_message || '',
     });
   }),
 );
@@ -47,6 +49,7 @@ router.put(
       defaultContainerEnvVars,
       netboxUrl,
       netboxToken,
+      bannerMessage,
     } = req.body || {};
 
     const envVars = [];
@@ -67,6 +70,7 @@ router.put(
     await Setting.set('default_container_env_vars', JSON.stringify(envVars));
     await Setting.set('netbox_url', netboxUrl || '');
     await Setting.set('netbox_token', netboxToken || '');
+    await Setting.set('banner_message', (bannerMessage || '').trim());
 
     return ok(res, { saved: true });
   }),

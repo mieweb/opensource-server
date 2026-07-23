@@ -34,16 +34,27 @@ router.get('/csrf-token', (req, res) => {
 });
 
 // Health check (unauthenticated). Exposes `isDev` so the SPA can render
-// non-production helpers like one-click dev login buttons, and `oidcEnabled`
-// so the login screen can auto-redirect to the configured identity provider.
+// non-production helpers like one-click dev login buttons, `oidcEnabled`
+// so the login screen can auto-redirect to the configured identity provider,
+// and `banner` — an admin-configured announcement (Settings page) shown at
+// the top of the app. Supports [text](url) links, rendered by the client.
 const { isOidcEnabled } = require('../../../utils/oidc');
-router.get('/health', (_req, res) =>
-  ok(res, {
+const { Setting } = require('../../../models');
+router.get('/health', async (_req, res) => {
+  // The banner is cosmetic — never let a DB hiccup fail the health check.
+  let banner = null;
+  try {
+    banner = (await Setting.get('banner_message'))?.trim() || null;
+  } catch {
+    /* Settings unavailable — omit the banner */
+  }
+  return ok(res, {
     status: 'ok',
     isDev: process.env.NODE_ENV !== 'production',
     oidcEnabled: isOidcEnabled(),
-  }),
-);
+    banner,
+  });
+});
 
 // OpenAPI v1 spec (unauthenticated)
 router.get('/openapi.json', (_req, res) => res.json(openapiSpec));
