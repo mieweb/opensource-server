@@ -77,6 +77,27 @@ services:
       retries: 60
       start_period: 5s
 
+  # Assembles the MCP server's runtime tree (the app package plus all vendored
+  # Python dependencies) into manager-control-program/build via `make build`.
+  # The opensource-mcp.service inside Proxmox runs `python3 -m
+  # manager_control_program.server` with PYTHONPATH=/opt/opensource-server/
+  # manager-control-program, but the repo is mounted read-only there and the
+  # vendored deps aren't checked in — so, like the `node`/`client` services,
+  # this host-side step produces the build output first (repo mounted
+  # read-write). The proxmox service then overlays build/ onto that runtime
+  # path via a read-only bind mount (see below). Runs once and exits; the uv
+  # image lacks make, so install it first.
+  mcp:
+    image: astral/uv:0.11.14-trixie-slim
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apt-get update && apt-get install -y --no-install-recommends make
+        make -C manager-control-program build
+
   # This service will watch the documentation for any changes and rebuild when
   # needed. Technically it's listening on port 8000, but we only care about the
   # HTML being placed in ./mie-opensource-landing/site which is shared with the
@@ -109,6 +130,11 @@ services:
       - local:/var/lib/vz
       - proxmox:/var/lib/pve-cluster
       - ./:/opt/opensource-server:ro
+      # The MCP server's runtime tree (app + vendored deps) is built by the
+      # `mcp` service into manager-control-program/build; overlay it onto the
+      # path opensource-mcp.service expects (PYTHONPATH), matching where the
+      # opensource-mcp package installs it in production.
+      - ./manager-control-program/build:/opt/opensource-server/manager-control-program:ro
     privileged: true
     devices:
       - /dev/loop-control:/dev/loop-control
@@ -135,6 +161,8 @@ services:
       pull-image:
         condition: service_completed_successfully
       node:
+        condition: service_completed_successfully
+      mcp:
         condition: service_completed_successfully
       client:
         condition: service_healthy

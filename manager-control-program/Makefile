@@ -5,6 +5,13 @@ DESTDIR ?= /
 DESTBIN  := $(DESTDIR)$(PREFIX)/manager-control-program
 UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 
+# `build` assembles the ready-to-run application tree (the app package plus all
+# vendored Python dependencies) into BUILDDIR in the source tree; `install`
+# then copies that tree verbatim into DESTBIN. So the dev bind mount and the
+# packaged install serve byte-for-byte the same layout, runnable with only the
+# system python3 (PYTHONPATH pointed at it — no uv, pip, venv, or network).
+BUILDDIR := $(CURDIR)/build
+
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
 
@@ -31,14 +38,14 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  deps     install dependencies (uv sync)"
-	@echo "  build    nothing to build (kept for the repo-wide target set)"
+	@echo "  build    assemble the app + vendored deps tree into build/"
 	@echo "  dev      run the MCP server locally over stdio (uv)"
 	@echo "  test     run tests (none; kept for the repo-wide target set)"
-	@echo "  install  stage the app with vendored dependencies into DESTDIR"
+	@echo "  install  copy the build/ tree into DESTDIR"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
 	@echo "  apk      build the .apk package"
-	@echo "  clean    remove the venv, staging dir and built packages"
+	@echo "  clean    remove the venv, build/, staging dir and built packages"
 	@echo "  help     show this message"
 	@echo ""
 	@echo "Variables: PREFIX (default /opt/opensource-server), DESTDIR (default /)."
@@ -46,7 +53,27 @@ help:
 deps:
 	uv sync --frozen
 
+# Assemble the ready-to-run application tree into build/: the locked
+# requirements are exported from uv.lock and installed as prebuilt wheels for
+# the production target (Debian 13 / amd64 / CPython 3.13) directly into
+# build/, then the app package is copied alongside them. The result runs with
+# `python3 -m manager_control_program.server` and PYTHONPATH=build/, needing
+# only the system python3. install/package and the dev bind mount all consume
+# this same tree.
 build:
+	rm -rf $(BUILDDIR)
+	$(INSTALL) -d $(BUILDDIR)
+	uv export --frozen --no-dev --no-emit-project -o $(REQUIREMENTS)
+	uv pip install \
+		--python $(PYTHON_VERSION) \
+		--python-version $(PYTHON_VERSION) \
+		--python-platform $(PYTHON_PLATFORM) \
+		--only-binary :all: \
+		--target $(BUILDDIR) \
+		--requirements $(REQUIREMENTS)
+	rm -f $(REQUIREMENTS)
+	cp -a manager_control_program $(BUILDDIR)/
+	find $(BUILDDIR) -type d -name __pycache__ -prune -exec rm -rf {} +
 
 dev:
 	uv run manager-control-program
@@ -55,24 +82,13 @@ dev:
 # uniform if this component is ever added to the root COMPONENTS list.
 test:
 
-# Stage the application with vendored dependencies so the target host needs
-# only /usr/bin/python3 — no uv, pip, network access, or venv. The locked
-# requirements are exported from uv.lock and installed as prebuilt wheels
-# directly into the app directory; the systemd unit runs
-# `python3 -m manager_control_program.server` with PYTHONPATH pointed there.
-install:
+# Copy the assembled application tree (build/) into DESTBIN so the dev bind
+# mount and the packaged install land the exact same layout, then install the
+# systemd unit and its /etc/default config to the system paths. Depends on
+# build so `make install` alone produces a complete tree.
+install: build
 	$(INSTALL) -d $(DESTBIN)
-	uv export --frozen --no-dev --no-emit-project -o $(REQUIREMENTS)
-	uv pip install \
-		--python $(PYTHON_VERSION) \
-		--python-version $(PYTHON_VERSION) \
-		--python-platform $(PYTHON_PLATFORM) \
-		--only-binary :all: \
-		--target $(DESTBIN) \
-		--requirements $(REQUIREMENTS)
-	rm -f $(REQUIREMENTS)
-	cp -a manager_control_program $(DESTBIN)/
-	find $(DESTBIN) -type d -name __pycache__ -prune -exec rm -rf {} +
+	cp -a $(BUILDDIR)/. $(DESTBIN)/
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-mcp.service $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)/etc/default
@@ -93,5 +109,5 @@ apk:
 	$(MAKE) package PACKAGER=apk
 
 clean:
-	rm -rf .venv $(REQUIREMENTS) $(STAGE)
+	rm -rf .venv $(REQUIREMENTS) $(BUILDDIR) $(STAGE)
 	rm -f *.deb *.rpm *.apk
