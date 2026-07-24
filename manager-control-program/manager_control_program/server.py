@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from awslabs.openapi_mcp_server.server import load_config, create_mcp_server, setup_signal_handlers
@@ -8,6 +9,32 @@ from fastmcp.server.dependencies import get_http_headers
 # HTTP transport ("streamable-http" is an alias); "sse" is the legacy
 # HTTP+Server-Sent-Events transport kept for older MCP clients.
 HTTP_TRANSPORTS = ("http", "streamable-http", "sse")
+
+
+def _spec_server_path(spec_url: str) -> str:
+    """Return the path prefix declared by the OpenAPI spec's first server.
+
+    fastmcp builds each tool's request URL from the raw path in the spec
+    (e.g. "/sites") joined onto the httpx client's base_url, ignoring the
+    spec's `servers` entry entirely. Our API declares `servers: [{url:
+    /api/v1}]`, so without this prefix the tools would hit "/sites" instead
+    of "/api/v1/sites" — which the Manager serves as the SPA's HTML, not JSON.
+
+    We fetch the spec ourselves (the same document awslabs loads) and return
+    servers[0].url's path. A relative server url ("/api/v1") contributes its
+    path directly; an absolute one contributes only its path component so the
+    host stays whatever API_BASE_URL points at. Returns "" when the spec omits
+    servers or declares the root, leaving base_url unchanged.
+    """
+    spec = httpx.get(spec_url, timeout=30.0).raise_for_status().json()
+    servers = spec.get("servers") or []
+    if not servers:
+        return ""
+    url = (servers[0] or {}).get("url", "") or ""
+    # Keep only the path; a spec-declared host would otherwise override
+    # API_BASE_URL (and its loopback target).
+    path = urlsplit(url).path if "://" in url else url
+    return path.strip("/")
 
 
 class ForwardAuthorizationHeader(httpx.Auth):
@@ -77,12 +104,23 @@ def main():
             os.environ["AUTH_TYPE"] = "none"
 
     # The rest of this is more-or-less copied from the official
-    # awslabs.openapi_mpc_server.server:main function with the small exception
-    # of setting the Accept header to application/json. The official defaults to
-    # */* which makes our API return HTML instead of the JSON response, breaking
-    # the API spec.
+    # awslabs.openapi_mpc_server.server:main function, with two adjustments:
+    #
+    #  - base_url gets the spec's server path prefix appended (see
+    #    _spec_server_path): fastmcp ignores the spec's `servers` entry, so
+    #    without this the generated tools would request "/sites" rather than
+    #    "/api/v1/sites" and hit the SPA's HTML catch-all instead of the JSON
+    #    API.
+    #  - the Accept header is pinned to application/json; awslabs defaults to
+    #    */*, which lets the API content-negotiate to HTML for some routes.
     config = load_config()
     mcp_server = create_mcp_server(config)
+
+    server_path = _spec_server_path(os.environ["API_SPEC_URL"])
+    if server_path:
+        base = str(mcp_server._client.base_url).rstrip("/") + "/"
+        mcp_server._client.base_url = urljoin(base, server_path + "/")
+
     mcp_server._client.headers['accept'] = 'application/json'
     setup_signal_handlers()
 
