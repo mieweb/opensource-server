@@ -12,15 +12,9 @@ WorkingDirectory=/opt/opensource-server/manager-control-program
 # Dependencies are vendored into the app directory at package build time;
 # no uv, pip, or venv exists on the host.
 Environment=PYTHONPATH=/opt/opensource-server/manager-control-program
-Environment=API_BASE_URL=http://127.0.0.1:3000
-# HTTP transport on loopback: the Manager proxies /mcp here, adding TLS and a
-# public hostname. Each MCP client authenticates per-request with its own
-# Bearer API key, which the server forwards to the API — no AUTH_TOKEN needed.
-Environment=SERVER_TRANSPORT=http
-Environment=SERVER_HOST=127.0.0.1
-Environment=SERVER_PORT=8100
-# Optional overrides (e.g. SERVER_PORT, LOG_LEVEL); absent by default.
-EnvironmentFile=-/etc/default/opensource-mcp
+# Runtime configuration (API_BASE_URL, SERVER_TRANSPORT/HOST/PORT, LOG_LEVEL)
+# lives in the packaged config file below — edit it and restart to apply.
+EnvironmentFile=/etc/default/opensource-mcp
 ExecStart=/usr/bin/python3 -m manager_control_program.server
 Restart=on-failure
 RestartSec=5

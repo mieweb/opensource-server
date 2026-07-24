@@ -69,7 +69,7 @@ Every packaged deployment ships the MCP server as a system service and exposes i
 
 The `opensource-mcp` package (installed automatically as a dependency of `opensource-server`) ships the MCP server with vendored Python dependencies at `/opt/opensource-server/manager-control-program` and runs it as the `opensource-mcp.service` systemd unit, listening on loopback (`127.0.0.1:8100`). The Manager reverse-proxies `/mcp` to it, providing the public hostname and TLS. It is enabled by default; admins can:
 
-- override settings (e.g. `SERVER_PORT`) in `/etc/default/opensource-mcp`, then restart the service
+- change settings (e.g. `SERVER_PORT`) in the packaged config file `/etc/default/opensource-mcp`, then restart the service
 - disable it entirely with `systemctl disable --now opensource-mcp.service` (and unset `MCP_SERVER_URL` for `container-creator.service` to remove the proxy route)
 
 ### Hosting a Standalone Server

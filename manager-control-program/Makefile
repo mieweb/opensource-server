@@ -75,6 +75,8 @@ install:
 	find $(DESTBIN) -type d -name __pycache__ -prune -exec rm -rf {} +
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-mcp.service $(UNIT_DIR)/
+	$(INSTALL) -d $(DESTDIR)/etc/default
+	$(INSTALL_DATA) contrib/default/opensource-mcp $(DESTDIR)/etc/default/opensource-mcp
 
 PACKAGER ?= deb
 package:

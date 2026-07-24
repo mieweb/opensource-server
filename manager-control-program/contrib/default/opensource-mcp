@@ -1,0 +1,18 @@
+# Environment for opensource-mcp.service (see manager_control_program.server).
+# This file is sourced by systemd via EnvironmentFile; edit it and restart the
+# service to apply changes. Marked as a package config file, so your edits are
+# preserved across upgrades.
+
+# Base URL of the create-a-container REST API the MCP tools call. The packaged
+# Manager listens on loopback; the OpenAPI spec is fetched from here at startup.
+API_BASE_URL=http://127.0.0.1:3000
+
+# HTTP transport on loopback: the Manager reverse-proxies /mcp here, adding TLS
+# and a public hostname. Each MCP client authenticates per-request with its own
+# Bearer API key, which the server forwards to the API — no AUTH_TOKEN needed.
+SERVER_TRANSPORT=http
+SERVER_HOST=127.0.0.1
+SERVER_PORT=8100
+
+# Other supported overrides (defaults shown in comments):
+# LOG_LEVEL=INFO

@@ -40,8 +40,10 @@ It runs as the `opensource-mcp.service` systemd unit: HTTP transport on
 `127.0.0.1:8100`, started via `python3 -m manager_control_program.server`
 with `PYTHONPATH` pointed at the vendored directory. The Manager
 reverse-proxies `/mcp` to it, so MCP clients connect through the Manager's
-public origin with TLS. Optional overrides (e.g. `SERVER_PORT`) go in
-`/etc/default/opensource-mcp`.
+public origin with TLS. Its runtime configuration (`API_BASE_URL`,
+`SERVER_TRANSPORT`/`SERVER_HOST`/`SERVER_PORT`, `LOG_LEVEL`) lives in the
+packaged config file `/etc/default/opensource-mcp` — edit it and restart the
+service to apply.
 
 ## Configuration
 
