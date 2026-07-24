@@ -427,6 +427,7 @@ security:
 paths:
   /csrf-token:
     get:
+      operationId: get_csrf_token
       tags: [Meta]
       summary: Get a CSRF token
       security: []
@@ -438,6 +439,7 @@ paths:
               schema: { type: object, properties: { data: { type: object, properties: { csrfToken: { type: string } } } } }
   /health:
     get:
+      operationId: get_health
       tags: [Meta]
       summary: Health check
       security: []
@@ -449,6 +451,7 @@ paths:
               schema: { type: object, properties: { data: { type: object, properties: { status: { type: string }, isDev: { type: boolean }, oidcEnabled: { type: boolean }, banner: { type: string, nullable: true, description: Admin-configured announcement banner (null when unset) } } } } }
   /openapi.json:
     get:
+      operationId: get_openapi_json
       tags: [Meta]
       summary: This OpenAPI specification (JSON)
       security: []
@@ -456,6 +459,7 @@ paths:
         '200': { description: OpenAPI document, content: { application/json: {} } }
   /openapi.yaml:
     get:
+      operationId: get_openapi_yaml
       tags: [Meta]
       summary: This OpenAPI specification (YAML)
       security: []
@@ -464,6 +468,7 @@ paths:
 
   /session:
     get:
+      operationId: get_session
       tags: [Auth]
       summary: Current session
       responses:
@@ -478,6 +483,7 @@ paths:
   # and is intentionally undocumented here.
   /auth/login:
     post:
+      operationId: login
       tags: [Auth]
       summary: Username/password login (disabled when OIDC SSO is enabled)
       security: []
@@ -503,6 +509,7 @@ paths:
         '403': { description: 'OIDC enabled (code: oidc_enabled) — use SSO instead; or account not active (code: account_inactive)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/oidc/login:
     get:
+      operationId: oidc_login
       tags: [Auth]
       summary: Begin OIDC single sign-on (redirects to the identity provider)
       security: []
@@ -516,6 +523,7 @@ paths:
         '404': { description: 'OIDC not configured (code: oidc_disabled)' }
   /auth/oidc/callback:
     get:
+      operationId: oidc_callback
       tags: [Auth]
       summary: OIDC authorization-code callback (completes SSO and starts a session)
       security: []
@@ -524,6 +532,7 @@ paths:
         '404': { description: 'OIDC not configured (code: oidc_disabled)' }
   /auth/logout:
     post:
+      operationId: logout
       tags: [Auth]
       summary: Log out (clears the session; returns an IdP end-session URL when OIDC is enabled)
       security: []
@@ -535,6 +544,7 @@ paths:
               schema: { type: object, properties: { data: { type: object, properties: { loggedOut: { type: boolean }, logoutUrl: { type: string, nullable: true } } } } }
   /auth/register:
     post:
+      operationId: register
       tags: [Auth]
       summary: Self-register (disabled when OIDC SSO is enabled)
       security: []
@@ -562,6 +572,7 @@ paths:
         '403': { description: 'OIDC enabled (code: oidc_enabled) — self-registration disabled', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/register/invite/{token}:
     get:
+      operationId: validate_invite
       tags: [Auth]
       summary: Validate an invitation token
       security: []
@@ -576,6 +587,7 @@ paths:
         '404': { description: 'Invalid or expired invitation (code: invalid_invite)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/password-reset/request:
     post:
+      operationId: request_password_reset
       tags: [Auth]
       security: []
       requestBody:
@@ -592,6 +604,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
   /auth/password-reset/{token}:
     get:
+      operationId: validate_password_reset_token
       tags: [Auth]
       security: []
       parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
@@ -603,6 +616,7 @@ paths:
               schema: { type: object, properties: { data: { type: object, properties: { username: { type: string } } } } }
         '404': { description: 'Invalid or expired (code: invalid_token)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
+      operationId: reset_password
       tags: [Auth]
       security: []
       parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
@@ -623,6 +637,7 @@ paths:
 
   /sites:
     get:
+      operationId: list_sites
       tags: [Sites]
       summary: List sites
       responses:
@@ -632,6 +647,7 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Site' } } } }
     post:
+      operationId: create_site
       tags: [Sites]
       summary: Create a site (admin)
       requestBody:
@@ -648,6 +664,7 @@ paths:
   /sites/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     get:
+      operationId: get_site
       tags: [Sites]
       responses:
         '200':
@@ -657,6 +674,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Site' } } }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_site
       tags: [Sites]
       summary: Update a site (admin). Full update — omitted optional fields are cleared.
       requestBody:
@@ -672,6 +690,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_site
       tags: [Sites]
       summary: Delete a site (admin)
       responses:
@@ -682,6 +701,7 @@ paths:
 
   /sites/{siteId}/containers:
     get:
+      operationId: list_containers
       tags: [Containers]
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
@@ -708,6 +728,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Container' } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
+      operationId: create_container
       tags: [Containers]
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
       requestBody:
@@ -757,6 +778,7 @@ paths:
         '409': { description: 'No provisionable node available (code: no_node or no_nvidia_node)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/new:
     get:
+      operationId: get_new_container_form
       tags: [Containers]
       summary: Form bootstrap data (domains + NVIDIA flag)
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
@@ -769,6 +791,7 @@ paths:
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:
+      operationId: get_image_metadata
       tags: [Containers]
       summary: Fetch Docker image metadata
       parameters:
@@ -784,6 +807,7 @@ paths:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
     get:
+      operationId: get_container
       tags: [Containers]
       responses:
         '200':
@@ -793,6 +817,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Container' } } }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_container
       tags: [Containers]
       summary: Update services/env/entrypoint; enqueues a restart job when needed (owner/admin)
       requestBody:
@@ -837,6 +862,7 @@ paths:
         '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_container
       tags: [Containers]
       responses:
         '200':
@@ -852,6 +878,7 @@ paths:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
     get:
+      operationId: list_container_collaborators
       tags: [Containers]
       summary: List users a container is shared with (owner/collaborator/admin)
       responses:
@@ -862,6 +889,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
         '404': { $ref: '#/components/responses/NotFound' }
     post:
+      operationId: add_container_collaborator
       tags: [Containers]
       summary: Share a container with another user (owner/admin). Idempotent — sharing with an existing collaborator is a no-op.
       requestBody:
@@ -884,6 +912,7 @@ paths:
         '409': { description: 'already_owner', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators/{username}:
     delete:
+      operationId: remove_container_collaborator
       tags: [Containers]
       summary: Stop sharing a container with a user (owner/admin)
       parameters:
@@ -902,6 +931,7 @@ paths:
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
     get:
+      operationId: list_nodes
       tags: [Nodes]
       responses:
         '200':
@@ -911,6 +941,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Node' } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     post:
+      operationId: create_node
       tags: [Nodes]
       summary: Create a node (admin)
       requestBody:
@@ -928,6 +959,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
   /sites/{siteId}/nodes/import:
     post:
+      operationId: import_nodes
       tags: [Nodes]
       summary: Bulk-import nodes + containers from a Proxmox cluster (admin)
       parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]
@@ -957,6 +989,7 @@ paths:
       - { in: path, name: siteId, required: true, schema: { type: integer } }
       - { in: path, name: id, required: true, schema: { type: integer } }
     get:
+      operationId: get_node
       tags: [Nodes]
       responses:
         '200':
@@ -966,6 +999,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Node' } } }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_node
       tags: [Nodes]
       summary: Update a node (admin). Full update — omitted fields are reset to defaults/null (except `secret`, which is kept when blank/omitted, and `nodeType`, which keeps its current value).
       requestBody:
@@ -983,6 +1017,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_node
       tags: [Nodes]
       summary: Delete a node (admin)
       responses:
@@ -992,6 +1027,7 @@ paths:
         '409': { description: 'Node still has containers (code: has_containers)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/nodes/{id}/storages:
     get:
+      operationId: list_node_storages
       tags: [Nodes]
       summary: List Proxmox CT template storages (empty array when the node has no API credentials or the query fails)
       parameters:
@@ -1008,6 +1044,7 @@ paths:
   /jobs/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     get:
+      operationId: get_job
       tags: [Jobs]
       summary: Job metadata (creator or admin; others receive 404)
       responses:
@@ -1019,6 +1056,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{id}/status:
     get:
+      operationId: get_job_status
       tags: [Jobs]
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
@@ -1033,6 +1071,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
   /jobs/{id}/stream:
     get:
+      operationId: stream_job_output
       tags: [Jobs]
       summary: Server-sent events stream of job output
       parameters:
@@ -1048,6 +1087,7 @@ paths:
 
   /agents:
     post:
+      operationId: agent_check_in
       tags: [Agents]
       summary: Agent check-in
       description: |
@@ -1087,6 +1127,7 @@ paths:
         '304': { description: Config unchanged since If-None-Match }
         '422': { description: 'Missing siteId/hostname (code: validation_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     get:
+      operationId: list_agents
       tags: [Agents]
       summary: Current status of all agents (admin)
       responses:
@@ -1114,6 +1155,7 @@ paths:
 
   /external-domains:
     get:
+      operationId: list_external_domains
       tags: [External Domains]
       summary: List external domains (admin)
       responses:
@@ -1124,6 +1166,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ExternalDomain' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
+      operationId: create_external_domain
       tags: [External Domains]
       summary: Create an external domain (admin)
       requestBody:
@@ -1140,6 +1183,7 @@ paths:
   /external-domains/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     get:
+      operationId: get_external_domain
       tags: [External Domains]
       responses:
         '200':
@@ -1150,6 +1194,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_external_domain
       tags: [External Domains]
       summary: Update an external domain (admin). Full update — omitted optional fields are cleared (except `cloudflareApiKey`, which is kept when blank/omitted).
       requestBody:
@@ -1165,6 +1210,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_external_domain
       tags: [External Domains]
       summary: Delete an external domain (admin)
       responses:
@@ -1174,6 +1220,7 @@ paths:
 
   /users:
     get:
+      operationId: list_users
       tags: [Users]
       summary: List users (admin)
       responses:
@@ -1184,6 +1231,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/User' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
+      operationId: create_user
       tags: [Users]
       summary: Create a user (admin)
       requestBody:
@@ -1203,6 +1251,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
   /users/invite:
     post:
+      operationId: invite_user
       tags: [Users]
       summary: Send an email invitation (admin)
       requestBody:
@@ -1225,6 +1274,7 @@ paths:
         '502': { description: 'Email delivery failed (code: email_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /users/email-all:
     post:
+      operationId: email_all_users
       tags: [Users]
       summary: Broadcast an email to every user with an address (admin)
       requestBody:
@@ -1249,6 +1299,7 @@ paths:
   /users/{uidNumber}:
     parameters: [{ in: path, name: uidNumber, required: true, schema: { type: integer } }]
     get:
+      operationId: get_user
       tags: [Users]
       responses:
         '200':
@@ -1259,6 +1310,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_user
       tags: [Users]
       summary: Update a user (admin). Partial — omitted/blank fields keep their current values.
       requestBody:
@@ -1274,6 +1326,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_user
       tags: [Users]
       summary: Delete a user (admin)
       responses:
@@ -1283,6 +1336,7 @@ paths:
 
   /groups:
     get:
+      operationId: list_groups
       tags: [Groups]
       summary: List groups (admin)
       responses:
@@ -1293,6 +1347,7 @@ paths:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Group' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
+      operationId: create_group
       tags: [Groups]
       summary: Create a group (admin)
       requestBody:
@@ -1315,6 +1370,7 @@ paths:
   /groups/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer }, description: gidNumber }]
     get:
+      operationId: get_group
       tags: [Groups]
       responses:
         '200':
@@ -1325,6 +1381,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     put:
+      operationId: update_group
       tags: [Groups]
       summary: Update a group (admin)
       requestBody:
@@ -1344,6 +1401,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_group
       tags: [Groups]
       summary: Delete a group (admin)
       responses:
@@ -1353,6 +1411,7 @@ paths:
 
   /apikeys:
     get:
+      operationId: list_api_keys
       tags: [API Keys]
       summary: List the current user's API keys
       responses:
@@ -1362,6 +1421,7 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ApiKey' } } } }
     post:
+      operationId: create_api_key
       tags: [API Keys]
       summary: Mint a new API key (plaintext returned ONCE)
       requestBody:
@@ -1390,6 +1450,7 @@ paths:
   /apikeys/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
     get:
+      operationId: get_api_key
       tags: [API Keys]
       responses:
         '200':
@@ -1400,6 +1461,7 @@ paths:
         '400': { description: 'Malformed id — must be a UUID (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
+      operationId: delete_api_key
       tags: [API Keys]
       responses:
         '204': { description: Revoked }
@@ -1408,6 +1470,7 @@ paths:
 
   /settings:
     get:
+      operationId: get_settings
       tags: [Settings]
       summary: Read system settings (admin)
       responses:
@@ -1418,6 +1481,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/Settings' } } }
         '403': { $ref: '#/components/responses/Forbidden' }
     put:
+      operationId: update_settings
       tags: [Settings]
       summary: Save system settings (admin). Full update — omitted fields are cleared.
       requestBody:
@@ -1434,6 +1498,7 @@ paths:
 
   /resource-requests:
     get:
+      operationId: list_resource_requests
       tags: [Resource Requests]
       summary: List resource requests (admins see all; users see only their own)
       parameters:
@@ -1449,6 +1514,7 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/ResourceRequest' } } } }
     post:
+      operationId: create_resource_request
       tags: [Resource Requests]
       summary: >-
         Request a resource adjustment for a container. Auto-approved (and
@@ -1478,6 +1544,7 @@ paths:
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /resource-requests/count:
     get:
+      operationId: count_pending_resource_requests
       tags: [Resource Requests]
       summary: Count pending resource requests (for badge display)
       responses:
@@ -1488,6 +1555,7 @@ paths:
               schema: { type: object, properties: { data: { type: object, properties: { count: { type: integer } } } } }
   /resource-requests/effective/{siteId}/{hostname}/{username}:
     get:
+      operationId: get_effective_resources
       tags: [Resource Requests]
       summary: Effective approved resources for a container identity (defaults merged with the most recent approval per type)
       parameters:
@@ -1503,6 +1571,7 @@ paths:
         '403': { description: 'forbidden — non-admins may only query their own username', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /resource-requests/{id}/approve:
     put:
+      operationId: approve_resource_request
       tags: [Resource Requests]
       summary: Approve a pending request and apply it to matching provisioned containers (admin)
       parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
@@ -1525,6 +1594,7 @@ paths:
         '422': { description: 'No provisioned container matches the request (code: container_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /resource-requests/{id}/deny:
     put:
+      operationId: deny_resource_request
       tags: [Resource Requests]
       summary: Deny a pending request (admin)
       parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
