@@ -36,7 +36,7 @@ The same Dockerfile as `docker`, built on top of the `nodejs` image instead of t
 
 ### Agent (`agent`)
 
-Extends nodejs with the `opensource-agent` package (check-in agent, nginx with ModSecurity/OWASP CRS, dnsmasq) and [acme.sh](https://github.com/acmesh-official/acme.sh) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
+Extends nodejs with the `opensource-agent` package (check-in agent, nginx, dnsmasq) and [acme.sh](https://github.com/acmesh-official/acme.sh) for ACME certificate management. Used as the networking layer for each site — handles reverse proxy, DNS, and TLS. See [Deploying Agents](../admins/deploying-agents.md).
 
 **Registry:** `ghcr.io/mieweb/opensource-server/agent` · **Source:** [`images/agent/`](https://github.com/mieweb/opensource-server/tree/main/images/agent)
 
@@ -66,7 +66,7 @@ images/
 ├── docs/
 │   └── Dockerfile           # Extends base (nginx + opensource-docs)
 ├── agent/
-│   └── Dockerfile           # Extends nodejs (opensource-agent, ModSecurity, acme.sh)
+│   └── Dockerfile           # Extends nodejs (opensource-agent, acme.sh)
 └── manager/
     └── Dockerfile           # Extends agent (PostgreSQL + opensource-server/docs)
 ```

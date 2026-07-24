@@ -9,8 +9,6 @@
 --depends nodejs
 --depends nginx
 --depends libnginx-mod-stream
---depends libnginx-mod-http-modsecurity
---depends modsecurity-crs
 --depends ssl-cert
 --depends dnsmasq
 --deb-no-default-config-files

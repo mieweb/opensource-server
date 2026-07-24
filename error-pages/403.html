@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>403 — Request Blocked</title>
+  <title>403 — Access Denied</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -150,10 +150,9 @@
 <body>
   <div class="container">
     <div class="status-code">403</div>
-    <h1>Request Blocked</h1>
+    <h1>Access Denied</h1>
     <p>
-      Your request was blocked by the web application firewall (WAF).
-      The request matched an OWASP Core Rule Set security rule.
+      You do not have permission to access this resource.
     </p>
     <div class="request-id">
       <div class="label">Request ID</div>
@@ -162,16 +161,14 @@
     <div class="info">
       <strong>Think this is a mistake?</strong>
       Provide the request ID above to your server administrator.
-      The specific rule that triggered the block can be found in the
-      server audit log using this ID.
+      The request can be traced in the server logs using this ID.
     </div>
     <div class="examples">
-      <h2>Common triggers</h2>
+      <h2>Common causes</h2>
       <ul>
-        <li>SQL-like syntax in query parameters or form data</li>
-        <li>HTML or script tags in user input</li>
-        <li>Unusual HTTP headers or request methods</li>
-        <li>Path traversal patterns in the URL</li>
+        <li>Your account is not authorized for this application</li>
+        <li>You are signed in with the wrong account or group</li>
+        <li>The resource restricts access by policy</li>
       </ul>
     </div>
   </div>

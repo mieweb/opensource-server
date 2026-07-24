@@ -43,9 +43,17 @@ http {
   proxy_cache_path /var/cache/nginx/auth_cache levels=1:2 keys_zone=auth_cache:1m
                    max_size=10m inactive=5m;
 
-  modsecurity on;
-  modsecurity_rules_file /etc/nginx/modsecurity_includes.conf;
-  modsecurity_transaction_id "$request_id";
+  <%_ /*
+    Upload throughput over HTTP/2 and HTTP/3. The small defaults (64k body
+    preread / h3 stream buffer, 256k per-worker h2 recv buffer) cap how much
+    request body a client may send before waiting on flow control, which
+    throttles large uploads through the proxy. The recv buffer is shared per
+    worker, so it is sized at several prereads to keep concurrent uploads
+    from starving each other.
+  */ -%>
+  http2_body_preread_size 4m;
+  http2_recv_buffer_size 16m;
+  http3_stream_buffer_size 4m;
 
   <%_ /* Modern TLS configuration */ -%>
   ssl_protocols TLSv1.2 TLSv1.3;
@@ -68,7 +76,6 @@ http {
     Internal error page server on a unix socket. Named locations proxy here
     with proxy_method GET so that NGINX's static file module will serve the
     HTML regardless of the original request method (POST, PUT, etc.).
-    ModSecurity is disabled to prevent re-evaluation of the original request.
   */ -%>
   upstream error_pages {
     server unix:/run/nginx-error-pages.sock;
@@ -76,7 +83,6 @@ http {
 
   server {
     listen unix:/run/nginx-error-pages.sock;
-    modsecurity off;
     ssi on;
 
     root /opt/opensource-server/error-pages;
