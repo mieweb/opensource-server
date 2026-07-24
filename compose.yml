@@ -77,6 +77,25 @@ services:
       retries: 60
       start_period: 5s
 
+  # Assembles the MCP server's runtime tree (the app package plus all vendored
+  # Python dependencies) into manager-control-program/build via `make build`.
+  # The opensource-mcp.service inside Proxmox runs `python3 -m
+  # manager_control_program.server` with PYTHONPATH=/opt/opensource-server/
+  # manager-control-program/build, but the repo is mounted read-only there and
+  # the vendored deps aren't checked in — so, like the `node`/`client`
+  # services, this host-side step produces the build output first (repo mounted
+  # read-write); the read-only bind mount inside Proxmox then sees it at the
+  # same path the package installs to. Runs once and exits.
+  mcp:
+    image: astral/uv:0.11.14-trixie
+    volumes:
+      - ./:/opt/opensource-server
+    working_dir: /opt/opensource-server
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        make -C manager-control-program build
+
   # This service will watch the documentation for any changes and rebuild when
   # needed. Technically it's listening on port 8000, but we only care about the
   # HTML being placed in ./mie-opensource-landing/site which is shared with the
@@ -135,6 +154,8 @@ services:
       pull-image:
         condition: service_completed_successfully
       node:
+        condition: service_completed_successfully
+      mcp:
         condition: service_completed_successfully
       client:
         condition: service_healthy

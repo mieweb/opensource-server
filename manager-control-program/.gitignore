@@ -3,3 +3,10 @@ build/
 *.egg-info/
 __pycache__/
 *.pyc
+
+# packaging build artifacts
+/.pkg/
+/*.deb
+/*.rpm
+/*.apk
+.pkg-requirements.txt

@@ -1,0 +1,23 @@
+[Unit]
+Description=MCP server for create-a-container (Model Context Protocol over HTTP)
+# The OpenAPI spec is fetched from the Manager at startup, so order after it
+# and keep retrying (Restart/RestartSec below) until the Manager is reachable.
+After=network.target container-creator.service
+Wants=container-creator.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/opensource-server/manager-control-program/build
+# The app package and all vendored dependencies are assembled into build/
+# (by `make build`); no uv, pip, or venv exists on the host.
+Environment=PYTHONPATH=/opt/opensource-server/manager-control-program/build
+# Runtime configuration (API_BASE_URL, SERVER_TRANSPORT/HOST/PORT, LOG_LEVEL)
+# lives in the packaged config file below — edit it and restart to apply.
+EnvironmentFile=/etc/default/opensource-mcp
+ExecStart=/usr/bin/python3 -m manager_control_program.server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

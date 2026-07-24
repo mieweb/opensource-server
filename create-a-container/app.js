@@ -26,8 +26,16 @@ const { sequelize } = require('./models');
  * @param {boolean} [options.rateLimit=true]  - disable in tests: assertions on 4xx
  *                                              responses must not burn the budget.
  * @param {boolean} [options.accessLog=true]  - morgan; disable in tests for quiet output.
+ * @param {string}  [options.mcpServerUrl]    - origin of the MCP server to reverse-proxy
+ *                                              at /mcp (default: $MCP_SERVER_URL). Unset
+ *                                              disables the proxy.
  */
-function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
+function buildApp({
+  sessionSecrets,
+  rateLimit = true,
+  accessLog = true,
+  mcpServerUrl = process.env.MCP_SERVER_URL,
+} = {}) {
   if (!sessionSecrets || sessionSecrets.length === 0) {
     throw new Error('buildApp: sessionSecrets is required');
   }
@@ -46,6 +54,16 @@ function buildApp({ sessionSecrets, rateLimit = true, accessLog = true } = {}) {
       : process.stdout;
     app.use(morgan('combined', { stream: accessLogStream }));
   }
+  // --- MCP reverse proxy ---
+  // Mounted before the body parsers so request bodies stream through
+  // untouched, and before session/rate-limit/CSRF: MCP clients authenticate
+  // per-request with Bearer API keys (forwarded by the MCP server back to
+  // /api/v1), not cookies, so none of the cookie-oriented middleware applies.
+  if (mcpServerUrl) {
+    const { createMcpProxy } = require('./middlewares/mcp-proxy');
+    app.use('/mcp', createMcpProxy(mcpServerUrl));
+  }
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

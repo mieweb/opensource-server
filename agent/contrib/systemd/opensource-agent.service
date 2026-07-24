@@ -8,6 +8,7 @@ After=network-online.target environment.service
 [Service]
 Type=oneshot
 # Runtime config (SITE_ID, MANAGER_URL, API_KEY) lives in /etc/environment.
+# Optional LOG_LEVEL (error|warn|info|debug; default info) also read from there.
 EnvironmentFile=-/etc/environment
 # systemd creates /var/lib/opensource-agent and passes it as $STATE_DIRECTORY.
 StateDirectory=opensource-agent

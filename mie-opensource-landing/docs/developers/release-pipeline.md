@@ -2,7 +2,7 @@
 
 {{ contributor_warning }}
 
-The three deployable components are packaged as Debian packages and published
+The four deployable components are packaged as Debian packages and published
 to GitHub Releases as a flat APT repository. The same component build commands
 are reused by local development, the container images, and CI.
 
@@ -13,12 +13,14 @@ are reused by local development, the container images, and CI.
 | [`create-a-container/`](https://github.com/mieweb/opensource-server/tree/main/create-a-container) | `opensource-server` | amd64 | Manager web app, job runner, systemd units |
 | [`mie-opensource-landing/`](https://github.com/mieweb/opensource-server/tree/main/mie-opensource-landing) | `opensource-docs` | all | Prebuilt documentation site |
 | [`agent/`](https://github.com/mieweb/opensource-server/tree/main/agent) | `opensource-agent` | all | Check-in agent, config templates, systemd timer, error pages |
+| [`manager-control-program/`](https://github.com/mieweb/opensource-server/tree/main/manager-control-program) | `opensource-mcp` | amd64 | MCP server with vendored Python deps, systemd unit |
 
 Everything installs under the `/opt/opensource-server` prefix, matching the
 paths referenced by the systemd units and the agent-rendered nginx
 configuration. `opensource-server` depends on
 `opensource-agent` and `opensource-docs` because the manager's nginx config
-serves the agent's error pages and the docs site.
+serves the agent's error pages and the docs site, and on `opensource-mcp`,
+whose MCP service the manager reverse-proxies at `/mcp`.
 
 ## The component Makefile contract
 

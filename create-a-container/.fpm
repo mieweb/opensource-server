@@ -8,6 +8,7 @@
 --description "MIE opensource-server cluster manager (create-a-container): web UI and REST API for self-service LXC container hosting on Proxmox VE, with automated DNS and reverse-proxy configuration, LDAP authentication and ACME TLS orchestration."
 --depends opensource-agent
 --depends opensource-docs
+--depends opensource-mcp
 --depends nodejs
 --depends sudo
 --depends libc6

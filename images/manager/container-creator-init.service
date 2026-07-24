@@ -22,7 +22,8 @@ ExecStart=/bin/bash -e -c '\
   echo "POSTGRES_HOST=$${POSTGRES_HOST}" >> /etc/default/container-creator; \
   echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> /etc/default/container-creator; \
   echo "POSTGRES_USER=$${POSTGRES_USER}" >> /etc/default/container-creator; \
-  echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> /etc/default/container-creator;'
+  echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> /etc/default/container-creator; \
+  echo "MCP_SERVER_URL=http://127.0.0.1:8100" >> /etc/default/container-creator;'
 
 [Install]
 WantedBy=multi-user.target
