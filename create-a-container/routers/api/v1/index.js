@@ -12,6 +12,7 @@ const {
   generateCsrfToken,
   jsonErrorHandler,
   apiAuth,
+  asyncHandler,
   ok,
 } = require('../../../middlewares/api');
 
@@ -40,21 +41,24 @@ router.get('/csrf-token', (req, res) => {
 // the top of the app. Supports [text](url) links, rendered by the client.
 const { isOidcEnabled } = require('../../../utils/oidc');
 const { Setting } = require('../../../models');
-router.get('/health', async (_req, res) => {
-  // The banner is cosmetic — never let a DB hiccup fail the health check.
-  let banner = null;
-  try {
-    banner = (await Setting.get('banner_message'))?.trim() || null;
-  } catch {
-    /* Settings unavailable — omit the banner */
-  }
-  return ok(res, {
-    status: 'ok',
-    isDev: process.env.NODE_ENV !== 'production',
-    oidcEnabled: isOidcEnabled(),
-    banner,
-  });
-});
+router.get(
+  '/health',
+  asyncHandler(async (_req, res) => {
+    // The banner is cosmetic — never let a DB hiccup fail the health check.
+    let banner = null;
+    try {
+      banner = (await Setting.get('banner_message'))?.trim() || null;
+    } catch {
+      /* Settings unavailable — omit the banner */
+    }
+    return ok(res, {
+      status: 'ok',
+      isDev: process.env.NODE_ENV !== 'production',
+      oidcEnabled: isOidcEnabled(),
+      banner,
+    });
+  }),
+);
 
 // OpenAPI v1 spec (unauthenticated)
 router.get('/openapi.json', (_req, res) => res.json(openapiSpec));
