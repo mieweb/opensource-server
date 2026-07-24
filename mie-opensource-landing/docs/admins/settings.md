@@ -17,6 +17,14 @@ When configured, users can reset passwords via "Forgot your password?" on the lo
 !!! warning
     Without SMTP, password resets require manual admin intervention.
 
+## Announcement Banner
+
+Display a one-line announcement to all users at the top of the app — useful for deployment-specific notices like linking to a companion app hosted in the same environment.
+
+- **Banner message**: plain text, with optional links using `[text](url)` syntax, e.g. `Try [Ozwell Studio](https://ozwell-studio.example.org).`
+- Stored per deployment in the database; no redeploy or restart needed.
+- Leave empty to hide the banner.
+
 ## Authentication
 
 The Manager authenticates users with internal username/password by default. To delegate authentication (and MFA) to an external identity provider, configure single sign-on — see [OIDC Single Sign-On](oidc.md). When OIDC is enabled, internal password login and self-registration are disabled.

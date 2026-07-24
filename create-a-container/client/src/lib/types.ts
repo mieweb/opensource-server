@@ -200,6 +200,8 @@ export interface AppSettings {
   netboxUrl: string;
   netboxToken: string;
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
+  /** Announcement banner shown to all users. Supports [text](url) links. */
+  bannerMessage: string;
 }
 
 export type ResourceType = 'memory' | 'swap' | 'cpus' | 'rootfs';

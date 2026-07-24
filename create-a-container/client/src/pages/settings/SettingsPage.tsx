@@ -20,6 +20,7 @@ import {
 } from '@mieweb/ui';
 import { Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { serverInfoKey } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import type { AppSettings } from '@/lib/types';
 
@@ -35,6 +36,7 @@ const schema = z.object({
   defaultContainerEnvVars: z.array(envVarSchema),
   netboxUrl: z.string(),
   netboxToken: z.string(),
+  bannerMessage: z.string(),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -51,6 +53,7 @@ export function SettingsPage() {
       defaultContainerEnvVars: [],
       netboxUrl: '',
       netboxToken: '',
+      bannerMessage: '',
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'defaultContainerEnvVars' });
@@ -64,6 +67,9 @@ export function SettingsPage() {
     onSuccess: () => {
       toast.success('Settings saved');
       qc.invalidateQueries({ queryKey: keys.settings() });
+      // The banner is served via /api/v1/health (cached forever by
+      // useServerInfo), so refetch it for the change to show without a reload.
+      qc.invalidateQueries({ queryKey: serverInfoKey });
     },
     onError: (err: ApiError) => toast.error(err.message),
   });
@@ -128,6 +134,17 @@ export function SettingsPage() {
               </TableBody>
             </Table>
           )}
+        </section>
+
+        <section className="grid gap-4">
+          <h2 className="text-lg font-semibold">Announcement banner</h2>
+          <Input
+            label="Banner message"
+            placeholder="Try [My New App](https://app.example.com)."
+            helperText="Shown to all users at the top of the app. Link syntax: [text](url). Leave empty to hide the banner."
+            autoCorrect="off"
+            {...register('bannerMessage')}
+          />
         </section>
 
         <section className="grid gap-4">
