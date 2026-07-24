@@ -9,6 +9,8 @@
 --depends opensource-agent
 --depends opensource-docs
 --depends nodejs
+--depends "python3 >= 3.13"
+--depends "python3 < 3.14"
 --depends sudo
 --depends libc6
 --depends libgcc-s1

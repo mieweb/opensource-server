@@ -8,10 +8,14 @@ UNIT_DIR := $(DESTDIR)/usr/lib/systemd/system
 INSTALL      := install
 INSTALL_DATA := $(INSTALL) -m 0644
 
-# The production target is the manager image: Debian 13 / amd64 / CPython 3.13
-# (python3 comes with the base image). uv selects wheels for that platform
-# regardless of the build host's own interpreter, and downloads a managed
-# CPython for resolution if the host has none (the builder image doesn't).
+# The production target is Debian 13 / amd64 / CPython 3.13. uv selects
+# wheels for that platform regardless of the build host's own interpreter,
+# and downloads a managed CPython for resolution if the host has none (the
+# builder image doesn't).
+#
+# Compiled wheels are ABI-locked to this exact minor version (cp313), so the
+# opensource-server package pins its python3 dependency to the matching
+# range in create-a-container/.fpm — update both together when bumping.
 PYTHON_VERSION  := 3.13
 PYTHON_PLATFORM := x86_64-unknown-linux-gnu
 
