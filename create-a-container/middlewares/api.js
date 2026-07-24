@@ -36,6 +36,16 @@ function csrfGuard(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
     return next();
   }
+  // The manager's own agent checks in over localhost without credentials
+  // during bootstrap (no site or API key exists yet), so it can carry neither
+  // a Bearer token nor a CSRF token. The agents router applies the same
+  // localhost bypass at the route level (checkinAuth); mirror it here so this
+  // app-level guard doesn't reject the credential-less check-in first. Remote
+  // clients are never localhost (isLocalhostRequest also rejects proxied
+  // requests via X-Real-IP / X-Forwarded-For). Required lazily to avoid a
+  // load-order cycle with middlewares/index.
+  const { isLocalhostRequest } = require('./index');
+  if (isLocalhostRequest(req)) return next();
   const auth = req.get('Authorization') || '';
   const hasBearer = auth.startsWith('Bearer ');
   const hasSessionCookie = !!(req.session && req.session.user);
