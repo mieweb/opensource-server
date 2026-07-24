@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Builds the three opensource-server Debian packages with the component
+# Builds the four opensource-server Debian packages with the component
 # Makefiles + fpm. The final stage contains only the built .deb artifacts so
 # the runtime images can install them with:
 #
@@ -44,7 +44,7 @@ RUN gem install --no-document fpm -v "${FPM_VERSION}"
 COPY . /usr/src/opensource-server
 WORKDIR /usr/src/opensource-server
 
-# Build all three packages into ./dist.
+# Build all packages into ./dist.
 RUN make deb
 
 # Artifact-only stage.

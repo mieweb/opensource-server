@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-UNITS="container-creator.service job-runner.service"
+UNITS="opensource-mcp.service"
 
 # Nothing to do without systemctl (non-systemd container/chroot).
 command -v systemctl >/dev/null 2>&1 || exit 0

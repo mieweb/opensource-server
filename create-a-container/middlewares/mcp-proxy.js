@@ -2,7 +2,7 @@
  * Streaming reverse proxy for the MCP server (manager-control-program).
  *
  * The packaged MCP server listens on loopback (see
- * manager-control-program.service); the Manager exposes it at /mcp on its
+ * opensource-mcp.service); the Manager exposes it at /mcp on its
  * public origin so MCP clients get TLS and a stable hostname for free, and
  * per-request Authorization headers flow: MCP client -> this proxy -> MCP
  * server -> back to this app's /api/v1 as a Bearer API key.

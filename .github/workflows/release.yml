@@ -1,7 +1,7 @@
 name: Release Packages
 
 # Triggered by publishing a GitHub release (full or prerelease). Builds the
-# three Debian packages and uploads them to the release that triggered the
+# four Debian packages and uploads them to the release that triggered the
 # workflow, together with flat APT repository metadata (Packages, Packages.gz)
 # so the release can be used directly as an apt source:
 #
@@ -50,7 +50,7 @@ jobs:
           gzip -k9f Packages
           # Stable-name aliases for one-off downloads (the _latest URLs resolve
           # via releases/latest/download for the newest non-prerelease release).
-          for pkg in opensource-server opensource-docs opensource-agent; do
+          for pkg in opensource-server opensource-docs opensource-agent opensource-mcp; do
             f=$(ls ${pkg}_*.deb | head -1)
             [ -n "$f" ] && cp -f "$f" "${pkg}_latest.deb"
           done

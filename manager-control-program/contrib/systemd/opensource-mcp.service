@@ -20,7 +20,7 @@ Environment=SERVER_TRANSPORT=http
 Environment=SERVER_HOST=127.0.0.1
 Environment=SERVER_PORT=8100
 # Optional overrides (e.g. SERVER_PORT, LOG_LEVEL); absent by default.
-EnvironmentFile=-/etc/default/manager-control-program
+EnvironmentFile=-/etc/default/opensource-mcp
 ExecStart=/usr/bin/python3 -m manager_control_program.server
 Restart=on-failure
 RestartSec=5

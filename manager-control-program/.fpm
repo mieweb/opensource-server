@@ -1,0 +1,13 @@
+--name opensource-mcp
+--architecture amd64
+--license Apache-2.0
+--maintainer "Medical Informatics Engineering <helpdesk@mieweb.com>"
+--vendor "Medical Informatics Engineering"
+--url "https://github.com/mieweb/opensource-server"
+--category admin
+--description "MIE opensource-server MCP server (manager-control-program): exposes the create-a-container REST API as Model Context Protocol tools over HTTP, forwarding each caller's Authorization header so every MCP client acts under its own API key. Python dependencies are vendored; runs on the system python3."
+--depends "python3 >= 3.13"
+--depends "python3 < 3.14"
+--deb-no-default-config-files
+--after-install contrib/postinstall.sh
+--before-remove contrib/preremove.sh

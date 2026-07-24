@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-UNITS="container-creator.service job-runner.service"
+UNITS="opensource-mcp.service"
 
 # $1 is "remove"/"purge" (deb) or the remaining-version count (rpm: 0 on final
 # removal). Only act on a real removal, not an upgrade.

@@ -26,13 +26,13 @@ COPY images/manager/wait-proxmox-regenerate-snakeoil.conf /etc/systemd/system/po
 # First-boot database initialization.
 COPY images/manager/container-creator-init.service /etc/systemd/system/container-creator-init.service
 
-# Install the manager and docs packages built by the builder image (the agent
-# package is already present from the parent image; apt resolves the
-# opensource-server -> opensource-docs dependency), then enable the init
-# service.
+# Install the manager, docs, and MCP packages built by the builder image (the
+# agent package is already present from the parent image; apt resolves the
+# opensource-server -> opensource-docs/opensource-mcp dependencies), then
+# enable the init service.
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
-    apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-server_*.deb && \
+    apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-mcp_*.deb /dist/opensource-server_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     systemctl enable container-creator-init.service

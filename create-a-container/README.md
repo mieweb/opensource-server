@@ -46,10 +46,10 @@ The Manager is not installed by hand in production. It ships as:
 - distribution **packages** built from this directory with `make deb`, `make rpm`,
   or `make apk` (via [fpm](https://fpm.readthedocs.io/)), which install the app
   under `/opt/opensource-server/create-a-container` and register the
-  `container-creator`, `job-runner`, and `manager-control-program` systemd
-  services. The last is the bundled [MCP server](../manager-control-program/)
-  (Python deps vendored at build time); the Manager reverse-proxies `/mcp` to
-  it (`MCP_SERVER_URL`).
+  `container-creator` and `job-runner` systemd services. The package depends
+  on `opensource-mcp` — the [MCP server](../manager-control-program/) as its
+  own package — and the Manager reverse-proxies `/mcp` to its service
+  (`MCP_SERVER_URL`).
 
 In both cases the app runs `server.js` (HTTP API + UI) and `job-runner.js`
 (background worker). Database connection settings come from the environment (see
