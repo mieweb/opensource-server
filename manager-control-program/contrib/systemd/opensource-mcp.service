@@ -8,10 +8,10 @@ Wants=container-creator.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/opensource-server/manager-control-program
-# Dependencies are vendored into the app directory at package build time;
-# no uv, pip, or venv exists on the host.
-Environment=PYTHONPATH=/opt/opensource-server/manager-control-program
+WorkingDirectory=/opt/opensource-server/manager-control-program/build
+# The app package and all vendored dependencies are assembled into build/
+# (by `make build`); no uv, pip, or venv exists on the host.
+Environment=PYTHONPATH=/opt/opensource-server/manager-control-program/build
 # Runtime configuration (API_BASE_URL, SERVER_TRANSPORT/HOST/PORT, LOG_LEVEL)
 # lives in the packaged config file below — edit it and restart to apply.
 EnvironmentFile=/etc/default/opensource-mcp

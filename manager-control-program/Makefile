@@ -82,13 +82,14 @@ dev:
 # uniform if this component is ever added to the root COMPONENTS list.
 test:
 
-# Copy the assembled application tree (build/) into DESTBIN so the dev bind
-# mount and the packaged install land the exact same layout, then install the
-# systemd unit and its /etc/default config to the system paths. Depends on
+# Copy the assembled application tree (build/) into DESTBIN/build so the dev
+# bind mount and the packaged install expose the identical path
+# (.../manager-control-program/build, matching the repo layout), then install
+# the systemd unit and its /etc/default config to the system paths. Depends on
 # build so `make install` alone produces a complete tree.
 install: build
-	$(INSTALL) -d $(DESTBIN)
-	cp -a $(BUILDDIR)/. $(DESTBIN)/
+	$(INSTALL) -d $(DESTBIN)/build
+	cp -a $(BUILDDIR)/. $(DESTBIN)/build/
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-mcp.service $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)/etc/default
