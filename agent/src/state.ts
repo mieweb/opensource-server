@@ -3,6 +3,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { log } from './log';
 import type { ApplyResult } from './types';
 
 export class State {
@@ -27,7 +28,7 @@ export class State {
     } catch (err) {
       if (!(err instanceof SyntaxError)) throw err;
       // A corrupt state file just means a full re-apply on this run.
-      console.error(`Ignoring unparsable state file ${state.file}: ${err.message}`);
+      log.warn(`Ignoring unparsable state file ${state.file}: ${err.message}`);
     }
     return state;
   }
