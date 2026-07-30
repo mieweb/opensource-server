@@ -98,17 +98,19 @@ function buildApp({
 
   app.use(express.static('public'));
 
-  // We rate limit unsuccessful (4xx/5xx statuses, excluding 404) to only 10 per 5 minutes, this
-  // should allow legitimate users a few tries to login or experiment without
-  // allowing bad-actors to abuse requests. 404s are excluded because browsers
-  // (especially Safari) automatically request favicon/apple-touch-icon paths that
-  // don't exist, and those harmless misses should not burn the rate-limit budget.
+  // Real rate limiting is expected to be enforced at the load balancer. This
+  // in-app limiter is only a lenient safety net against a single runaway client
+  // hammering the server. It intentionally counts every request (successful or
+  // not) rather than classifying by status code: with the SPA + OIDC flow, 401
+  // (and other 4xx) responses are a normal part of the auth handshake, so
+  // treating them as failures throttled legitimate users. The ceiling is set
+  // high enough that normal browsing never trips it, so it needs no tuning.
   if (rateLimit) {
     app.use(RateLimit({
-      windowMs: 5 * 60 * 1000,
-      max: 10,
-      skipSuccessfulRequests: true,
-      requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
+      windowMs: 60 * 1000,
+      max: 1000,
+      standardHeaders: true,
+      legacyHeaders: false,
     }));
   }
 
