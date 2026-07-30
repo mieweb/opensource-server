@@ -15,7 +15,6 @@ const morgan = require('morgan');
 const fs = require('fs');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
 const path = require('path');
-const RateLimit = require('express-rate-limit');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize } = require('./models');
@@ -23,8 +22,6 @@ const { sequelize } = require('./models');
 /**
  * @param {object} options
  * @param {string|string[]} options.sessionSecrets - express-session secret(s); required.
- * @param {boolean} [options.rateLimit=true]  - disable in tests: assertions on 4xx
- *                                              responses must not burn the budget.
  * @param {boolean} [options.accessLog=true]  - morgan; disable in tests for quiet output.
  * @param {string}  [options.mcpServerUrl]    - origin of the MCP server to reverse-proxy
  *                                              at /mcp (default: $MCP_SERVER_URL). Unset
@@ -32,7 +29,6 @@ const { sequelize } = require('./models');
  */
 function buildApp({
   sessionSecrets,
-  rateLimit = true,
   accessLog = true,
   mcpServerUrl = process.env.MCP_SERVER_URL,
 } = {}) {
@@ -98,21 +94,7 @@ function buildApp({
 
   app.use(express.static('public'));
 
-  // Real rate limiting is expected to be enforced at the load balancer. This
-  // in-app limiter is only a lenient safety net against a single runaway client
-  // hammering the server. It intentionally counts every request (successful or
-  // not) rather than classifying by status code: with the SPA + OIDC flow, 401
-  // (and other 4xx) responses are a normal part of the auth handshake, so
-  // treating them as failures throttled legitimate users. The ceiling is set
-  // high enough that normal browsing never trips it, so it needs no tuning.
-  if (rateLimit) {
-    app.use(RateLimit({
-      windowMs: 60 * 1000,
-      max: 1000,
-      standardHeaders: true,
-      legacyHeaders: false,
-    }));
-  }
+  // Rate limiting is enforced at the load balancer, not in the app.
 
   // CSRF guard for every handler that can see the session cookie (CodeQL
   // js/missing-token-validation). Behavior-preserving: csrfGuard skips

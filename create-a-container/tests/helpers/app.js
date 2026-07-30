@@ -4,8 +4,6 @@
  * options:
  *
  *   - fixed session secret (production reads secrets from the DB in server.js)
- *   - rate limiting off (tests assert on 4xx responses; the limiter would
- *     start rejecting them after 10)
  *   - access log off (quiet output)
  *
  * Tests normally authenticate with a Bearer API key (apiAuth accepts it and
@@ -23,7 +21,6 @@ const { buildApp: buildRealApp } = require('../../app');
 function buildApp() {
   return buildRealApp({
     sessionSecrets: ['test-secret'],
-    rateLimit: false,
     accessLog: false,
   });
 }
