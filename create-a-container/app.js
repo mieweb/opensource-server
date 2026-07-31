@@ -94,8 +94,6 @@ function buildApp({
 
   app.use(express.static('public'));
 
-  // Rate limiting is enforced at the load balancer, not in the app.
-
   // CSRF guard for every handler that can see the session cookie (CodeQL
   // js/missing-token-validation). Behavior-preserving: csrfGuard skips
   // GET/HEAD/OPTIONS and Bearer-only requests, and every state-changing
