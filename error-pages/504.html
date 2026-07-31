@@ -140,7 +140,7 @@
         <li>Wait a few moments and reload — the service may just be temporarily paused or busy.</li>
         <li>The container may be under memory pressure; the host can pause it to protect other services on the same machine.</li>
         <li>If you're in charge of this service, check its memory usage and look for a request that may be taking too long to complete.</li>
-        <li>Requests that take longer than the proxy's <code>proxy_read_timeout</code> are ended with this error.</li>
+        <li>Requests that exceed the proxy timeouts (for example, <code>proxy_read_timeout</code>) can end with this error.</li>
       </ul>
     </div>
   </div>
