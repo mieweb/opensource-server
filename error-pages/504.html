@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>502 — Service Unavailable</title>
+  <title>504 — Service Paused</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -44,7 +44,7 @@
     .status-code {
       font-size: 5rem;
       font-weight: 700;
-      background: linear-gradient(135deg, #00bfff, #8a2be2);
+      background: linear-gradient(135deg, #ffb347, #f9a825);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -98,7 +98,7 @@
       content: '›';
       position: absolute;
       left: 0.25rem;
-      color: #1baa27;
+      color: #f9a825;
       font-weight: 700;
       font-size: 1.1rem;
     }
@@ -109,7 +109,7 @@
       border-radius: 4px;
       font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
       font-size: 0.8rem;
-      color: #00bfff;
+      color: #ffb347;
     }
 
     .hostname {
@@ -120,27 +120,27 @@
       border-radius: 6px;
       font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
       font-size: 0.85rem;
-      color: #00bfff;
+      color: #ffb347;
       word-break: break-all;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="status-code">502</div>
-    <h1>Service Unavailable</h1>
+    <div class="status-code">504</div>
+    <h1>Service Paused</h1>
     <p>
-      A service is configured for this hostname, but the upstream refused the
-      connection. The service is likely stopped or has crashed.
+      This service accepted the connection but did not respond in time. It is
+      likely paused or under heavy load — it should come back on its own shortly.
     </p>
     <div class="hostname" id="hostname"></div>
     <div class="troubleshooting">
-      <h2>Troubleshooting</h2>
+      <h2>What's happening?</h2>
       <ul>
-        <li>Check that the service is running inside the container.</li>
-        <li>Verify the configured port matches the port your service is listening on.</li>
-        <li>Ensure the service binds to <code>0.0.0.0</code> (all interfaces), not <code>127.0.0.1</code> (localhost only).</li>
-        <li>Check that no firewall rules inside the container are blocking incoming connections.</li>
+        <li>Wait a few moments and reload — the service may just be temporarily paused or busy.</li>
+        <li>The container may be under memory pressure; the host can pause it to protect other services on the same machine.</li>
+        <li>If you're in charge of this service, check its memory usage and look for a request that may be taking too long to complete.</li>
+        <li>Requests that take longer than the proxy's <code>proxy_read_timeout</code> are ended with this error.</li>
       </ul>
     </div>
   </div>
