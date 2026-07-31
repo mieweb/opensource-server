@@ -243,10 +243,11 @@ async function main() {
     container.hostname,
     container.username,
   );
-  const cores = approvedResources.cpus || 4;
-  const memory = approvedResources.memory || 4096;
-  const swap = approvedResources.swap || 0;
-  const rootfsSize = approvedResources.rootfs || 50;
+  const { RESOURCE_DEFAULTS } = ResourceRequest;
+  const cores = approvedResources.cpus || RESOURCE_DEFAULTS.cpus;
+  const memory = approvedResources.memory || RESOURCE_DEFAULTS.memory;
+  const swap = approvedResources.swap || RESOURCE_DEFAULTS.swap;
+  const rootfsSize = approvedResources.rootfs || RESOURCE_DEFAULTS.rootfs;
   console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
 
   const isDocker = isDockerImage(container.template);

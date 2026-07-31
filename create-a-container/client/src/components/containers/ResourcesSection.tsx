@@ -46,7 +46,7 @@ const RESOURCE_OPTIONS = [
   },
 ] as const;
 
-const DEFAULTS: EffectiveResources = { memory: 4096, swap: 0, cpus: 4, rootfs: 50 };
+const DEFAULTS: EffectiveResources = { memory: 8192, swap: 0, cpus: 4, rootfs: 50 };
 
 interface ResourcesSectionProps {
   siteId: string;

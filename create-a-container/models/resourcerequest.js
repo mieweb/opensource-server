@@ -7,7 +7,7 @@ const { Model } = require('sequelize');
  * Requests at or below these values are auto-approved for non-admin users.
  */
 const RESOURCE_DEFAULTS = {
-  memory: 4096,   // MB
+  memory: 8192,   // MB
   swap: 0,        // MB
   cpus: 4,
   rootfs: 50,     // GB

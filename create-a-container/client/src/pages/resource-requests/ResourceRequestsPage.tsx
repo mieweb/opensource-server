@@ -29,7 +29,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 };
 
 const RESOURCE_DEFAULTS: Record<string, number> = {
-  memory: 4096,
+  memory: 8192,
   swap: 0,
   cpus: 4,
   rootfs: 50,
