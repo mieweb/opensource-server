@@ -45,6 +45,7 @@ tags:
   - name: Containers
   - name: Nodes
   - name: Agents
+  - name: Notifications
   - name: Jobs
   - name: External Domains
   - name: Users
@@ -96,6 +97,23 @@ components:
       required: [data]
       properties:
         data: {}
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        source: { type: string, description: Emitter of the event, e.g. lxc-oomd }
+        severity: { type: string, enum: [info, warning, critical] }
+        node: { type: string, nullable: true, description: Hypervisor node name }
+        ctid: { type: string, nullable: true, description: Container id on the hypervisor (CTID/VMID) }
+        owner: { type: string, nullable: true, description: Owning user (Users.uid); drives per-user visibility }
+        action: { type: string, nullable: true, description: 'freeze | kill | bump | quarantine | detect | ...' }
+        message: { type: string }
+        evidence: { type: object, nullable: true, additionalProperties: true }
+        eventAt: { type: string, format: date-time, nullable: true, description: When the event happened on the node }
+        acknowledgedAt: { type: string, format: date-time, nullable: true }
+        acknowledgedBy: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Site:
       type: object
       properties:
@@ -1169,6 +1187,75 @@ paths:
                         lastCheckinAt: { type: string, format: date-time, nullable: true }
                         secondsSinceCheckin: { type: integer, nullable: true, description: Computed server-side at response time }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /notifications:
+    post:
+      tags: [Notifications]
+      summary: Ingest a node-side event (admin API key)
+      description: |
+        Inbound webhook for node-side tools (e.g. lxc-oomd) to report events.
+        Requires an admin API key (Bearer). The event is persisted and surfaced
+        per owner in the UI notification bell. When `owner` is omitted it is
+        resolved best-effort from `node` + `ctid` via the Containers table; an
+        unresolved owner is stored as null and appears in no user's feed. `ts`
+        is epoch seconds and is recorded as `eventAt`. See
+        docs/notification-webhook.md for the full contract.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, severity, message]
+              properties:
+                source: { type: string, example: lxc-oomd }
+                severity: { type: string, enum: [info, warning, critical] }
+                node: { type: string, nullable: true, example: opensource-phxdc-pve1 }
+                ctid:
+                  nullable: true
+                  oneOf: [{ type: integer }, { type: string }]
+                  example: 392
+                owner: { type: string, nullable: true, example: mbachelder }
+                action: { type: string, nullable: true, example: freeze }
+                message: { type: string, example: 'CT 392 frozen: memory PSI full avg10=83 for 45s' }
+                evidence: { type: object, additionalProperties: true, nullable: true }
+                ts: { type: integer, description: Epoch seconds when the event occurred, example: 1771234560 }
+      responses:
+        '201': { description: Created — the persisted notification }
+        '400': { description: Invalid payload }
+        '401': { description: Missing/invalid credentials }
+        '403': { description: Non-admin credentials }
+    get:
+      tags: [Notifications]
+      summary: List the current user's notifications
+      description: |
+        Owner-scoped feed for the notification bell. Returned unacknowledged
+        first, then newest first, so the client can derive its unread badge from
+        the response.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Array of the caller's notifications }
+        '401': { description: Authentication required }
+  /notifications/all/ack:
+    post:
+      tags: [Notifications]
+      summary: Acknowledge all of the caller's notifications
+      responses:
+        '200': { description: '`{ data: { acknowledged: <count> } }`' }
+        '401': { description: Authentication required }
+  /notifications/{id}/ack:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    post:
+      tags: [Notifications]
+      summary: Acknowledge one notification the caller owns
+      responses:
+        '200': { description: The updated notification }
+        '401': { description: Authentication required }
+        '404': { description: Not found or not owned by the caller }
 
   /external-domains:
     get:

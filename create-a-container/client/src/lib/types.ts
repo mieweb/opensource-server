@@ -85,6 +85,29 @@ export interface Agent {
   secondsSinceCheckin: number | null;
 }
 
+export type NotificationSeverity = 'info' | 'warning' | 'critical';
+
+/**
+ * A node-side event surfaced in the notification bell. Named AppNotification to
+ * avoid clashing with the DOM's global `Notification` type.
+ */
+export interface AppNotification {
+  id: number;
+  source: string;
+  severity: NotificationSeverity;
+  node: string | null;
+  ctid: string | null;
+  owner: string | null;
+  action: string | null;
+  message: string;
+  evidence: Record<string, unknown> | null;
+  eventAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ExternalDomain {
   id: number;
   name: string;

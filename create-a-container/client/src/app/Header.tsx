@@ -10,12 +10,12 @@ import {
   DropdownItem,
   DropdownSeparator,
   SidebarMobileToggle,
-  useCommandPalette,
   useThemeContext,
 } from '@mieweb/ui';
-import { LogOut, Moon, Search, Settings, Sun } from 'lucide-react';
+import { LogOut, Moon, Settings, Sun } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useLogoutMutation, useSession } from '@/lib/auth';
+import { NotificationsBell } from './NotificationsBell';
 
 function initialsOf(name: string | undefined) {
   if (!name) return '?';
@@ -27,7 +27,6 @@ function initialsOf(name: string | undefined) {
 export function AppTopHeader() {
   const { data: session } = useSession();
   const { resolvedTheme, setTheme } = useThemeContext();
-  const palette = useCommandPalette();
   const logout = useLogoutMutation();
   const navigate = useNavigate();
 
@@ -48,11 +47,7 @@ export function AppTopHeader() {
       </AppHeaderSection>
       <AppHeaderSection align="right">
         <AppHeaderActions>
-          <AppHeaderIconButton
-            icon={<Search className="size-4" />}
-            label="Search (⌘K)"
-            onClick={palette.open}
-          />
+          <NotificationsBell />
           <AppHeaderIconButton
             icon={isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
