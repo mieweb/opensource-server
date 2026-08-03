@@ -16,6 +16,7 @@ import {
   DropdownHeader,
   DropdownSeparator,
   Spinner,
+  formatLastSeen,
 } from '@mieweb/ui';
 import { Bell, Check, CheckCheck } from 'lucide-react';
 import { keys, queries } from '@/lib/queries';
@@ -30,20 +31,12 @@ const SEVERITY_VARIANT: Record<NotificationSeverity, 'default' | 'warning' | 'da
   critical: 'danger',
 };
 
-/** Compact relative time, e.g. "3m", "2h", "5d"; falls back to a date. */
+/** Relative time via @mieweb/ui ("just now", "5m ago", ...); '' for missing/invalid dates. */
 function relativeTime(iso: string | null): string {
   if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
-  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (secs < 60) return `${secs}s`;
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString();
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return formatLastSeen(date);
 }
 
 function NotificationRow({
