@@ -20,7 +20,8 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg \
       containerd.io \
       docker-buildx-plugin \
       docker-compose-plugin && \
-    systemctl enable docker.service docker.socket && \
+    systemctl disable docker.service && \
+    systemctl enable docker.socket && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
