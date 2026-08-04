@@ -90,6 +90,7 @@ http {
     location /403.html { }
     location /404.html { }
     location /502.html { }
+    location /504.html { }
     location /auth-unavailable.html { }
   }
   
@@ -135,6 +136,17 @@ http {
     error_page 502 @502;
     location @502 {
       rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
+
+    <%_ /* A frozen/paused or OOMing-but-alive upstream keeps the socket open
+          but never replies, so NGINX hits proxy_read_timeout and returns 504. */ -%>
+    error_page 504 @504;
+    location @504 {
+      rewrite ^ /504.html break;
       proxy_method GET;
       proxy_pass_request_body off;
       proxy_set_header Content-Length "";
@@ -204,6 +216,17 @@ http {
     error_page 502 @502;
     location @502 {
       rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
+
+    <%_ /* A frozen/paused or OOMing-but-alive upstream keeps the socket open
+          but never replies, so NGINX hits proxy_read_timeout and returns 504. */ -%>
+    error_page 504 @504;
+    location @504 {
+      rewrite ^ /504.html break;
       proxy_method GET;
       proxy_pass_request_body off;
       proxy_set_header Content-Length "";
@@ -388,6 +411,17 @@ http {
     error_page 502 @502;
     location @502 {
       rewrite ^ /502.html break;
+      proxy_method GET;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_pass http://error_pages;
+    }
+
+    <%_ /* A frozen/paused or OOMing-but-alive upstream keeps the socket open
+          but never replies, so NGINX hits proxy_read_timeout and returns 504. */ -%>
+    error_page 504 @504;
+    location @504 {
+      rewrite ^ /504.html break;
       proxy_method GET;
       proxy_pass_request_body off;
       proxy_set_header Content-Length "";
