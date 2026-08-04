@@ -69,7 +69,7 @@ class DummyApi {
       cfg = {
         net0: `name=eth0,hwaddr=${DummyApi._fakeMac()},ip=dhcp,bridge=${this.node.networkBridge || 'vmbr0'}`,
         cores: 4,
-        memory: 4096,
+        memory: 8192,
         rootfs: `local:vm-${vmid}-disk-0,size=50G`,
       };
       this.configs.set(vmid, cfg);
