@@ -47,7 +47,6 @@ function startUpstream() {
 function build(mcpServerUrl) {
   return buildApp({
     sessionSecrets: ['test-secret'],
-    rateLimit: false,
     accessLog: false,
     mcpServerUrl,
   });

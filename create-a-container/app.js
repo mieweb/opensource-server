@@ -15,7 +15,6 @@ const morgan = require('morgan');
 const fs = require('fs');
 const SequelizeStore = require('express-session-sequelize')(session.Store);
 const path = require('path');
-const RateLimit = require('express-rate-limit');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
 const { sequelize } = require('./models');
@@ -23,8 +22,6 @@ const { sequelize } = require('./models');
 /**
  * @param {object} options
  * @param {string|string[]} options.sessionSecrets - express-session secret(s); required.
- * @param {boolean} [options.rateLimit=true]  - disable in tests: assertions on 4xx
- *                                              responses must not burn the budget.
  * @param {boolean} [options.accessLog=true]  - morgan; disable in tests for quiet output.
  * @param {string}  [options.mcpServerUrl]    - origin of the MCP server to reverse-proxy
  *                                              at /mcp (default: $MCP_SERVER_URL). Unset
@@ -32,7 +29,6 @@ const { sequelize } = require('./models');
  */
 function buildApp({
   sessionSecrets,
-  rateLimit = true,
   accessLog = true,
   mcpServerUrl = process.env.MCP_SERVER_URL,
 } = {}) {
@@ -97,20 +93,6 @@ function buildApp({
   }));
 
   app.use(express.static('public'));
-
-  // We rate limit unsuccessful (4xx/5xx statuses, excluding 404) to only 10 per 5 minutes, this
-  // should allow legitimate users a few tries to login or experiment without
-  // allowing bad-actors to abuse requests. 404s are excluded because browsers
-  // (especially Safari) automatically request favicon/apple-touch-icon paths that
-  // don't exist, and those harmless misses should not burn the rate-limit budget.
-  if (rateLimit) {
-    app.use(RateLimit({
-      windowMs: 5 * 60 * 1000,
-      max: 10,
-      skipSuccessfulRequests: true,
-      requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode === 404,
-    }));
-  }
 
   // CSRF guard for every handler that can see the session cookie (CodeQL
   // js/missing-token-validation). Behavior-preserving: csrfGuard skips
