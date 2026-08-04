@@ -1033,6 +1033,7 @@ paths:
       parameters:
         - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: path, name: id, required: true, schema: { type: integer } }
+<<<<<<< Updated upstream
       responses:
         '200':
           description: Array of Proxmox CT template storages
@@ -1040,6 +1041,21 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: array, items: { type: object, properties: { name: { type: string }, total: { type: integer }, available: { type: integer } } } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+=======
+      responses: { '200': { description: Array of Proxmox CT template storages } }
+  /sites/{siteId}/nodes/{id}/stats:
+    get:
+      tags: [Nodes]
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: >-
+            Live hardware utilization (CPU/memory/swap/rootfs, uptime) plus
+            per-datastore usage. `available` is false when the node has no API
+            credentials or the hypervisor is unreachable.
+>>>>>>> Stashed changes
 
   /jobs/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]

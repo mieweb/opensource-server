@@ -34,6 +34,7 @@ export function RowActions({
           aria-label={`Share ${c.hostname}`}
           leftIcon={<Share2 className="size-4" />}
           onClick={() => onShare(c)}
+          className="cursor-pointer"
         >
           <span className="hidden sm:inline">Share</span>
         </Button>
@@ -58,7 +59,7 @@ export function RowActions({
         }}
         disabled={deleting}
         // Danger tint on hover only; the built-in ghost transition still applies.
-        className="hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900/40 dark:hover:text-red-200"
+        className="cursor-pointer hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-900/40 dark:hover:text-red-200"
       >
         <span className="hidden sm:inline">Delete</span>
       </Button>

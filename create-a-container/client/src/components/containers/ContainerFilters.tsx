@@ -50,7 +50,7 @@ export function ContainerFilters({
       <div className="flex flex-wrap items-center gap-2">
         <MultiSelect
           label="User"
-          emptyLabel="All"
+          emptyLabel="Mine"
           icon={<UserIcon className="size-4" />}
           options={userOptions}
           selected={selectedUsers}

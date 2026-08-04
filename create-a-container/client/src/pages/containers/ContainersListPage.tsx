@@ -5,9 +5,6 @@ import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
-  Card,
-  CardTitle,
   Modal,
   ModalBody,
   ModalClose,
@@ -15,39 +12,19 @@ import {
   ModalTitle,
   PageHeader,
   Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   useToast,
 } from '@mieweb/ui';
-import {
-  Container as ContainerIcon,
-  LayoutGrid,
-  Plus,
-  Rows3,
-  Server,
-  User,
-} from 'lucide-react';
+import { Container as ContainerIcon, Plus, Server } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import { ButtonLink } from '@/components/ButtonLink';
-import { HttpLinks } from '@/components/containers/HttpLinks';
-import { Meta } from '@/components/containers/Meta';
-import { NodeLink } from '@/components/containers/NodeLink';
-import { RowActions } from '@/components/containers/RowActions';
-import { STATUS_LABELS, StatusBadge } from '@/components/containers/StatusBadge';
-import { SshLinks } from '@/components/containers/SshLinks';
+import { STATUS_LABELS } from '@/components/containers/StatusBadge';
 import { templateTitle } from '@/components/containers/shared';
 import { CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { ContainersDataGrid } from '@/components/containers/ContainersDataGrid';
 import { ContainerFilters, type FilterOption } from '@/components/containers/ContainerFilters';
 import type { Container, ContainerStatus } from '@/lib/types';
-
-type ViewMode = 'cards' | 'table';
-const VIEW_STORAGE_KEY = 'containers:view';
 
 export function ContainersListPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -69,9 +46,9 @@ export function ContainersListPage() {
   const selectedStatuses = parseList(searchParams.get('status'));
   const selectedTemplates = parseList(searchParams.get('template'));
   const hostnameQuery = searchParams.get('q') ?? '';
-  // A row may belong to another owner unless the filter is narrowed to just
-  // the caller, so the owner column only disappears then.
-  const showOwner = selectedUsers.length === 0 || selectedUsers.some((u) => u !== sessionUser);
+  // The default (and a self-only filter) shows only the caller's containers, so
+  // the owner column only appears once another user is included in the filter.
+  const showOwner = selectedUsers.some((u) => u !== sessionUser);
   const dnsWarnings = (location.state as { dnsWarnings?: string[] } | null)?.dnsWarnings;
 
   const setListParam = (key: string, values: string[]) =>
@@ -94,8 +71,8 @@ export function ContainersListPage() {
       },
       { replace: true },
     );
-  // The unfiltered default already shows everything the caller may see;
-  // select-all in the dropdown is just an explicit form of the same thing.
+  // Clearing all filters returns to the default view: the caller's own
+  // containers.
   const clearAllFilters = () =>
     setSearchParams(
       (prev) => {
@@ -106,28 +83,16 @@ export function ContainersListPage() {
       { replace: true },
     );
 
-  const [view, setView] = useState<ViewMode>(() => {
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(VIEW_STORAGE_KEY) : null;
-    return stored === 'table' ? 'table' : 'cards';
-  });
   // Container whose sharing dialog is open. Tracked by id so the dialog reflects
   // live collaborator changes after the list query refetches.
   const [shareTargetId, setShareTargetId] = useState<number | null>(null);
-  const changeView = (next: ViewMode) => {
-    setView(next);
-    try {
-      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
-    } catch {
-      /* ignore storage failures */
-    }
-  };
 
   const { data: site } = useQuery({
     queryKey: keys.site(siteId!),
     queryFn: () => queries.getSite(siteId!),
     enabled: !!siteId,
   });
-  // Empty selection returns everything the caller may see server-side.
+  // Empty selection defaults to the caller's own containers server-side.
   const userParam = selectedUsers.length > 0 ? selectedUsers : undefined;
   const { data, isLoading, error } = useQuery({
     queryKey: keys.containers(siteId!, { user: userParam, nodeId }),
@@ -137,17 +102,16 @@ export function ContainersListPage() {
 
   // Options for the "User" filter. Admins may filter by any user; non-admins
   // may only narrow to owners who have shared a container with them, so their
-  // option list is derived from the unfiltered list (own + shared). With no
-  // owner filter selected this is the same query as the list above, so React
-  // Query dedupes it into a single fetch.
+  // option list is derived from a `*` (own + shared) query — distinct from the
+  // own-only default list, so both run.
   const { data: allUsers } = useQuery({
     queryKey: keys.users(),
     queryFn: queries.listUsers,
     enabled: !!siteId && isAdmin,
   });
   const { data: visibleContainers } = useQuery({
-    queryKey: keys.containers(siteId!, {}),
-    queryFn: () => queries.listContainers(siteId!),
+    queryKey: keys.containers(siteId!, { user: ['*'] }),
+    queryFn: () => queries.listContainers(siteId!, { user: ['*'] }),
     enabled: !!siteId && !isAdmin,
   });
 
@@ -227,34 +191,6 @@ export function ContainersListPage() {
         icon={<ContainerIcon className="size-6" />}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {serverHasContainers && (
-              <div
-                role="group"
-                aria-label="Container view"
-                className="inline-flex rounded-md border border-border p-0.5"
-              >
-                <Button
-                  variant={view === 'cards' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  aria-pressed={view === 'cards'}
-                  aria-label="Card view"
-                  leftIcon={<LayoutGrid className="size-4" />}
-                  onClick={() => changeView('cards')}
-                >
-                  <span className="hidden sm:inline">Cards</span>
-                </Button>
-                <Button
-                  variant={view === 'table' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  aria-pressed={view === 'table'}
-                  aria-label="Table view"
-                  leftIcon={<Rows3 className="size-4" />}
-                  onClick={() => changeView('table')}
-                >
-                  <span className="hidden sm:inline">Table</span>
-                </Button>
-              </div>
-            )}
             <ButtonLink as={Link} to={`/sites/${siteId}/nodes`} variant="ghost" aria-label="Nodes" leftIcon={<Server className="size-4" />}>
               <span className="hidden sm:inline">Nodes</span>
             </ButtonLink>
@@ -319,116 +255,17 @@ export function ContainersListPage() {
         </Alert>
       )}
 
-      {hasContainers && view === 'cards' && (
-        <div className="grid gap-2">
-          {visible.map((c: Container) => (
-            <Card
-              key={c.id}
-              as="article"
-              padding="none"
-              orientation="horizontal"
-              className="flex w-full flex-row flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5"
-            >
-              <div className="flex min-w-0 items-center gap-2 lg:order-1">
-                <CardTitle as="h2" className="truncate text-sm font-semibold">
-                  {c.hostname}
-                </CardTitle>
-                <StatusBadge status={c.status} />
-              </div>
-              <div className="ml-auto flex shrink-0 items-center gap-1 lg:order-3 lg:ml-0">
-                <RowActions
-                  c={c}
-                  siteId={siteId}
-                  onDelete={del.mutate}
-                  deleting={del.isPending}
-                  canShare={canShareContainer(c)}
-                  onShare={(target) => setShareTargetId(target.id)}
-                />
-              </div>
-              <div className="flex w-full min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:order-2 lg:w-auto lg:flex-1">
-                <Meta label="Node">
-                  <NodeLink c={c} />
-                </Meta>
-                {showOwner && (
-                  <Meta label="User">
-                    <span className="inline-flex items-center gap-1">
-                      <User className="size-3.5" aria-hidden="true" />
-                      {c.owner}
-                    </span>
-                  </Meta>
-                )}
-                <Meta label="Template">
-                  <span className="font-mono" title={c.template || undefined}>
-                    {templateTitle(c.template)}
-                  </span>
-                </Meta>
-                <Meta label="HTTP">
-                  <HttpLinks c={c} />
-                </Meta>
-                <Meta label="SSH">
-                  <SshLinks c={c} sessionUser={sessionUser} />
-                </Meta>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {hasContainers && view === 'table' && (
-        <Table responsive>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Hostname</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Node</TableHead>
-              {showOwner && <TableHead>User</TableHead>}
-              <TableHead>Template</TableHead>
-              <TableHead>HTTP</TableHead>
-              <TableHead>SSH</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.map((c: Container) => (
-              <TableRow key={c.id}>
-                <TableCell className="font-medium">{c.hostname}</TableCell>
-                <TableCell>
-                  <StatusBadge status={c.status} />
-                </TableCell>
-                <TableCell>
-                  <NodeLink c={c} />
-                </TableCell>
-                {showOwner && (
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1">
-                      <User className="size-3.5" aria-hidden="true" />
-                      {c.owner}
-                    </span>
-                  </TableCell>
-                )}
-                <TableCell className="font-mono text-xs" title={c.template || undefined}>
-                  {templateTitle(c.template)}
-                </TableCell>
-                <TableCell>
-                  <HttpLinks c={c} limit={2} />
-                </TableCell>
-                <TableCell>
-                  <SshLinks c={c} sessionUser={sessionUser} />
-                </TableCell>
-                <TableCell className="flex flex-wrap justify-end gap-2">
-                  <RowActions
-                    c={c}
-                    siteId={siteId}
-                    onDelete={del.mutate}
-                    deleting={del.isPending}
-                    canShare={canShareContainer(c)}
-                    onShare={(target) => setShareTargetId(target.id)}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {hasContainers && (
+        <ContainersDataGrid
+          containers={visible}
+          showOwner={showOwner}
+          sessionUser={sessionUser}
+          siteId={siteId}
+          onDelete={del.mutate}
+          deleting={del.isPending}
+          canShare={canShareContainer}
+          onShare={(target) => setShareTargetId(target.id)}
+        />
       )}
 
       <Modal
