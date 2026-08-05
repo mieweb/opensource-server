@@ -224,7 +224,9 @@ function buildContainerListWhere(query, nodeIds, session) {
     where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
   }
 
-  const names = query.user;
+  const names = Array.isArray(query.user)
+    ? query.user
+    : (typeof query.user === 'string' ? [query.user] : []);
   // An explicit `*` means "everything I'm allowed to see": all owners for
   // admins, own + shared for non-admins. Absent/empty defaults to just the
   // caller's own containers — shared containers surface when you filter by the
