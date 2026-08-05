@@ -20,8 +20,9 @@ import {
 } from '@mieweb/ui';
 import { Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
-import { serverInfoKey } from '@/lib/auth';
+import { serverInfoKey, useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
+import { ContainerViewPreference } from '@/components/settings/ContainerViewPreference';
 import type { AppSettings } from '@/lib/types';
 
 const envVarSchema = z.object({
@@ -43,7 +44,15 @@ type FormData = z.infer<typeof schema>;
 export function SettingsPage() {
   const qc = useQueryClient();
   const toast = useToast();
-  const { data, isLoading, error } = useQuery({ queryKey: keys.settings(), queryFn: queries.getSettings });
+  const { data: session } = useSession();
+  const isAdmin = !!session?.isAdmin;
+  const { data, isLoading, error } = useQuery({
+    queryKey: keys.settings(),
+    queryFn: queries.getSettings,
+    // The system settings API is admin-only; non-admins only see the personal
+    // Preferences section below, so skip the request (avoids a 403).
+    enabled: isAdmin,
+  });
 
   const { register, handleSubmit, reset, control } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -74,12 +83,23 @@ export function SettingsPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
-  if (isLoading) return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
-  if (error) return <Alert variant="danger"><AlertDescription>{(error as ApiError).message}</AlertDescription></Alert>;
-
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" icon={<SettingsIcon className="size-6" />} bordered />
+
+      <ContainerViewPreference />
+
+      {isAdmin && isLoading && (
+        <div className="flex justify-center p-12">
+          <Spinner size="lg" />
+        </div>
+      )}
+      {isAdmin && error && (
+        <Alert variant="danger">
+          <AlertDescription>{(error as ApiError).message}</AlertDescription>
+        </Alert>
+      )}
+      {isAdmin && !isLoading && !error && (
       <form onSubmit={handleSubmit((v) => mutation.mutate(v))} className="grid w-full gap-8">
         <section className="grid gap-4">
           <h2 className="text-lg font-semibold">SMTP</h2>
@@ -175,6 +195,7 @@ export function SettingsPage() {
           <Button type="submit" variant="primary" isLoading={mutation.isPending}>Save settings</Button>
         </div>
       </form>
+      )}
     </div>
   );
 }

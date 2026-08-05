@@ -78,14 +78,12 @@ export function AppTopHeader() {
             />
             <DropdownSeparator />
             <DropdownContent>
-              {isAdmin && (
-                <DropdownItem
-                  icon={<Settings className="size-4" aria-hidden="true" />}
-                  onClick={() => navigate('/settings')}
-                >
-                  Settings
-                </DropdownItem>
-              )}
+              <DropdownItem
+                icon={<Settings className="size-4" aria-hidden="true" />}
+                onClick={() => navigate('/settings')}
+              >
+                Settings
+              </DropdownItem>
               <DropdownItem
                 icon={<LogOut className="size-4" aria-hidden="true" />}
                 variant="danger"

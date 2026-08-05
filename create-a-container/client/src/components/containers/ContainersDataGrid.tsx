@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { DataVisNitroGrid, DataVisNitroSource } from '@mieweb/ui/datavis';
-import type { TableColumn, TableRendererProps } from '@mieweb/datavis';
+import type { ColumnFilterConfig, TableColumn, TableRendererProps } from '@mieweb/datavis';
 import { User } from 'lucide-react';
 import type { Container } from '@/lib/types';
 import { HttpLinks } from './HttpLinks';
@@ -8,12 +8,11 @@ import { NodeLink } from './NodeLink';
 import { RowActions } from './RowActions';
 import { SshLinks } from './SshLinks';
 import { STATUS_LABELS, StatusBadge } from './StatusBadge';
+import { DefaultOwnerFilter } from './DefaultOwnerFilter';
 import { templateTitle } from './shared';
 
 export interface ContainersDataGridProps {
   containers: Container[];
-  /** Whether to include the owner column (hidden when the list is scoped to self). */
-  showOwner: boolean;
   sessionUser?: string;
   siteId?: string;
   onDelete: (id: number) => void;
@@ -43,7 +42,6 @@ type FormatCell = NonNullable<TableRendererProps['formatCell']>;
  */
 export function ContainersDataGrid({
   containers,
-  showOwner,
   sessionUser,
   siteId,
   onDelete,
@@ -74,9 +72,7 @@ export function ContainersDataGrid({
         },
       },
       { field: 'nodeName', header: 'Node', sortable: true, filterable: true },
-      ...(showOwner
-        ? [{ field: 'owner', header: 'User', sortable: true, filterable: true } as TableColumn]
-        : []),
+      { field: 'owner', header: 'User', sortable: true, filterable: true },
       {
         field: 'template',
         header: 'Template',
@@ -115,8 +111,26 @@ export function ContainersDataGrid({
         getSearchText: () => '',
       },
     ],
-    [showOwner],
+    [],
   );
+
+  // The "User" column gets a dropdown filter listing the owners present in the
+  // data, so users can narrow to their own, shared, or a specific user's
+  // containers straight from the grid — no separate filter bar needed.
+  const filterColumns = useMemo<ColumnFilterConfig[]>(() => {
+    const owners = Array.from(new Set(containers.map((c) => c.owner))).sort((a, b) =>
+      a.localeCompare(b),
+    );
+    return [
+      {
+        field: 'owner',
+        displayName: 'User',
+        filterType: 'string',
+        widget: 'dropdown',
+        options: owners,
+      },
+    ];
+  }, [containers]);
 
   const formatCell = useCallback<FormatCell>(
     (value, row, column) => {
@@ -167,8 +181,10 @@ export function ContainersDataGrid({
 
   return (
     <DataVisNitroSource type="http" url={url}>
+      <DefaultOwnerFilter owner={sessionUser} />
       <DataVisNitroGrid
         columns={columns}
+        filterColumns={filterColumns}
         formatCell={formatCell}
         features={{
           stickyHeaders: true,
