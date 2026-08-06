@@ -1191,6 +1191,7 @@ paths:
   /notifications:
     post:
       tags: [Notifications]
+      operationId: ingest_notification
       summary: Ingest a node-side event (admin API key)
       description: |
         Inbound webhook for node-side tools (e.g. lxc-oomd) to report events.
@@ -1221,12 +1222,21 @@ paths:
                 evidence: { type: object, additionalProperties: true, nullable: true }
                 ts: { type: integer, description: Epoch seconds when the event occurred, example: 1771234560 }
       responses:
-        '201': { description: Created — the persisted notification }
-        '400': { description: Invalid payload }
-        '401': { description: Missing/invalid credentials }
-        '403': { description: Non-admin credentials }
+        '201':
+          description: Created — the persisted notification
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Notification' }
+        '400': { description: Invalid payload, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Missing/invalid credentials, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: Non-admin credentials, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     get:
       tags: [Notifications]
+      operationId: list_notifications
       summary: List the current user's notifications
       description: |
         Owner-scoped feed for the notification bell. Returned unacknowledged
@@ -1238,24 +1248,56 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        '200': { description: Array of the caller's notifications }
-        '401': { description: Authentication required }
+        '200':
+          description: Array of the caller's notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+        '401': { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /notifications/all/ack:
     post:
       tags: [Notifications]
+      operationId: acknowledge_all_notifications
       summary: Acknowledge all of the caller's notifications
       responses:
-        '200': { description: '`{ data: { acknowledged: <count> } }`' }
-        '401': { description: Authentication required }
+        '200':
+          description: Number of notifications acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [acknowledged]
+                    properties:
+                      acknowledged: { type: integer, description: Count of notifications marked read }
+        '401': { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /notifications/{id}/ack:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
     post:
       tags: [Notifications]
+      operationId: acknowledge_notification
       summary: Acknowledge one notification the caller owns
       responses:
-        '200': { description: The updated notification }
-        '401': { description: Authentication required }
-        '404': { description: Not found or not owned by the caller }
+        '200':
+          description: The updated notification
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Notification' }
+        '401': { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found or not owned by the caller, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /external-domains:
     get:
