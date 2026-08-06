@@ -1,4 +1,5 @@
-const { Notification, Container } = require('../../models');
+const { Notification, Container, sequelize } = require('../../models');
+const { literal } = require('sequelize');
 
 // Columns returned to the UI. Kept explicit so a future internal-only column
 // doesn't leak through the serializer by accident.
@@ -31,13 +32,19 @@ async function create(fields) {
 // guarantees the bell's unread items sit at the top of the page, so a badge
 // computed from the first `limit` rows stays accurate up to that limit.
 async function findAllForOwner(owner, limit) {
+  // Quote the column via the active dialect's identifier quoting rather than a
+  // hardcoded "..." literal: MySQL uses backticks (and treats "..." as a string
+  // literal unless ANSI_QUOTES is set), which would silently break this sort.
+  const acknowledgedAtCol = sequelize
+    .getQueryInterface()
+    .queryGenerator.quoteIdentifier('acknowledgedAt');
   return Notification.findAll({
     where: { owner },
     attributes: LIST_ATTRS,
     order: [
-      // acknowledgedAt IS NULL sorts before non-null in both Postgres and
-      // SQLite once expressed as a boolean (false < true).
-      [require('sequelize').literal('"acknowledgedAt" IS NOT NULL'), 'ASC'],
+      // `<col> IS NOT NULL` yields a boolean where false (unacked) < true
+      // (acked) across Postgres, MySQL and SQLite, so unacked rows sort first.
+      [literal(`${acknowledgedAtCol} IS NOT NULL`), 'ASC'],
       ['createdAt', 'DESC'],
     ],
     limit,
