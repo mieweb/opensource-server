@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { Notification } = require('../../models');
 
 // Inbound webhook payload (see docs/notification-webhook.md). Mirrors the
 // contract in issue #434. Unknown keys are stripped; anything that isn't
@@ -6,10 +7,12 @@ const { z } = require('zod');
 //
 // ctid accepts a number or string and is normalised to a string so it lines up
 // with Containers.containerId (widened to STRING). ts is epoch seconds; the
-// service converts it to eventAt.
+// service converts it to eventAt. String bounds match the DB column lengths
+// (STRING(255)); severity reuses the model's ENUM values as the single source
+// of truth.
 const createNotification = z.object({
   source: z.string().min(1).max(255),
-  severity: z.enum(['info', 'warning', 'critical']),
+  severity: z.enum(Notification.SEVERITIES),
   node: z.string().max(255).nullish(),
   ctid: z
     .union([z.number().int(), z.string().max(255)])

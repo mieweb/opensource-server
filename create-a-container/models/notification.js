@@ -2,6 +2,8 @@
 
 const { Model } = require('sequelize');
 
+const SEVERITIES = ['info', 'warning', 'critical'];
+
 module.exports = (sequelize, DataTypes) => {
   class Notification extends Model {
     static associate(/* models */) {
@@ -13,17 +15,33 @@ module.exports = (sequelize, DataTypes) => {
 
   Notification.init(
     {
-      source: { type: DataTypes.STRING, allowNull: false },
-      severity: { type: DataTypes.STRING, allowNull: false },
-      node: { type: DataTypes.STRING, allowNull: true },
-      ctid: { type: DataTypes.STRING, allowNull: true },
-      owner: { type: DataTypes.STRING, allowNull: true },
-      action: { type: DataTypes.STRING, allowNull: true },
-      message: { type: DataTypes.TEXT, allowNull: false },
+      source: {
+        type: DataTypes.STRING(255),
+        allowNull: false,
+        validate: { notEmpty: true },
+      },
+      // Closed vocabulary — a DB ENUM (see the migration) plus an isIn guard so
+      // the failure is a clean validation error rather than a dialect-specific
+      // constraint error.
+      severity: {
+        type: DataTypes.ENUM(...SEVERITIES),
+        allowNull: false,
+        validate: { isIn: [SEVERITIES] },
+      },
+      node: { type: DataTypes.STRING(255), allowNull: true },
+      ctid: { type: DataTypes.STRING(255), allowNull: true },
+      owner: { type: DataTypes.STRING(255), allowNull: true },
+      // Free-form (node-side tools may emit new actions); bounded length only.
+      action: { type: DataTypes.STRING(255), allowNull: true },
+      message: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        validate: { notEmpty: true },
+      },
       evidence: { type: DataTypes.JSON, allowNull: true },
       eventAt: { type: DataTypes.DATE, allowNull: true },
       acknowledgedAt: { type: DataTypes.DATE, allowNull: true },
-      acknowledgedBy: { type: DataTypes.STRING, allowNull: true },
+      acknowledgedBy: { type: DataTypes.STRING(255), allowNull: true },
     },
     {
       sequelize,
@@ -34,6 +52,8 @@ module.exports = (sequelize, DataTypes) => {
       ],
     }
   );
+
+  Notification.SEVERITIES = SEVERITIES;
 
   return Notification;
 };

@@ -78,4 +78,35 @@ describe('notifications service', () => {
     const result = await svc.acknowledgeAll('eve');
     expect(result.acknowledged).toBe(2);
   });
+
+  // Defense-in-depth: the HTTP validator normally rejects a bad severity first,
+  // but the model/DB constraint must also reject it if something bypasses the
+  // validator (e.g. a direct model write).
+  describe('column constraints', () => {
+    test('rejects a severity outside the ENUM', async () => {
+      await expect(
+        Notification.create({ source: 's', severity: 'emergency', message: 'm' })
+      ).rejects.toThrow();
+    });
+
+    test('rejects an empty source', async () => {
+      await expect(
+        Notification.create({ source: '', severity: 'info', message: 'm' })
+      ).rejects.toThrow();
+    });
+
+    test('rejects an empty message', async () => {
+      await expect(
+        Notification.create({ source: 's', severity: 'info', message: '' })
+      ).rejects.toThrow();
+    });
+
+    test('accepts each valid severity', async () => {
+      for (const severity of Notification.SEVERITIES) {
+        // eslint-disable-next-line no-await-in-loop
+        const n = await Notification.create({ source: 's', severity, message: 'm' });
+        expect(n.severity).toBe(severity);
+      }
+    });
+  });
 });
