@@ -128,6 +128,16 @@ class ProxmoxApi {
   }
 
   /**
+   * Get live status for a node (CPU load, memory, swap, rootfs, uptime).
+   * @param {string} node - The node name
+   * @returns {Promise<object>} - The API response data (cpu, cpuinfo, memory, swap, rootfs, uptime, ...)
+   */
+  async nodeStatus(node) {
+    const response = await axios.get(`${this.baseUrl}/api2/json/nodes/${node}/status`, this.options);
+    return response.data.data;
+  }
+
+  /**
    * Get cluster resources
    * @param {'node'|'storage'|'pool'|'qemu'|'lxc'|'openvz'|'sdn'|'network'|'vm'} type 
    * @returns {Promise<object>} - The API response data

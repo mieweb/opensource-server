@@ -201,12 +201,13 @@ const CONTAINER_INCLUDE = [
  * `query.user` must be an array (callers capture `req.query` once and default
  * it with `query.user ??= []` — Express 5 re-parses req.query on each access;
  * clients send bracket notation, e.g. `user[0]=alice`, which the 'extended'
- * query parser coerces to an array). Empty -> everything the caller
- * may see: every container on the site for admins, their own plus any shared
- * with them for non-admins. A list of names -> those owners for admins; for
- * non-admins the same list intersected with what they may already see (own
- * plus shared), so a non-admin can only narrow down to owners who have shared
- * a container with them and never widen their visibility.
+ * query parser coerces to an array). Empty -> the caller's own containers (the
+ * default view). `*` -> everything the caller may see: every container on the
+ * site for admins, their own plus any shared with them for non-admins. A list
+ * of names -> those owners for admins; for non-admins the same list
+ * intersected with what they may see (own plus shared), so a non-admin can
+ * surface a sharer's containers by filtering on that username but can never
+ * widen their visibility.
  *
  * @param {object} query - req.query
  * @param {number[]} nodeIds - IDs of the nodes belonging to the site
@@ -223,20 +224,37 @@ function buildContainerListWhere(query, nodeIds, session) {
     where.nodeId = Number.isInteger(nodeId) && nodeIds.includes(nodeId) ? nodeId : -1;
   }
 
-  const names = query.user;
+  const names = Array.isArray(query.user)
+    ? query.user
+    : (typeof query.user === 'string' ? [query.user] : []);
+  // An explicit `*` means "everything I'm allowed to see": all owners for
+  // admins, own + shared for non-admins. Absent/empty defaults to just the
+  // caller's own containers — shared containers surface when you filter by the
+  // sharer's username (see the share dialog copy).
+  const wantsAll = names.includes('*');
+
   if (session.isAdmin) {
-    // Admins may see every owner on the site; a name list simply narrows it.
-    if (names.length > 0) where.username = names;
+    if (wantsAll) return where; // every owner on the site
+    if (names.length === 0) {
+      where.username = session.user; // default: own only
+      return where;
+    }
+    where.username = names; // specific owners
     return where;
   }
-  // Non-admins may only see their own containers plus any shared with them.
+  // Non-admins may never see beyond their own containers plus shared ones.
   const visible = visibleToClauses(session.user);
-  if (names.length === 0) {
-    where[Sequelize.Op.or] = visible;
-  } else {
-    // Intersect the requested owners with what the caller may already see.
-    where[Sequelize.Op.and] = [{ [Sequelize.Op.or]: visible }, { username: names }];
+  if (wantsAll) {
+    where[Sequelize.Op.or] = visible; // own + shared
+    return where;
   }
+  if (names.length === 0) {
+    where.username = session.user; // default: own only
+    return where;
+  }
+  // Intersect the requested owners with what the caller may see, so filtering
+  // by a sharer's username surfaces the containers they shared.
+  where[Sequelize.Op.and] = [{ [Sequelize.Op.or]: visible }, { username: names }];
   return where;
 }
 
@@ -359,12 +377,13 @@ router.get(
     const site = await loadSite(req.params.siteId);
     const nodes = await Node.findAll({ where: { siteId: site.id }, attributes: ['id'] });
     const nodeIds = nodes.map((n) => n.id);
-    // `user` filter backs the list page's User filter: omitted, it returns
-    // everything the caller may see (all owners for admins; own + shared for
-    // non-admins); `user[0]=<name>` narrows to specific owners. See
-    // buildContainerListWhere. Express 5's req.query is a getter that re-parses
-    // on every access, so capture it once — defaulting `req.query.user` directly
-    // would mutate a throwaway object.
+    // `user` filter backs the list page's User filter: omitted, it returns the
+    // caller's own containers (the default); `user[0]=*` returns everything the
+    // caller may see (all owners for admins; own + shared for non-admins);
+    // `user[0]=<name>` selects specific owners. See buildContainerListWhere.
+    // Express 5's req.query is a getter that re-parses on every access, so
+    // capture it once — defaulting `req.query.user` directly would mutate a
+    // throwaway object.
     const query = req.query;
     query.user ??= [];
     const where = buildContainerListWhere(query, nodeIds, req.session);

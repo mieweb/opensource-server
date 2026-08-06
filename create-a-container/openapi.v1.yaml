@@ -1040,6 +1040,23 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: array, items: { type: object, properties: { name: { type: string }, total: { type: integer }, available: { type: integer } } } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /sites/{siteId}/nodes/{id}/stats:
+    get:
+      operationId: get_node_stats
+      tags: [Nodes]
+      summary: Live hardware utilization (CPU/memory/swap/rootfs, uptime) plus per-datastore usage
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: >-
+            Live hardware utilization. `available` is false when the node has no
+            API credentials or the hypervisor is unreachable.
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object } } }
+        '404': { description: 'Node not found (code: not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /jobs/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]

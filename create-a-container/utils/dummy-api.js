@@ -88,6 +88,31 @@ class DummyApi {
     return vmid;
   }
 
+  // --- Node status -----------------------------------------------------------
+
+  /**
+   * Simulated live node status so the resource dashboards render locally
+   * without a hypervisor. Values jitter slightly per call to look "live".
+   */
+  async nodeStatus() {
+    const GiB = 1024 * 1024 * 1024;
+    const memTotal = 32 * GiB;
+    const memUsed = Math.round(memTotal * (0.35 + Math.random() * 0.2));
+    const swapTotal = 8 * GiB;
+    const swapUsed = Math.round(swapTotal * (0.05 + Math.random() * 0.1));
+    const diskTotal = 500 * GiB;
+    const diskUsed = Math.round(diskTotal * (0.4 + Math.random() * 0.15));
+    return {
+      cpu: 0.1 + Math.random() * 0.3,
+      cpuinfo: { cpus: 8 },
+      memory: { total: memTotal, used: memUsed, free: memTotal - memUsed },
+      swap: { total: swapTotal, used: swapUsed, free: swapTotal - swapUsed },
+      rootfs: { total: diskTotal, used: diskUsed, avail: diskTotal - diskUsed, free: diskTotal - diskUsed },
+      uptime: 3600 * 72,
+      loadavg: ['0.20', '0.15', '0.10'],
+    };
+  }
+
   // --- Storage ---------------------------------------------------------------
 
   /**

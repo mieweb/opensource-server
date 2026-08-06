@@ -31,6 +31,41 @@ export interface Node {
   hasSecret: boolean;
 }
 
+/** Used/total byte pair for a node hardware resource. */
+export interface NodeResourceUsage {
+  used: number;
+  total: number;
+}
+
+/** Per-datastore usage reported by the hypervisor. */
+export interface NodeStorageUsage {
+  name: string;
+  type: string | null;
+  content: string | null;
+  used: number;
+  total: number;
+  avail: number;
+}
+
+/**
+ * Live hardware utilization for a node. `available` is false when the node has
+ * no API credentials or the hypervisor could not be reached; the remaining
+ * fields keep their shape so the UI can render an "unavailable" state.
+ */
+export interface NodeStats {
+  available: boolean;
+  status: string | null;
+  /** CPU load as a 0..1 fraction of total capacity. */
+  cpu: number | null;
+  cpuCount: number | null;
+  memory: NodeResourceUsage | null;
+  swap: NodeResourceUsage | null;
+  rootfs: NodeResourceUsage | null;
+  /** Uptime in seconds. */
+  uptime: number | null;
+  storages: NodeStorageUsage[];
+}
+
 export interface AgentServiceStatus {
   /** systemd ActiveState: active, inactive, failed, ... */
   state: string;

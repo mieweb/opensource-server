@@ -15,6 +15,7 @@ import type {
   Job,
   JobStatusRow,
   Node,
+  NodeStats,
   AppSettings,
   ResourceRequest,
   Site,
@@ -27,6 +28,8 @@ export const keys = {
   nodes: (siteId: number | string) => ['sites', String(siteId), 'nodes'] as const,
   node: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'nodes', String(id)] as const,
+  nodeStats: (siteId: number | string, id: number | string) =>
+    ['sites', String(siteId), 'nodes', String(id), 'stats'] as const,
   containers: (siteId: number | string, params?: Record<string, string | string[] | undefined>) =>
     ['sites', String(siteId), 'containers', params ?? {}] as const,
   container: (siteId: number | string, id: number | string) =>
@@ -61,6 +64,8 @@ export const queries = {
     api.get<Node[]>(`/api/v1/sites/${siteId}/nodes`),
   getNode: (siteId: number | string, id: number | string) =>
     api.get<Node>(`/api/v1/sites/${siteId}/nodes/${id}`),
+  getNodeStats: (siteId: number | string, id: number | string) =>
+    api.get<NodeStats>(`/api/v1/sites/${siteId}/nodes/${id}/stats`),
 
   // Agents
   listAgents: () => api.get<Agent[]>('/api/v1/agents'),

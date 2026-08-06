@@ -99,6 +99,76 @@ router.get(
   }),
 );
 
+// GET /nodes/:id/stats — live hardware utilization (CPU/memory/swap/rootfs) plus
+// per-datastore usage, used by the expandable resource dashboard in the UI.
+router.get(
+  '/:id/stats',
+  asyncHandler(async (req, res) => {
+    const site = await loadSite(req);
+    const node = await Node.findOne({
+      where: { id: parseInt(req.params.id, 10), siteId: site.id },
+    });
+    if (!node) throw new ApiError(404, 'not_found', 'Node not found');
+
+    // Shape stays stable whether or not live data is reachable, so the client
+    // can render "unavailable" without special-casing missing fields.
+    const empty = {
+      available: false,
+      status: null,
+      cpu: null,
+      cpuCount: null,
+      memory: null,
+      swap: null,
+      rootfs: null,
+      uptime: null,
+      storages: [],
+    };
+    if (!node.hasApiAccess()) return ok(res, empty);
+
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const usage = (o) => (o ? { used: num(o.used), total: num(o.total) } : null);
+
+    try {
+      const client = await node.api();
+      if (typeof client.nodeStatus !== 'function') return ok(res, empty);
+      const status = await client.nodeStatus(node.name);
+
+      let storages = [];
+      try {
+        const list = await client.datastores(node.name, null, true);
+        storages = (list || [])
+          .filter((s) => num(s.total) > 0)
+          .map((s) => ({
+            name: s.storage,
+            type: s.type || null,
+            content: s.content || null,
+            used: num(s.used),
+            total: num(s.total),
+            avail: num(s.avail),
+          }));
+      } catch (err) {
+        console.error(`Error fetching storages for node ${node.name}:`, err.message);
+      }
+
+      return ok(res, {
+        available: true,
+        // /status has no run-state field; reaching it means the node is up.
+        status: 'online',
+        cpu: typeof status.cpu === 'number' ? status.cpu : null,
+        cpuCount: status.cpuinfo?.cpus ?? null,
+        memory: usage(status.memory),
+        swap: usage(status.swap),
+        rootfs: usage(status.rootfs),
+        uptime: status.uptime ?? null,
+        storages,
+      });
+    } catch (err) {
+      console.error(`Error fetching stats for node ${node.name}:`, err.message);
+      return ok(res, empty);
+    }
+  }),
+);
+
 router.post(
   '/',
   apiAdmin,
