@@ -95,6 +95,7 @@ router.use('/settings', require('./settings'));
 router.use('/jobs', require('./jobs'));
 router.use('/resource-requests', require('./resource-requests'));
 router.use('/notifications', require('../../../resources/notifications/router'));
+router.use('/services', require('../../../resources/services/router'));
 
 // Final error handler — must come after all routes
 router.use(jsonErrorHandler);
