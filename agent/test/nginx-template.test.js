@@ -74,12 +74,23 @@ const streamService = {
   protocol: 'tcp',
 };
 
-test('stream context loads the accounting module, dict, and vars', async () => {
+test('stream context loads the accounting module, dict, and relay url', async () => {
   const conf = await render({ streamServices: [streamService] });
   assert.match(conf, /js_shared_dict_zone zone=osaas_stream:256k timeout=10m evict;/);
   // js_import appears twice: once in http, once in stream.
   const imports = conf.match(/js_import accounting from \/opt\/opensource-server\/agent\/njs\/accounting\.js;/g);
   assert.strictEqual(imports.length, 2);
+  // Streams report via the localhost relay (stream js has no fetch-TLS on
+  // Debian njs 0.8.9), so the manager URL and API key must NOT appear in the
+  // stream context: the key appears exactly once, as the http-context js_var.
+  assert.match(conf, /js_var \$osaas_relay_url "http:\/\/127\.0\.0\.1:1985";/);
+  assert.strictEqual(conf.match(/test-key-123/g).length, 1);
+});
+
+test('http context exposes the localhost relay for stream reports', async () => {
+  const conf = await render({});
+  assert.match(conf, /listen 127\.0\.0\.1:1985;/);
+  assert.match(conf, /js_content accounting\.relay;/);
 });
 
 test('stream server records last-access at the access phase', async () => {

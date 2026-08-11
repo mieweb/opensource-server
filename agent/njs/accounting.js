@@ -11,9 +11,11 @@
  *
  * Injected via nginx variables (see templates/nginx.conf.ejs):
  *   $osaas_service_id   Services.id for this vhost / stream server
- *   $osaas_manager_url  manager base URL, no trailing slash
- *   $osaas_api_key      admin API key; empty for the manager's own agent,
- *                       which reports over localhost without credentials
+ *   $osaas_manager_url  http-context: manager base URL, no trailing slash
+ *   $osaas_api_key      http-context: admin API key; empty for the manager's
+ *                       own agent, which reports over localhost without
+ *                       credentials
+ *   $osaas_relay_url    stream-context: localhost relay base URL
  */
 
 function report(managerUrl, apiKey, serviceId) {
@@ -48,18 +50,18 @@ async function http_record(r) {
 }
 
 /**
- * stream handler (js_access). The fetch is deliberately not awaited: the
- * connection proceeds immediately and the report completes in the
- * background while the session lives.
+ * stream handler (js_access). Reports go via the localhost http relay —
+ * Debian's njs stream module has no fetch-TLS — and the fetch is
+ * deliberately not awaited: the connection proceeds immediately.
  */
 function stream_record(s) {
   try {
     const id = s.variables.osaas_service_id;
     if (id && ngx.shared.osaas_stream.add(id, '1')) {
-      report(s.variables.osaas_manager_url, s.variables.osaas_api_key, id)
+      report(s.variables.osaas_relay_url, '', id)
         .then((reply) => {
           if (reply.status !== 204) {
-            s.log('osaas accounting: manager returned ' + reply.status + ' for service ' + id);
+            s.log('osaas accounting: relay returned ' + reply.status + ' for service ' + id);
           }
         })
         .catch((e) => {
@@ -72,4 +74,28 @@ function stream_record(s) {
   s.allow();
 }
 
-export default { http_record, stream_record };
+/**
+ * http relay for stream-context reports (js_content on the localhost-only
+ * relay server). Debian's njs stream module is built without NGX_STREAM_SSL,
+ * so stream_record cannot fetch an https manager directly; it POSTs to this
+ * relay over plain local http and the http js VM — full fetch-TLS — forwards
+ * to the manager. The path shape is validated so the relay can never be used
+ * to reach any other manager endpoint with the embedded credential.
+ */
+async function relay(r) {
+  try {
+    const m = r.uri.match(/^\/api\/v1\/services\/(\d+)\/last-access$/);
+    if (!m) {
+      r.return(404);
+      return;
+    }
+    const reply = await report(r.variables.osaas_manager_url, r.variables.osaas_api_key, m[1]);
+    r.return(reply.status);
+    return;
+  } catch (e) {
+    r.log('osaas accounting relay: ' + e.message);
+  }
+  r.return(502);
+}
+
+export default { http_record, stream_record, relay };
