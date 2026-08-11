@@ -21,7 +21,7 @@ help:
 	@echo "Targets:"
 	@echo "  deps     install dependencies (npm ci)"
 	@echo "  build    compile the TypeScript sources"
-	@echo "  test     run tests (none yet)"
+	@echo "  test     run tests"
 	@echo "  install  stage files into DESTDIR (default /)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
@@ -42,8 +42,8 @@ build: deps
 
 dev: build
 
-# No test suite yet; kept as a no-op so the repo-wide `make test` passes.
-test:
+test: deps
+	npm test
 
 install: build
 	$(INSTALL) -d $(DESTBIN)

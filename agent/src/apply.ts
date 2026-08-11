@@ -12,6 +12,7 @@ import { execFileSync } from 'child_process';
 import ejs from 'ejs';
 import { reloadOrRestartService, restartService, sighupService } from './system';
 import { log, commandOutput } from './log';
+import type { AgentConfig } from './config';
 import type { ApplyResult, SiteConfig } from './types';
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
@@ -19,6 +20,8 @@ const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 interface RenderedFile {
   dest: string;
   content: string;
+  /** File mode for atomic writes (e.g. 0o600 for configs holding secrets). */
+  mode?: number;
 }
 
 export interface ManagedService {
@@ -26,7 +29,7 @@ export interface ManagedService {
   unit: string;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
-  render(config: SiteConfig): Promise<RenderedFile[] | null>;
+  render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;
   /** Command that validates the staged config before it is kept. */
   test?: string[];
   /** Reload/restart after a successful apply. */
@@ -48,10 +51,19 @@ function run(cmd: string[]): string {
 export const services: ManagedService[] = [
   {
     unit: 'nginx',
-    async render(config) {
+    async render(config, agent) {
       return [{
         dest: '/etc/nginx/nginx.conf',
-        content: await renderTemplate('nginx.conf.ejs', config.nginx),
+        content: await renderTemplate('nginx.conf.ejs', {
+          ...config.nginx,
+          accounting: {
+            managerUrl: agent.managerUrl,
+            apiKey: agent.apiKey ?? '',
+          },
+        }),
+        // The rendered config embeds the manager API key: root-only. nginx's
+        // master process reads the config as root before forking workers.
+        mode: 0o600,
       }];
     },
     test: ['nginx', '-t'],
@@ -100,15 +112,19 @@ function readIfExists(file: string): string | null {
 
 // Write via temp file + rename so a crash mid-write can never leave a
 // truncated config on disk.
-function writeFileAtomic(dest: string, content: string): void {
+function writeFileAtomic(dest: string, content: string, mode?: number): void {
   const tmp = `${dest}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, content);
+  fs.writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
   fs.renameSync(tmp, dest);
 }
 
-export async function applyService(svc: ManagedService, config: SiteConfig): Promise<ApplyResult> {
+export async function applyService(
+  svc: ManagedService,
+  config: SiteConfig,
+  agent: AgentConfig,
+): Promise<ApplyResult> {
   log.debug(`${svc.unit}: rendering config`);
-  const files = await svc.render(config);
+  const files = await svc.render(config, agent);
   if (!files) {
     log.debug(`${svc.unit}: nothing to manage yet, skipping`);
     return 'success';
@@ -123,17 +139,18 @@ export async function applyService(svc: ManagedService, config: SiteConfig): Pro
 
   log.info(`${svc.unit}: ${changed.length} file(s) changed, applying: ${changed.join(', ')}`);
 
+  const modeByDest = new Map(files.map((f) => [f.dest, f.mode]));
   // Stage the new files (previous contents kept in memory for rollback).
   for (const f of files) {
     fs.mkdirSync(path.dirname(f.dest), { recursive: true });
-    writeFileAtomic(f.dest, f.content);
+    writeFileAtomic(f.dest, f.content, f.mode);
     log.debug(`${svc.unit}: wrote ${f.dest}`);
   }
 
   const rollback = () => {
     for (const [dest, prev] of current) {
       if (prev === null) fs.rmSync(dest, { force: true });
-      else writeFileAtomic(dest, prev);
+      else writeFileAtomic(dest, prev, modeByDest.get(dest));
     }
     log.debug(`${svc.unit}: rolled back to previous config`);
   };

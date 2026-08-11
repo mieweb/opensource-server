@@ -44,6 +44,18 @@ http {
                    max_size=10m inactive=5m;
 
   <%_ /*
+    Service last-access accounting (docs/superpowers/specs/
+    2026-08-11-service-last-access-accounting-design.md). The static njs
+    module claims a 10-minute window per service in the shared dict (entries
+    expire via timeout=; the shm zone survives reloads) and reports the first
+    access of each window to the manager from a parallel mirror subrequest.
+  */ -%>
+  js_import accounting from /opt/opensource-server/agent/njs/accounting.js;
+  js_shared_dict_zone zone=osaas_http:256k timeout=10m evict;
+  js_var $osaas_manager_url "<%= accounting.managerUrl %>";
+  js_var $osaas_api_key "<%= accounting.apiKey %>";
+
+  <%_ /*
     Upload throughput over HTTP/2 and HTTP/3. The small defaults (64k body
     preread / h3 stream buffer, 256k per-worker h2 recv buffer) cap how much
     request body a client may send before waiting on flow control, which
@@ -294,6 +306,13 @@ http {
     <%_ } else { _%>
     <%_ /* Proxy settings */ -%>
     location / {
+      <%_ /* Last-access accounting: runs in a parallel mirror subrequest,
+            after the auth gate. mirror_request_body off is REQUIRED to keep
+            uploads unbuffered (see #395). */ -%>
+      set $osaas_service_id "<%= service.id %>";
+      mirror /_osaas_accounting;
+      mirror_request_body off;
+
       <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
 
@@ -341,6 +360,16 @@ http {
       proxy_buffer_size 16k;
       proxy_buffers 4 32k;
       proxy_busy_buffers_size 64k;
+    }
+
+    location = /_osaas_accounting {
+      internal;
+      <%_ /* ngx.fetch needs a resolver for the manager hostname (dnsmasq
+            runs on every agent host) and the system CA bundle for https. */ -%>
+      resolver 127.0.0.1;
+      js_fetch_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+      js_fetch_timeout 5s;
+      js_content accounting.http_record;
     }
     <%_ } _%>
   }
