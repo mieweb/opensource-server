@@ -13,20 +13,12 @@ import {
 } from '@mieweb/ui';
 import { Radio } from 'lucide-react';
 import { ApiError } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/formatRelativeTime';
 import { keys, queries } from '@/lib/queries';
 import type { Agent } from '@/lib/types';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { AgentServiceBadges } from './AgentServiceBadges';
 import { OnlineBadge } from './OnlineBadge';
-
-function formatLastCheckin(agent: Agent): string {
-  const seconds = agent.secondsSinceCheckin;
-  if (seconds === null || !agent.lastCheckinAt) return 'never';
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return new Date(agent.lastCheckinAt).toLocaleString();
-}
 
 export function AgentsListPage() {
   useDocumentTitle('Agents');
@@ -88,7 +80,7 @@ export function AgentsListPage() {
                 <TableCell>
                   <AgentServiceBadges services={agent.services} />
                 </TableCell>
-                <TableCell>{formatLastCheckin(agent)}</TableCell>
+                <TableCell>{formatRelativeTime(agent.lastCheckinAt, agent.secondsSinceCheckin)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
