@@ -48,7 +48,7 @@ test:
 install: build
 	$(INSTALL) -d $(DESTBIN)
 	$(INSTALL_DATA) package.json $(DESTBIN)/
-	cp -a dist templates node_modules $(DESTBIN)/
+	cp -a dist templates njs node_modules $(DESTBIN)/
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.service $(UNIT_DIR)/
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.timer $(UNIT_DIR)/
