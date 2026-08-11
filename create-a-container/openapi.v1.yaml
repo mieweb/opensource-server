@@ -169,6 +169,13 @@ components:
             properties:
               port: { type: integer }
               externalUrl: { type: string, nullable: true }
+        lastAccessedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Most recent proxy-reported access across the container's services
+            (max of the services' lastAccessedAt). Null when never accessed.
         nodeName: { type: string, nullable: true }
         nodeApiUrl: { type: string, nullable: true }
         services:
@@ -181,6 +188,13 @@ components:
         id: { type: integer }
         type: { type: string, enum: [http, transport, dns] }
         internalPort: { type: integer }
+        lastAccessedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Set when the site proxy reports traffic to this service — at most
+            once per 10 minutes per service. Null when never accessed.
         httpService:
           type: object
           nullable: true
@@ -1298,6 +1312,28 @@ paths:
                   data: { $ref: '#/components/schemas/Notification' }
         '401': { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: Not found or not owned by the caller, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /services/{id}/last-access:
+    post:
+      operationId: record_service_access
+      tags: [Agents]
+      summary: Record service access (proxy accounting)
+      description: |
+        Called by the site proxy (nginx accounting module) on the first
+        request/connection to a service after 10+ minutes of none. Sets the
+        service's lastAccessedAt to the current server time. Allowed from
+        localhost without credentials (manager bootstrap) or with an admin
+        API key. Exempt from the CSRF guard for Bearer/localhost callers.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Access recorded }
+        '400': { description: 'Non-numeric id (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: 'Missing/invalid credentials from a non-localhost caller', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /external-domains:
     get:

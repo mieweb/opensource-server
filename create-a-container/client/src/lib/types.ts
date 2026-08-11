@@ -142,6 +142,8 @@ export interface ContainerService {
   id: number;
   type: 'http' | 'transport' | 'dns';
   internalPort: number;
+  /** Proxy-reported last access (ISO datetime); null when never accessed. */
+  lastAccessedAt: string | null;
   httpService: ServiceHttp | null;
   transportService: ServiceTransport | null;
   dnsService: ServiceDns | null;
@@ -165,6 +167,8 @@ export interface Container {
   sshPort: number | null;
   sshHost: string | null;
   httpEntries: { port: number; externalUrl: string | null }[];
+  /** Max lastAccessedAt across services; null when never accessed. */
+  lastAccessedAt: string | null;
   nodeName: string | null;
   nodeApiUrl: string | null;
   services: ContainerService[];
