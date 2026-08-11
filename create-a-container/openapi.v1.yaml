@@ -44,6 +44,7 @@ tags:
   - name: Sites
   - name: Containers
   - name: Nodes
+  - name: Usage
   - name: Agents
   - name: Jobs
   - name: External Domains
@@ -1057,6 +1058,40 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: object } } }
         '404': { description: 'Node not found (code: not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /sites/{siteId}/usage:
+    get:
+      operationId: get_site_usage
+      tags: [Usage]
+      summary: Live per-owner resource usage report (allocated vs used), computed from one Proxmox cluster-resources call per cluster
+      description: >-
+        Admins see every owner on the site; other users see their own containers
+        plus containers shared with them. `findings` (owner-tag vs DB attribution
+        drift, unattributed containers) and `unknownNodeRows` are admin-only.
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Per-owner usage rows with per-container detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      generatedAt: { type: string, format: date-time }
+                      owners:
+                        type: array
+                        items:
+                          type: object
+                          description: One row per owner (`owner` null = unattributed), with summed metrics and per-container `containers` detail
+                      findings:
+                        type: array
+                        description: Admin-only attribution findings (kind drift|unattributed)
+                        items: { type: object }
+                      unknownNodeRows: { type: integer, description: 'Admin-only count of cluster members not registered in the manager DB' }
+        '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /jobs/{id}:
     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]

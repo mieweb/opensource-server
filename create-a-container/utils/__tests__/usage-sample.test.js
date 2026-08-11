@@ -66,6 +66,7 @@ describe('buildUsageSample', () => {
       vmid: '284',
       name: 'ozwell-studio-92e3d441',
       owner: 'zbarrell',
+      containerDbId: 11,
       node: 'pve2',
       siteId: 3,
       status: 'running',
@@ -110,6 +111,7 @@ describe('buildUsageSample', () => {
     const { sample, finding } = buildUsageSample({ resource: untagged, node, container: null });
 
     expect(sample.owner).toBeNull();
+    expect(sample.containerDbId).toBeNull();
     expect(finding).toEqual({
       kind: 'unattributed',
       vmid: '284',

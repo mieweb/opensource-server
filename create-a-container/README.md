@@ -56,6 +56,8 @@ The Manager is not installed by hand in production. It ships as:
 In both cases the app runs `server.js` (HTTP API + UI), `job-runner.js`
 (background worker), and `usage-collector.js` (per-container resource metrics
 exported as OTLP; a no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is configured).
+The same per-owner data is available live in the UI at `/sites/:siteId/usage`
+(API: `GET /api/v1/sites/:siteId/usage`) with no OTel backend required.
 Database connection settings come from the environment (see
 [Configuration](#configuration)); the manager image provisions PostgreSQL and
 writes these to `/etc/default/container-creator` on first boot.

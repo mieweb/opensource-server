@@ -84,6 +84,9 @@ function buildUsageSample({ resource, node, container }) {
     vmid: String(resource.vmid),
     name: resource.name || null,
     owner,
+    // DB primary key when the container is registered in the manager — used
+    // by the report endpoint to honour per-container sharing visibility.
+    containerDbId: container ? container.id : null,
     node: node.name,
     siteId: node.siteId,
     status: resource.status || null,

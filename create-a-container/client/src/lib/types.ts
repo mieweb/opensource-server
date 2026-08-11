@@ -73,6 +73,64 @@ export interface AgentServiceStatus {
   lastApply: 'success' | 'failure' | 'unknown';
 }
 
+/** One container's live usage sample in the per-owner usage report. */
+export interface UsageContainer {
+  vmid: string;
+  name: string | null;
+  owner: string | null;
+  containerDbId: number | null;
+  node: string;
+  siteId: number;
+  status: string | null;
+  cpuUsed: number | null;
+  cpuAlloc: number | null;
+  memUsed: number | null;
+  memAlloc: number | null;
+  diskUsed: number | null;
+  diskAlloc: number | null;
+  diskReadBytes: number | null;
+  diskWriteBytes: number | null;
+  netInBytes: number | null;
+  netOutBytes: number | null;
+  /** Seconds since container boot. */
+  uptime: number | null;
+}
+
+/** Per-owner aggregate row (owner null = unattributed, admin-visible only). */
+export interface UsageOwner {
+  owner: string | null;
+  containerCount: number;
+  runningCount: number;
+  cpuUsed: number;
+  cpuAlloc: number;
+  memUsed: number;
+  memAlloc: number;
+  diskUsed: number;
+  diskAlloc: number;
+  diskReadBytes: number;
+  diskWriteBytes: number;
+  netInBytes: number;
+  netOutBytes: number;
+  containers: UsageContainer[];
+}
+
+/** Owner-attribution problem detected during collection (admin-only). */
+export interface UsageFinding {
+  kind: 'drift' | 'unattributed';
+  vmid: string;
+  tagOwner: string | null;
+  dbOwner: string | null;
+}
+
+export interface UsageReport {
+  generatedAt: string;
+  owners: UsageOwner[];
+  /** Admin-only. */
+  findings?: UsageFinding[];
+  /** Admin-only: cluster members not registered in the manager DB. */
+  unknownNodeRows?: number;
+}
+
 export interface Agent {
   id: number;
   siteId: number;

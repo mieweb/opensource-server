@@ -27,87 +27,21 @@
  * (OTEL_EXPORTER_OTLP_ENDPOINT et al., http/protobuf). Without an endpoint
  * configured the collector logs that it is disabled and exits — the service
  * is a no-op until an OTel collector exists to receive the data.
+ *
+ * The same sampling cycle backs the live report endpoint
+ * (/api/v1/sites/:siteId/usage) via the shared utils/usage-collection.js.
  */
 
-const db = require('./models');
-const { buildUsageSample } = require('./utils/usage-sample');
+const { collectUsage } = require('./utils/usage-collection');
 
 const EXPORT_INTERVAL_MS = parseInt(process.env.USAGE_COLLECTOR_INTERVAL_MS || '300000', 10);
 
 /**
- * Load every DB container that exists in Proxmox, keyed by `${nodeId}:${vmid}`
- * for O(1) attribution lookups against cluster-resources entries.
- * @returns {Promise<Map<string, object>>}
- */
-async function loadContainerIndex() {
-  const containers = await db.Container.findAll({
-    where: { containerId: { [db.Sequelize.Op.ne]: null } },
-    attributes: ['id', 'containerId', 'nodeId', 'username'],
-  });
-  const index = new Map();
-  for (const c of containers) {
-    index.set(`${c.nodeId}:${c.containerId}`, c);
-  }
-  return index;
-}
-
-/**
- * Gather one cycle of normalized usage samples. One API call per cluster:
- * after each successful `clusterResources('lxc')` call, every node name
- * appearing in the response is marked covered (within the same site), so
- * cluster peers are not re-polled. Per-node failures are logged and skipped;
- * the cycle always completes.
+ * Run one collection cycle, logging attribution findings and the summary.
  * @returns {Promise<Array<object>>} Normalized samples (see utils/usage-sample.js)
  */
 async function collectSamples() {
-  const nodes = await db.Node.findAll({ where: db.Node.provisionableWhere() });
-  if (nodes.length === 0) return [];
-
-  const containerIndex = await loadContainerIndex();
-
-  // Node lookup by `${siteId}:${name}` — cluster-resources rows carry the
-  // Proxmox node name, and node names are only meaningful within a site.
-  const nodesByName = new Map(nodes.map((n) => [`${n.siteId}:${n.name}`, n]));
-  const covered = new Set();
-
-  const samples = [];
-  const findings = [];
-  let unknownNodeRows = 0;
-
-  for (const node of nodes) {
-    const nodeKey = `${node.siteId}:${node.name}`;
-    if (covered.has(nodeKey)) continue;
-    covered.add(nodeKey);
-
-    let resources;
-    try {
-      const api = await node.api();
-      resources = await api.clusterResources('lxc');
-    } catch (err) {
-      console.error(`UsageCollector: node ${node.name} (site ${node.siteId}) unreachable: ${err.message}`);
-      continue;
-    }
-    if (!Array.isArray(resources)) continue;
-
-    for (const resource of resources) {
-      if (resource.vmid == null) continue;
-      const resourceNodeKey = `${node.siteId}:${resource.node}`;
-      covered.add(resourceNodeKey);
-
-      const dbNode = nodesByName.get(resourceNodeKey);
-      if (!dbNode) {
-        // Cluster member not registered in the DB — no site/node to attribute
-        // the sample to; count it so the drift is visible in the summary.
-        unknownNodeRows++;
-        continue;
-      }
-
-      const container = containerIndex.get(`${dbNode.id}:${resource.vmid}`) || null;
-      const { sample, finding } = buildUsageSample({ resource, node: dbNode, container });
-      samples.push(sample);
-      if (finding) findings.push(finding);
-    }
-  }
+  const { samples, findings, unknownNodeRows } = await collectUsage();
 
   for (const finding of findings) {
     if (finding.kind === 'drift') {

@@ -15,6 +15,7 @@ router.use(apiAuth);
 // Nested mounts
 router.use('/:siteId/containers', require('./containers'));
 router.use('/:siteId/nodes', require('./nodes'));
+router.use('/:siteId/usage', require('./usage'));
 
 function serialize(site) {
   return {
