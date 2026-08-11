@@ -479,13 +479,15 @@ stream {
     Service last-access accounting, stream flavor (dicts are per-context, so
     the stream side gets its own zone). js_access claims the window and
     fires the report without awaiting it — connection setup never waits.
+    No js_fetch_trusted_certificate here: Debian's libnginx-mod-stream-js is
+    built without stream TLS fetch support, so the directive is rejected by
+    nginx -t (and https reports fail-open at runtime; see accounting.js).
   */ -%>
   js_import accounting from /opt/opensource-server/agent/njs/accounting.js;
   js_shared_dict_zone zone=osaas_stream:256k timeout=10m evict;
   js_var $osaas_manager_url "<%= accounting.managerUrl %>";
   js_var $osaas_api_key "<%= accounting.apiKey %>";
   resolver 127.0.0.1;
-  js_fetch_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
   js_fetch_timeout 5s;
 
   <%_ streamServices.forEach((service, index) => { _%>
