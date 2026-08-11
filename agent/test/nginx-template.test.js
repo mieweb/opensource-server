@@ -65,3 +65,27 @@ test('default, wildcard, and landing servers get no accounting hooks', async () 
   assert.doesNotMatch(conf, /osaas_service_id/);
   assert.doesNotMatch(conf, /mirror \//);
 });
+
+const streamService = {
+  id: 77,
+  internalPort: 22,
+  container: { ipv4Address: '10.254.1.6' },
+  externalPort: 30022,
+  protocol: 'tcp',
+};
+
+test('stream context loads the accounting module, dict, and vars', async () => {
+  const conf = await render({ streamServices: [streamService] });
+  assert.match(conf, /js_shared_dict_zone zone=osaas_stream:256k timeout=10m evict;/);
+  // js_import appears twice: once in http, once in stream.
+  const imports = conf.match(/js_import accounting from \/opt\/opensource-server\/agent\/njs\/accounting\.js;/g);
+  assert.strictEqual(imports.length, 2);
+});
+
+test('stream server records last-access at the access phase', async () => {
+  const conf = await render({ streamServices: [streamService] });
+  assert.match(conf, /js_var \$osaas_service_id "77";/);
+  assert.match(conf, /js_access accounting\.stream_record;/);
+  assert.match(conf, /listen 30022;/);
+  assert.match(conf, /proxy_pass 10\.254\.1\.6:22;/);
+});

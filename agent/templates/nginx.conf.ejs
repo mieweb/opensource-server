@@ -475,9 +475,24 @@ stream {
 
   access_log  /var/log/nginx/stream-access.log  main;
 
+  <%_ /*
+    Service last-access accounting, stream flavor (dicts are per-context, so
+    the stream side gets its own zone). js_access claims the window and
+    fires the report without awaiting it — connection setup never waits.
+  */ -%>
+  js_import accounting from /opt/opensource-server/agent/njs/accounting.js;
+  js_shared_dict_zone zone=osaas_stream:256k timeout=10m evict;
+  js_var $osaas_manager_url "<%= accounting.managerUrl %>";
+  js_var $osaas_api_key "<%= accounting.apiKey %>";
+  resolver 127.0.0.1;
+  js_fetch_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+  js_fetch_timeout 5s;
+
   <%_ streamServices.forEach((service, index) => { _%>
   server {
     listen <%= service.externalPort %><%= service.protocol === 'udp' ? ' udp' : '' %>;
+    js_var $osaas_service_id "<%= service.id %>";
+    js_access accounting.stream_record;
     proxy_pass <%= service.container.ipv4Address %>:<%= service.internalPort %>;
   }
   <%_ }) _%>
