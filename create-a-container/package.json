@@ -12,6 +12,7 @@
     "dev:server": "nodemon server.js",
     "db:migrate": "sequelize-cli db:migrate && sequelize-cli db:seed:all",
     "job-runner": "node job-runner.js",
+    "usage-collector": "node usage-collector.js",
     "client:install": "npm --prefix client install",
     "client:dev": "npm --prefix client run dev",
     "client:build": "npm --prefix client run build",
@@ -20,6 +21,10 @@
     "client:type-check": "npm --prefix client run type-check"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-metrics": "^2.10.0",
     "argon2": "^0.44.0",
     "axios": "^1.18.0",
     "cookie-parser": "^1.4.7",

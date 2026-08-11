@@ -315,7 +315,7 @@ class DummyApi {
     const { Container } = require('../models');
     const containers = await Container.findAll({
       where: { nodeId: this.node.id, containerId: { [require('sequelize').Op.ne]: null } },
-      attributes: ['containerId', 'hostname'],
+      attributes: ['containerId', 'hostname', 'username'],
     });
     return containers.map((c) => ({
       vmid: c.containerId,
@@ -323,6 +323,21 @@ class DummyApi {
       type: 'lxc',
       status: 'running',
       node: this.node.name || 'dummy',
+      // Real nodes tag containers with their owner (see bin/create-container.js);
+      // mirror that so owner attribution (usage-collector.js) works in dev.
+      tags: c.username,
+      // Simulated resource usage so the usage collector has data in dev.
+      cpu: 0.05,
+      maxcpu: 2,
+      mem: 256 * 1024 * 1024,
+      maxmem: 1024 * 1024 * 1024,
+      disk: 2 * 1024 * 1024 * 1024,
+      maxdisk: 8 * 1024 * 1024 * 1024,
+      diskread: 100 * 1024 * 1024,
+      diskwrite: 50 * 1024 * 1024,
+      netin: 10 * 1024 * 1024,
+      netout: 5 * 1024 * 1024,
+      uptime: 3600,
     }));
   }
 }

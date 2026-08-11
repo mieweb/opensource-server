@@ -13,7 +13,7 @@ INSTALL_DATA := $(INSTALL) -m 0644
 
 # Server runtime files and directories. Client sources, dev tooling and repo
 # metadata are intentionally excluded; only the built client/dist ships.
-APP_FILES := server.js app.js job-runner.js package.json package-lock.json openapi.v1.yaml
+APP_FILES := server.js app.js job-runner.js usage-collector.js package.json package-lock.json openapi.v1.yaml
 APP_DIRS  := bin config data middlewares migrations models node_modules \
              public resources routers seeders utils
 
@@ -56,11 +56,13 @@ build: deps
 # rewrites package-lock.json (so `make dev` leaves the lockfile untouched even
 # when the local npm would otherwise renormalize it). Then run migrations (which
 # also runs the dev-only seeders, e.g. a localhost site + dummy node, via
-# `db:seed:all`), build the client once, and run three processes together via
+# `db:seed:all`), build the client once, and run four processes together via
 # concurrently:
 #   - server (nodemon, restarts on change)
 #   - job-runner (so container creation exercises the real POST /containers ->
 #     Job -> job-runner -> bin/create-container.js -> DummyApi path)
+#   - usage-collector (per-container OTLP metrics; exits immediately unless an
+#     OTLP endpoint is configured in .env)
 #   - client build in watch mode (rebuilds client/dist, which the server serves)
 #
 # Override behavior on the command line, e.g.:
@@ -76,9 +78,10 @@ dev:
 	npm run db:migrate
 	npm --prefix client run build
 	@echo "Starting Manager (server + job-runner + client watch) at http://localhost:3000 ..."
-	$(LOG_LEVEL_PREFIX)npx concurrently -n server,jobs,client -c blue,magenta,green \
+	$(LOG_LEVEL_PREFIX)npx concurrently -n server,jobs,usage,client -c blue,magenta,yellow,green \
 		"npx nodemon server.js" \
 		"node job-runner.js" \
+		"node usage-collector.js" \
 		"npm --prefix client run build:watch"
 
 # Run the server test suite (jest + supertest against a throwaway SQLite DB in
@@ -99,6 +102,7 @@ install: build
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/container-creator.service $(UNIT_DIR)/
 	$(INSTALL_DATA) contrib/systemd/job-runner.service $(UNIT_DIR)/
+	$(INSTALL_DATA) contrib/systemd/usage-collector.service $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)/etc/logrotate.d
 	$(INSTALL_DATA) contrib/opensource-server.logrotate $(DESTDIR)/etc/logrotate.d/opensource-server
 
