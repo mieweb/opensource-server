@@ -6,6 +6,7 @@ import { api } from './api';
 import type {
   Agent,
   ApiKey,
+  AppNotification,
   Container,
   ContainerMetadata,
   ContainerNewBootstrap,
@@ -40,6 +41,7 @@ export const keys = {
   externalDomains: () => ['external-domains'] as const,
   externalDomain: (id: number | string) => ['external-domains', String(id)] as const,
   agents: () => ['agents'] as const,
+  notifications: () => ['notifications'] as const,
   users: () => ['users'] as const,
   user: (uid: number | string) => ['users', String(uid)] as const,
   groups: () => ['groups'] as const,
@@ -69,6 +71,14 @@ export const queries = {
 
   // Agents
   listAgents: () => api.get<Agent[]>('/api/v1/agents'),
+
+  // Notifications (owner-scoped). The list is unacked-first + newest-first, so
+  // the bell derives its unread badge from the returned rows.
+  listNotifications: () => api.get<AppNotification[]>('/api/v1/notifications'),
+  ackNotification: (id: number) =>
+    api.post<AppNotification>(`/api/v1/notifications/${id}/ack`),
+  ackAllNotifications: () =>
+    api.post<{ acknowledged: number }>('/api/v1/notifications/all/ack'),
 
   // Containers
   listContainers: (
