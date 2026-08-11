@@ -18,6 +18,11 @@ services:
         - CMD-SHELL
         - pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}
       timeout: 5s
+    command:
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - max_connections=100
   pgbouncer:
     image: edoburu/pgbouncer:latest
     depends_on:
@@ -30,13 +35,13 @@ services:
       DB_PASSWORD: ${PG_PASS:?database password required}
       DB_NAME: ${PG_DB:-authentik}
       POOL_MODE: transaction
-      MAX_CLIENT_CONN: 500
+      MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 20
       AUTH_TYPE: scram-sha-256
       AUTH_QUERY: SELECT usename, passwd FROM pg_shadow WHERE usename=$$1
     restart: unless-stopped
   server:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.4}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.6}
     depends_on:
       postgresql:
         condition: service_healthy
@@ -49,8 +54,10 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__CONN_MAX_AGE: 0
       AUTHENTIK_POSTGRESQL__DISABLE_SERVER_SIDE_CURSORS: 'true'
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
+      AUTHENTIK_WEB__WORKERS: 4
     env_file:
       - .env
     ports:
@@ -60,7 +67,7 @@ services:
     restart: unless-stopped
     shm_size: 512mb
   worker:
-    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.4}
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2026.5.6}
     depends_on:
       postgresql:
         condition: service_healthy
@@ -74,6 +81,7 @@ services:
       AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
       AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
       AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__CONN_MAX_AGE: 0
       AUTHENTIK_POSTGRESQL__DISABLE_SERVER_SIDE_CURSORS: 'true'
       AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?secret key required}
     env_file:
