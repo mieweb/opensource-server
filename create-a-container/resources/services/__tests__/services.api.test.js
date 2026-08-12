@@ -90,4 +90,52 @@ describe('POST /api/v1/services/:id/last-access', () => {
     const res = await request(app).post('/api/v1/services/abc/last-access');
     expect(res.status).toBe(400);
   });
+
+  // The route is machine-facing (localhost or Bearer), but /api/v1 is behind
+  // csrfGuard, which enforces CSRF only for session-cookie requests that carry
+  // no Bearer. Pin that a remote session-authenticated request is rejected
+  // without a CSRF token and succeeds with one, so the Bearer/localhost
+  // exemptions can't silently regress into a CSRF hole.
+  describe('session-authenticated (CSRF-guarded) access', () => {
+    // A supertest agent persists cookies across requests, so the session
+    // established by /csrf-token and /auth/login carries into the accounting
+    // POST. X-Forwarded-For marks the request as remote so the localhost
+    // bypass does not apply.
+    async function loginAgent() {
+      const admin = await createUser({ admin: true });
+      const agent = request.agent(app);
+      const tokenRes = await agent.get('/api/v1/csrf-token');
+      const csrfToken = tokenRes.body.data.csrfToken;
+      const loginRes = await agent
+        .post('/api/v1/auth/login')
+        .set('X-CSRF-Token', csrfToken)
+        .send({ username: admin.uid, password: 'correct horse battery staple' });
+      expect(loginRes.status).toBe(200);
+      return { agent, csrfToken };
+    }
+
+    test('remote session request without a CSRF token is 403', async () => {
+      const { agent } = await loginAgent();
+      const res = await agent
+        .post(`/api/v1/services/${service.id}/last-access`)
+        .set('X-Forwarded-For', '203.0.113.7');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('csrf_invalid');
+
+      await service.reload();
+      expect(service.lastAccessedAt).toBeNull();
+    });
+
+    test('remote session request with a valid CSRF token records access', async () => {
+      const { agent, csrfToken } = await loginAgent();
+      const res = await agent
+        .post(`/api/v1/services/${service.id}/last-access`)
+        .set('X-Forwarded-For', '203.0.113.7')
+        .set('X-CSRF-Token', csrfToken);
+      expect(res.status).toBe(204);
+
+      await service.reload();
+      expect(service.lastAccessedAt).not.toBeNull();
+    });
+  });
 });
