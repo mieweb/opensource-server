@@ -309,8 +309,21 @@ class DummyApi {
    * @returns {Promise<Array<object>>}
    */
   async clusterResources(type = null) {
-    if (type && type !== 'lxc') return [];
+    if (type && type !== 'lxc' && type !== 'node') return [];
     if (this.node.id == null) return [];
+    // A single node row supplies simulated cluster capacity (matches the
+    // nodeStatus() figures) for the usage report's stacked bars.
+    if (type === 'node') {
+      const GiB = 1024 * 1024 * 1024;
+      return [{
+        type: 'node',
+        node: this.node.name || 'dummy',
+        status: 'online',
+        maxcpu: 8,
+        maxmem: 32 * GiB,
+        maxdisk: 500 * GiB,
+      }];
+    }
     // Lazy require to avoid a load-time cycle (models/node.js -> dummy-api.js).
     const { Container } = require('../models');
     const containers = await Container.findAll({
@@ -339,6 +352,24 @@ class DummyApi {
       netout: 5 * 1024 * 1024,
       uptime: 3600,
     }));
+  }
+
+  /**
+   * Simulated RRD series with PSI pressure fields so the pressure path of the
+   * usage report/collector renders in dev. One recent point is enough — the
+   * consumers only read the latest values.
+   * @returns {Promise<Array<object>>}
+   */
+  async rrdData() {
+    return [{
+      time: Math.floor(Date.now() / 1000) - 60,
+      pressurecpusome: Math.random() * 5,
+      pressurecpufull: Math.random() * 1,
+      pressurememorysome: Math.random() * 10,
+      pressurememoryfull: Math.random() * 2,
+      pressureiosome: Math.random() * 8,
+      pressureiofull: Math.random() * 2,
+    }];
   }
 }
 

@@ -70,6 +70,17 @@ describe('aggregateByOwner', () => {
     expect(rows[1].containerCount).toBe(2);
   });
 
+  test('pressureMax is the worst PSI across the owner containers, null when unprobed', () => {
+    const rows = aggregateByOwner([
+      sample({ vmid: '100', psiMemFull: 42, psiIoSome: 5 }),
+      sample({ vmid: '101', psiCpuSome: 7 }),
+      sample({ vmid: '102', owner: 'horner' }),
+    ]);
+
+    expect(rows[0].pressureMax).toBe(42);
+    expect(rows[1].pressureMax).toBeNull();
+  });
+
   test('returns an empty array for no samples', () => {
     expect(aggregateByOwner([])).toEqual([]);
   });

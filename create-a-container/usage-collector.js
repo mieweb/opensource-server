@@ -19,6 +19,10 @@
  *   container.disk.io     counter By  (attr disk.io.direction: read|write)
  *   container.network.io  counter By  (attr network.io.direction: receive|transmit)
  *   container.uptime      gauge   s
+ *   container.cpu.pressure / container.memory.pressure / container.io.pressure
+ *                         gauge   %   (attr pressure.kind: some|full; only for
+ *                                      the highest-utilization containers each
+ *                                      cycle — see utils/usage-psi.js)
  *
  * The counters are cumulative since container boot as reported by Proxmox; a
  * decrease (container reboot) is a normal counter reset for the backend.
@@ -122,8 +126,11 @@ function setupMetrics() {
   const diskIo = meter.createObservableCounter('container.disk.io', { unit: 'By', description: 'Disk bytes transferred since container boot' });
   const networkIo = meter.createObservableCounter('container.network.io', { unit: 'By', description: 'Network bytes transferred since container boot' });
   const uptime = meter.createObservableGauge('container.uptime', { unit: 's', description: 'Seconds since container boot' });
+  const cpuPressure = meter.createObservableGauge('container.cpu.pressure', { unit: '%', description: 'CPU PSI stall percentage (avg10)' });
+  const memPressure = meter.createObservableGauge('container.memory.pressure', { unit: '%', description: 'Memory PSI stall percentage (avg10)' });
+  const ioPressure = meter.createObservableGauge('container.io.pressure', { unit: '%', description: 'I/O PSI stall percentage (avg10)' });
 
-  const instruments = [cpuUsage, cpuLimit, memUsage, memLimit, diskUsage, diskLimit, diskIo, networkIo, uptime];
+  const instruments = [cpuUsage, cpuLimit, memUsage, memLimit, diskUsage, diskLimit, diskIo, networkIo, uptime, cpuPressure, memPressure, ioPressure];
 
   meter.addBatchObservableCallback(async (result) => {
     let samples;
@@ -159,6 +166,17 @@ function setupMetrics() {
       }
       if (sample.netOutBytes != null) {
         result.observe(networkIo, sample.netOutBytes, { ...attributes, 'network.io.direction': 'transmit' });
+      }
+      const pressures = [
+        [cpuPressure, sample.psiCpuSome, 'some'],
+        [cpuPressure, sample.psiCpuFull, 'full'],
+        [memPressure, sample.psiMemSome, 'some'],
+        [memPressure, sample.psiMemFull, 'full'],
+        [ioPressure, sample.psiIoSome, 'some'],
+        [ioPressure, sample.psiIoFull, 'full'],
+      ];
+      for (const [instrument, value, kind] of pressures) {
+        if (value != null) result.observe(instrument, value, { ...attributes, 'pressure.kind': kind });
       }
     }
   }, instruments);

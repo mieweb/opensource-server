@@ -81,6 +81,12 @@ describe('buildUsageSample', () => {
       netInBytes: 3000,
       netOutBytes: 4000,
       uptime: 86400,
+      psiCpuSome: null,
+      psiCpuFull: null,
+      psiMemSome: null,
+      psiMemFull: null,
+      psiIoSome: null,
+      psiIoFull: null,
     });
   });
 

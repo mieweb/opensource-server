@@ -165,6 +165,23 @@ class ProxmoxApi {
   }
 
   /**
+   * Get RRD time-series data for a container. At 60 s resolution this includes
+   * the PSI pressure fields (pressurecpusome/full, pressurememorysome/full,
+   * pressureiosome/full) used for health detection.
+   * @param {string} node - The node name
+   * @param {number|string} vmid
+   * @param {'hour'|'day'|'week'|'month'|'year'} [timeframe]
+   * @returns {Promise<Array<object>>} - The API response data
+   */
+  async rrdData(node, vmid, timeframe = 'hour') {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/rrddata?timeframe=${timeframe}`,
+      this.options,
+    );
+    return response.data.data;
+  }
+
+  /**
    * Get container configuration
    * @param {string} node 
    * @param {number} vmid 

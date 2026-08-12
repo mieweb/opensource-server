@@ -15,13 +15,21 @@ const SUM_FIELDS = [
   'netInBytes', 'netOutBytes',
 ];
 
+const PSI_SAMPLE_FIELDS = [
+  'psiCpuSome', 'psiCpuFull',
+  'psiMemSome', 'psiMemFull',
+  'psiIoSome', 'psiIoFull',
+];
+
 /**
  * Group usage samples by owner. Null owners collapse into a single
  * `owner: null` row (rendered as "unattributed" by callers). Absent metrics
- * (null) are excluded from sums rather than treated as zero.
+ * (null) are excluded from sums rather than treated as zero. `pressureMax` is
+ * the worst PSI reading across the owner's probed containers (null when none
+ * were probed this cycle).
  * @param {Array<object>} samples - Normalized samples from utils/usage-sample.js
  * @returns {Array<object>} One row per owner, sorted by owner name (null last):
- *   { owner, containerCount, runningCount, <summed metric fields>, containers }
+ *   { owner, containerCount, runningCount, <summed metric fields>, pressureMax, containers }
  */
 function aggregateByOwner(samples) {
   const byOwner = new Map();
@@ -30,7 +38,7 @@ function aggregateByOwner(samples) {
     const key = sample.owner ?? null;
     let row = byOwner.get(key);
     if (!row) {
-      row = { owner: key, containerCount: 0, runningCount: 0, containers: [] };
+      row = { owner: key, containerCount: 0, runningCount: 0, pressureMax: null, containers: [] };
       for (const field of SUM_FIELDS) row[field] = 0;
       byOwner.set(key, row);
     }
@@ -38,6 +46,11 @@ function aggregateByOwner(samples) {
     if (sample.status === 'running') row.runningCount++;
     for (const field of SUM_FIELDS) {
       if (sample[field] != null) row[field] += sample[field];
+    }
+    for (const field of PSI_SAMPLE_FIELDS) {
+      if (sample[field] != null && (row.pressureMax === null || sample[field] > row.pressureMax)) {
+        row.pressureMax = sample[field];
+      }
     }
     row.containers.push(sample);
   }

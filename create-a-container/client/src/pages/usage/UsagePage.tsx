@@ -4,6 +4,7 @@ import { Alert, AlertDescription, PageHeader, Spinner } from '@mieweb/ui';
 import { Activity } from 'lucide-react';
 import { AttributionWarnings } from '@/components/usage/AttributionWarnings';
 import { UsageDataGrid } from '@/components/usage/UsageDataGrid';
+import { UsageStackedBars } from '@/components/usage/UsageStackedBars';
 import type { ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 
@@ -56,7 +57,12 @@ export function UsagePage() {
           <AlertDescription>No running containers to report on.</AlertDescription>
         </Alert>
       )}
-      {data && data.owners.length > 0 && <UsageDataGrid owners={data.owners} />}
+      {data && data.owners.length > 0 && (
+        <>
+          <UsageStackedBars report={data} />
+          <UsageDataGrid owners={data.owners} />
+        </>
+      )}
     </div>
   );
 }

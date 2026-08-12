@@ -4,6 +4,7 @@ import type { TableColumn, TableRendererProps } from '@mieweb/datavis';
 import type { UsageOwner } from '@/lib/types';
 import { formatBytes } from '@/lib/format';
 import { OwnerContainersTable } from './OwnerContainersTable';
+import { PressureBadge } from './PressureBadge';
 
 // Numeric `*Used` fields drive sorting; formatCell renders "used / allocated".
 const TYPE_INFO: { field: string; type: string }[] = [
@@ -14,6 +15,7 @@ const TYPE_INFO: { field: string; type: string }[] = [
   { field: 'diskUsed', type: 'number' },
   { field: 'diskReadBytes', type: 'number' },
   { field: 'netInBytes', type: 'number' },
+  { field: 'pressureMax', type: 'number' },
 ];
 
 const asOwner = (row: Record<string, unknown>) => row as unknown as UsageOwner;
@@ -58,6 +60,7 @@ export function UsageDataGrid({ owners }: UsageDataGridProps) {
       { field: 'diskUsed', header: 'Disk (used / alloc)', sortable: true, filterable: false, getSearchText: () => '' },
       { field: 'diskReadBytes', header: 'Disk I/O (r / w)', sortable: true, filterable: false, getSearchText: () => '' },
       { field: 'netInBytes', header: 'Network (in / out)', sortable: true, filterable: false, getSearchText: () => '' },
+      { field: 'pressureMax', header: 'Pressure', sortable: true, filterable: false, getSearchText: () => '' },
     ],
     [],
   );
@@ -83,6 +86,8 @@ export function UsageDataGrid({ owners }: UsageDataGridProps) {
         return `${formatBytes(o.diskReadBytes)} / ${formatBytes(o.diskWriteBytes)}`;
       case 'netInBytes':
         return `${formatBytes(o.netInBytes)} / ${formatBytes(o.netOutBytes)}`;
+      case 'pressureMax':
+        return <PressureBadge value={o.pressureMax} />;
       default:
         return value as React.ReactNode;
     }

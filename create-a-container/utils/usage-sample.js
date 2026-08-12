@@ -101,6 +101,15 @@ function buildUsageSample({ resource, node, container }) {
     netInBytes: numberOrNull(resource.netin),
     netOutBytes: numberOrNull(resource.netout),
     uptime: numberOrNull(resource.uptime),
+    // PSI pressure readings are filled in by the tier-2 rrddata probe
+    // (utils/usage-collection.js) for high-utilization containers only;
+    // null means "not probed this cycle", not "no pressure".
+    psiCpuSome: null,
+    psiCpuFull: null,
+    psiMemSome: null,
+    psiMemFull: null,
+    psiIoSome: null,
+    psiIoFull: null,
   };
 
   return { sample, finding };

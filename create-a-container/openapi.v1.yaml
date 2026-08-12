@@ -1085,7 +1085,14 @@ paths:
                         type: array
                         items:
                           type: object
-                          description: One row per owner (`owner` null = unattributed), with summed metrics and per-container `containers` detail
+                          description: One row per owner (`owner` null = unattributed), with summed metrics, worst PSI pressure, and per-container `containers` detail
+                      capacity:
+                        type: object
+                        description: Physical cluster capacity summed from the hypervisor node rows
+                        properties:
+                          cpuCores: { type: number }
+                          memBytes: { type: number }
+                          diskBytes: { type: number }
                       findings:
                         type: array
                         description: Admin-only attribution findings (kind drift|unattributed)

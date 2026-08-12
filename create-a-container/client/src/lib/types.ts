@@ -94,6 +94,16 @@ export interface UsageContainer {
   netOutBytes: number | null;
   /** Seconds since container boot. */
   uptime: number | null;
+  /**
+   * PSI pressure stall percentages (avg10), probed for the highest-utilization
+   * containers only; null means "not probed this cycle", not "no pressure".
+   */
+  psiCpuSome: number | null;
+  psiCpuFull: number | null;
+  psiMemSome: number | null;
+  psiMemFull: number | null;
+  psiIoSome: number | null;
+  psiIoFull: number | null;
 }
 
 /** Per-owner aggregate row (owner null = unattributed, admin-visible only). */
@@ -111,6 +121,8 @@ export interface UsageOwner {
   diskWriteBytes: number;
   netInBytes: number;
   netOutBytes: number;
+  /** Worst PSI reading across this owner's probed containers (null = unprobed). */
+  pressureMax: number | null;
   containers: UsageContainer[];
 }
 
@@ -125,6 +137,8 @@ export interface UsageFinding {
 export interface UsageReport {
   generatedAt: string;
   owners: UsageOwner[];
+  /** Physical cluster capacity summed from the hypervisor node rows. */
+  capacity: { cpuCores: number; memBytes: number; diskBytes: number };
   /** Admin-only. */
   findings?: UsageFinding[];
   /** Admin-only: cluster members not registered in the manager DB. */

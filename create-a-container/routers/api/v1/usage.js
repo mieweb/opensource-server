@@ -26,7 +26,7 @@ router.get(
     const site = await Site.findByPk(parseInt(req.params.siteId, 10));
     if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
 
-    const { samples, findings, unknownNodeRows } = await collectUsage({ siteId: site.id });
+    const { samples, findings, unknownNodeRows, capacity } = await collectUsage({ siteId: site.id });
 
     let visible = samples;
     if (!req.session.isAdmin) {
@@ -43,6 +43,8 @@ router.get(
     const payload = {
       generatedAt: new Date().toISOString(),
       owners: aggregateByOwner(visible),
+      // Physical cluster capacity (node rows), for used-vs-capacity charts.
+      capacity,
     };
     if (req.session.isAdmin) {
       payload.findings = findings;
