@@ -5,6 +5,13 @@ dhcp-authoritative
 domain-needed
 bogus-priv
 
+# Resolve localhost to loopback (RFC 6761). no-hosts above makes dnsmasq
+# ignore /etc/hosts, so without this "localhost" does not resolve — which
+# breaks nginx's resolver-based lookups (e.g. the njs accounting module's
+# ngx.fetch to the manager's own http://localhost:3000). Covers *.localhost.
+address=/localhost/127.0.0.1
+address=/localhost/::1
+
 # internal domain for the site
 domain=<%= site.internalDomain %>
 

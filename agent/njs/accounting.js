@@ -49,11 +49,11 @@ async function http_record(r) {
     if (id && ngx.shared.osaas_http.add(id, '1')) {
       const reply = await report(r.variables.osaas_manager_url, r.variables.osaas_api_key, id);
       if (reply.status !== 204) {
-        r.log('osaas accounting: manager returned ' + reply.status + ' for service ' + id);
+        r.warn('osaas accounting: manager returned ' + reply.status + ' for service ' + id);
       }
     }
   } catch (e) {
-    r.log('osaas accounting: ' + e.message);
+    r.warn('osaas accounting: ' + e.message);
   }
   r.return(204);
 }
@@ -71,15 +71,15 @@ function stream_record(s) {
       report(s.variables.osaas_relay_url, '', id, 'localhost')
         .then((reply) => {
           if (reply.status !== 204) {
-            s.log('osaas accounting: relay returned ' + reply.status + ' for service ' + id);
+            s.warn('osaas accounting: relay returned ' + reply.status + ' for service ' + id);
           }
         })
         .catch((e) => {
-          s.log('osaas accounting: ' + e.message);
+          s.warn('osaas accounting: ' + e.message);
         });
     }
   } catch (e) {
-    s.log('osaas accounting: ' + e.message);
+    s.warn('osaas accounting: ' + e.message);
   }
   s.allow();
 }
@@ -103,7 +103,7 @@ async function relay(r) {
     r.return(reply.status);
     return;
   } catch (e) {
-    r.log('osaas accounting relay: ' + e.message);
+    r.warn('osaas accounting relay: ' + e.message);
   }
   r.return(502);
 }
