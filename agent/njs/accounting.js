@@ -15,15 +15,24 @@
  *   $osaas_api_key      http-context: admin API key; empty for the manager's
  *                       own agent, which reports over localhost without
  *                       credentials
- *   $osaas_relay_url    stream-context: localhost relay base URL
+ *   $osaas_relay_url    stream-context: localhost relay base URL — a unix
+ *                       socket, so it carries the njs form
+ *                       "http://unix:/path/to.sock:" (trailing colon
+ *                       separates the socket path from the request URI)
  */
 
-function report(managerUrl, apiKey, serviceId) {
+// `host` is only needed for unix-socket targets: njs would otherwise derive a
+// Host header from the socket path ("host: /run/....sock:0"), which nginx
+// rejects with 400. TCP targets pass it undefined and njs sets Host itself.
+function report(base, apiKey, serviceId, host) {
   const headers = {};
   if (apiKey) {
     headers.Authorization = 'Bearer ' + apiKey;
   }
-  return ngx.fetch(managerUrl + '/api/v1/services/' + serviceId + '/last-access', {
+  if (host) {
+    headers.Host = host;
+  }
+  return ngx.fetch(base + '/api/v1/services/' + serviceId + '/last-access', {
     method: 'POST',
     headers,
   });
@@ -50,15 +59,16 @@ async function http_record(r) {
 }
 
 /**
- * stream handler (js_access). Reports go via the localhost http relay —
- * Debian's njs stream module has no fetch-TLS — and the fetch is
- * deliberately not awaited: the connection proceeds immediately.
+ * stream handler (js_access). Reports go via the localhost http relay (a unix
+ * socket) — Debian's njs stream module has no fetch-TLS — and the fetch is
+ * deliberately not awaited: the connection proceeds immediately. The explicit
+ * Host is required for the socket fetch (see report()).
  */
 function stream_record(s) {
   try {
     const id = s.variables.osaas_service_id;
     if (id && ngx.shared.osaas_stream.add(id, '1')) {
-      report(s.variables.osaas_relay_url, '', id)
+      report(s.variables.osaas_relay_url, '', id, 'localhost')
         .then((reply) => {
           if (reply.status !== 204) {
             s.log('osaas accounting: relay returned ' + reply.status + ' for service ' + id);

@@ -40,6 +40,10 @@ test('http context loads the accounting module, dict, and vars', async () => {
   assert.match(conf, /js_shared_dict_zone zone=osaas_http:256k timeout=10m evict;/);
   assert.match(conf, /js_var \$osaas_manager_url "https:\/\/manager\.example\.com";/);
   assert.match(conf, /js_var \$osaas_api_key "test-key-123";/);
+  // fetch settings are hoisted to http{} level so the mirror location and the
+  // relay server both inherit them — one copy each, not per-location.
+  assert.strictEqual(conf.match(/js_fetch_trusted_certificate/g).length, 1);
+  assert.strictEqual((conf.match(/js_content accounting\.relay;/g) || []).length, 1);
 });
 
 test('http service location records last-access via a parallel mirror', async () => {
@@ -83,13 +87,13 @@ test('stream context loads the accounting module, dict, and relay url', async ()
   // Streams report via the localhost relay (stream js has no fetch-TLS on
   // Debian njs 0.8.9), so the manager URL and API key must NOT appear in the
   // stream context: the key appears exactly once, as the http-context js_var.
-  assert.match(conf, /js_var \$osaas_relay_url "http:\/\/127\.0\.0\.1:1985";/);
+  assert.match(conf, /js_var \$osaas_relay_url "http:\/\/unix:\/run\/nginx-osaas-relay\.sock:";/);
   assert.strictEqual(conf.match(/test-key-123/g).length, 1);
 });
 
 test('http context exposes the localhost relay for stream reports', async () => {
   const conf = await render({});
-  assert.match(conf, /listen 127\.0\.0\.1:1985;/);
+  assert.match(conf, /listen unix:\/run\/nginx-osaas-relay\.sock;/);
   assert.match(conf, /js_content accounting\.relay;/);
 });
 
