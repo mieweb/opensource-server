@@ -26,6 +26,25 @@ const {
     req.headers['x-csrf-token'] || (req.body && req.body._csrf),
 });
 
+// True when the request comes directly from localhost (and was not proxied
+// on behalf of a remote client, per X-Real-IP / X-Forwarded-For). Used by the
+// CSRF guard and the localhost-or-admin auth below to let the manager's own
+// agent through without credentials during bootstrap.
+function isLocalhostRequest(req) {
+  const isLocalhost = (ip) =>
+    ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+
+  const directIp = req.connection?.remoteAddress || req.socket?.remoteAddress || req.ip;
+  const realIp = req.get('X-Real-IP');
+  // First hop of X-Forwarded-For is the original client (covers proxies that
+  // set it without also setting X-Real-IP).
+  const forwardedFor = (req.get('X-Forwarded-For') || '').split(',')[0].trim();
+
+  return isLocalhost(directIp)
+    && (!realIp || isLocalhost(realIp))
+    && (!forwardedFor || isLocalhost(forwardedFor));
+}
+
 // CSRF guard: enforce on state-changing methods. Only exempt requests that
 // are purely Bearer-authenticated (i.e., do NOT also carry a session cookie).
 // A session cookie is always sent by browsers, so a Bearer header alone
@@ -42,9 +61,7 @@ function csrfGuard(req, res, next) {
   // the same localhost bypass at the route level (localhostOrAdmin); mirror it
   // here so this app-level guard doesn't reject the credential-less check-in
   // first. Remote clients are never localhost (isLocalhostRequest also rejects
-  // proxied requests via X-Real-IP / X-Forwarded-For). Required lazily to avoid
-  // a load-order cycle with middlewares/index.
-  const { isLocalhostRequest } = require('./index');
+  // proxied requests via X-Real-IP / X-Forwarded-For).
   if (isLocalhostRequest(req)) return next();
   const auth = req.get('Authorization') || '';
   const hasBearer = auth.startsWith('Bearer ');
@@ -98,10 +115,8 @@ function apiAdmin(req, res, next) {
 // (bootstrap — no site or API key exists yet), while remote agents must
 // present an admin API key (apiAuth + apiAdmin, so error responses follow the
 // v1 JSON envelope). Shared by the agent check-in and the service-accounting
-// routes. isLocalhostRequest is required lazily to avoid a load-order cycle
-// with middlewares/index (same pattern as csrfGuard above).
+// routes.
 function localhostOrAdmin(req, res, next) {
-  const { isLocalhostRequest } = require('./index');
   if (isLocalhostRequest(req)) return next();
   return apiAuth(req, res, (err) => {
     if (err) return next(err);
@@ -170,6 +185,7 @@ module.exports = {
   apiAuth,
   apiAdmin,
   localhostOrAdmin,
+  isLocalhostRequest,
   csrfGuard,
   generateCsrfToken,
   asyncHandler,
