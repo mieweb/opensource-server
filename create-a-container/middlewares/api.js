@@ -38,12 +38,12 @@ function csrfGuard(req, res, next) {
   }
   // The manager's own agent checks in over localhost without credentials
   // during bootstrap (no site or API key exists yet), so it can carry neither
-  // a Bearer token nor a CSRF token. The agents router applies the same
-  // localhost bypass at the route level (checkinAuth); mirror it here so this
-  // app-level guard doesn't reject the credential-less check-in first. Remote
-  // clients are never localhost (isLocalhostRequest also rejects proxied
-  // requests via X-Real-IP / X-Forwarded-For). Required lazily to avoid a
-  // load-order cycle with middlewares/index.
+  // a Bearer token nor a CSRF token. The check-in and accounting routes apply
+  // the same localhost bypass at the route level (localhostOrAdmin); mirror it
+  // here so this app-level guard doesn't reject the credential-less check-in
+  // first. Remote clients are never localhost (isLocalhostRequest also rejects
+  // proxied requests via X-Real-IP / X-Forwarded-For). Required lazily to avoid
+  // a load-order cycle with middlewares/index.
   const { isLocalhostRequest } = require('./index');
   if (isLocalhostRequest(req)) return next();
   const auth = req.get('Authorization') || '';
@@ -91,6 +91,22 @@ async function apiAuth(req, res, next) {
 function apiAdmin(req, res, next) {
   if (req.session && req.session.isAdmin) return next();
   return res.status(403).json({ error: { code: 'forbidden', message: 'Admin access required' } });
+}
+
+// Trust model for machine-facing endpoints the site proxy/agent calls: the
+// manager's own agent reaches them over localhost without credentials
+// (bootstrap — no site or API key exists yet), while remote agents must
+// present an admin API key (apiAuth + apiAdmin, so error responses follow the
+// v1 JSON envelope). Shared by the agent check-in and the service-accounting
+// routes. isLocalhostRequest is required lazily to avoid a load-order cycle
+// with middlewares/index (same pattern as csrfGuard above).
+function localhostOrAdmin(req, res, next) {
+  const { isLocalhostRequest } = require('./index');
+  if (isLocalhostRequest(req)) return next();
+  return apiAuth(req, res, (err) => {
+    if (err) return next(err);
+    return apiAdmin(req, res, next);
+  });
 }
 
 // --- Helpers ------------------------------------------------------------------------------
@@ -153,6 +169,7 @@ class ApiError extends Error {
 module.exports = {
   apiAuth,
   apiAdmin,
+  localhostOrAdmin,
   csrfGuard,
   generateCsrfToken,
   asyncHandler,

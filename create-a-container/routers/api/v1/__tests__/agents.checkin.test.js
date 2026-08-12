@@ -2,7 +2,7 @@
  * Agent check-in auth — the manager's own agent bootstraps over localhost with
  * no site row and no API key, so its POST /api/v1/agents carries neither a
  * Bearer token nor a CSRF token. Two guards must let it through: the app-level
- * csrfGuard (app.js) and the route-level checkinAuth (agents.js). This pins
+ * csrfGuard (app.js) and the route-level localhostOrAdmin (agents.js). This pins
  * that the credential-less localhost check-in is NOT rejected with 403, while
  * a non-localhost (proxied) credential-less check-in still is.
  *
