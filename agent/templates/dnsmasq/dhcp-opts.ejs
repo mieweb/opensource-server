@@ -1,1 +1,1 @@
-option:router,<%= site.gateway %>
+<%_ if (site.gateway) { _%>option:router,<%= site.gateway %><%_ } else { _%>option:router<%_ } _%>
