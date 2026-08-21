@@ -147,10 +147,10 @@ Register the first administrator account.
 !!! warning "First Account"
     The first account registered is automatically approved with administrator privileges. Register the intended administrator account first.
 
-!!! todo "HTTPS Bootstrap"
-    The tested `manager:latest` image exposed the application on port `3000`, while the standard installation documentation expects HTTPS on port `443`.
+!!! warning "HTTPS bootstrap"
+    In the tested environment, `manager:latest` exposed the UI on `http://10.100.0.3:3000` (HTTP), not HTTPS on `:443` as described in the standard installation steps.
 
-    Verify the intended bootstrap behavior and update this section once the HTTPS path is confirmed.
+    If your image exposes HTTPS on `:443`, access the UI via `https://<manager-ip>:443` instead and keep TLS verification enabled when using a trusted certificate.
 
 ### 6. Configure the First Site
 
