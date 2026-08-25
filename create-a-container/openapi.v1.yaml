@@ -837,7 +837,7 @@ paths:
     put:
       operationId: update_container
       tags: [Containers]
-      summary: Update services/env/entrypoint; enqueues a restart job when needed (owner/admin)
+      summary: Update services/env/entrypoint; enqueues a restart job only when explicitly requested (owner/admin)
       requestBody:
         content:
           application/json:
@@ -860,7 +860,7 @@ paths:
                   items: { $ref: '#/components/schemas/EnvVar' }
                   description: Full replacement set. Omitting it clears all user env vars (unless the request is restart-only).
                 entrypoint: { type: string, nullable: true, description: Omitting/blank clears the entrypoint (unless the request is restart-only) }
-                restart: { type: boolean, description: 'true forces a restart even with no config changes; alone, it performs a restart-only request' }
+                restart: { type: boolean, description: 'A restart job is enqueued only when true — config changes alone never restart the container (they apply on the next restart); alone, it performs a restart-only request' }
       responses:
         '200':
           description: Updated, optional restart job
@@ -875,6 +875,7 @@ paths:
                       containerId: { type: integer }
                       jobId: { type: integer, nullable: true, description: 'Restart job id, when a restart was enqueued' }
                       dnsWarnings: { type: array, items: { type: string } }
+                      pendingRestart: { type: boolean, description: 'true when env/entrypoint changes were saved but no restart was requested — they apply on the next restart' }
                       message: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
