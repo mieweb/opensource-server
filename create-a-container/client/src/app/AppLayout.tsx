@@ -3,6 +3,7 @@ import { Sidebar, CommandPalette } from '@mieweb/ui';
 import { AppSidebar } from './Sidebar';
 import { AppTopHeader } from './Header';
 import { AppBanner } from './Banner';
+import { AppFooter } from './AppFooter';
 
 export function AppLayout() {
   return (
@@ -16,6 +17,7 @@ export function AppLayout() {
         <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
+        <AppFooter />
       </div>
       <CommandPalette placeholder="Search…" />
     </div>

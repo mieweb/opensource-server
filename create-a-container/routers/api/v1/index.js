@@ -43,7 +43,7 @@ const { isOidcEnabled } = require('../../../utils/oidc');
 const { Setting } = require('../../../models');
 router.get(
   '/health',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     // The banner is cosmetic — never let a DB hiccup fail the health check.
     let banner = null;
     try {
@@ -56,6 +56,8 @@ router.get(
       isDev: process.env.NODE_ENV !== 'production',
       oidcEnabled: isOidcEnabled(),
       banner,
+      // Cached at startup in app.locals (see app.js); the SPA footer shows it.
+      version: req.app.locals.versionInfo ?? null,
     });
   }),
 );
