@@ -10,8 +10,8 @@ import { keys, queries } from '@/lib/queries';
 
 /**
  * Live per-owner resource usage for the current site (allocated vs used),
- * computed on demand from the hypervisor. Admins see every owner plus
- * attribution warnings; other users see their own and shared containers.
+ * computed on demand from the hypervisor. Admin-only for now; the API
+ * returns 403 for non-admins.
  */
 export function UsagePage() {
   const { siteId } = useParams<{ siteId: string }>();

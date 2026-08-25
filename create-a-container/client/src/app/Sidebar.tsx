@@ -167,7 +167,7 @@ export function AppSidebar() {
                 icon: <ContainerIcon className="size-4" />,
                 match: `/sites/${currentSiteId}/containers`,
               })}
-              {renderLink({
+              {isAdmin && renderLink({
                 to: `/sites/${currentSiteId}/usage`,
                 label: 'Usage',
                 icon: <Activity className="size-4" />,
@@ -192,7 +192,7 @@ export function AppSidebar() {
               icon: <ContainerIcon className="size-4" />,
               match: `/sites/${currentSiteId}/containers`,
             })}
-            {renderLink({
+            {isAdmin && renderLink({
               to: `/sites/${currentSiteId}/usage`,
               label: 'Usage',
               icon: <Activity className="size-4" />,
