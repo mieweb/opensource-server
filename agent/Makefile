@@ -21,7 +21,7 @@ help:
 	@echo "Targets:"
 	@echo "  deps     install dependencies (npm ci)"
 	@echo "  build    compile the TypeScript sources"
-	@echo "  test     run tests (none yet)"
+	@echo "  test     run tests"
 	@echo "  install  stage files into DESTDIR (default /)"
 	@echo "  deb      build the .deb package"
 	@echo "  rpm      build the .rpm package"
@@ -42,13 +42,13 @@ build: deps
 
 dev: build
 
-# No test suite yet; kept as a no-op so the repo-wide `make test` passes.
-test:
+test: deps
+	npm test
 
 install: build
 	$(INSTALL) -d $(DESTBIN)
 	$(INSTALL_DATA) package.json $(DESTBIN)/
-	cp -a dist templates node_modules $(DESTBIN)/
+	cp -a dist templates njs node_modules $(DESTBIN)/
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.service $(UNIT_DIR)/
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.timer $(UNIT_DIR)/

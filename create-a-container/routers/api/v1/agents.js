@@ -9,25 +9,12 @@
 
 const express = require('express');
 const { Agent, Site } = require('../../../models');
-const { isLocalhostRequest } = require('../../../middlewares');
-const { apiAuth, apiAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
+const { apiAuth, apiAdmin, localhostOrAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
 const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
 
 const router = express.Router();
 
-// Check-in auth: the manager's own agent checks in over localhost without
-// credentials (bootstrap: no site, no API key exist yet); remote agents
-// authenticate with an admin API key via apiAuth/apiAdmin so error
-// responses follow the v1 JSON envelope.
-function checkinAuth(req, res, next) {
-  if (isLocalhostRequest(req)) return next();
-  return apiAuth(req, res, (err) => {
-    if (err) return next(err);
-    return apiAdmin(req, res, next);
-  });
-}
-
-router.post('/', checkinAuth, asyncHandler(async (req, res) => {
+router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
   const { siteId, hostname, ipv4Address, services } = req.body || {};
   const parsedSiteId = typeof siteId === 'number' ? siteId : Number(siteId);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {

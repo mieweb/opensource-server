@@ -29,7 +29,11 @@ module.exports = (sequelize, DataTypes) => {
         validate: { isIn: [SEVERITIES] },
       },
       node: { type: DataTypes.STRING(255), allowNull: true },
-      ctid: { type: DataTypes.STRING(255), allowNull: true },
+      // Physical column is "containerId": Postgres reserves "ctid" as a system
+      // column name, so the table cannot have a column literally named "ctid".
+      // The attribute stays `ctid` (API/JSON/query surface unchanged) and maps
+      // onto the containerId column via `field`.
+      ctid: { type: DataTypes.STRING(255), allowNull: true, field: 'containerId' },
       owner: { type: DataTypes.STRING(255), allowNull: true },
       // Free-form (node-side tools may emit new actions); bounded length only.
       action: { type: DataTypes.STRING(255), allowNull: true },

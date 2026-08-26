@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { DataVisNitroGrid, DataVisNitroSource } from '@mieweb/ui/datavis';
 import type { ColumnFilterConfig, TableColumn, TableRendererProps } from '@mieweb/datavis';
 import { User } from 'lucide-react';
+import { formatRelativeTime } from '@/lib/formatRelativeTime';
 import type { Container } from '@/lib/types';
 import { HttpLinks } from './HttpLinks';
 import { NodeLink } from './NodeLink';
@@ -29,6 +30,7 @@ const TYPE_INFO: { field: string; type: string }[] = [
   { field: 'nodeName', type: 'string' },
   { field: 'owner', type: 'string' },
   { field: 'template', type: 'string' },
+  { field: 'lastAccessedAt', type: 'string' },
 ];
 
 const asContainer = (row: Record<string, unknown>) => row as unknown as Container;
@@ -101,6 +103,13 @@ export function ContainersDataGrid({
         },
       },
       {
+        field: 'lastAccessedAt',
+        header: 'Last Access',
+        sortable: true,
+        filterable: false,
+        getSearchText: (_v, row) => formatRelativeTime(asContainer(row).lastAccessedAt),
+      },
+      {
         field: 'actions',
         header: '',
         sortable: false,
@@ -171,6 +180,12 @@ export function ContainersDataGrid({
                 onShare={onShare}
               />
             </div>
+          );
+        case 'lastAccessedAt':
+          return (
+            <span title={c.lastAccessedAt ? new Date(c.lastAccessedAt).toLocaleString() : undefined}>
+              {formatRelativeTime(c.lastAccessedAt)}
+            </span>
           );
         default:
           return value as React.ReactNode;

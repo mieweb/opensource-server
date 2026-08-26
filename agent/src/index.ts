@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 
     log.info(`check-in: new config received (etag=${result.etag ?? '(none)'}), applying`);
     for (const svc of services) {
-      state.lastApply[svc.unit] = await applyService(svc, result.config);
+      state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
     }
 
     // The ETag is saved even after a failed apply: a rejected config won't

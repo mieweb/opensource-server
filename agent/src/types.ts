@@ -48,6 +48,8 @@ export interface SiteInfo {
 }
 
 export interface HttpService {
+  /** Manager Services.id — reported back by the accounting module. */
+  id: number;
   internalPort: number;
   container: { ipv4Address: string };
   externalHostname: string;
@@ -57,6 +59,8 @@ export interface HttpService {
 }
 
 export interface StreamService {
+  /** Manager Services.id — reported back by the accounting module. */
+  id: number;
   internalPort: number;
   container: { ipv4Address: string };
   externalPort: number;

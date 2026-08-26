@@ -44,6 +44,26 @@ http {
                    max_size=10m inactive=5m;
 
   <%_ /*
+    Service last-access accounting (docs/superpowers/specs/
+    2026-08-11-service-last-access-accounting-design.md). The static njs
+    module claims a 10-minute window per service in the shared dict (entries
+    expire via timeout=; the shm zone survives reloads) and reports the first
+    access of each window to the manager from a parallel mirror subrequest.
+    resolver / js_fetch_timeout / js_fetch_trusted_certificate are set here at
+    http{} level so they inherit into both the mirror location and the relay
+    server below — no per-location copies needed.
+  */ -%>
+  js_import accounting from /opt/opensource-server/agent/njs/accounting.js;
+  js_shared_dict_zone zone=osaas_http:256k timeout=10m evict;
+  js_var $osaas_manager_url "<%= accounting.managerUrl %>";
+  js_var $osaas_api_key "<%= accounting.apiKey %>";
+  <%_ /* ngx.fetch needs a resolver for the manager hostname (dnsmasq runs on
+        every agent host) and the CA bundle for the https manager URL. */ -%>
+  resolver 127.0.0.1;
+  js_fetch_timeout 5s;
+  js_fetch_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+
+  <%_ /*
     Upload throughput over HTTP/2 and HTTP/3. The small defaults (64k body
     preread / h3 stream buffer, 256k per-worker h2 recv buffer) cap how much
     request body a client may send before waiting on flow control, which
@@ -92,6 +112,24 @@ http {
     location /502.html { }
     location /504.html { }
     location /auth-unavailable.html { }
+  }
+
+  <%_ /*
+    Localhost-only relay for stream-context accounting reports: Debian's njs
+    stream module lacks fetch-TLS (built without NGX_STREAM_SSL), so stream
+    servers POST plain-http to this unix socket and this http-context handler
+    forwards to the manager over https with the credential. A unix socket
+    (rather than a TCP port) keeps the relay off the network entirely.
+    resolver / js_fetch_timeout / js_fetch_trusted_certificate are inherited
+    from the http{} block above.
+  */ -%>
+  server {
+    listen unix:/run/nginx-osaas-relay.sock;
+    access_log off;
+
+    location / {
+      js_content accounting.relay;
+    }
   }
   
   server {
@@ -294,6 +332,13 @@ http {
     <%_ } else { _%>
     <%_ /* Proxy settings */ -%>
     location / {
+      <%_ /* Last-access accounting: runs in a parallel mirror subrequest,
+            after the auth gate. mirror_request_body off is REQUIRED to keep
+            uploads unbuffered (see #395). */ -%>
+      set $osaas_service_id "<%= service.id %>";
+      mirror /_osaas_accounting;
+      mirror_request_body off;
+
       <%_ if (authRequired && authServer) { _%>
       auth_request /oauth2/auth;
 
@@ -341,6 +386,13 @@ http {
       proxy_buffer_size 16k;
       proxy_buffers 4 32k;
       proxy_busy_buffers_size 64k;
+    }
+
+    location = /_osaas_accounting {
+      internal;
+      <%_ /* resolver / js_fetch_timeout / js_fetch_trusted_certificate are
+            inherited from the http{} block. */ -%>
+      js_content accounting.http_record;
     }
     <%_ } _%>
   }
@@ -446,9 +498,27 @@ stream {
 
   access_log  /var/log/nginx/stream-access.log  main;
 
+  <%_ /*
+    Service last-access accounting, stream flavor (dicts are per-context, so
+    the stream side gets its own zone). js_access claims the window and
+    fires the report without awaiting it — connection setup never waits.
+    Debian's libnginx-mod-stream-js is built without NGX_STREAM_SSL, so
+    stream-side ngx.fetch has no TLS: reports hop through the localhost-only
+    http relay unix socket (see the http context), whose handler forwards to
+    the manager over https with the credential. The relay URL is the njs
+    unix-socket form — the trailing ':' separates the socket path from the
+    request URI that report() appends.
+  */ -%>
+  js_import accounting from /opt/opensource-server/agent/njs/accounting.js;
+  js_shared_dict_zone zone=osaas_stream:256k timeout=10m evict;
+  js_var $osaas_relay_url "http://unix:/run/nginx-osaas-relay.sock:";
+  js_fetch_timeout 5s;
+
   <%_ streamServices.forEach((service, index) => { _%>
   server {
     listen <%= service.externalPort %><%= service.protocol === 'udp' ? ' udp' : '' %>;
+    js_var $osaas_service_id "<%= service.id %>";
+    js_access accounting.stream_record;
     proxy_pass <%= service.container.ipv4Address %>:<%= service.internalPort %>;
   }
   <%_ }) _%>

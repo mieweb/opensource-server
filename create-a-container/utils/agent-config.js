@@ -69,6 +69,7 @@ async function buildAgentConfig(siteId) {
     for (const container of node.containers || []) {
       for (const service of container.services || []) {
         const base = {
+          id: service.id,
           internalPort: service.internalPort,
           container: { ipv4Address: container.ipv4Address },
         };

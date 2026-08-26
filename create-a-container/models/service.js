@@ -21,6 +21,12 @@ module.exports = (sequelize, DataTypes) => {
     internalPort: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false
+    },
+    // Stamped by POST /api/v1/services/:id/last-access when the site proxy
+    // reports traffic (at most once per 10 minutes per service).
+    lastAccessedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     sequelize,

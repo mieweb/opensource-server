@@ -115,6 +115,12 @@ function serializeContainer(c, site, status) {
       return { port: s.internalPort, externalUrl: host ? `https://${host}` : null };
     });
   const primaryHttp = httpEntries[0] || null;
+  // Most recent proxy-reported access across this container's services
+  // (see POST /api/v1/services/:id/last-access). Null = never accessed.
+  const lastAccessedAt = services.reduce(
+    (max, s) => (s.lastAccessedAt && (!max || s.lastAccessedAt > max) ? s.lastAccessedAt : max),
+    null,
+  );
   return {
     id: c.id,
     containerId: c.containerId,
@@ -139,12 +145,14 @@ function serializeContainer(c, site, status) {
     sshPort: ssh?.transportService?.externalPort || null,
     sshHost: primaryHttp?.externalUrl ? new URL(primaryHttp.externalUrl).hostname : site?.externalIp,
     httpEntries,
+    lastAccessedAt,
     nodeName: c.node ? c.node.name : null,
     nodeApiUrl: c.node ? c.node.apiUrl : null,
     services: services.map((s) => ({
       id: s.id,
       type: s.type,
       internalPort: s.internalPort,
+      lastAccessedAt: s.lastAccessedAt ?? null,
       httpService: s.httpService
         ? {
             id: s.httpService.id,
@@ -913,3 +921,5 @@ router.delete(
 );
 
 module.exports = router;
+// Exported for unit tests (containers.serialize.test.js).
+module.exports.serializeContainer = serializeContainer;

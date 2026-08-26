@@ -73,35 +73,10 @@ function requireAdmin(req, res, next) {
   return res.status(403).send('Forbidden: Admin access required');
 }
 
-// True when the request comes directly from localhost (and was not proxied
-// on behalf of a remote client, per X-Real-IP / X-Forwarded-For).
-function isLocalhostRequest(req) {
-  const isLocalhost = (ip) => {
-    return ip === '127.0.0.1' || 
-           ip === '::1' || 
-           ip === '::ffff:127.0.0.1' ||
-           ip === 'localhost';
-  };
-
-  const directIp = req.connection?.remoteAddress || 
-                   req.socket?.remoteAddress || 
-                   req.ip;
-
-  const realIp = req.get('X-Real-IP');
-  // First hop of X-Forwarded-For is the original client (covers proxies that
-  // set it without also setting X-Real-IP).
-  const forwardedFor = (req.get('X-Forwarded-For') || '').split(',')[0].trim();
-
-  return isLocalhost(directIp)
-    && (!realIp || isLocalhost(realIp))
-    && (!forwardedFor || isLocalhost(forwardedFor));
-}
-
 const { setCurrentSite, loadSites } = require('./currentSite');
 
 module.exports = { 
   isApiRequest,
-  isLocalhostRequest,
   requireAuth, 
   requireAdmin, 
   setCurrentSite, 

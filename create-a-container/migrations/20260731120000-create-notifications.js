@@ -13,8 +13,12 @@ module.exports = {
       // Hypervisor node name the event originated on.
       node: { type: Sequelize.STRING(255), allowNull: true },
       // Container id on the hypervisor (CTID/VMID). STRING to match
-      // Containers.containerId, which was widened to a string.
-      ctid: { type: Sequelize.STRING(255), allowNull: true },
+      // Containers.containerId, which was widened to a string. The physical
+      // column is "containerId" (not "ctid"): Postgres reserves "ctid" as a
+      // system column on every table, so CREATE TABLE ... "ctid" fails with
+      // 42701. The model maps its `ctid` attribute onto this column via
+      // Sequelize's `field:` option, so the API/JSON field stays `ctid`.
+      containerId: { type: Sequelize.STRING(255), allowNull: true },
       // Owning user (Users.uid). Drives per-user UI visibility. Resolved from
       // node+ctid at ingest time when the payload omits it.
       owner: { type: Sequelize.STRING(255), allowNull: true },
