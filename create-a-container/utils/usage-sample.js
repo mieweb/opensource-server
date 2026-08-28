@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * usage-sample.js — pure helpers for the usage collector (issue #440).
+ * usage-sample.js — pure helpers for usage collection (issue #440).
  *
  * Turns one Proxmox `/cluster/resources` LXC entry into a normalized usage
  * sample and performs owner attribution: the Proxmox tag is the primary source
@@ -10,7 +10,7 @@
  * attribution drift.
  *
  * No I/O here — everything is a pure function so it is trivially unit-tested;
- * usage-collector.js owns the polling, DB lookups, and OTLP emission.
+ * utils/usage-collection.js owns the polling and DB lookups.
  */
 
 /**

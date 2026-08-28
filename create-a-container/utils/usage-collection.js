@@ -2,8 +2,8 @@
 
 /**
  * usage-collection.js — one polling cycle of per-container usage samples
- * (issue #440). Shared by usage-collector.js (OTLP export) and the
- * /sites/:siteId/usage report endpoint, so both see identical data.
+ * (issue #440), backing the /sites/:siteId/usage report endpoint
+ * (resources/usage).
  *
  * One Proxmox `/cluster/resources` call per cluster for LXCs plus one for
  * node capacity: after each successful call, every node name appearing in the

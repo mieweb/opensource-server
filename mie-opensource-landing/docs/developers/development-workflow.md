@@ -31,7 +31,7 @@ This will:
    `localhost` external domain) — but only when the database is empty, so it
    never interferes with the Docker stack's bootstrap.
 4. Build the React client.
-5. Start the **server**, the **job-runner**, and the **usage-collector**
+5. Start the **server** and the **job-runner**
    together, serving at
    [http://localhost:3000](http://localhost:3000).
 

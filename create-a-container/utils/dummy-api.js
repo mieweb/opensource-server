@@ -337,9 +337,9 @@ class DummyApi {
       status: 'running',
       node: this.node.name || 'dummy',
       // Real nodes tag containers with their owner (see bin/create-container.js);
-      // mirror that so owner attribution (usage-collector.js) works in dev.
+      // mirror that so owner attribution (utils/usage-sample.js) works in dev.
       tags: c.username,
-      // Simulated resource usage so the usage collector has data in dev.
+      // Simulated resource usage so the usage report has data in dev.
       cpu: 0.05,
       maxcpu: 2,
       mem: 256 * 1024 * 1024,

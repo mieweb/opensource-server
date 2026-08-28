@@ -4,9 +4,8 @@ const { collectUsage } = require('../../utils/usage-collection');
 const { aggregateByOwner } = require('../../utils/usage-report');
 
 /**
- * Live per-owner resource usage report for one site (issue #440). Computed
- * on demand from the same collection cycle the OTLP usage collector exports
- * (utils/usage-collection.js), so both see identical data.
+ * Live per-owner resource usage report for one site (issue #440), computed
+ * on demand from one collection cycle (utils/usage-collection.js).
  */
 async function getSiteUsage(siteId) {
   const site = await repo.findSiteById(siteId);
