@@ -27,7 +27,7 @@ The following procedure was tested using a single Proxmox node on an isolated ne
 | System | Address | Purpose |
 |---|---|---|
 | Proxmox node (`pve01`) | `10.100.0.2/16` | Proxmox host |
-| Manager container | `10.100.0.3/16` | MIE Manager |
+| Manager container | `10.100.0.3/16` | Container Manager |
 | Staging laptop | `10.100.0.50/16` | Downloads and transfers OCI images |
 
 The isolated network was not connected to an upstream router or DHCP server.
