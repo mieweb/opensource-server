@@ -17,6 +17,7 @@ const KEYS = [
   'netbox_url',
   'netbox_token',
   'banner_message',
+  'usage_psi_probe_limit',
 ];
 
 router.get(
@@ -36,6 +37,7 @@ router.get(
       netboxUrl: settings.netbox_url || '',
       netboxToken: settings.netbox_token || '',
       bannerMessage: settings.banner_message || '',
+      usagePsiProbeLimit: settings.usage_psi_probe_limit || '',
     });
   }),
 );
@@ -50,6 +52,7 @@ router.put(
       netboxUrl,
       netboxToken,
       bannerMessage,
+      usagePsiProbeLimit,
     } = req.body || {};
 
     const envVars = [];
@@ -71,6 +74,12 @@ router.put(
     await Setting.set('netbox_url', netboxUrl || '');
     await Setting.set('netbox_token', netboxToken || '');
     await Setting.set('banner_message', (bannerMessage || '').trim());
+    // Store a clean non-negative integer, or '' to fall back to the default.
+    const psiParsed = parseInt(String(usagePsiProbeLimit ?? '').trim(), 10);
+    await Setting.set(
+      'usage_psi_probe_limit',
+      Number.isNaN(psiParsed) || psiParsed < 0 ? '' : String(psiParsed),
+    );
 
     return ok(res, { saved: true });
   }),

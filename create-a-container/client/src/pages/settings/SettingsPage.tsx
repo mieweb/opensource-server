@@ -37,6 +37,7 @@ const schema = z.object({
   netboxUrl: z.string(),
   netboxToken: z.string(),
   bannerMessage: z.string(),
+  usagePsiProbeLimit: z.string().regex(/^\d*$/, 'Must be a non-negative whole number'),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -45,7 +46,7 @@ export function SettingsPage() {
   const toast = useToast();
   const { data, isLoading, error } = useQuery({ queryKey: keys.settings(), queryFn: queries.getSettings });
 
-  const { register, handleSubmit, reset, control } = useForm<FormData>({
+  const { register, handleSubmit, reset, control, formState } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       smtpUrl: '',
@@ -54,6 +55,7 @@ export function SettingsPage() {
       netboxUrl: '',
       netboxToken: '',
       bannerMessage: '',
+      usagePsiProbeLimit: '',
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'defaultContainerEnvVars' });
@@ -161,6 +163,21 @@ export function SettingsPage() {
             autoComplete="off"
             helperText="API token with write access to IPAM and Virtualization"
             {...register('netboxToken')}
+          />
+        </section>
+
+        <section className="grid gap-4">
+          <h2 className="text-lg font-semibold">Usage report</h2>
+          <Input
+            label="PSI probe limit"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            placeholder="16"
+            helperText="Pressure-stall (PSI) probes per usage report — one extra Proxmox call each, spent on the highest-utilization running containers. 0 disables PSI; leave empty for the default (16)."
+            error={formState.errors.usagePsiProbeLimit?.message}
+            hasError={!!formState.errors.usagePsiProbeLimit}
+            {...register('usagePsiProbeLimit')}
           />
         </section>
 

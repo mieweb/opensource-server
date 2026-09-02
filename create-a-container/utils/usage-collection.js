@@ -20,8 +20,15 @@ const db = require('../models');
 const { buildUsageSample } = require('./usage-sample');
 const { selectPsiCandidates, latestPsi } = require('./usage-psi');
 
-// PSI probes are one API call per container; cap the per-cycle fan-out.
-const PSI_PROBE_LIMIT = parseInt(process.env.USAGE_PSI_PROBE_LIMIT || '16', 10);
+// PSI probes are one API call per container; the per-cycle fan-out is capped
+// by the admin 'usage_psi_probe_limit' setting (Settings page), this default
+// when unset.
+const DEFAULT_PSI_PROBE_LIMIT = 16;
+
+async function getPsiProbeLimit() {
+  const parsed = parseInt(await db.Setting.get('usage_psi_probe_limit'), 10);
+  return Number.isNaN(parsed) || parsed < 0 ? DEFAULT_PSI_PROBE_LIMIT : parsed;
+}
 
 /**
  * Load every DB container that exists in Proxmox, keyed by `${nodeId}:${vmid}`
@@ -48,7 +55,8 @@ async function loadContainerIndex(siteId) {
  * cluster capacity, then enrich the highest-utilization containers with PSI.
  * @param {object} [options]
  * @param {number|null} [options.siteId] - Restrict to one site, or null for all
- * @param {number} [options.psiProbeLimit] - Max rrddata calls this cycle (0 disables)
+ * @param {number|null} [options.psiProbeLimit] - Max rrddata calls this cycle
+ *   (0 disables); null reads the 'usage_psi_probe_limit' admin setting
  * @returns {Promise<{
  *   samples: Array<object>,
  *   findings: Array<{ kind: 'drift'|'unattributed', vmid: string, tagOwner: string|null, dbOwner: string|null }>,
@@ -56,7 +64,7 @@ async function loadContainerIndex(siteId) {
  *   capacity: { cpuCores: number, memBytes: number, diskBytes: number },
  * }>}
  */
-async function collectUsage({ siteId = null, psiProbeLimit = PSI_PROBE_LIMIT } = {}) {
+async function collectUsage({ siteId = null, psiProbeLimit = null } = {}) {
   const nodeWhere = db.Node.provisionableWhere();
   if (siteId != null) nodeWhere.siteId = siteId;
   const nodes = await db.Node.findAll({ where: nodeWhere });
@@ -124,7 +132,7 @@ async function collectUsage({ siteId = null, psiProbeLimit = PSI_PROBE_LIMIT } =
     }
   }
 
-  await probePsi(samples, apiBySample, psiProbeLimit);
+  await probePsi(samples, apiBySample, psiProbeLimit ?? (await getPsiProbeLimit()));
 
   return { samples, findings, unknownNodeRows, capacity };
 }

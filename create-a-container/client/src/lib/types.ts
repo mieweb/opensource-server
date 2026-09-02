@@ -309,6 +309,8 @@ export interface AppSettings {
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
   /** Announcement banner shown to all users. Supports [text](url) links. */
   bannerMessage: string;
+  /** Max PSI probes per usage report; '' uses the server default (16), '0' disables. */
+  usagePsiProbeLimit: string;
 }
 
 export type ResourceType = 'memory' | 'swap' | 'cpus' | 'rootfs';
