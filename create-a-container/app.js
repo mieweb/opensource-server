@@ -105,11 +105,6 @@ function buildApp({
   const { csrfGuard, jsonErrorHandler } = require('./middlewares/api');
   app.use(csrfGuard);
 
-  // Set version info once at startup in app.locals
-  // Note: Version info is cached at startup. Server restart required to update version.
-  const { getVersionInfo } = require('./utils');
-  app.locals.versionInfo = getVersionInfo();
-
   // --- Mount Routers ---
   const apiV1Router = require('./routers/api/v1');
 

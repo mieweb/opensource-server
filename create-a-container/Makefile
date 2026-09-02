@@ -41,6 +41,9 @@ deps:
 	npm --prefix client ci
 
 build: deps
+	# Bake the release version into the client bundle (vite define, see
+	# client/vite.config.ts) — the deployed app has no git checkout to ask.
+	npm --prefix client pkg set version="$$(../package-version node)"
 	npm --prefix client run build
 
 # Run the Manager locally against SQLite, with a dummy (mock) hypervisor so

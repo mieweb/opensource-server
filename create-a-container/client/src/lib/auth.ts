@@ -6,16 +6,6 @@ export interface SessionUser {
   isAdmin: boolean;
 }
 
-/** Git version info captured at server startup (see utils/getVersionInfo). */
-export interface VersionInfo {
-  hash: string;
-  date: string;
-  tag: string | null;
-  display: string;
-  /** GitHub URL for the running commit. */
-  url: string;
-}
-
 export interface ServerInfo {
   status: string;
   isDev: boolean;
@@ -26,8 +16,6 @@ export interface ServerInfo {
    * Settings page). Supports [text](url) links. Null/empty hides the banner.
    */
   banner?: string | null;
-  /** Running application version, shown in the footer. */
-  version?: VersionInfo | null;
 }
 
 export const sessionKey = ['session'] as const;

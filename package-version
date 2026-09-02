@@ -2,7 +2,7 @@
 # Print the package version string for a given packaging format, derived from
 # the current git state.
 #
-# Usage: ./package-version <deb|rpm|apk>
+# Usage: ./package-version <deb|rpm|apk|node>
 #
 # The version is parsed from `git describe --tags --long --dirty`:
 #   VERSION     base version, leading 'v' stripped, 0.0.0 if there is no tag
@@ -21,9 +21,9 @@ set -eu
 
 packager=${1:-}
 case "$packager" in
-    deb | rpm | apk) ;;
+    deb | rpm | apk | node) ;;
     *)
-        echo "usage: $0 <deb|rpm|apk>" >&2
+        echo "usage: $0 <deb|rpm|apk|node>" >&2
         exit 2
         ;;
 esac
@@ -91,6 +91,18 @@ case "$packager" in
         v=$version
         [ -n "$prerelease" ] && v="${v}_$prerelease"
         [ "$commits" != "0" ] && v="${v}_git$commits"
+        ;;
+    node)
+        # Semver, for baking into the client bundle (npm package.json version):
+        # prerelease keeps its hyphen, snapshot/dirty go in build metadata.
+        v=$version
+        [ -n "$prerelease" ] && v="$v-$prerelease"
+        if [ "$commits" != "0" ]; then
+            v="$v+$commits.$hash"
+            [ "$dirty" = "1" ] && v="$v.dirty"
+        elif [ "$dirty" = "1" ]; then
+            v="$v+dirty"
+        fi
         ;;
 esac
 

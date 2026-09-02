@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -189,6 +189,28 @@ export function ContainerFormPage() {
   const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
   const collaborators = watch('collaborators') || [];
+  const watchedEntrypoint = watch('entrypoint');
+  const watchedEnvVars = watch('environmentVars');
+
+  // True when the form's env vars or entrypoint differ from the saved
+  // container — the changes that only take effect after a restart (#449).
+  const requiresRestart = useMemo(() => {
+    if (!isEdit || !container) return false;
+    if ((watchedEntrypoint || '') !== (container.entrypoint || '')) return true;
+    const saved = new Map(Object.entries(container.environmentVars || {}));
+    const current = (watchedEnvVars || []).filter((e) => e.key.trim());
+    if (current.length !== saved.size) return true;
+    return current.some((e) => saved.get(e.key) !== e.value);
+  }, [isEdit, container, watchedEntrypoint, watchedEnvVars]);
+
+  // The restart toggle follows restart-requiring edits (auto-on, so the user
+  // isn't left wondering why changes didn't apply) until the user overrides
+  // it manually — then their choice wins.
+  const restartTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!isEdit || restartTouchedRef.current) return;
+    setValue('restart', requiresRestart);
+  }, [requiresRestart, isEdit, setValue]);
 
   useEffect(() => {
     if (container && isEdit && !initializedRef.current) {
@@ -348,14 +370,10 @@ export function ContainerFormPage() {
     },
     onSuccess: (result) => {
       const dnsWarnings = (result as { dnsWarnings?: string[] }).dnsWarnings;
-      const pendingRestart = (result as { pendingRestart?: boolean }).pendingRestart;
-      toast.success(
-        isEdit
-          ? pendingRestart
-            ? 'Container updated — changes take effect on the next restart'
-            : 'Container updated'
-          : 'Container queued for creation',
-      );
+      // Prefer the server's message so update-status wording (restarting /
+      // pending restart / updated) lives in one place.
+      const message = (result as { message?: string }).message;
+      toast.success(message || (isEdit ? 'Container updated' : 'Container queued for creation'));
       // exact:true so we only invalidate the list query and not its prefix
       // descendants (e.g. the still-mounted containerBootstrap query keyed
       // ['sites', siteId, 'containers', 'new']), which would otherwise refetch
@@ -579,12 +597,25 @@ export function ContainerFormPage() {
               </Tooltip>
             </div>
             {isEdit && (
-              <Switch
-                label="Restart container after saving"
-                description="Off by default. Environment variable and entrypoint changes are saved either way and take effect on the next restart."
-                checked={!!restart}
-                onCheckedChange={(c) => setValue('restart', c)}
-              />
+              <div className="flex flex-col gap-2">
+                <Switch
+                  label="Restart container after saving"
+                  description="Turns on automatically when you change environment variables or the entrypoint — those changes only take effect after a restart."
+                  checked={!!restart}
+                  onCheckedChange={(c) => {
+                    restartTouchedRef.current = true;
+                    setValue('restart', c);
+                  }}
+                />
+                {requiresRestart && !restart && (
+                  <Alert variant="warning">
+                    <AlertDescription>
+                      This change requires a restart, but none will be performed — it takes
+                      effect the next time the container restarts.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
