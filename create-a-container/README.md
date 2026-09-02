@@ -24,9 +24,10 @@ make dev
 
 That's all you need. `make dev` installs dependencies, runs database migrations
 and dev seeders, builds the client, and starts the server, the job-runner, and
-the client build watcher together. It uses SQLite and a dummy (mock) hypervisor,
-so **no `.env`, PostgreSQL, or Proxmox cluster is required** — the Manager comes
-up at <http://localhost:3000> and can "create" containers locally (simulated).
+the client build watcher together. It uses SQLite and a
+dummy (mock) hypervisor, so **no `.env`, PostgreSQL, or Proxmox cluster is
+required** — the Manager comes up at <http://localhost:3000> and can "create"
+containers locally (simulated).
 
 Pass `LOG_LEVEL=trace` to additionally log every SQL query:
 
@@ -46,13 +47,16 @@ The Manager is not installed by hand in production. It ships as:
 - distribution **packages** built from this directory with `make deb`, `make rpm`,
   or `make apk` (via [fpm](https://fpm.readthedocs.io/)), which install the app
   under `/opt/opensource-server/create-a-container` and register the
-  `container-creator` and `job-runner` systemd services. The package depends
+  `container-creator` and `job-runner` systemd services.
+  The package depends
   on `opensource-mcp` — the [MCP server](../manager-control-program/) as its
   own package — and the Manager reverse-proxies `/mcp` to its service
   (`MCP_SERVER_URL`).
 
 In both cases the app runs `server.js` (HTTP API + UI) and `job-runner.js`
-(background worker). Database connection settings come from the environment (see
+(background worker). Per-owner resource usage is computed live in the UI at
+`/sites/:siteId/usage` (API: `GET /api/v1/sites/:siteId/usage`).
+Database connection settings come from the environment (see
 [Configuration](#configuration)); the manager image provisions PostgreSQL and
 writes these to `/etc/default/container-creator` on first boot.
 

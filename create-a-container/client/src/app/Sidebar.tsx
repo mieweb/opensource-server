@@ -13,6 +13,7 @@ import {
   useSidebar,
 } from '@mieweb/ui';
 import {
+  Activity,
   Box,
   Building2,
   ClipboardList,
@@ -167,6 +168,12 @@ export function AppSidebar() {
                 match: `/sites/${currentSiteId}/containers`,
               })}
               {isAdmin && renderLink({
+                to: `/sites/${currentSiteId}/usage`,
+                label: 'Usage',
+                icon: <Activity className="size-4" />,
+                match: `/sites/${currentSiteId}/usage`,
+              })}
+              {isAdmin && renderLink({
                 to: `/sites/${currentSiteId}/nodes`,
                 label: 'Nodes',
                 icon: <Server className="size-4" />,
@@ -184,6 +191,12 @@ export function AppSidebar() {
               label: 'Containers',
               icon: <ContainerIcon className="size-4" />,
               match: `/sites/${currentSiteId}/containers`,
+            })}
+            {isAdmin && renderLink({
+              to: `/sites/${currentSiteId}/usage`,
+              label: 'Usage',
+              icon: <Activity className="size-4" />,
+              match: `/sites/${currentSiteId}/usage`,
             })}
             {isAdmin && renderLink({
               to: `/sites/${currentSiteId}/nodes`,

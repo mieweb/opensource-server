@@ -20,6 +20,7 @@ import type {
   AppSettings,
   ResourceRequest,
   Site,
+  UsageReport,
   User,
 } from './types';
 
@@ -31,6 +32,7 @@ export const keys = {
     ['sites', String(siteId), 'nodes', String(id)] as const,
   nodeStats: (siteId: number | string, id: number | string) =>
     ['sites', String(siteId), 'nodes', String(id), 'stats'] as const,
+  usage: (siteId: number | string) => ['sites', String(siteId), 'usage'] as const,
   containers: (siteId: number | string, params?: Record<string, string | string[] | undefined>) =>
     ['sites', String(siteId), 'containers', params ?? {}] as const,
   container: (siteId: number | string, id: number | string) =>
@@ -68,6 +70,10 @@ export const queries = {
     api.get<Node>(`/api/v1/sites/${siteId}/nodes/${id}`),
   getNodeStats: (siteId: number | string, id: number | string) =>
     api.get<NodeStats>(`/api/v1/sites/${siteId}/nodes/${id}/stats`),
+
+  // Usage
+  getUsage: (siteId: number | string) =>
+    api.get<UsageReport>(`/api/v1/sites/${siteId}/usage`),
 
   // Agents
   listAgents: () => api.get<Agent[]>('/api/v1/agents'),

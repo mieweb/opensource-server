@@ -73,6 +73,78 @@ export interface AgentServiceStatus {
   lastApply: 'success' | 'failure' | 'unknown';
 }
 
+/** One container's live usage sample in the per-owner usage report. */
+export interface UsageContainer {
+  vmid: string;
+  name: string | null;
+  owner: string | null;
+  containerDbId: number | null;
+  node: string;
+  siteId: number;
+  status: string | null;
+  cpuUsed: number | null;
+  cpuAlloc: number | null;
+  memUsed: number | null;
+  memAlloc: number | null;
+  diskUsed: number | null;
+  diskAlloc: number | null;
+  diskReadBytes: number | null;
+  diskWriteBytes: number | null;
+  netInBytes: number | null;
+  netOutBytes: number | null;
+  /** Seconds since container boot. */
+  uptime: number | null;
+  /**
+   * PSI pressure stall percentages (avg10), probed for the highest-utilization
+   * containers only; null means "not probed this cycle", not "no pressure".
+   */
+  psiCpuSome: number | null;
+  psiCpuFull: number | null;
+  psiMemSome: number | null;
+  psiMemFull: number | null;
+  psiIoSome: number | null;
+  psiIoFull: number | null;
+}
+
+/** Per-owner aggregate row (owner null = unattributed, admin-visible only). */
+export interface UsageOwner {
+  owner: string | null;
+  containerCount: number;
+  runningCount: number;
+  cpuUsed: number;
+  cpuAlloc: number;
+  memUsed: number;
+  memAlloc: number;
+  diskUsed: number;
+  diskAlloc: number;
+  diskReadBytes: number;
+  diskWriteBytes: number;
+  netInBytes: number;
+  netOutBytes: number;
+  /** Worst PSI reading across this owner's probed containers (null = unprobed). */
+  pressureMax: number | null;
+  containers: UsageContainer[];
+}
+
+/** Owner-attribution problem detected during collection (admin-only). */
+export interface UsageFinding {
+  kind: 'drift' | 'unattributed';
+  vmid: string;
+  tagOwner: string | null;
+  dbOwner: string | null;
+}
+
+export interface UsageReport {
+  generatedAt: string;
+  owners: UsageOwner[];
+  /** Physical cluster capacity summed from the hypervisor node rows. */
+  capacity: { cpuCores: number; memBytes: number; diskBytes: number };
+  /** Admin-only. */
+  findings?: UsageFinding[];
+  /** Admin-only: cluster members not registered in the manager DB. */
+  unknownNodeRows?: number;
+}
+
 export interface Agent {
   id: number;
   siteId: number;
@@ -264,6 +336,8 @@ export interface AppSettings {
   defaultContainerEnvVars: { key: string; value: string; description?: string }[];
   /** Announcement banner shown to all users. Supports [text](url) links. */
   bannerMessage: string;
+  /** Max PSI probes per usage report; '' uses the server default (16), '0' disables. */
+  usagePsiProbeLimit: string;
 }
 
 export type ResourceType = 'memory' | 'swap' | 'cpus' | 'rootfs';
