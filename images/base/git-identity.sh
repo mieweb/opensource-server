@@ -3,61 +3,76 @@
 # profile on first interactive login to a container. Subsequent logins skip
 # this entirely once git config is set.
 #
-# The name is read from the NSS gecos field (mapped from LDAP cn via sssd.conf).
-# The email is read from LDAP via an anonymous ldapsearch (REQUIRE_AUTH_FOR_SEARCH
-# is disabled on the internal ldap-gateway, so no bind credentials are needed).
+# The name is read from the NSS gecos field (mapped from LDAP via sssd.conf).
+# The email is looked up with ldapsearch, driven by the same SSSD_* environment
+# variables that render /etc/sssd/sssd.conf (see sssd.conf.template), so the
+# query targets the same directory — and binds with the same credentials — that
+# sssd authenticates against.
 
 # Only run for interactive shells
 [[ $- != *i* ]] && return
 
-# Only if git is available
+# Only if git and ldapsearch are available
 command -v git >/dev/null 2>&1 || return
 command -v ldapsearch >/dev/null 2>&1 || return
 
 # Skip if already configured — user-set values always take precedence
 [ -n "$(git config --global user.email 2>/dev/null)" ] && [ -n "$(git config --global user.name 2>/dev/null)" ] && return
 
-_GIT_SETUP_USER="${USER:-$(id -un 2>/dev/null)}"
-[ -z "$_GIT_SETUP_USER" ] && return
-[ "$_GIT_SETUP_USER" = "root" ] && return
+_git_identity_setup() {
+    local user uri base name_attr rootdse nc_count name email
+    local -a bind
 
-# Full name from NSS (SSSD reads the LDAP gecos attribute by default via ldap_user_gecos)
-_GIT_SETUP_NAME=$(getent passwd "$_GIT_SETUP_USER" 2>/dev/null | cut -d: -f5)
+    user="${USER:-$(id -un 2>/dev/null)}"
+    [ -z "$user" ] && return
+    [ "$user" = "root" ] && return
 
-# Email from LDAP anonymous query
-_GIT_SETUP_LDAP_HOST="${LDAP_URI:-ldaps://ldap1:636}"
+    # Same server list sssd uses (ldapsearch -H accepts a comma-separated list).
+    # LDAP_URI is the legacy pre-SSSD_* variable name.
+    uri="${SSSD_LDAP_URI:-${LDAP_URI:-ldaps://ldap1:636}}"
 
-# Resolve baseDN the same way SSSD does: rootDSE namingContexts autodiscovery.
-# Use LDAP_BASE_DN if explicitly set; otherwise query rootDSE.
-# - Single namingContexts entry  -> use it directly
-# - Multiple namingContexts      -> use defaultNamingContext
-# - Neither resolvable           -> abort
-if [ -n "${LDAP_BASE_DN:-}" ]; then
-    _GIT_SETUP_LDAP_BASE="$LDAP_BASE_DN"
-else
-    _GIT_SETUP_ROOTDSE=$(ldapsearch -x -H "$_GIT_SETUP_LDAP_HOST" -b "" -s base namingContexts defaultNamingContext 2>/dev/null)
-    _GIT_SETUP_NC_COUNT=$(echo "$_GIT_SETUP_ROOTDSE" | grep -c '^namingContexts:')
-    if [ "$_GIT_SETUP_NC_COUNT" -eq 1 ]; then
-        _GIT_SETUP_LDAP_BASE=$(echo "$_GIT_SETUP_ROOTDSE" | awk '/^namingContexts:/{print $2; exit}')
-    elif [ "$_GIT_SETUP_NC_COUNT" -gt 1 ]; then
-        _GIT_SETUP_LDAP_BASE=$(echo "$_GIT_SETUP_ROOTDSE" | awk '/^defaultNamingContext:/{print $2; exit}')
+    # Bind the same way sssd does: with the default bind DN and token when
+    # configured (directories such as the Authentik LDAP outpost reject
+    # anonymous searches), otherwise anonymously.
+    bind=(-x)
+    if [ -n "${SSSD_LDAP_DEFAULT_BIND_DN:-}" ] && [ -n "${SSSD_DEFAULT_AUTHTOK:-}" ] &&
+        { [ -z "${SSSD_DEFAULT_AUTHTOK_TYPE:-}" ] || [ "${SSSD_DEFAULT_AUTHTOK_TYPE}" = "password" ]; }; then
+        bind+=(-D "$SSSD_LDAP_DEFAULT_BIND_DN" -w "$SSSD_DEFAULT_AUTHTOK")
     fi
-    unset _GIT_SETUP_ROOTDSE _GIT_SETUP_NC_COUNT
-fi
-[ -z "${_GIT_SETUP_LDAP_BASE:-}" ] && return
 
-_GIT_SETUP_EMAIL=$(ldapsearch -x \
-    -H "$_GIT_SETUP_LDAP_HOST" \
-    -b "$_GIT_SETUP_LDAP_BASE" \
-    "(uid=${_GIT_SETUP_USER})" mail 2>/dev/null \
-    | awk '/^mail:/{print $2; exit}')
+    # Resolve the search base the same way sssd does: explicit configuration
+    # first, then rootDSE namingContexts autodiscovery.
+    # - Single namingContexts entry  -> use it directly
+    # - Multiple namingContexts      -> use defaultNamingContext
+    # - Neither resolvable           -> abort
+    base="${SSSD_LDAP_USER_SEARCH_BASE:-${SSSD_LDAP_SEARCH_BASE:-${LDAP_BASE_DN:-}}}"
+    if [ -z "$base" ]; then
+        rootdse=$(ldapsearch "${bind[@]}" -H "$uri" -b "" -s base namingContexts defaultNamingContext 2>/dev/null)
+        nc_count=$(echo "$rootdse" | grep -c '^namingContexts:')
+        if [ "$nc_count" -eq 1 ]; then
+            base=$(echo "$rootdse" | awk '/^namingContexts:/{print $2; exit}')
+        elif [ "$nc_count" -gt 1 ]; then
+            base=$(echo "$rootdse" | awk '/^defaultNamingContext:/{print $2; exit}')
+        fi
+    fi
+    [ -z "$base" ] && return
 
-if [ -n "$_GIT_SETUP_NAME" ]; then
-    git config --global user.name  "$_GIT_SETUP_NAME"
-fi
+    # Same login-name attribute sssd maps (ldap_user_name, default uid)
+    name_attr="${SSSD_LDAP_USER_NAME:-uid}"
 
-if [ -n "$_GIT_SETUP_EMAIL" ]; then
-    git config --global user.email "$_GIT_SETUP_EMAIL"
-fi
+    # Full name from NSS (sssd maps the LDAP gecos attribute via ldap_user_gecos)
+    name=$(getent passwd "$user" 2>/dev/null | cut -d: -f5)
 
-unset _GIT_SETUP_USER _GIT_SETUP_NAME _GIT_SETUP_EMAIL _GIT_SETUP_LDAP_HOST _GIT_SETUP_LDAP_BASE _GIT_SETUP_ROOTDSE _GIT_SETUP_NC_COUNT
+    email=$(ldapsearch "${bind[@]}" \
+        -H "$uri" \
+        -b "$base" \
+        "(${name_attr}=${user})" mail 2>/dev/null \
+        | awk '/^mail:/{print $2; exit}')
+
+[ -n "$name" ] && [ -z "$(git config --global user.name 2>/dev/null)" ] && git config --global user.name "$name"
+[ -n "$email" ] && [ -z "$(git config --global user.email 2>/dev/null)" ] && git config --global user.email "$email"
+    return 0
+}
+
+_git_identity_setup
+unset -f _git_identity_setup
