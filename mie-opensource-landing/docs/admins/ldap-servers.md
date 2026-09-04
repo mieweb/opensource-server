@@ -77,6 +77,9 @@ In the admin UI: **Settings** → **Default Container Environment Variables**. T
 !!! tip
     `SSSD_LDAP_DEFAULT_BIND_DN`, `SSSD_DEFAULT_AUTHTOK_TYPE`, and `SSSD_DEFAULT_AUTHTOK` work as a set. Provide all three when your directory requires an authenticated bind to read users and groups; leave all three blank to bind anonymously. The service account only needs read access to the user and group subtrees — user passwords are verified by a separate bind as the authenticating user.
 
+!!! note "Git identity"
+    On first interactive login, a profile script (`/etc/profile.d/git-identity.sh`) sets the user's global `git config user.name`/`user.email` from the directory: the name from the NSS gecos field (`SSSD_LDAP_USER_GECOS`) and the email from an `ldapsearch` for the user's `mail` attribute. The search uses the same `SSSD_*` variables — URI, search base, login-name attribute, and bind DN/credential — so no extra configuration is needed. Values a user sets manually are never overwritten.
+
 !!! warning
     `SSSD_DEFAULT_AUTHTOK` is a secret. The rendered `/etc/sssd/sssd.conf` is written with restrictive permissions (mode `0600`), but the value is also visible in the container's environment. Prefer a dedicated, least-privilege service account and rotate it like any other credential.
 
