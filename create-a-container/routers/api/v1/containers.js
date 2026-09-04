@@ -650,7 +650,10 @@ router.put(
     const ownerChanged = newOwnerUsername !== null && newOwnerUsername !== container.username;
     const envChanged = !isRestartOnly && container.environmentVars !== envVarsJson;
     const entrypointChanged = !isRestartOnly && container.entrypoint !== newEntrypoint;
-    const needsRestart = forceRestart || envChanged || entrypointChanged;
+    // Never restart implicitly (issue #449): a restart job is enqueued only
+    // when the caller explicitly asks for one. Saved env/entrypoint changes
+    // are applied by reconfigure-container.js on the next restart.
+    const needsRestart = forceRestart;
 
     let restartJob = null;
     const dnsWarnings = [];
@@ -778,11 +781,17 @@ router.put(
       }
     }
 
+    const pendingRestart = !restartJob && (envChanged || entrypointChanged);
     return ok(res, {
       containerId: container.id,
       jobId: restartJob ? restartJob.id : null,
       dnsWarnings,
-      message: restartJob ? 'Container is restarting' : 'Container updated',
+      pendingRestart,
+      message: restartJob
+        ? 'Container is restarting'
+        : pendingRestart
+          ? 'Container updated — changes take effect on the next restart'
+          : 'Container updated',
     });
   }),
 );

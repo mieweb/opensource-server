@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -14,6 +14,12 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  Modal,
+  ModalBody,
+  ModalClose,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
   Select,
   Spinner,
   Switch,
@@ -183,6 +189,28 @@ export function ContainerFormPage() {
   const debouncedHostname = useDebouncedValue(hostname || '', 500);
   const customTemplate = watch('customTemplate');
   const collaborators = watch('collaborators') || [];
+  const watchedEntrypoint = watch('entrypoint');
+  const watchedEnvVars = watch('environmentVars');
+
+  // True when the form's env vars or entrypoint differ from the saved
+  // container — the changes that only take effect after a restart (#449).
+  const requiresRestart = useMemo(() => {
+    if (!isEdit || !container) return false;
+    if ((watchedEntrypoint || '') !== (container.entrypoint || '')) return true;
+    const saved = new Map(Object.entries(container.environmentVars || {}));
+    const current = (watchedEnvVars || []).filter((e) => e.key.trim());
+    if (current.length !== saved.size) return true;
+    return current.some((e) => saved.get(e.key) !== e.value);
+  }, [isEdit, container, watchedEntrypoint, watchedEnvVars]);
+
+  // The restart toggle follows restart-requiring edits (auto-on, so the user
+  // isn't left wondering why changes didn't apply) until the user overrides
+  // it manually — then their choice wins.
+  const restartTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!isEdit || restartTouchedRef.current) return;
+    setValue('restart', requiresRestart);
+  }, [requiresRestart, isEdit, setValue]);
 
   useEffect(() => {
     if (container && isEdit && !initializedRef.current) {
@@ -226,6 +254,10 @@ export function ContainerFormPage() {
 
   const [metadataMsg, setMetadataMsg] = useState<string | null>(null);
   const [nvidiaTooltipOpen, setNvidiaTooltipOpen] = useState(false);
+  // Restart confirmation (issue #449): saving never restarts the container
+  // until the user explicitly confirms in this modal.
+  const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);
+  const pendingValuesRef = useRef<FormData | null>(null);
   const metadataMutation = useMutation({
     mutationFn: (image: string) => queries.containerMetadata(siteId!, image),
     onSuccess: (meta: ContainerMetadata) => {
@@ -326,6 +358,7 @@ export function ContainerFormPage() {
         containerId: number;
         jobId: number | null;
         message: string;
+        pendingRestart?: boolean;
         dnsWarnings: string[];
       };
       type SaveResult = UpdateResult | ContainerCreateResult;
@@ -337,7 +370,10 @@ export function ContainerFormPage() {
     },
     onSuccess: (result) => {
       const dnsWarnings = (result as { dnsWarnings?: string[] }).dnsWarnings;
-      toast.success(isEdit ? 'Container updated' : 'Container queued for creation');
+      // Prefer the server's message so update-status wording (restarting /
+      // pending restart / updated) lives in one place.
+      const message = (result as { message?: string }).message;
+      toast.success(message || (isEdit ? 'Container updated' : 'Container queued for creation'));
       // exact:true so we only invalidate the list query and not its prefix
       // descendants (e.g. the still-mounted containerBootstrap query keyed
       // ['sites', siteId, 'containers', 'new']), which would otherwise refetch
@@ -362,6 +398,17 @@ export function ContainerFormPage() {
     },
   });
 
+  // Saving with restart enabled must be confirmed first — a restart is
+  // disruptive and should never happen from a plain save (issue #449).
+  const onSubmit = (values: FormData) => {
+    if (isEdit && values.restart) {
+      pendingValuesRef.current = values;
+      setConfirmRestartOpen(true);
+      return;
+    }
+    mutation.mutate(values);
+  };
+
   if ((isEdit && containerLoading) || bootstrapLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -381,7 +428,7 @@ export function ContainerFormPage() {
   ];
 
   return (
-    <form onSubmit={handleSubmit((v) => mutation.mutate(v))} noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <FormPageHeader
           icon={<Container className="size-6" />}
@@ -550,12 +597,25 @@ export function ContainerFormPage() {
               </Tooltip>
             </div>
             {isEdit && (
-              <Switch
-                label="Restart container after saving"
-                description="Required if you change environment variables or entrypoint"
-                checked={!!restart}
-                onCheckedChange={(c) => setValue('restart', c)}
-              />
+              <div className="flex flex-col gap-2">
+                <Switch
+                  label="Restart container after saving"
+                  description="Turns on automatically when you change environment variables or the entrypoint — those changes only take effect after a restart."
+                  checked={!!restart}
+                  onCheckedChange={(c) => {
+                    restartTouchedRef.current = true;
+                    setValue('restart', c);
+                  }}
+                />
+                {requiresRestart && !restart && (
+                  <Alert variant="warning">
+                    <AlertDescription>
+                      This change requires a restart, but none will be performed — it takes
+                      effect the next time the container restarts.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -823,6 +883,41 @@ export function ContainerFormPage() {
           </Alert>
         )}
       </div>
+
+      <Modal open={confirmRestartOpen} onOpenChange={setConfirmRestartOpen}>
+        <ModalHeader>
+          <ModalTitle>Restart container?</ModalTitle>
+          <ModalClose />
+        </ModalHeader>
+        <ModalBody>
+          <p className="text-sm">
+            Saving will stop and start <strong>{container?.hostname}</strong>, interrupting
+            anything currently running in it.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            className="cursor-pointer"
+            onClick={() => setConfirmRestartOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            className="cursor-pointer"
+            isLoading={mutation.isPending}
+            onClick={() => {
+              if (pendingValuesRef.current) mutation.mutate(pendingValuesRef.current);
+              setConfirmRestartOpen(false);
+            }}
+          >
+            Save &amp; restart
+          </Button>
+        </ModalFooter>
+      </Modal>
     </form>
   );
 }

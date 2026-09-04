@@ -11,6 +11,7 @@ import {
 import { ArrowLeft, Terminal } from 'lucide-react';
 import { ButtonLink } from '@/components/ButtonLink';
 import { ApiError } from '@/lib/api';
+import { useCurrentSiteId } from '@/lib/currentSite';
 import { keys, queries } from '@/lib/queries';
 import type { JobStatusRow } from '@/lib/types';
 
@@ -37,6 +38,10 @@ function statusVariant(s: string): 'default' | 'success' | 'warning' | 'danger' 
 
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
+  // /jobs/:id has no parent list route — Back returns to the current site's
+  // containers (where jobs are launched from), or the sites list as a fallback.
+  const currentSiteId = useCurrentSiteId();
+  const backTo = currentSiteId ? `/sites/${currentSiteId}/containers` : '/sites';
   const { data: job, isLoading, error, refetch } = useQuery({
     queryKey: keys.job(id!),
     queryFn: () => queries.getJob(id!),
@@ -113,7 +118,9 @@ export function JobDetailPage() {
         subtitle={job.command}
         icon={<Terminal className="size-6" />}
         actions={
-          <ButtonLink as={Link} to=".." relative="path" variant="ghost" leftIcon={<ArrowLeft className="size-4" />}>Back</ButtonLink>
+          <ButtonLink as={Link} to={backTo} variant="ghost" leftIcon={<ArrowLeft className="size-4" />}>
+            {currentSiteId ? 'Back to containers' : 'Back to sites'}
+          </ButtonLink>
         }
       />
 
