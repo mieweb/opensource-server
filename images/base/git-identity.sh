@@ -69,8 +69,8 @@ _git_identity_setup() {
         "(${name_attr}=${user})" mail 2>/dev/null \
         | awk '/^mail:/{print $2; exit}')
 
-    [ -n "$name" ] && git config --global user.name "$name"
-    [ -n "$email" ] && git config --global user.email "$email"
+[ -n "$name" ] && [ -z "$(git config --global user.name 2>/dev/null)" ] && git config --global user.name "$name"
+[ -n "$email" ] && [ -z "$(git config --global user.email 2>/dev/null)" ] && git config --global user.email "$email"
     return 0
 }
 
