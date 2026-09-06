@@ -96,6 +96,8 @@ router.use('/jobs', require('./jobs'));
 router.use('/resource-requests', require('./resource-requests'));
 router.use('/notifications', require('../../../resources/notifications/router'));
 router.use('/services', require('../../../resources/services/router'));
+// sshd inside a container asks whether a user may log in (container-token auth).
+router.use('/containers/:id/ssh-access', require('./ssh-access'));
 
 // Final error handler — must come after all routes
 router.use(jsonErrorHandler);

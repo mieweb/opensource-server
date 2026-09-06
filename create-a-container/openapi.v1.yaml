@@ -149,6 +149,7 @@ components:
           type: array
           items: { type: string }
           description: Usernames the container is shared with
+        sshAccessEnforced: { type: boolean, description: 'Whether sshd in the container limits logins to the owner and collaborators (the container holds a callback token). False for containers created before enforcement until enrolled.' }
         containerId: { type: string, nullable: true, description: Provider container id — Proxmox VMID or Docker container id (null until provisioned) }
         status: { $ref: '#/components/schemas/ContainerStatus' }
         template: { type: string }
@@ -962,6 +963,36 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
         '403': { description: 'forbidden — only the owner/admin may unshare (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'Container or collaborator not found', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /sites/{siteId}/containers/{id}/ssh-access/token:
+    post:
+      operationId: rotate_container_ssh_access_token
+      tags: [Containers]
+      summary: Mint (or rotate) the token sshd inside the container uses to ask who may log in (owner/admin). The plaintext is returned once; any previous token stops working.
+      parameters:
+        - { in: path, name: siteId, required: true, schema: { type: integer } }
+        - { in: path, name: id, required: true, schema: { type: integer } }
+      responses:
+        '201':
+          description: New token
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { containerId: { type: integer }, token: { type: string } } } } }
+        '403': { description: 'forbidden — only the owner/admin', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /containers/{id}/ssh-access/{username}:
+    get:
+      operationId: check_container_ssh_access
+      tags: [Containers]
+      summary: Called by sshd inside a container — may this user log in? Authenticated with the container's own token (Bearer), not a user credential.
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - { in: path, name: username, required: true, schema: { type: string, pattern: '^[a-z_][a-z0-9_-]{0,31}$' } }
+      responses:
+        '204': { description: Allowed — the user is the owner or a collaborator }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: Missing or invalid container token, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: Denied — not the owner or a collaborator, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /sites/{siteId}/nodes:
     parameters: [{ in: path, name: siteId, required: true, schema: { type: integer } }]

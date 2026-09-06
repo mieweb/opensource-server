@@ -89,6 +89,12 @@ Click **Create Container**. You'll be redirected to a page to watch the creation
 
 **Proxmox Console:** [{{ proxmox_url }}]({{ proxmox_url }})
 
+### Who can SSH in
+
+Only the container's **owner** and its **collaborators** (the **Sharing** section on the container's edit page) can log in over SSH. Keys come from the `sshPublicKey` on your directory account; sharing controls *where* they are accepted. Adding or removing a collaborator applies on their next SSH connection — no restart. Collaborators have the same shell access as the owner (including `sudo`), so share only with people you would give root.
+
+The Sharing section shows **SSH enforced** when the container checks logins against this list, or **SSH not enforced** for containers created before this feature that have not yet been enrolled by an administrator.
+
 ## Managing Containers
 
 - **Start/Stop/Restart/Force Stop** via the Actions column

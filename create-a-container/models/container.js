@@ -2,6 +2,16 @@
 const {
   Model
 } = require('sequelize');
+const { generateApiKey, hashApiKey, verifyApiKey } = require('../utils/apikey');
+
+// Env vars the manager owns. Injected by buildLxcEnvConfig and stripped from
+// every other source so neither users nor admin defaults can override them.
+const RESERVED_ENV_KEYS = ['CONTAINER_ID', 'CONTAINER_SSH_TOKEN'];
+
+// Accepted login names (POSIX-ish); anything else is rejected before it can
+// reach a shell or config file.
+const USERNAME_RE = /^[a-z_][a-z0-9_-]{0,31}$/;
+
 module.exports = (sequelize, DataTypes) => {
   class Container extends Model {
     /**
@@ -50,6 +60,61 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
+     * Whether a user may SSH into this container: the owner or a collaborator.
+     * This is the single rule sshd inside the container consults (via the
+     * ssh-access endpoint). Requires `collaborators` to be eager-loaded.
+     * @param {string} username
+     * @returns {boolean}
+     */
+    sshAllowsUser(username) {
+      return this.username === username || this.collaborators.some((c) => c.username === username);
+    }
+
+    /**
+     * Whether the container enforces the sharing list for SSH, i.e. it has
+     * been issued a token to call back with. Null hash = legacy/unenrolled.
+     * @returns {boolean}
+     */
+    sshAccessEnforced() {
+      return !!this.sshAccessTokenHash;
+    }
+
+    /**
+     * Verify a token presented by the container against the stored hash.
+     * @param {string} token
+     * @returns {Promise<boolean>}
+     */
+    async verifySshAccessToken(token) {
+      if (!this.sshAccessTokenHash || !token) return false;
+      return verifyApiKey(this.sshAccessTokenHash, token);
+    }
+
+    /**
+     * Mint a new SSH-access token, persist its hash, and return the plaintext.
+     * The plaintext is only ever handed to the container (env or enrollment).
+     * @returns {Promise<string>}
+     */
+    async rotateSshAccessToken() {
+      const token = generateApiKey();
+      await this.update({ sshAccessTokenHash: await hashApiKey(token) });
+      return token;
+    }
+
+    /**
+     * Return the plaintext token to inject into the container's env. Reuses
+     * the token already present in the container's current LXC env when it
+     * still matches the stored hash (so a reconfigure doesn't invalidate the
+     * running container's credential); otherwise mints a new one.
+     * @param {string} [currentLxcEnv] - Proxmox NUL-separated `env` string
+     * @returns {Promise<string>}
+     */
+    async ensureSshAccessToken(currentLxcEnv) {
+      const existing = this.constructor.parseLxcEnvString(currentLxcEnv, { keepReserved: true }).CONTAINER_SSH_TOKEN;
+      if (existing && (await this.verifySshAccessToken(existing))) return existing;
+      return this.rotateSshAccessToken();
+    }
+
+    /**
      * Normalize a set of environment variables into a safe, flat
      * { KEY: stringValue } object suitable for building the Proxmox `env`
      * string. This is the single place that decides what a valid env var is.
@@ -68,7 +133,7 @@ module.exports = (sequelize, DataTypes) => {
      * @param {*} input - Candidate env vars, ideally a { key: value } object
      * @returns {object} Flat object of validated { KEY: stringValue }
      */
-    static normalizeEnvVars(input) {
+    static normalizeEnvVars(input, { keepReserved = false } = {}) {
       const out = {};
       if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
 
@@ -79,6 +144,7 @@ module.exports = (sequelize, DataTypes) => {
       for (const [rawKey, rawValue] of Object.entries(input)) {
         const key = typeof rawKey === 'string' ? rawKey.trim() : '';
         if (!validKey.test(key)) continue;
+        if (!keepReserved && RESERVED_ENV_KEYS.includes(key)) continue;
 
         // Only primitives (string/number/boolean) become values; skip
         // null/undefined and objects/arrays.
@@ -100,14 +166,14 @@ module.exports = (sequelize, DataTypes) => {
      * @param {string|null|undefined} envStr - Raw Proxmox `env` value
      * @returns {object} Flat object of validated { KEY: value }
      */
-    static parseLxcEnvString(envStr) {
+    static parseLxcEnvString(envStr, options) {
       if (!envStr || typeof envStr !== 'string') return {};
       const raw = {};
       for (const pair of envStr.split('\0')) {
         const eq = pair.indexOf('=');
         if (eq > 0) raw[pair.substring(0, eq)] = pair.substring(eq + 1);
       }
-      return this.normalizeEnvVars(raw);
+      return this.normalizeEnvVars(raw, options);
     }
 
     /**
@@ -239,21 +305,25 @@ module.exports = (sequelize, DataTypes) => {
      *   that resolve to empty are added to Proxmox's `delete` list (removing any
      *   existing value). When false, they are simply omitted, preserving whatever
      *   the container/template already has.
+     * @param {string} [options.sshAccessToken] - Plaintext token from
+     *   ensureSshAccessToken. When given, CONTAINER_ID/CONTAINER_SSH_TOKEN are
+     *   injected with top precedence so the container can call back.
      * @returns {Promise<object>} Config object with 'env' and 'entrypoint'
      *   properties (and, when deleteMissing is set, a 'delete' list)
      */
-    async buildLxcEnvConfig({ deleteMissing = false } = {}) {
+    async buildLxcEnvConfig({ deleteMissing = false, sshAccessToken } = {}) {
       const config = {};
       const deleteList = [];
 
       // Merge precedence (lowest to highest):
-      //   system defaults < NVIDIA defaults < user-defined values
+      //   system defaults < NVIDIA defaults < user-defined values < reserved
       // Every source is already normalized to a safe { KEY: stringValue } map
       // (see normalizeEnvVars), so the encoding below cannot be corrupted.
       const mergedEnvVars = {
         ...(await this.constructor.getSystemDefaultEnvVars()),
         ...this.nvidiaDefaultEnvVars(),
-        ...this.parseEnvironmentVars()
+        ...this.parseEnvironmentVars(),
+        ...(sshAccessToken ? { CONTAINER_ID: String(this.id), CONTAINER_SSH_TOKEN: sshAccessToken } : {})
       };
 
       // Format as NUL-separated list: KEY1=value1\0KEY2=value2\0KEY3=value3
@@ -356,6 +426,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(2000),
       allowNull: true,
       defaultValue: null
+    },
+    sshAccessTokenHash: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null
     }
   }, {
     sequelize,
@@ -383,5 +458,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     ]
   });
+  Container.RESERVED_ENV_KEYS = RESERVED_ENV_KEYS;
+  Container.USERNAME_RE = USERNAME_RE;
   return Container;
 };

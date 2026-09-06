@@ -1,0 +1,13 @@
+[Unit]
+Description=Enroll sshd with the manager's per-container SSH access policy
+# Needs PID 1's environment (populated before environment.service copies it)
+# and must finish before sshd accepts logins.
+After=environment.service
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ssh-access-setup.sh
+
+[Install]
+WantedBy=multi-user.target

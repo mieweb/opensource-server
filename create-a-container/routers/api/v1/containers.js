@@ -132,6 +132,10 @@ function serializeContainer(c, site, status) {
     // Additional users this container is shared with. Present on every
     // payload so consumers can render/manage sharing.
     collaborators: c.collaboratorNames(),
+    // Whether sshd inside the container enforces owner+collaborators (the
+    // container has been issued a callback token). False for containers
+    // created before this feature until they are enrolled.
+    sshAccessEnforced: c.sshAccessEnforced(),
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).
@@ -926,6 +930,21 @@ router.delete(
     const idx = container.collaborators.findIndex((c) => c.username === req.params.username);
     if (idx !== -1) container.collaborators.splice(idx, 1);
     return ok(res, { collaborators: container.collaboratorNames() });
+  }),
+);
+
+// POST /containers/:id/ssh-access/token — mint (or rotate) the token sshd in
+// the container uses to ask who may log in (owner/admin). The plaintext is
+// returned exactly once; used by the enrollment script for existing
+// containers. New containers receive theirs via env at creation.
+router.post(
+  '/:id/ssh-access/token',
+  asyncHandler(async (req, res) => {
+    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
+      requireManage: true,
+    });
+    const token = await container.rotateSshAccessToken();
+    return created(res, { containerId: container.id, token });
   }),
 );
 
