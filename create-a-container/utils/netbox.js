@@ -39,8 +39,16 @@ function headers(token) {
 }
 
 /**
- * fetch() with retries on network errors. undici reports these as a bare
- * "fetch failed", so the underlying cause is surfaced in the thrown message.
+ * undici wraps DNS/connect/TLS failures as TypeError('fetch failed') with the
+ * real reason in err.cause. Anything else (bad URL, aborted, etc.) is not
+ * a transient network error.
+ */
+function isNetworkError(err) {
+  return err instanceof TypeError && err.message === 'fetch failed' && err.cause != null;
+}
+
+/**
+ * fetch() with retries on network errors. Other errors are rethrown immediately.
  * @param {string} url
  * @param {object} init - fetch init options
  * @returns {Promise<Response>}
@@ -51,13 +59,14 @@ async function fetchWithRetry(url, init) {
     try {
       return await fetch(url, init);
     } catch (err) {
+      if (!isNetworkError(err)) throw err;
       lastErr = err;
       if (attempt < FETCH_ATTEMPTS) {
         await new Promise(r => setTimeout(r, FETCH_RETRY_DELAY_MS * attempt));
       }
     }
   }
-  const cause = lastErr.cause?.code || lastErr.cause?.message || lastErr.message;
+  const cause = lastErr.cause.code || lastErr.cause.message;
   throw new Error(
     `NetBox unreachable after ${FETCH_ATTEMPTS} attempts (${init.method || 'GET'} ${url}): ${cause}`,
     { cause: lastErr },
