@@ -16,6 +16,14 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 | **Creating** | Being provisioned |
 | **Failed** | Creation or startup failed |
 
+## Volumes
+
+Containers can attach persistent **[volumes](volumes.md)** — bind-mount
+directories whose data survives delete + recreate on the same hostname. Each
+volume has a name, a guest mount path, and a read-only or read-write mode. The
+built-in shared read-only `quick_and_dirty` volume is always present. See
+[Volumes](volumes.md) for the shared-storage requirement and backup caveats.
+
 ## Service Exposure
 
 Users can expose HTTP services from containers using [external domains](external-domains.md). Services are automatically configured with SSL/TLS certificates, reverse proxy routing, and DNS records.

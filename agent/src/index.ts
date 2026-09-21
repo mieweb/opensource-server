@@ -16,14 +16,19 @@ import { State } from './state';
 import { getPrimaryIpv4, getServiceState, disconnectSystemBus } from './system';
 import { checkin } from './api';
 import { services, applyService } from './apply';
+import { reconcileVolumes } from './volumes';
 import { log } from './log';
-import type { CheckinRequest, ServiceStatus } from './types';
+import type { CheckinRequest, ServiceStatus, VolumeResult } from './types';
 
 // Safety cap: a flapping server-side config can't keep a single run alive
 // forever; the timer starts a fresh run 30s later anyway.
 const MAX_PASSES = 5;
 
-async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<CheckinRequest> {
+async function buildCheckinBody(
+  cfg: AgentConfig,
+  state: State,
+  volumeResults?: Record<string, VolumeResult>,
+): Promise<CheckinRequest> {
   const serviceStatus: Record<string, ServiceStatus> = {};
   for (const svc of services) {
     serviceStatus[svc.unit] = {
@@ -31,13 +36,19 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
       lastApply: state.lastApply[svc.unit] ?? 'unknown',
     };
   }
-  return {
+  const body: CheckinRequest = {
     siteId: cfg.siteId,
     hostname: os.hostname(),
     currentTime: Math.floor(Date.now() / 1000),
     ipv4Address: getPrimaryIpv4(),
     services: serviceStatus,
   };
+  // Only include volumes when this pass produced results, so the manager isn't
+  // sent an empty map every check-in.
+  if (volumeResults && Object.keys(volumeResults).length > 0) {
+    body.volumes = volumeResults;
+  }
+  return body;
 }
 
 async function main(): Promise<void> {
@@ -46,9 +57,13 @@ async function main(): Promise<void> {
   log.info(`agent starting: siteId=${cfg.siteId}, manager=${cfg.managerUrl}`);
   log.debug(`state dir=${cfg.stateDir}, saved etag=${state.etag ?? '(none)'}`);
 
+  // Volume directory results from the most recent applied config, reported on
+  // the next check-in (the manager writes them into Volume.status).
+  let volumeResults: Record<string, VolumeResult> | undefined;
+
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     log.debug(`check-in pass ${pass + 1}/${MAX_PASSES}`);
-    const result = await checkin(cfg, await buildCheckinBody(cfg, state), state.etag);
+    const result = await checkin(cfg, await buildCheckinBody(cfg, state, volumeResults), state.etag);
     if (result.notModified) {
       log.info('check-in: config unchanged (304), nothing to apply');
       return;
@@ -58,6 +73,10 @@ async function main(): Promise<void> {
     for (const svc of services) {
       state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
     }
+
+    // Ensure volume directories exist from the new snapshot; results are
+    // reported on the next check-in via the volumes field.
+    volumeResults = reconcileVolumes(result.config);
 
     // The ETag is saved even after a failed apply: a rejected config won't
     // fix itself without a server-side change (which changes the ETag), and
@@ -70,7 +89,7 @@ async function main(): Promise<void> {
   // the final pass' apply results reach the manager instead of going stale
   // until the next timer run.
   log.warn(`reached MAX_PASSES (${MAX_PASSES}) without a stable config; reporting final results`);
-  await checkin(cfg, await buildCheckinBody(cfg, state), state.etag);
+  await checkin(cfg, await buildCheckinBody(cfg, state, volumeResults), state.etag);
 }
 
 main()

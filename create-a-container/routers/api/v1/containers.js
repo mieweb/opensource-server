@@ -16,6 +16,7 @@ const {
   ExternalDomain,
   Job,
   Setting,
+  Volume,
   Sequelize,
   sequelize,
 } = require('../../../models');
@@ -50,6 +51,55 @@ function serializeUserEnvVars(environmentVars) {
   }
   const normalized = Container.normalizeEnvVars(flat);
   return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : null;
+}
+
+/**
+ * Validate a single volume-attach entry from a create/update request. Returns
+ * a normalized `{ name, mountPath, mode }` or throws ApiError. `hostPath` is
+ * intentionally NOT accepted from clients — it is derived server-side from the
+ * node storage's configured path by the create job (issue #421).
+ * @param {*} v
+ * @returns {{name: string, mountPath: string, mode: 'ro'|'rw'}}
+ */
+function normalizeVolumeAttach(v) {
+  if (!v || typeof v !== 'object') {
+    throw new ApiError(400, 'invalid_volume', 'Each volume must be an object');
+  }
+  const name = typeof v.name === 'string' ? v.name.trim() : '';
+  if (!Volume.isValidName(name)) {
+    throw new ApiError(
+      400,
+      'invalid_volume',
+      'Volume name must be a safe path segment (letters, digits, dot, dash, underscore; no traversal or separators)',
+    );
+  }
+  const mountPath = typeof v.mountPath === 'string' ? v.mountPath.trim() : '';
+  if (!mountPath.startsWith('/')) {
+    throw new ApiError(400, 'invalid_volume', 'Volume mountPath must be an absolute path');
+  }
+  const mode = v.mode === 'ro' ? 'ro' : v.mode === 'rw' ? 'rw' : null;
+  if (!mode) {
+    throw new ApiError(400, 'invalid_volume', "Volume mode must be 'ro' or 'rw'");
+  }
+  return { name, mountPath, mode };
+}
+
+/**
+ * Serialize a Volume row for API responses.
+ * @param {object} v
+ */
+function serializeVolume(v) {
+  return {
+    id: v.id,
+    name: v.name,
+    mountPath: v.mountPath,
+    mode: v.mode,
+    scope: v.scope,
+    builtin: !!v.builtin,
+    status: v.status,
+    statusMessage: v.statusMessage ?? null,
+    appliedAt: v.appliedAt ?? null,
+  };
 }
 
 function normalizeDockerRef(ref) {
@@ -148,6 +198,7 @@ function serializeContainer(c, site, status) {
     lastAccessedAt,
     nodeName: c.node ? c.node.name : null,
     nodeApiUrl: c.node ? c.node.apiUrl : null,
+    volumes: (c.volumes || []).map(serializeVolume),
     services: services.map((s) => ({
       id: s.id,
       type: s.type,
@@ -195,6 +246,8 @@ const CONTAINER_INCLUDE = [
   { association: 'creationJob' },
   // Users the container is shared with, for the serializer's `collaborators`.
   { association: 'collaborators' },
+  // Volumes (bind mounts) for the serializer's `volumes`.
+  { association: 'volumes' },
 ];
 
 /**
@@ -437,6 +490,7 @@ router.post(
         entrypoint,
         nvidiaRequested,
         collaborators,
+        volumes,
         username: bodyUsername,
       } = req.body || {};
 
@@ -466,6 +520,26 @@ router.post(
       // Only the user-defined env vars are persisted on the container record;
       // NVIDIA and admin-defined system defaults are merged in at configure-time.
       const envVarsJson = serializeUserEnvVars(environmentVars);
+
+      // Validate volume attachments up front so a bad entry fails before any
+      // node selection or row creation. `hostPath` is derived by the create job.
+      volumes ??= [];
+      if (!Array.isArray(volumes)) {
+        throw new ApiError(400, 'invalid_request', 'volumes must be an array');
+      }
+      const normalizedVolumes = volumes.map(normalizeVolumeAttach);
+      const seenMounts = new Set();
+      const seenNames = new Set();
+      for (const v of normalizedVolumes) {
+        if (seenMounts.has(v.mountPath)) {
+          throw new ApiError(400, 'invalid_volume', `Duplicate volume mountPath: ${v.mountPath}`);
+        }
+        if (seenNames.has(v.name)) {
+          throw new ApiError(400, 'invalid_volume', `Duplicate volume name: ${v.name}`);
+        }
+        seenMounts.add(v.mountPath);
+        seenNames.add(v.name);
+      }
 
       const imageRef = template === 'custom' ? customTemplate?.trim() : template;
       if (!imageRef) throw new ApiError(400, 'invalid_request', 'template is required');
@@ -533,6 +607,28 @@ router.post(
           throw new ApiError(404, 'user_not_found', 'One or more collaborators do not exist');
         }
         throw err;
+      }
+
+      // Persist requested volumes as `pending`. The create job derives each
+      // hostPath from the node storage and blocks on Volume.status until the
+      // site agent has created the directory (issue #421). hostPath is set to a
+      // placeholder here and backfilled by the job.
+      if (normalizedVolumes.length > 0) {
+        await Volume.bulkCreate(
+          normalizedVolumes.map((v) => ({
+            containerId: container.id,
+            name: v.name,
+            // hostPath is derived by the create job from the node storage's
+            // configured path; left null here.
+            hostPath: null,
+            mountPath: v.mountPath,
+            mode: v.mode,
+            scope: 'container',
+            builtin: false,
+            status: 'pending',
+          })),
+          { transaction: t },
+        );
       }
 
       if (services && typeof services === 'object') {
@@ -620,8 +716,30 @@ router.put(
     );
 
     const { services, environmentVars, entrypoint, username: bodyUsername } = req.body || {};
+    const volumesInput = req.body?.volumes;
     const forceRestart = req.body?.restart === true || req.body?.restart === 'true';
     const isRestartOnly = forceRestart && !services && !environmentVars && entrypoint === undefined;
+
+    // Validate volume attach/detach entries up front. Attach entries are
+    // `{ name, mountPath, mode }`; detach entries are `{ id, detach: true }`.
+    let volumeAttaches = [];
+    let volumeDetachIds = [];
+    if (volumesInput !== undefined) {
+      if (!Array.isArray(volumesInput)) {
+        throw new ApiError(400, 'invalid_request', 'volumes must be an array');
+      }
+      for (const v of volumesInput) {
+        if (v && (v.detach === true || v.detach === 'true')) {
+          const id = parseInt(v.id, 10);
+          if (!Number.isInteger(id) || id <= 0) {
+            throw new ApiError(400, 'invalid_volume', 'Detach requires a numeric volume id');
+          }
+          volumeDetachIds.push(id);
+        } else {
+          volumeAttaches.push(normalizeVolumeAttach(v));
+        }
+      }
+    }
 
     // Admins may reassign the container to another user by passing `username`.
     // Non-admins may not pass a different username — that is a 403.
@@ -764,6 +882,33 @@ router.put(
           dnsWarnings.push(...(await manageDnsRecords(newHttp, site, 'create')));
         }
       }
+
+      // Volume attach/detach. New volumes are persisted `pending` (hostPath
+      // derived, directory created, and mpN set on the next reconcile); detach
+      // removes the row (retain-on-delete of the host directory is a node-side
+      // concern — the row going away just stops future mounts). Built-in
+      // volumes can't be detached through this path.
+      if (volumeDetachIds.length > 0) {
+        await Volume.destroy({
+          where: { id: volumeDetachIds, containerId: container.id, builtin: false },
+          transaction: t,
+        });
+      }
+      if (volumeAttaches.length > 0) {
+        await Volume.bulkCreate(
+          volumeAttaches.map((v) => ({
+            containerId: container.id,
+            name: v.name,
+            hostPath: null,
+            mountPath: v.mountPath,
+            mode: v.mode,
+            scope: 'container',
+            builtin: false,
+            status: 'pending',
+          })),
+          { transaction: t },
+        );
+      }
     });
 
     // Keep the Proxmox tag in sync with the owner — create-container.js tags
@@ -851,7 +996,11 @@ router.delete(
       }
     }
     // Sharing grants are removed by the database via the containerId foreign
-    // key's ON DELETE CASCADE.
+    // key's ON DELETE CASCADE. Volume rows cascade too, but their host
+    // directories are RETAINED on the node — the agent only ever creates
+    // directories, never removes them, so a later create on the same hostname
+    // reattaches the existing data (issue #421 (g)). Reclamation of orphaned
+    // directories is out of scope (no automatic GC).
     await container.destroy();
 
     // Remove the VM from NetBox if the integration is configured
@@ -932,3 +1081,5 @@ router.delete(
 module.exports = router;
 // Exported for unit tests (containers.serialize.test.js).
 module.exports.serializeContainer = serializeContainer;
+module.exports.serializeVolume = serializeVolume;
+module.exports.normalizeVolumeAttach = normalizeVolumeAttach;

@@ -8,14 +8,42 @@
  */
 
 const express = require('express');
-const { Agent, Site } = require('../../../models');
+const { Agent, Site, Volume } = require('../../../models');
 const { apiAuth, apiAdmin, localhostOrAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
 const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
 
 const router = express.Router();
 
+/**
+ * Apply an agent-reported per-volume results map to the Volume table.
+ * Shape: { <volumeId>: { applied: true|false, message? } }. The Manager owns
+ * the volume ids (sent in the config snapshot); the agent reports the outcome
+ * of its mkdir/chown. Transitions each Volume.status to ready/failed with
+ * statusMessage + appliedAt. Unknown ids and built-in volumes are ignored.
+ * @param {object} volumesResult
+ * @returns {Promise<void>}
+ */
+async function applyVolumeResults(volumesResult) {
+  if (!volumesResult || typeof volumesResult !== 'object') return;
+  for (const [rawId, result] of Object.entries(volumesResult)) {
+    const id = Number(rawId);
+    if (!Number.isInteger(id) || !result || typeof result !== 'object') continue;
+    const volume = await Volume.findByPk(id);
+    // Built-in volumes are admin-provisioned and not agent-owned; never let an
+    // agent report flip them.
+    if (!volume || volume.builtin) continue;
+    const applied = result.applied === true || result.applied === 'true';
+    const message = typeof result.message === 'string' ? result.message.slice(0, 2000) : null;
+    if (applied) {
+      await volume.update({ status: 'ready', statusMessage: null, appliedAt: new Date() });
+    } else {
+      await volume.update({ status: 'failed', statusMessage: message || 'agent reported failure' });
+    }
+  }
+}
+
 router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
-  const { siteId, hostname, ipv4Address, services } = req.body || {};
+  const { siteId, hostname, ipv4Address, services, volumes } = req.body || {};
   const parsedSiteId = typeof siteId === 'number' ? siteId : Number(siteId);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {
     return fail(res, 422, 'validation_failed', 'siteId and hostname are required');
@@ -33,6 +61,8 @@ router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
       services: services || null,
       lastCheckinAt: new Date(),
     });
+    // Transition Volume.status from the agent's per-volume directory results.
+    await applyVolumeResults(volumes);
   }
 
   const config = await buildAgentConfig(parsedSiteId);

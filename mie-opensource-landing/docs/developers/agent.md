@@ -33,7 +33,8 @@ sequenceDiagram
     Agent->>Timer: exit
 ```
 
-The check-in body carries system info and per-service status:
+The check-in body carries system info, per-service status, and — when the agent
+provisioned volume directories this pass — per-volume results:
 
 ```json
 {
@@ -44,11 +45,29 @@ The check-in body carries system info and per-service status:
   "services": {
     "nginx":   { "state": "active", "lastApply": "success" },
     "dnsmasq": { "state": "active", "lastApply": "success" }
+  },
+  "volumes": {
+    "42": { "applied": true },
+    "43": { "applied": false, "message": "mkdir: permission denied" }
   }
 }
 ```
 
 The manager records every check-in in the `Agents` table (shown on the web client's `/agents` page) and responds with the site's config snapshot as JSON. A strong `ETag` covers the snapshot; the agent stores it in `/var/lib/opensource-agent/state.json` and sends it back via `If-None-Match`, so unchanged configs cost a single `304` round trip.
+
+## Volumes
+
+The config snapshot includes, per node, the volume directories the agent must
+ensure exist (`{ id, hostPath, mode, uid, gid }`, matched to this host by node
+name). Each pass the agent `mkdir -p`s every directory and `chown`s it to the
+supplied host UID/GID (the unprivileged container's id-mapped root, so
+read-write volumes are writable inside the container). Per-volume results are
+reported back keyed by volume id via the `volumes` field above; the manager
+writes them into `Volume.status` (`ready` / `failed`). The container create job
+blocks on `Volume.status = 'ready'` before attaching the Proxmox `mpN` bind
+mount. The agent only ever creates directories — it never removes them, so
+volume data is retained across container delete + recreate. See
+[Volumes](../admins/core-concepts/volumes.md).
 
 ## Environment Variables
 

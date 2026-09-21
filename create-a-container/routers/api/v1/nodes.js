@@ -41,6 +41,84 @@ function normalizeNodeType(nodeType) {
   return nodeType || 'proxmox';
 }
 
+/**
+ * Warn (do not fail) when a node's volume storage is not suitable for durable,
+ * cross-node persistent volumes (issue #421 (f)): the volumes root must live on
+ * storage that is `shared=1` and active on every cluster node, or the site
+ * agent's per-node directory won't exist where a migrated container lands.
+ *
+ * Single-node sites are legitimately fine, so this is advisory only. Best
+ * effort: any Proxmox query failure yields no warning rather than blocking the
+ * save. Docker/dummy nodes are skipped.
+ *
+ * @param {object} node - Saved Node instance
+ * @returns {Promise<string[]>} Human-readable warnings (empty when all good)
+ */
+async function volumeStorageWarnings(node) {
+  if (node.nodeType !== 'proxmox' || !node.hasApiAccess()) return [];
+  const storageName = node.volumeStorage || node.imageStorage || 'local';
+  const warnings = [];
+  try {
+    const client = await node.api();
+
+    // Storage config exposes type + shared flag; a path is required for a bind
+    // directory (block storages like lvm/zfspool can't host one).
+    let cfg = null;
+    if (typeof client.storageConfig === 'function') {
+      try {
+        cfg = await client.storageConfig(storageName);
+      } catch (err) {
+        console.error(`Could not read storage config for ${storageName}:`, err.message);
+      }
+    }
+    if (cfg) {
+      const shared = cfg.shared === 1 || cfg.shared === '1' || cfg.shared === true;
+      if (!cfg.path) {
+        warnings.push(
+          `Volume storage "${storageName}" (type ${cfg.type || 'unknown'}) has no host path; ` +
+            'persistent volumes require a path-backed storage (dir/nfs/cephfs). Move the volumes root to shared storage.',
+        );
+      } else if (!shared) {
+        warnings.push(
+          `Volume storage "${storageName}" is not marked shared across the cluster; ` +
+            'persistent volume data is not guaranteed to follow containers across nodes. ' +
+            'Move the volumes root to shared storage (CephFS/RBD, NFS) available on every node.',
+        );
+      }
+    }
+
+    // Cross-check per-node presence: the storage should be active on every node.
+    try {
+      const [resources, clusterNodes] = await Promise.all([
+        client.clusterResources('storage'),
+        client.nodes(),
+      ]);
+      const nodeNames = new Set((clusterNodes || []).map((n) => n.node).filter(Boolean));
+      if (nodeNames.size > 1) {
+        const presentOn = new Set(
+          (resources || [])
+            .filter((r) => r.storage === storageName && (r.status === 'available' || r.status === undefined))
+            .map((r) => r.node)
+            .filter(Boolean),
+        );
+        const missing = [...nodeNames].filter((n) => !presentOn.has(n));
+        if (missing.length > 0) {
+          warnings.push(
+            `Volume storage "${storageName}" is not present/active on every node ` +
+              `(missing on: ${missing.join(', ')}). Persistent volumes will not be creatable/durable ` +
+              'where a container lands on those nodes.',
+          );
+        }
+      }
+    } catch (err) {
+      console.error(`Could not verify cluster storage presence for ${storageName}:`, err.message);
+    }
+  } catch (err) {
+    console.error(`Volume storage validation skipped for node ${node.name}:`, err.message);
+  }
+  return warnings;
+}
+
 function validateNodeInput({ nodeType, apiUrl }) {
   const type = normalizeNodeType(nodeType);
 
@@ -192,7 +270,8 @@ router.post(
       nvidiaAvailable: nvidiaAvailable === true || nvidiaAvailable === 'true',
       siteId: site.id,
     });
-    return created(res, serialize(node));
+    const warnings = await volumeStorageWarnings(node);
+    return created(res, { ...serialize(node), warnings });
   }),
 );
 
@@ -226,7 +305,8 @@ router.put(
     };
     if (secret && secret.trim() !== '') update.secret = secret;
     await node.update(update);
-    return ok(res, serialize(node));
+    const warnings = await volumeStorageWarnings(node);
+    return ok(res, { ...serialize(node), warnings });
   }),
 );
 
@@ -364,3 +444,5 @@ router.post(
 );
 
 module.exports = router;
+// Exported for unit tests.
+module.exports.volumeStorageWarnings = volumeStorageWarnings;

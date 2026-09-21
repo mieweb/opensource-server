@@ -9,7 +9,12 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume } = require('../models');
+
+// Default unprivileged-LXC id-map offset. Proxmox maps container UID/GID 0 to
+// host 100000 for unprivileged CTs, so a RW bind directory must be owned by
+// this host UID/GID to be writable from inside the container as its root.
+const UNPRIVILEGED_ID_OFFSET = 100000;
 
 /**
  * Load a site with everything the agent templates need, serialized to plain
@@ -112,6 +117,14 @@ async function buildAgentConfig(siteId) {
     order: [['id', 'ASC']],
   });
 
+  // Desired volume directories the agent must ensure exist, grouped by node.
+  // Loaded independently of the nginx container graph because a volume must be
+  // advertised to the agent BEFORE its container gets an IP (during creation),
+  // whereas the nginx graph only includes containers that already have one.
+  // Built-in volumes (the retired quick_and_dirty shared mount) are admin-
+  // provisioned and excluded — the agent only owns user volume directories.
+  const volumesByNodeName = await buildNodeVolumes(site);
+
   return {
     site: {
       id: site.id,
@@ -129,6 +142,8 @@ async function buildAgentConfig(siteId) {
           ipv4Address: c.ipv4Address,
           macAddress: c.macAddress,
         })),
+        // Volume directories to ensure on this node (id, hostPath, mode, uid, gid).
+        volumes: volumesByNodeName.get(node.name) || [],
       })),
     },
     nginx: {
@@ -137,6 +152,52 @@ async function buildAgentConfig(siteId) {
       externalDomains: externalDomains.map((d) => ({ name: d.name })),
     },
   };
+}
+
+/**
+ * Build the per-node list of desired volume directories for the agent's config
+ * snapshot. Keyed by node name. Each entry carries the host path, mode, and the
+ * owning host UID/GID (the unprivileged CT's id-mapped root) so RW volumes are
+ * writable from inside the container. Built-in and host-path-less volumes are
+ * excluded (the former are admin-provisioned; the latter aren't provisionable
+ * yet). Deterministic order keeps the strong ETag stable.
+ *
+ * @param {object} site - Site with eager-loaded nodes
+ * @returns {Promise<Map<string, Array<object>>>}
+ */
+async function buildNodeVolumes(site) {
+  const byNodeName = new Map();
+  const nodeById = new Map((site.nodes || []).map((n) => [n.id, n]));
+  if (nodeById.size === 0) return byNodeName;
+
+  const volumes = await Volume.findAll({
+    include: [
+      {
+        model: Container,
+        as: 'container',
+        attributes: ['id', 'nodeId', 'hostname'],
+        where: { nodeId: [...nodeById.keys()] },
+        required: true,
+      },
+    ],
+    where: { builtin: false, hostPath: { [Op.ne]: null } },
+    order: [['id', 'ASC']],
+  });
+
+  for (const v of volumes) {
+    const node = nodeById.get(v.container.nodeId);
+    if (!node) continue;
+    if (!byNodeName.has(node.name)) byNodeName.set(node.name, []);
+    byNodeName.get(node.name).push({
+      id: v.id,
+      hostPath: v.hostPath,
+      mode: v.mode,
+      // Owning host UID/GID for the unprivileged CT's id-mapped root.
+      uid: UNPRIVILEGED_ID_OFFSET,
+      gid: UNPRIVILEGED_ID_OFFSET,
+    });
+  }
+  return byNodeName;
 }
 
 /**

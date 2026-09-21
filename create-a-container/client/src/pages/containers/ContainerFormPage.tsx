@@ -79,6 +79,25 @@ const serviceSchema = z
 
 const envVarSchema = z.object({ key: z.string(), value: z.string() });
 
+// A volume attach/detach row. Existing rows carry `id` and are shown read-only
+// unless flagged `detach`; new rows carry name/mountPath/mode.
+const volumeSchema = z.object({
+  id: z.number().optional(),
+  name: z
+    .string()
+    .min(1, 'Required')
+    .regex(
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/,
+      'Letters, digits, dot, dash, underscore; no traversal or separators',
+    ),
+  mountPath: z.string().min(1, 'Required').regex(/^\//, 'Must be an absolute path'),
+  mode: z.enum(['ro', 'rw']),
+  builtin: z.boolean().optional(),
+  detach: z.boolean().optional(),
+  status: z.string().optional(),
+  statusMessage: z.string().nullable().optional(),
+});
+
 const schema = z.object({
   hostname: z
     .string()
@@ -94,6 +113,7 @@ const schema = z.object({
   restart: z.boolean().optional(),
   services: z.array(serviceSchema),
   environmentVars: z.array(envVarSchema),
+  volumes: z.array(volumeSchema),
   // Usernames to share a new container with (collaborators). Existence is
   // validated server-side on submit. Unused in edit mode (live manager instead).
   collaborators: z.array(z.string()),
@@ -163,6 +183,7 @@ export function ContainerFormPage() {
     defaultValues: {
       services: [],
       environmentVars: [],
+      volumes: [],
       collaborators: [],
       nvidiaRequested: false,
       restart: false,
@@ -170,6 +191,7 @@ export function ContainerFormPage() {
   });
   const services = useFieldArray({ control, name: 'services' });
   const envVars = useFieldArray({ control, name: 'environmentVars' });
+  const volumes = useFieldArray({ control, name: 'volumes' });
   // Guards the one-time form initialization from the loaded container (edit).
   const initializedRef = useRef(false);
 
@@ -246,6 +268,16 @@ export function ContainerFormPage() {
         environmentVars: Object.entries(container.environmentVars || {}).map(([key, value]) => ({
           key,
           value,
+        })),
+        volumes: (container.volumes || []).map((v) => ({
+          id: v.id,
+          name: v.name,
+          mountPath: v.mountPath,
+          mode: v.mode,
+          builtin: v.builtin,
+          detach: false,
+          status: v.status,
+          statusMessage: v.statusMessage,
         })),
         collaborators: [],
       });
@@ -350,6 +382,16 @@ export function ContainerFormPage() {
         nvidiaRequested: values.nvidiaRequested,
         services: servicesObj,
         environmentVars: values.environmentVars.filter((e) => e.key.trim()),
+        // Volume attach/detach. New rows (no id) attach; existing rows flagged
+        // `detach` detach; built-in and untouched existing rows are omitted.
+        volumes: values.volumes.flatMap(
+          (v): Array<Record<string, unknown>> => {
+            if (v.id) {
+              return v.detach && !v.builtin ? [{ id: v.id, detach: true }] : [];
+            }
+            return [{ name: v.name.trim(), mountPath: v.mountPath.trim(), mode: v.mode }];
+          },
+        ),
         restart: values.restart,
         // Only meaningful on create; the edit form manages sharing live.
         collaborators: values.collaborators,
@@ -814,6 +856,117 @@ export function ContainerFormPage() {
                 </Button>
               </div>
             ))}
+          </CardContent>
+        </Card>
+        <Card padding="none" className={sectionCardClass}>
+          <CardHeader className={sectionHeaderClass}>
+            <CardTitle className="text-base">Volumes</CardTitle>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => volumes.append({ name: '', mountPath: '', mode: 'rw', detach: false })}
+            >
+              Add volume
+            </Button>
+          </CardHeader>
+          <CardContent className={sectionContentClass}>
+            <p className="text-sm text-muted-foreground">
+              Persistent bind-mount directories. Data survives delete + recreate on the same
+              hostname. Volume storage is not backed up by the platform.
+            </p>
+            {volumes.fields.length === 0 && (
+              <p className="text-sm text-muted-foreground">No volumes.</p>
+            )}
+            {volumes.fields.map((f, idx) => {
+              const existing = !!f.id;
+              const builtin = !!f.builtin;
+              const detaching = watch(`volumes.${idx}.detach`);
+              return (
+                <div
+                  key={f.id}
+                  className="grid grid-cols-[1fr_1.5fr_auto_auto] items-end gap-2"
+                >
+                  {existing ? (
+                    <>
+                      <Input
+                        label={idx === 0 ? 'Name' : undefined}
+                        hideLabel={idx !== 0}
+                        value={f.name}
+                        readOnly
+                        disabled
+                      />
+                      <Input
+                        label={idx === 0 ? 'Mount path' : undefined}
+                        hideLabel={idx !== 0}
+                        value={f.mountPath}
+                        readOnly
+                        disabled
+                      />
+                      <div className="text-xs text-muted-foreground self-center">
+                        {f.mode.toUpperCase()}
+                        {f.status ? ` · ${f.status}` : ''}
+                        {builtin ? ' · built-in' : ''}
+                      </div>
+                      {builtin ? (
+                        <span className="text-xs text-muted-foreground self-center">—</span>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant={detaching ? 'danger' : 'ghost'}
+                          size="icon"
+                          className="self-end"
+                          onClick={() => setValue(`volumes.${idx}.detach`, !detaching)}
+                          aria-label={detaching ? 'Cancel detach' : 'Detach volume'}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Input
+                        label={idx === 0 ? 'Name' : undefined}
+                        hideLabel={idx !== 0}
+                        placeholder="data"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        error={formState.errors.volumes?.[idx]?.name?.message}
+                        {...register(`volumes.${idx}.name`)}
+                      />
+                      <Input
+                        label={idx === 0 ? 'Mount path' : undefined}
+                        hideLabel={idx !== 0}
+                        placeholder="/mnt/data"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        error={formState.errors.volumes?.[idx]?.mountPath?.message}
+                        {...register(`volumes.${idx}.mountPath`)}
+                      />
+                      <select
+                        className="h-9 rounded-md border border-input bg-transparent px-2 text-sm self-end"
+                        aria-label="Mode"
+                        {...register(`volumes.${idx}.mode`)}
+                      >
+                        <option value="rw">Read-write</option>
+                        <option value="ro">Read-only</option>
+                      </select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="self-end"
+                        onClick={() => volumes.remove(idx)}
+                        aria-label="Remove"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
         <Card padding="none" className={sectionCardClass}>
