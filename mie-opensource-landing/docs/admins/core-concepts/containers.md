@@ -20,9 +20,10 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 
 Containers can attach persistent **[volumes](volumes.md)** — bind-mount
 directories whose data survives delete + recreate on the same hostname. Each
-volume has a name, a guest mount path, and a read-only or read-write mode. The
-built-in shared read-only `quick_and_dirty` volume is always present. See
-[Volumes](volumes.md) for the shared-storage requirement and backup caveats.
+volume has a name, a guest mount path, and a read-only or read-write mode. A
+container has only the volumes its creator attaches; nothing is mounted by
+default. See [Volumes](volumes.md) for the shared-storage requirement and backup
+caveats.
 
 ## Service Exposure
 

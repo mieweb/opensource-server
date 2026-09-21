@@ -37,7 +37,6 @@ const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudf
 const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 const {
   resolveVolumesRoot,
-  quickAndDirtyVolumeSpec,
   deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
 
@@ -97,26 +96,6 @@ async function resolveStorage(client, nodeName, preferred, contentType) {
 }
 
 /**
- * Ensure this container's Volume rows exist with derived host paths, then wait
- * until every volume's host directory has been provisioned by the site agent
- * before any bind mount is set on the container. Implements issue #421.
- *
- * The flow:
- *  1. Resolve the volumes root from the node storage's ACTUAL configured path.
- *  2. Seed the built-in `quick_and_dirty` read-only volume if the container has
- *     no volumes yet (preserves the retired mp0 behavior by construction).
- *  3. Backfill host paths on any volume rows that are missing one.
- *  4. Built-in volumes are marked `ready` immediately (admin-provisioned dir);
- *     user volumes are left `pending` so the next check-in snapshot advertises
- *     them to the agent, which mkdir()s the directory and reports the result.
- *  5. Block on `Volume.status = 'ready'` for every volume (bounded timeout).
- *
- * @param {object} client - NodeApi client
- * @param {object} node - Node model instance
- * @param {object} container - Container model instance
- * @returns {Promise<Volume[]>} The container's ready volumes, ordered by id
- */
-/**
  * Prepare this container's volumes and BLOCK until every host directory has
  * been provisioned by the site agent — run this BEFORE the container is created
  * on the provider, so a barrier failure never leaves an orphaned, half-created
@@ -124,14 +103,18 @@ async function resolveStorage(client, nodeName, preferred, contentType) {
  * from the Volume rows (persisted before the CT exists), and this only reads the
  * derived host paths and the `Volume.status` column.
  *
+ * The hardcoded shared `quick_and_dirty` mount is fully retired: new containers
+ * get ONLY the volumes their creator requested — no volume is auto-attached. A
+ * container with no volumes gets no bind mounts. (The `quick_and_dirty` model
+ * row still exists for pre-#421 containers via the backfill migration, purely to
+ * reflect their already-live mount; it is never seeded onto new containers.)
+ *
  * The flow:
  *  1. Resolve the volumes root from the node storage's ACTUAL configured path.
- *  2. Seed the built-in `quick_and_dirty` read-only volume if the container has
- *     no volumes yet (preserves the retired mp0 behavior by construction).
- *  3. Derive + persist any missing host paths; mark built-in / docker volumes
- *     `ready` immediately (they don't need the agent). User volumes stay
- *     `pending` so the next check-in snapshot advertises them to the agent.
- *  4. Block on `Volume.status = 'ready'` for every volume (bounded timeout).
+ *  2. Derive + persist any missing host paths; mark docker volumes `ready`
+ *     immediately (they don't need the agent). User volumes stay `pending` so
+ *     the next check-in snapshot advertises them to the agent.
+ *  3. Block on `Volume.status = 'ready'` for every volume (bounded timeout).
  *
  * @param {object} client - NodeApi client
  * @param {object} node - Node model instance
@@ -139,6 +122,13 @@ async function resolveStorage(client, nodeName, preferred, contentType) {
  * @returns {Promise<Volume[]>} The container's ready volumes, ordered by id
  */
 async function prepareVolumes(client, node, container) {
+  const volumes = await Volume.findAll({ where: { containerId: container.id } });
+  // No volumes requested → nothing to provision or mount.
+  if (volumes.length === 0) {
+    console.log('No volumes requested for this container.');
+    return [];
+  }
+
   const { root: volumesRoot, shared } = await resolveVolumesRoot(client, node);
   console.log(`Volumes root: ${volumesRoot} (shared=${shared})`);
   if (!shared && node.nodeType !== 'docker') {
@@ -147,28 +137,6 @@ async function prepareVolumes(client, node, container) {
         'data will not follow this container if it is migrated to another node. ' +
         'See https://github.com/mieweb/opensource-server/issues/421',
     );
-  }
-
-  let volumes = await Volume.findAll({ where: { containerId: container.id } });
-
-  // Seed the built-in shared read-only volume when the container defines none,
-  // so today's shared /mnt/quick_and_dirty mount is preserved by construction.
-  if (volumes.length === 0) {
-    const spec = quickAndDirtyVolumeSpec(volumesRoot);
-    const builtin = await Volume.create({
-      containerId: container.id,
-      name: spec.name,
-      hostPath: spec.hostPath,
-      mountPath: spec.mountPath,
-      mode: spec.mode,
-      scope: 'container',
-      builtin: true,
-      // The built-in shared dir is admin-provisioned; treat it as ready so it
-      // never blocks and matches the pre-#421 behavior.
-      status: 'ready',
-      appliedAt: new Date(),
-    });
-    volumes = [builtin];
   }
 
   // Derive + persist missing host paths; mark builtin/docker volumes ready.

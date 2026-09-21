@@ -1,15 +1,15 @@
 /**
  * Volume helpers shared by the container-create job and the API router.
  *
- * This is the single place that:
- *  - derives a volume's host path from a node storage's ACTUAL configured path
- *    (never assuming the /mnt/pve/<storage> layout the retired quick_and_dirty
- *    stopgap hardcoded), and
- *  - describes the built-in shared read-only volume that replaces that stopgap.
+ * This is the single place that derives a volume's host path from a node
+ * storage's ACTUAL configured path (never assuming the /mnt/pve/<storage>
+ * layout the retired quick_and_dirty stopgap hardcoded).
  *
  * See https://github.com/mieweb/opensource-server/issues/421
  */
 
+// Reserved name/mount of the legacy shared mount. Kept only so the API can
+// reject a user volume that would collide with a pre-#421 backfilled row.
 const { QUICK_AND_DIRTY_NAME, QUICK_AND_DIRTY_MOUNT } = require('../models/volume');
 
 /**
@@ -75,28 +75,16 @@ function containerVolumeHostPath(volumesRoot, hostname, name) {
 }
 
 /**
- * The built-in shared read-only volume that replaces the retired hardcoded
- * `quick_and_dirty` mp0. Shared across containers, so it is NOT scoped by
- * hostname — it lives directly under `<volumesRoot>/quick_and_dirty`.
- * @param {string} volumesRoot
- * @returns {{name: string, hostPath: string, mountPath: string, mode: 'ro', builtin: true}}
- */
-function quickAndDirtyVolumeSpec(volumesRoot) {
-  return {
-    name: QUICK_AND_DIRTY_NAME,
-    hostPath: `${volumesRoot}/${QUICK_AND_DIRTY_NAME}`,
-    mountPath: QUICK_AND_DIRTY_MOUNT,
-    mode: 'ro',
-    builtin: true,
-  };
-}
-
-/**
  * Derive and persist any missing host paths on a set of Volume rows, and mark
- * volumes that don't need the site agent (`builtin`, or any volume on a
- * `docker` node — Docker auto-creates bind sources) as `ready`. Idempotent and
- * shared by the create/reconfigure/reconcile jobs so the derivation lives in
- * one place.
+ * volumes that don't need the site agent as `ready`. Idempotent and shared by
+ * the create/reconfigure/reconcile jobs so the derivation lives in one place.
+ *
+ * Built-in `quick_and_dirty` rows are a backfill artifact for pre-#421
+ * containers (their live mount already exists on Proxmox). They are left
+ * untouched: no host path is derived and they never render a new mpN — see
+ * Volume.buildMountConfig, which skips them. Every other volume gets a derived
+ * host path; on a docker node it is marked ready immediately (Docker
+ * auto-creates bind sources).
  *
  * @param {Array<object>} volumes - Volume model instances
  * @param {object} opts
@@ -107,16 +95,15 @@ function quickAndDirtyVolumeSpec(volumesRoot) {
  */
 async function deriveVolumeHostPaths(volumes, { volumesRoot, hostname, nodeType }) {
   for (const v of volumes) {
+    // Legacy built-in rows are informational only; don't derive or re-mount.
+    if (v.builtin) continue;
     const updates = {};
     if (!v.hostPath) {
-      updates.hostPath = v.builtin
-        ? quickAndDirtyVolumeSpec(volumesRoot).hostPath
-        : containerVolumeHostPath(volumesRoot, hostname, v.name);
+      updates.hostPath = containerVolumeHostPath(volumesRoot, hostname, v.name);
     }
-    // Built-in volumes are admin-provisioned; Docker auto-creates bind-source
-    // directories at container start. Neither needs the site agent, so mark
-    // them ready directly rather than blocking on a check-in that never comes.
-    if ((v.builtin || nodeType === 'docker') && v.status !== 'ready') {
+    // Docker auto-creates bind-source directories at container start, so there
+    // is no site agent to wait on — mark docker volumes ready directly.
+    if (nodeType === 'docker' && v.status !== 'ready') {
       updates.status = 'ready';
       updates.appliedAt = new Date();
     }
@@ -127,7 +114,6 @@ async function deriveVolumeHostPaths(volumes, { volumesRoot, hostname, nodeType 
 module.exports = {
   resolveVolumesRoot,
   containerVolumeHostPath,
-  quickAndDirtyVolumeSpec,
   deriveVolumeHostPaths,
   QUICK_AND_DIRTY_NAME,
   QUICK_AND_DIRTY_MOUNT,

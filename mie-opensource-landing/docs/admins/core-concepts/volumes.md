@@ -6,8 +6,11 @@ container's root filesystem, volume data **survives delete + recreate** on the
 same hostname — the host directory is retained when the container is removed and
 reattached when a container of the same hostname is created again.
 
-Volumes replace the earlier hardcoded shared `quick_and_dirty` read-only mount,
-which is now modeled as a built-in read-only volume.
+Volumes replace the earlier hardcoded shared `quick_and_dirty` read-only mount.
+That stopgap is fully removed: no volume is attached to a container unless its
+creator explicitly adds one. (Containers that existed before this change keep
+their original `quick_and_dirty` mount, recorded in the database for reference;
+it is not re-applied and new containers never receive it.)
 
 ## How volumes work
 

@@ -281,7 +281,7 @@ components:
         mountPath: { type: string, description: 'Absolute guest mount point (e.g. /mnt/data)' }
         mode: { type: string, enum: [ro, rw] }
         scope: { type: string, description: 'Currently always `container` (per-container). Per-user/site/node is a later extension.' }
-        builtin: { type: boolean, description: 'The built-in shared read-only volume (formerly the hardcoded quick_and_dirty mount)' }
+        builtin: { type: boolean, description: 'True only for the retired quick_and_dirty mount recorded on pre-existing containers. Never set on new volumes and never re-applied.' }
         status:
           type: string
           enum: [pending, ready, failed]

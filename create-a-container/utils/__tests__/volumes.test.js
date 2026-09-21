@@ -1,7 +1,7 @@
 /**
  * Volume model + utils/volumes pure-logic tests (issue #421): name validation,
- * mpN rendering, host-path derivation from the node storage's ACTUAL configured
- * path, and the built-in quick_and_dirty spec.
+ * mpN rendering (including that legacy built-in / undervied rows are skipped),
+ * and host-path derivation from the node storage's ACTUAL configured path.
  */
 
 const { resetDb, closeDb } = require('../../tests/helpers/db');
@@ -10,7 +10,6 @@ const volumeModule = require('../../models/volume');
 const {
   resolveVolumesRoot,
   containerVolumeHostPath,
-  quickAndDirtyVolumeSpec,
 } = require('../volumes');
 
 describe('Volume name validation', () => {
@@ -62,17 +61,22 @@ describe('Volume.buildMountConfig', () => {
   test('empty set renders no keys', () => {
     expect(Volume.buildMountConfig([])).toEqual({});
   });
-});
 
-describe('quickAndDirtyVolumeSpec', () => {
-  test('is the built-in read-only shared mount under the volumes root', () => {
-    const spec = quickAndDirtyVolumeSpec('/mnt/pve/cephfs/volumes');
-    expect(spec).toEqual({
+  test('skips legacy built-in rows and rows without a host path', () => {
+    const user = Volume.build({ id: 1, containerId: 1, hostPath: '/data/c/data', mountPath: '/mnt/data', mode: 'rw' });
+    const builtin = Volume.build({
+      id: 2,
+      containerId: 1,
       name: 'quick_and_dirty',
-      hostPath: '/mnt/pve/cephfs/volumes/quick_and_dirty',
+      hostPath: null,
       mountPath: '/mnt/quick_and_dirty',
       mode: 'ro',
       builtin: true,
+    });
+    const undived = Volume.build({ id: 3, containerId: 1, hostPath: null, mountPath: '/mnt/x', mode: 'rw' });
+    // Only the user volume with a host path renders, at mp0.
+    expect(Volume.buildMountConfig([user, builtin, undived])).toEqual({
+      mp0: '/data/c/data,mp=/mnt/data,ro=0',
     });
   });
 });

@@ -128,8 +128,8 @@ async function buildAgentConfig(siteId) {
   // which node the container is placed on. Loaded independently of the nginx
   // container graph because a volume must be advertised to the agent BEFORE its
   // container gets an IP (during creation). Built-in volumes (the retired
-  // quick_and_dirty shared mount) are admin-provisioned and excluded — the agent
-  // only owns user volume directories.
+  // quick_and_dirty mount recorded on pre-existing containers) are excluded —
+  // the agent only owns user volume directories.
   const volumes = await buildSiteVolumes(site);
 
   return {

@@ -1,10 +1,11 @@
 'use strict';
 const { Model } = require('sequelize');
 
-// The built-in shared read-only volume that replaces the retired hardcoded
-// `quick_and_dirty` mp0. Its host directory lives under `<volumesRoot>/<name>`
-// and is assumed to be admin-provisioned (seeded `ready`), preserving today's
-// behavior by construction.
+// Name/mount of the retired hardcoded shared mount. The stopgap is fully
+// removed: no new container is auto-attached this volume. The name/mount are
+// retained only so (a) the backfill migration can record the already-live mount
+// on pre-#421 containers as a `builtin` row, and (b) the API can reject a user
+// volume that would collide with such a row.
 const QUICK_AND_DIRTY_NAME = 'quick_and_dirty';
 const QUICK_AND_DIRTY_MOUNT = '/mnt/quick_and_dirty';
 
@@ -47,12 +48,17 @@ module.exports = (sequelize, DataTypes) => {
      * assigning contiguous indices in a stable order (id ascending). This is
      * the single place that maps Volume records to Proxmox mount-point keys, so
      * both the create and reconfigure paths render identical config.
+     *
+     * Built-in `quick_and_dirty` rows (a backfill artifact for pre-#421
+     * containers whose live mount already exists) and any row without a derived
+     * host path are skipped — they must never render a new/broken mpN.
      * @param {Volume[]} volumes
      * @returns {object} e.g. { mp0: '...', mp1: '...' }
      */
     static buildMountConfig(volumes) {
       const config = {};
-      const sorted = [...volumes].sort((a, b) => a.id - b.id);
+      const mountable = volumes.filter((v) => !v.builtin && v.hostPath);
+      const sorted = [...mountable].sort((a, b) => a.id - b.id);
       sorted.forEach((v, i) => {
         config[`mp${i}`] = v.toMpValue();
       });
