@@ -91,10 +91,44 @@ function quickAndDirtyVolumeSpec(volumesRoot) {
   };
 }
 
+/**
+ * Derive and persist any missing host paths on a set of Volume rows, and mark
+ * volumes that don't need the site agent (`builtin`, or any volume on a
+ * `docker` node — Docker auto-creates bind sources) as `ready`. Idempotent and
+ * shared by the create/reconfigure/reconcile jobs so the derivation lives in
+ * one place.
+ *
+ * @param {Array<object>} volumes - Volume model instances
+ * @param {object} opts
+ * @param {string} opts.volumesRoot - Resolved volumes root for the node
+ * @param {string} opts.hostname - Container hostname (per-container scoping)
+ * @param {string} opts.nodeType - Node type ('proxmox' | 'docker' | 'dummy')
+ * @returns {Promise<void>}
+ */
+async function deriveVolumeHostPaths(volumes, { volumesRoot, hostname, nodeType }) {
+  for (const v of volumes) {
+    const updates = {};
+    if (!v.hostPath) {
+      updates.hostPath = v.builtin
+        ? quickAndDirtyVolumeSpec(volumesRoot).hostPath
+        : containerVolumeHostPath(volumesRoot, hostname, v.name);
+    }
+    // Built-in volumes are admin-provisioned; Docker auto-creates bind-source
+    // directories at container start. Neither needs the site agent, so mark
+    // them ready directly rather than blocking on a check-in that never comes.
+    if ((v.builtin || nodeType === 'docker') && v.status !== 'ready') {
+      updates.status = 'ready';
+      updates.appliedAt = new Date();
+    }
+    if (Object.keys(updates).length > 0) await v.update(updates);
+  }
+}
+
 module.exports = {
   resolveVolumesRoot,
   containerVolumeHostPath,
   quickAndDirtyVolumeSpec,
+  deriveVolumeHostPaths,
   QUICK_AND_DIRTY_NAME,
   QUICK_AND_DIRTY_MOUNT,
 };

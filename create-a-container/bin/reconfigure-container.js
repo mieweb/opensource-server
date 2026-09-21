@@ -29,14 +29,13 @@ const { Container, Node, Site, Volume } = db;
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const {
   resolveVolumesRoot,
-  containerVolumeHostPath,
-  quickAndDirtyVolumeSpec,
+  deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
 
 /**
  * Ensure this container's volume host paths are derived and their directories
  * are ready, then return the ready volumes so the caller can render mpN. Mirrors
- * the create job's provisionVolumes but for reconfigure (attaching a volume to
+ * the create job's prepareVolumes but for reconfigure (attaching a volume to
  * an already-provisioned container). Built-in and docker volumes never block.
  * @param {object} client
  * @param {object} node
@@ -48,19 +47,13 @@ async function ensureVolumesReady(client, node, container) {
   if (volumes.length === 0) return [];
 
   const { root: volumesRoot } = await resolveVolumesRoot(client, node);
-  for (const v of volumes) {
-    const updates = {};
-    if (!v.hostPath) {
-      updates.hostPath = v.builtin
-        ? quickAndDirtyVolumeSpec(volumesRoot).hostPath
-        : containerVolumeHostPath(volumesRoot, container.hostname, v.name);
-    }
-    if ((v.builtin || node.nodeType === 'docker') && v.status !== 'ready') {
-      updates.status = 'ready';
-      updates.appliedAt = new Date();
-    }
-    if (Object.keys(updates).length > 0) await v.update(updates);
-  }
+  // Derive + persist missing host paths; mark builtin/docker volumes ready
+  // (shared with the create/reconcile jobs).
+  await deriveVolumeHostPaths(volumes, {
+    volumesRoot,
+    hostname: container.hostname,
+    nodeType: node.nodeType,
+  });
 
   // Bounded wait for the agent to create any pending directories.
   const start = Date.now();

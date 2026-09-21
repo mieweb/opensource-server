@@ -34,15 +34,15 @@ export interface VolumeResult {
   message?: string;
 }
 
-/** A volume directory the agent must ensure exists on this node, as carried in
- * the config snapshot. `uid`/`gid` are the owning host ids (the unprivileged
- * CT's id-mapped root) so RW volumes are writable from inside the container. */
+/** A volume directory the agent must ensure exists, as carried in the config
+ * snapshot at the site level. The shared volumes root is bind-mounted into the
+ * agent guest; because the agent is an unprivileged CT mapped the same way as
+ * the consuming containers (host UID/GID 100000 = guest root), the agent's root
+ * writes as the containers' mapped root and no chown is needed. */
 export interface SiteVolume {
   id: number;
   hostPath: string;
   mode: 'ro' | 'rw';
-  uid: number;
-  gid: number;
 }
 
 export interface SiteContainer {
@@ -55,8 +55,6 @@ export interface SiteNode {
   name: string;
   ipv4Address: string | null;
   containers: SiteContainer[];
-  /** Volume directories to ensure on this node. Absent on older managers. */
-  volumes?: SiteVolume[];
 }
 
 /** Mirrors the manager's Site model, where every field except id is
@@ -71,6 +69,8 @@ export interface SiteInfo {
   gateway: string | null;
   dnsForwarders: string | null;
   nodes: SiteNode[];
+  /** Volume directories to ensure for the whole site. Absent on older managers. */
+  volumes?: SiteVolume[];
 }
 
 export interface HttpService {

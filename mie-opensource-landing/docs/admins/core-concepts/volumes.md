@@ -16,24 +16,30 @@ which is now modeled as a built-in read-only volume.
 2. The host directory lives under `<volumesRoot>/<hostname>/<name>`, where
    `<volumesRoot>` is derived from the node's **volume storage** actual
    configured path (not assumed) plus `/volumes`.
-3. When a container is created (or reconfigured), the **site agent** creates the
-   host directory on the node with the correct ownership for the unprivileged
-   container's id-mapped root, so read-write volumes are writable from inside
-   the container.
-4. The create job **waits** until the directory is ready before attaching the
-   bind mount — Proxmox rejects a mount whose host directory does not yet exist.
+3. When a container is created (or reconfigured), the site's **agent** creates
+   the host directory. The agent is a single per-site container with the shared
+   volumes root bind-mounted in; because it runs with the same unprivileged
+   id-mapping as the consuming containers (host UID/GID `100000` = guest root),
+   the directory it creates is writable from inside a read-write container
+   without any `chown`. See [Deploying Agents → Volume storage](../deploying-agents.md#volume-storage-for-persistent-volumes)
+   for the one-time bind-mount + pre-create setup.
+4. The create job **waits** until the directory is ready (the agent reports it
+   at check-in) before attaching the bind mount — Proxmox rejects a mount whose
+   host directory does not yet exist. The wait happens **before** the container
+   is provisioned, so a provisioning failure never leaves a half-created
+   container behind.
 
 ## Shared storage is required
 
 !!! warning "Place the volumes root on shared storage"
-    The site agent creates a volume's directory on **its own node**. If a
-    container is placed or migrated to another node, the directory only exists
-    there when the **volume storage is shared across every node** (CephFS/RBD,
-    NFS, or equivalent, with `shared=1`).
+    A single per-site agent creates volume directories on the shared volumes
+    root that is bind-mounted into it. For a directory to exist wherever a
+    container is placed or migrated, the **volume storage must be shared across
+    every node** (CephFS/RBD, NFS, or equivalent, with `shared=1`).
 
     On node-local storage (`dir`/`lvm`/`zfspool` with `shared=0`), the directory
-    will not exist where a migrated container lands and the data will not follow
-    it. Single-node sites are unaffected.
+    will not exist where a container on another node lands and the data will not
+    follow it. Single-node sites are unaffected.
 
     When you save a node's configuration, the manager checks the chosen volume
     storage against the cluster topology and **warns** (it does not block) if the

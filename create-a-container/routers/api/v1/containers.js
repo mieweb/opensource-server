@@ -77,6 +77,19 @@ function normalizeVolumeAttach(v) {
   if (!mountPath.startsWith('/')) {
     throw new ApiError(400, 'invalid_volume', 'Volume mountPath must be an absolute path');
   }
+  // The name and mount point of the built-in shared volume are reserved: a
+  // user attach at either would later collide with (or silently shadow) the
+  // lazily-seeded quick_and_dirty built-in. Reject them at ingest.
+  if (name === Volume.QUICK_AND_DIRTY_NAME) {
+    throw new ApiError(400, 'invalid_volume', `Volume name '${name}' is reserved for the built-in shared volume`);
+  }
+  if (mountPath === Volume.QUICK_AND_DIRTY_MOUNT) {
+    throw new ApiError(
+      400,
+      'invalid_volume',
+      `Volume mountPath '${mountPath}' is reserved for the built-in shared volume`,
+    );
+  }
   const mode = v.mode === 'ro' ? 'ro' : v.mode === 'rw' ? 'rw' : null;
   if (!mode) {
     throw new ApiError(400, 'invalid_volume', "Volume mode must be 'ro' or 'rw'");

@@ -37,8 +37,8 @@ const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudf
 const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 const {
   resolveVolumesRoot,
-  containerVolumeHostPath,
   quickAndDirtyVolumeSpec,
+  deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
 
 /**
@@ -116,10 +116,32 @@ async function resolveStorage(client, nodeName, preferred, contentType) {
  * @param {object} container - Container model instance
  * @returns {Promise<Volume[]>} The container's ready volumes, ordered by id
  */
-async function provisionVolumes(client, node, container) {
+/**
+ * Prepare this container's volumes and BLOCK until every host directory has
+ * been provisioned by the site agent — run this BEFORE the container is created
+ * on the provider, so a barrier failure never leaves an orphaned, half-created
+ * CT (issue #421). No provider handle is needed: the agent creates directories
+ * from the Volume rows (persisted before the CT exists), and this only reads the
+ * derived host paths and the `Volume.status` column.
+ *
+ * The flow:
+ *  1. Resolve the volumes root from the node storage's ACTUAL configured path.
+ *  2. Seed the built-in `quick_and_dirty` read-only volume if the container has
+ *     no volumes yet (preserves the retired mp0 behavior by construction).
+ *  3. Derive + persist any missing host paths; mark built-in / docker volumes
+ *     `ready` immediately (they don't need the agent). User volumes stay
+ *     `pending` so the next check-in snapshot advertises them to the agent.
+ *  4. Block on `Volume.status = 'ready'` for every volume (bounded timeout).
+ *
+ * @param {object} client - NodeApi client
+ * @param {object} node - Node model instance
+ * @param {object} container - Container model instance
+ * @returns {Promise<Volume[]>} The container's ready volumes, ordered by id
+ */
+async function prepareVolumes(client, node, container) {
   const { root: volumesRoot, shared } = await resolveVolumesRoot(client, node);
   console.log(`Volumes root: ${volumesRoot} (shared=${shared})`);
-  if (!shared) {
+  if (!shared && node.nodeType !== 'docker') {
     console.warn(
       '⚠️  WARNING: volumes storage is not shared across nodes; persistent volume ' +
         'data will not follow this container if it is migrated to another node. ' +
@@ -149,27 +171,12 @@ async function provisionVolumes(client, node, container) {
     volumes = [builtin];
   }
 
-  // Backfill host paths + statuses on any rows that lack them (e.g. created via
-  // the API with only name/mountPath/mode).
-  for (const v of volumes) {
-    const updates = {};
-    if (!v.hostPath) {
-      updates.hostPath = v.builtin
-        ? quickAndDirtyVolumeSpec(volumesRoot).hostPath
-        : containerVolumeHostPath(volumesRoot, container.hostname, v.name);
-    }
-    if (v.builtin && v.status !== 'ready') {
-      updates.status = 'ready';
-      updates.appliedAt = new Date();
-    }
-    // Docker auto-creates host bind-source directories at container start, so
-    // there is no site agent to wait on — mark docker volumes ready directly.
-    if (node.nodeType === 'docker' && v.status !== 'ready') {
-      updates.status = 'ready';
-      updates.appliedAt = new Date();
-    }
-    if (Object.keys(updates).length > 0) await v.update(updates);
-  }
+  // Derive + persist missing host paths; mark builtin/docker volumes ready.
+  await deriveVolumeHostPaths(volumes, {
+    volumesRoot,
+    hostname: container.hostname,
+    nodeType: node.nodeType,
+  });
 
   // Sync barrier: the agent creates directories asynchronously (~30 s timer),
   // and Proxmox 400s if mpN points at a missing dir. Block on Volume.status.
@@ -183,11 +190,20 @@ async function provisionVolumes(client, node, container) {
  * when any is `failed` (surfacing its statusMessage) or the timeout elapses.
  * The agent transitions these via the extended check-in; this only watches the
  * DB column.
+ *
+ * The default timeout accommodates the agent's ~30 s timer plus the two
+ * check-ins needed per volume (receive snapshot, then report results). Override
+ * via VOLUME_READY_TIMEOUT_MS for slow or contended clusters.
+ *
  * @param {number} containerDbId
- * @param {number} [timeoutMs] Bounded wait (default 5 minutes)
+ * @param {number} [timeoutMs] Bounded wait (default 5 minutes; env override)
  * @param {number} [pollMs] Poll interval (default 5 s)
  */
-async function waitForVolumesReady(containerDbId, timeoutMs = 300000, pollMs = 5000) {
+async function waitForVolumesReady(
+  containerDbId,
+  timeoutMs = parseInt(process.env.VOLUME_READY_TIMEOUT_MS, 10) || 300000,
+  pollMs = 5000,
+) {
   const start = Date.now();
   for (;;) {
     const volumes = await Volume.findAll({ where: { containerId: containerDbId } });
@@ -362,7 +378,15 @@ async function main() {
     // Get the Proxmox API client
     const client = await node.api();
     console.log('Node API client initialized');
-    
+
+    // Prepare volumes and BLOCK on the site agent creating their host
+    // directories BEFORE creating the container. Doing this first means a
+    // barrier failure (agent error or timeout) aborts the job without ever
+    // provisioning a CT — no orphaned, half-created container to clean up
+    // (issue #421). The bind mounts (mpN) are applied after the CT exists.
+    console.log('Preparing volumes...');
+    const preparedVolumes = await prepareVolumes(client, node, container);
+
     // Allocate the provider ID right before creating to minimize race condition window.
     // Proxmox requires us to allocate a VMID first; Docker returns its real container
     // ID after create.
@@ -433,9 +457,10 @@ async function main() {
         tags: container.username,
         unprivileged: 1,
         rootfs: `${rootfsStorage}:${rootfsSize}`,
-        // Volumes (bind mounts) are applied after the site agent has created
-        // their host directories — see provisionVolumes() below. Setting mpN
-        // here would 400 against a not-yet-created directory (issue #421).
+        // Volumes (bind mounts) are applied after creation; their host
+        // directories were provisioned by the agent before this point (see
+        // prepareVolumes above). Setting mpN here would 400 against a
+        // not-yet-created directory (issue #421).
       });
       console.log(`Create task started: ${createUpid}`);
 
@@ -560,16 +585,12 @@ async function main() {
     await container.update({ containerId: String(vmid) });
     console.log(`Container provider ID ${vmid} stored in database`);
 
-    // Provision volumes: ensure host directories exist (created by the site
-    // agent), then attach them as bind mounts. This BLOCKS on Volume.status
-    // until every directory is ready — Proxmox 400s if mpN points at a missing
-    // directory (issue #421). Built-in volumes (the retired quick_and_dirty
-    // shared mount) are ready immediately and never block.
-    console.log('Provisioning volumes...');
-    const volumes = await provisionVolumes(client, node, container);
-    if (volumes.length > 0) {
-      const mountConfig = Volume.buildMountConfig(volumes);
-      console.log(`Attaching ${volumes.length} volume(s): ${JSON.stringify(mountConfig)}`);
+    // Attach the volume bind mounts. Their host directories were already
+    // provisioned by the site agent before the container was created (see
+    // prepareVolumes above), so setting mpN cannot 400 on a missing directory.
+    if (preparedVolumes.length > 0) {
+      const mountConfig = Volume.buildMountConfig(preparedVolumes);
+      console.log(`Attaching ${preparedVolumes.length} volume(s): ${JSON.stringify(mountConfig)}`);
       const mountTask = await client.updateLxcConfig(node.name, vmid, mountConfig);
       const mountedDockerId = isDockerNode ? parseDockerTaskId(mountTask) : null;
       if (mountedDockerId) {

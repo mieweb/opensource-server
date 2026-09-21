@@ -1,9 +1,9 @@
 /**
  * Volumes in the agent config snapshot (issue #421): buildAgentConfig must
- * advertise a container's non-builtin, host-path-resolved volumes on the node
- * that hosts the container, with the owning id-mapped UID/GID, and must exclude
- * built-in and not-yet-derived volumes. Verified independently of container IP
- * (volumes must be advertised during creation, before the container has an IP).
+ * advertise a container's non-builtin, host-path-resolved volumes at the SITE
+ * level (one agent per site), and must exclude built-in and not-yet-derived
+ * volumes. Verified independently of container IP (volumes must be advertised
+ * during creation, before the container has an IP).
  */
 
 const { resetDb, closeDb } = require('../../tests/helpers/db');
@@ -32,7 +32,7 @@ describe('buildAgentConfig volumes', () => {
     await closeDb();
   });
 
-  test('advertises a resolved non-builtin volume on the owning node with uid/gid', async () => {
+  test('advertises a resolved non-builtin volume at the site level', async () => {
     await Volume.create({
       containerId: container.id,
       name: 'data',
@@ -43,14 +43,11 @@ describe('buildAgentConfig volumes', () => {
     });
 
     const config = await buildAgentConfig(site.id);
-    const nodeEntry = config.site.nodes.find((n) => n.name === 'node1');
-    expect(nodeEntry.volumes).toEqual([
+    expect(config.site.volumes).toEqual([
       {
         id: expect.any(Number),
         hostPath: '/mnt/pve/cephfs/volumes/ct1/data',
         mode: 'rw',
-        uid: 100000,
-        gid: 100000,
       },
     ]);
   });
@@ -75,7 +72,6 @@ describe('buildAgentConfig volumes', () => {
     });
 
     const config = await buildAgentConfig(site.id);
-    const nodeEntry = config.site.nodes.find((n) => n.name === 'node1');
-    expect(nodeEntry.volumes).toEqual([]);
+    expect(config.site.volumes).toEqual([]);
   });
 });

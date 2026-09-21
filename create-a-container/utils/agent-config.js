@@ -11,10 +11,14 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume } = require('../models');
 
-// Default unprivileged-LXC id-map offset. Proxmox maps container UID/GID 0 to
-// host 100000 for unprivileged CTs, so a RW bind directory must be owned by
-// this host UID/GID to be writable from inside the container as its root.
-const UNPRIVILEGED_ID_OFFSET = 100000;
+// Note on ownership: Proxmox maps an unprivileged CT's UID/GID 0 to host
+// 100000. The site agent is itself an unprivileged CT with the same mapping, so
+// when the shared volumes root is bind-mounted into the agent, the agent's root
+// writes as host UID/GID 100000 — exactly the mapped root of the containers
+// that consume the volume. RW volumes are therefore writable without any
+// explicit chown (which would in any case be EPERM inside the agent guest, and
+// so is deliberately NOT attempted). Ownership is established by the id-map plus
+// the installer pre-creating the volumes root; the agent only mkdir/chmods.
 
 /**
  * Load a site with everything the agent templates need, serialized to plain
@@ -117,13 +121,16 @@ async function buildAgentConfig(siteId) {
     order: [['id', 'ASC']],
   });
 
-  // Desired volume directories the agent must ensure exist, grouped by node.
-  // Loaded independently of the nginx container graph because a volume must be
-  // advertised to the agent BEFORE its container gets an IP (during creation),
-  // whereas the nginx graph only includes containers that already have one.
-  // Built-in volumes (the retired quick_and_dirty shared mount) are admin-
-  // provisioned and excluded — the agent only owns user volume directories.
-  const volumesByNodeName = await buildNodeVolumes(site);
+  // Desired volume directories the agent must ensure exist. Advertised at the
+  // SITE level (not per node): there is one agent per site, and the volumes root
+  // lives on storage shared across the site's nodes and bind-mounted into the
+  // agent, so a single agent creates every site volume's directory regardless of
+  // which node the container is placed on. Loaded independently of the nginx
+  // container graph because a volume must be advertised to the agent BEFORE its
+  // container gets an IP (during creation). Built-in volumes (the retired
+  // quick_and_dirty shared mount) are admin-provisioned and excluded — the agent
+  // only owns user volume directories.
+  const volumes = await buildSiteVolumes(site);
 
   return {
     site: {
@@ -142,9 +149,9 @@ async function buildAgentConfig(siteId) {
           ipv4Address: c.ipv4Address,
           macAddress: c.macAddress,
         })),
-        // Volume directories to ensure on this node (id, hostPath, mode, uid, gid).
-        volumes: volumesByNodeName.get(node.name) || [],
       })),
+      // Volume directories to ensure for this site (id, hostPath, mode).
+      volumes,
     },
     nginx: {
       httpServices,
@@ -155,28 +162,26 @@ async function buildAgentConfig(siteId) {
 }
 
 /**
- * Build the per-node list of desired volume directories for the agent's config
- * snapshot. Keyed by node name. Each entry carries the host path, mode, and the
- * owning host UID/GID (the unprivileged CT's id-mapped root) so RW volumes are
- * writable from inside the container. Built-in and host-path-less volumes are
- * excluded (the former are admin-provisioned; the latter aren't provisionable
- * yet). Deterministic order keeps the strong ETag stable.
+ * Build the site-level list of desired volume directories for the agent's
+ * config snapshot. Each entry carries the host path and mode. Built-in and
+ * host-path-less volumes are excluded (the former are admin-provisioned; the
+ * latter aren't provisionable yet). Deterministic order keeps the strong ETag
+ * stable.
  *
- * @param {object} site - Site with eager-loaded nodes
- * @returns {Promise<Map<string, Array<object>>>}
+ * @param {object} site - Site with eager-loaded nodes (used to scope containers)
+ * @returns {Promise<Array<object>>}
  */
-async function buildNodeVolumes(site) {
-  const byNodeName = new Map();
-  const nodeById = new Map((site.nodes || []).map((n) => [n.id, n]));
-  if (nodeById.size === 0) return byNodeName;
+async function buildSiteVolumes(site) {
+  const nodeIds = (site.nodes || []).map((n) => n.id);
+  if (nodeIds.length === 0) return [];
 
   const volumes = await Volume.findAll({
     include: [
       {
         model: Container,
         as: 'container',
-        attributes: ['id', 'nodeId', 'hostname'],
-        where: { nodeId: [...nodeById.keys()] },
+        attributes: ['id', 'nodeId'],
+        where: { nodeId: nodeIds },
         required: true,
       },
     ],
@@ -184,20 +189,11 @@ async function buildNodeVolumes(site) {
     order: [['id', 'ASC']],
   });
 
-  for (const v of volumes) {
-    const node = nodeById.get(v.container.nodeId);
-    if (!node) continue;
-    if (!byNodeName.has(node.name)) byNodeName.set(node.name, []);
-    byNodeName.get(node.name).push({
-      id: v.id,
-      hostPath: v.hostPath,
-      mode: v.mode,
-      // Owning host UID/GID for the unprivileged CT's id-mapped root.
-      uid: UNPRIVILEGED_ID_OFFSET,
-      gid: UNPRIVILEGED_ID_OFFSET,
-    });
-  }
-  return byNodeName;
+  return volumes.map((v) => ({
+    id: v.id,
+    hostPath: v.hostPath,
+    mode: v.mode,
+  }));
 }
 
 /**

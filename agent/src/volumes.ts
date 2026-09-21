@@ -1,57 +1,58 @@
 /**
  * Volume directory reconciliation (issue #421).
  *
- * The manager includes, per node, the volume directories that must exist on the
- * host (id, hostPath, mode, owning uid/gid). This node's entry is matched by
- * hostname. For each volume the agent `mkdir -p`s the directory and sets its
- * ownership/mode so the unprivileged container's id-mapped root can write to RW
- * volumes. Results are reported per volume id at the next check-in, which the
- * manager writes into Volume.status.
+ * The manager includes, at the site level, the volume directories that must
+ * exist (id, hostPath, mode). The shared volumes root is bind-mounted into the
+ * agent guest by the installer, so these paths are visible and writable here.
  *
- * The agent runs as root (systemd unit has no User=), so it can chown.
- * Directory creation is retain-only: the agent never removes a volume
- * directory, so data survives container delete+recreate.
+ * The agent is an unprivileged LXC guest mapped the same way as the containers
+ * that consume the volumes (host UID/GID 100000 = guest root). So the agent's
+ * root `mkdir`s the directory as host 100000 — exactly the mapped root of those
+ * containers — and RW volumes are writable from inside them WITHOUT an explicit
+ * chown (which would be EPERM inside the guest anyway). The agent therefore only
+ * `mkdir -p`s and `chmod`s; it never chowns.
+ *
+ * There is one agent per site (not per node); the volumes root lives on storage
+ * shared across the site's nodes, so this single agent provisions every site
+ * volume regardless of which node hosts the container.
+ *
+ * Results are reported per volume id at the next check-in, which the manager
+ * writes into Volume.status. Directory creation is retain-only: the agent never
+ * removes a volume directory, so data survives container delete + recreate.
  */
 
 import fs from 'fs';
-import os from 'os';
 import { log } from './log';
 import type { SiteConfig, SiteVolume, VolumeResult } from './types';
 
-// Mode for created directories. RW volumes get group/owner write so the
-// id-mapped container root (owner) can write; RO volumes are read/execute only
-// for others. The owner is set via chown to the mapped host uid/gid.
+// Mode for created directories. RW volumes get owner/group rwx (the id-mapped
+// container root owns the dir, so it can write); RO volumes are r-x. World bits
+// are left closed so other tenants can't read another container's data.
 const RW_MODE = 0o0770;
-const RO_MODE = 0o0755;
+const RO_MODE = 0o0550;
 
 /**
- * Collect the volumes this node must provision from the config snapshot,
- * matching the node whose `name` equals this host's hostname.
+ * Collect the volumes to provision from the config snapshot (site-level).
  * @param {SiteConfig} config
- * @param {string} hostname
  * @returns {SiteVolume[]}
  */
-export function volumesForHost(config: SiteConfig, hostname: string): SiteVolume[] {
-  const nodes = config.site?.nodes ?? [];
-  const node = nodes.find((n) => n.name === hostname);
-  return node?.volumes ?? [];
+export function volumesForSite(config: SiteConfig): SiteVolume[] {
+  return config.site?.volumes ?? [];
 }
 
 /**
- * Ensure a single volume directory exists with the right ownership/mode.
- * Idempotent: mkdir -p, then chown/chmod every run (cheap, self-healing).
+ * Ensure a single volume directory exists with the right mode. Idempotent:
+ * mkdir -p, then chmod every run (cheap, self-healing). No chown — see module
+ * header (the id-map establishes ownership).
  * @param {SiteVolume} volume
  * @returns {VolumeResult}
  */
 function ensureVolume(volume: SiteVolume): VolumeResult {
-  const { hostPath, mode, uid, gid } = volume;
+  const { hostPath, mode } = volume;
   try {
     fs.mkdirSync(hostPath, { recursive: true });
-    // Ownership: the unprivileged CT's id-mapped root, so RW mounts are
-    // writable from inside the container.
-    fs.chownSync(hostPath, uid, gid);
     fs.chmodSync(hostPath, mode === 'rw' ? RW_MODE : RO_MODE);
-    log.debug(`volume ${volume.id}: ensured ${hostPath} (mode=${mode}, ${uid}:${gid})`);
+    log.debug(`volume ${volume.id}: ensured ${hostPath} (mode=${mode})`);
     return { applied: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -61,21 +62,19 @@ function ensureVolume(volume: SiteVolume): VolumeResult {
 }
 
 /**
- * Reconcile all volume directories for this host. Returns a results map keyed
+ * Reconcile all volume directories for this site. Returns a results map keyed
  * by volume id for the check-in body, or undefined when there is nothing to do
  * (so the check-in omits the field on older managers / empty sites).
  * @param {SiteConfig} config
- * @param {string} [hostname]
  * @returns {Record<string, VolumeResult> | undefined}
  */
 export function reconcileVolumes(
   config: SiteConfig,
-  hostname: string = os.hostname(),
 ): Record<string, VolumeResult> | undefined {
-  const volumes = volumesForHost(config, hostname);
+  const volumes = volumesForSite(config);
   if (volumes.length === 0) return undefined;
 
-  log.info(`volumes: ensuring ${volumes.length} directory(ies) on ${hostname}`);
+  log.info(`volumes: ensuring ${volumes.length} directory(ies)`);
   const results: Record<string, VolumeResult> = {};
   for (const volume of volumes) {
     results[String(volume.id)] = ensureVolume(volume);
