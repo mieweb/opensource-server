@@ -6,9 +6,9 @@
  */
 
 const request = require('supertest');
-const { buildApp, bearer } = require('../../../../tests/helpers/app');
-const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
-const { Site, Node, Container, ContainerCollaborator } = require('../../../../models');
+const { buildApp, bearer } = require('../../../tests/helpers/app');
+const { resetDb, closeDb, createUser, createApiKey } = require('../../../tests/helpers/db');
+const { Site, Node, Container, ContainerCollaborator } = require('../../../models');
 
 afterAll(async () => {
   await closeDb();
