@@ -20,8 +20,12 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     const now = new Date();
+    // Quote the identifier so Postgres preserves the mixed-case table name
+    // (unquoted `Containers` case-folds to `containers`, which does not exist).
+    // Matches the repo convention (e.g. 20251104193601-create-node.js).
+    const containersTable = queryInterface.quoteIdentifier('Containers');
     const containers = await queryInterface.sequelize.query(
-      'SELECT id FROM Containers',
+      `SELECT id FROM ${containersTable}`,
       { type: queryInterface.sequelize.QueryTypes.SELECT },
     );
 

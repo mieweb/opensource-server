@@ -115,6 +115,15 @@ runs the agent:
     guest. The shared-storage requirement is what lets this single agent
     provision volumes for every node in the site.
 
+!!! warning "Assumes the default unprivileged id-map base (100000)"
+    Volume ownership relies on the standard Proxmox unprivileged-CT id-map,
+    which maps guest UID/GID 0 to host `100000` for both the agent and the
+    containers. If a site overrides this with a custom `lxc.idmap`, pre-create
+    the volumes root (and set `ownership` above) to match that map's base
+    instead of `100000` — otherwise volume directories will be owned by the
+    wrong host id and read-write volumes will not be writable inside the
+    container.
+
 ## 4. Start and Verify
 
 ```bash
