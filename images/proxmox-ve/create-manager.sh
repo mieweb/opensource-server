@@ -76,13 +76,30 @@ pct push 100 \
     /opt/opensource-server/images/proxmox-ve/99-container-creator-dev.conf \
     /etc/systemd/system/container-creator.service.d/99-container-creator-dev.conf
 
+# The Manager runs the embedded site agent, which provisions persistent volume
+# directories (issue #421) under the node volume storage's configured path. For
+# the dev node that storage is `local` (a `dir` at /var/lib/vz), so the derived
+# volumes root is /var/lib/vz/volumes. Pre-create it on the host owned by the
+# unprivileged-CT id-mapped root (host UID/GID 100000) so the agent — itself an
+# unprivileged CT mapped the same way — can create per-volume subdirectories
+# that are writable from inside read-write containers without a (guest-forbidden)
+# chown. This mirrors the one-time setup in the "Deploying Agents" docs and keeps
+# the compose stack turnkey for volume testing.
+VOLUMES_ROOT="/var/lib/vz/volumes"
+mkdir -p "${VOLUMES_ROOT}"
+chown 100000:100000 "${VOLUMES_ROOT}"
+chmod 0770 "${VOLUMES_ROOT}"
+
 # Now we can set the entrypoint back to normal so it'll boot up to the
 # default systemd target. We also use this opportunity to add the directory
-# mount. Doing it with the container online or during the create step causes all
+# mounts. Doing it with the container online or during the create step causes all
 # sorts of AppArmor and userns problems due to the nested Proxmox-in-Docker.
+# mp1 bind-mounts the volumes root into the agent at the same path, so the host
+# path the manager derives resolves identically inside the agent (issue #421).
 pct shutdown 100
 pct set 100 \
-    --mp0=/opt/opensource-server,mp=/opt/opensource-server
+    --mp0=/opt/opensource-server,mp=/opt/opensource-server \
+    --mp1="${VOLUMES_ROOT},mp=${VOLUMES_ROOT}"
 
 # Remove the temporary emergency entrypoint before the final start so the
 # Manager CT boots to the default target with networking and services enabled.
