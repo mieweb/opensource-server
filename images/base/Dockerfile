@@ -33,15 +33,16 @@ COPY --chmod=0644 ldap.conf /etc/ldap/ldap.conf
 COPY --chmod=0755 git-identity.sh /etc/profile.d/git-identity.sh
 
 # Per-container SSH access: sshd asks the manager whether the login user is the
-# container's owner or a collaborator, on both the key path
-# (AuthorizedKeysCommand wrapper) and the password/MFA path (PAM account hook).
-# The sshaccess user exists so the token file need not be readable by nobody.
+# container's owner or a collaborator. Enforcement is a single PAM `account`
+# hook — because `UsePAM yes` is in effect, the account phase runs on every
+# successful authentication (publickey and password/MFA alike), so one hook
+# gates both paths. Key serving stays the stock sss_ssh_authorizedkeys command
+# (see 50-sss-ssh-authorizedkeys.conf). ssh-access-check runs as root via
+# pam_exec, so the token file is root-only (no dedicated service user needed).
 COPY --chmod=0755 ssh-access-check.sh /usr/local/bin/ssh-access-check
-COPY --chmod=0755 ssh-access-authorized-keys.sh /usr/local/bin/ssh-access-authorized-keys
 COPY --chmod=0755 ssh-access-setup.sh /usr/local/bin/ssh-access-setup.sh
 COPY ssh-access-setup.service /etc/systemd/system/ssh-access-setup.service
-RUN useradd --system --no-create-home --shell /usr/sbin/nologin sshaccess && \
-    sed -i '/^@include common-account/i account required pam_exec.so quiet /usr/local/bin/ssh-access-check' /etc/pam.d/sshd && \
+RUN sed -i '/^@include common-account/i account required pam_exec.so quiet /usr/local/bin/ssh-access-check' /etc/pam.d/sshd && \
     systemctl enable ssh-access-setup.service
 
 # The following service ensures environment variables set in the OCI metadata

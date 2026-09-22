@@ -2,14 +2,15 @@
 # ssh-access-check [user]
 #
 # Asks the manager whether <user> may SSH into this container (owner or
-# collaborator). Exit 0 = allow, 1 = deny. Called by sshd's
-# AuthorizedKeysCommand wrapper (user as $1) and by pam_exec in the account
-# phase (user in $PAM_USER), so both key and password/MFA logins are gated.
+# collaborator). Exit 0 = allow, 1 = deny. Runs as the sshd PAM `account` hook
+# (pam_exec, user in $PAM_USER); because `UsePAM yes` is in effect the account
+# phase runs for publickey and password/MFA logins alike, so this one hook
+# gates every path. A username argument ($1) is also accepted for testing.
 #
 # Enrollment files (written by ssh-access-setup.sh from the container env):
 #   /etc/ssh-access/url    manager base URL
 #   /etc/ssh-access/id     this container's manager id
-#   /etc/ssh-access/token  bearer token (readable by root and sshaccess only)
+#   /etc/ssh-access/token  bearer token (root-only, 0600)
 # Without them the container is unenrolled and behaves as before (allow).
 #
 # Manager unreachable: honour a recent cached allow (touched on every 204) so
@@ -42,8 +43,7 @@ code=$(printf 'header = "Authorization: Bearer %s"\n' "$(<"$CONF_DIR/token")" \
 cache="$CACHE_DIR/$user"
 case "$code" in
     204)
-        # rm+touch so a root-owned entry (pam_exec) can be refreshed by sshaccess.
-        mkdir -p "$CACHE_DIR" 2>/dev/null; rm -f "$cache"; touch "$cache" 2>/dev/null
+        mkdir -p "$CACHE_DIR" 2>/dev/null; touch "$cache" 2>/dev/null
         exit 0
         ;;
     403|400)

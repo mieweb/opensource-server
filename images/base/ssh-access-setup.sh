@@ -20,11 +20,10 @@ if [ -z "$token" ] || [ -z "$url" ] || [ -z "$id" ]; then
     exit 0
 fi
 
-install -d -m 0750 -o root -g sshaccess "$CONF_DIR"
-install -d -m 0755 -o sshaccess -g sshaccess "$CACHE_DIR"
+install -d -m 0700 -o root -g root "$CONF_DIR"
+install -d -m 0700 -o root -g root "$CACHE_DIR"
 printf '%s\n' "${url%/}" >"$CONF_DIR/url.tmp"
 printf '%s\n' "$id" >"$CONF_DIR/id.tmp"
-(umask 027; printf '%s\n' "$token" >"$CONF_DIR/token.tmp")
-chgrp sshaccess "$CONF_DIR"/*.tmp
+(umask 077; printf '%s\n' "$token" >"$CONF_DIR/token.tmp")
 for f in url id token; do mv -f "$CONF_DIR/$f.tmp" "$CONF_DIR/$f"; done
 echo "ssh-access: enrolled as container $id with $url"
