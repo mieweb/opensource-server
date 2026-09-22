@@ -2,7 +2,7 @@
  * Sharing drives SSH access. sshd inside a container calls
  * GET /api/v1/containers/:id/ssh-access/:username with the container's own
  * token; the answer is computed live from owner + collaborators. Owners/admins
- * mint that token via POST /sites/:siteId/containers/:id/ssh-access/token.
+ * mint that token via POST /containers/:id/ssh-access/token.
  */
 
 const request = require('supertest');
@@ -80,11 +80,11 @@ describe('ssh-access', () => {
     expect((await check('alice')).status).toBe(401);
   });
 
-  describe('POST /sites/:siteId/containers/:id/ssh-access/token', () => {
+  describe('POST /containers/:id/ssh-access/token', () => {
     const mint = async (user) => {
       const { plainKey } = await createApiKey(user);
       return request(app)
-        .post(`/api/v1/sites/${site.id}/containers/${container.id}/ssh-access/token`)
+        .post(`/api/v1/containers/${container.id}/ssh-access/token`)
         .set(...bearer(plainKey));
     };
 

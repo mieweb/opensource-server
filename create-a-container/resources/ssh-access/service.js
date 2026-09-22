@@ -43,13 +43,12 @@ function assertUserAllowed(container, username) {
  * can't see and 403s a collaborator who isn't the owner. The plaintext token is
  * returned exactly once — the caller (the part-2 enrollment script, or an admin)
  * pushes it into the container's env; only its argon2 hash is stored.
- * @param {*} siteId - site id from the URL
  * @param {number} containerId - container id (already validated positive int)
  * @param {object} session - { user, isAdmin }
  * @returns {Promise<{ containerId: number, token: string }>}
  */
-async function mintToken(siteId, containerId, session) {
-  const { container } = await containersService.loadForSession(siteId, containerId, session, {
+async function mintToken(containerId, session) {
+  const container = await containersService.loadByIdForSession(containerId, session, {
     requireManage: true,
   });
   const token = await container.rotateSshAccessToken();

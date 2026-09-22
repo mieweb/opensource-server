@@ -10,11 +10,10 @@ const check = asyncHandler(async (req, res) => {
   return noContent(res);
 });
 
-// POST /sites/:siteId/containers/:id/ssh-access/token — owner/admin mints (or
-// rotates) the container's callback token. The plaintext is returned once.
+// POST /containers/:id/ssh-access/token — owner/admin mints (or rotates) the
+// container's callback token. The plaintext is returned once.
 const mint = asyncHandler(async (req, res) => {
-  const { siteId, id } = req.validated.params;
-  const data = await svc.mintToken(siteId, id, req.session);
+  const data = await svc.mintToken(req.validated.params.id, req.session);
   return created(res, data);
 });
 

@@ -963,13 +963,12 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/CollaboratorList' } } }
         '403': { description: 'forbidden — only the owner/admin may unshare (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'Container or collaborator not found', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-  /sites/{siteId}/containers/{id}/ssh-access/token:
+  /containers/{id}/ssh-access/token:
     post:
       operationId: rotate_container_ssh_access_token
       tags: [Containers]
       summary: Mint (or rotate) the token sshd inside the container uses to ask who may log in (owner/admin). The plaintext is returned once; any previous token stops working.
       parameters:
-        - { in: path, name: siteId, required: true, schema: { type: integer } }
         - { in: path, name: id, required: true, schema: { type: integer } }
       responses:
         '201':

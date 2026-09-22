@@ -16,10 +16,4 @@ const idParam = z.object({
   id: z.coerce.number().int().positive(),
 });
 
-// Site + container ids for the /sites-scoped mint route.
-const siteContainerParams = z.object({
-  siteId: z.coerce.number().int().positive(),
-  id: z.coerce.number().int().positive(),
-});
-
-module.exports = { usernameParam, idParam, siteContainerParams };
+module.exports = { usernameParam, idParam };

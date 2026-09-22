@@ -10,34 +10,31 @@ const repo = require('./repository');
 const { ApiError } = require('../../middlewares/api');
 
 /**
- * Load a container by id scoped to a site and authorize the session against it.
- * View access is enforced in the query (repository.findByIdForSession): a
- * non-admin only loads a container they own or one shared with them, so an
- * unauthorized row never comes back and this 404s without leaking existence.
- * Manage access (owner/admin — sharing, delete, token mint) is checked here and
- * returns 403: the caller can already view the container, so it leaks nothing
- * new and tells a collaborator why they can't manage it.
- * @param {*} siteId - Candidate site id (e.g. req.params.siteId).
- * @param {number} containerId - Container id (already validated positive int).
+ * Load a container by its (globally unique) id and authorize the session
+ * against it. View access is enforced in the query
+ * (repository.findByIdForSession): a non-admin only loads a container they own
+ * or one shared with them, so an unauthorized row never comes back and this
+ * 404s without leaking existence. Manage access (owner/admin — sharing, delete,
+ * token mint) is checked here and returns 403: the caller can already view the
+ * container, so it leaks nothing new and tells a collaborator why they can't
+ * manage it.
+ *
+ * A container is identified by id alone — no site is needed (the id is the PK).
+ * @param {number} id - Container id (already validated positive int).
  * @param {object} session - { user, isAdmin }.
  * @param {object} [opts]
  * @param {boolean} [opts.requireManage=false] - Require owner/admin.
- * @returns {Promise<{site: object, container: object}>}
+ * @returns {Promise<object>} The authorized container (node + collaborators loaded).
  */
-async function loadForSession(siteId, containerId, session, { requireManage = false } = {}) {
-  const site = await repo.findSiteById(siteId);
-  if (!site) throw new ApiError(404, 'site_not_found', 'Site not found');
-
-  const container = await repo.findByIdForSession(containerId, session);
-  // Scope to the site via the container's node; a container on another site's
-  // node 404s exactly as an unknown id does (no cross-site existence leak).
-  if (!container || !container.node || container.node.siteId !== site.id) {
+async function loadByIdForSession(id, session, { requireManage = false } = {}) {
+  const container = await repo.findByIdForSession(id, session);
+  if (!container) {
     throw new ApiError(404, 'not_found', 'Container not found');
   }
   if (requireManage && !(session.isAdmin || container.canEdit(session.user))) {
     throw new ApiError(403, 'forbidden', 'Only the owner may manage this container');
   }
-  return { site, container };
+  return container;
 }
 
-module.exports = { loadForSession };
+module.exports = { loadByIdForSession };

@@ -9,7 +9,6 @@
 const {
   Container,
   ContainerCollaborator,
-  Site,
   Sequelize,
   sequelize,
 } = require('../../models');
@@ -61,4 +60,4 @@ async function findByIdForSession(id, session) {
   });
 }
 
-module.exports = { visibleToClauses, findSiteById, findByIdForSession };
+module.exports = { visibleToClauses, findByIdForSession };

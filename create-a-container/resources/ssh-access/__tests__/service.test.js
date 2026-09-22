@@ -71,12 +71,11 @@ describe('assertUserAllowed', () => {
 describe('mintToken', () => {
   test('delegates authorization to the containers service and rotates the token', async () => {
     const container = { id: 7, rotateSshAccessToken: jest.fn(async () => 'plain-tok') };
-    containersService.loadForSession.mockResolvedValue({ container });
+    containersService.loadByIdForSession.mockResolvedValue(container);
 
-    const result = await svc.mintToken('1', 7, { user: 'alice', isAdmin: false });
+    const result = await svc.mintToken(7, { user: 'alice', isAdmin: false });
 
-    expect(containersService.loadForSession).toHaveBeenCalledWith(
-      '1',
+    expect(containersService.loadByIdForSession).toHaveBeenCalledWith(
       7,
       { user: 'alice', isAdmin: false },
       { requireManage: true },
@@ -86,10 +85,10 @@ describe('mintToken', () => {
   });
 
   test('propagates the containers service authorization error (does not rotate)', async () => {
-    containersService.loadForSession.mockRejectedValue(
+    containersService.loadByIdForSession.mockRejectedValue(
       Object.assign(new Error('forbidden'), { status: 403 }),
     );
-    await expect(svc.mintToken('1', 7, { user: 'bob', isAdmin: false })).rejects.toMatchObject({
+    await expect(svc.mintToken(7, { user: 'bob', isAdmin: false })).rejects.toMatchObject({
       status: 403,
     });
   });
