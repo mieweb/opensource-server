@@ -16,7 +16,7 @@ Nodes are Proxmox VE servers within a site that host containers.
 !!! warning "Volume storage should be shared across the cluster"
     Persistent [volumes](volumes.md) require their host directories to exist on
     whichever node a container lands on. Place the **volume storage** on storage
-    that is shared across every node (CephFS/RBD, NFS). On save, the manager
+    that is shared across every node (a path-backed shared filesystem such as CephFS or NFS). On save, the manager
     warns (but does not block) if the chosen volume storage is not shared or is
     not active on every node. Single-node sites are unaffected.
 

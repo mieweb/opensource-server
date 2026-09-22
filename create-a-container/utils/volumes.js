@@ -64,14 +64,18 @@ async function resolveVolumesRoot(client, node) {
 
 /**
  * Build the host path for a named, container-scoped volume under a volumes
- * root. Names are validated upstream (Volume.isValidName); this only joins.
+ * root. Scoped by SITE and hostname: container hostnames are only unique per
+ * `(siteId, hostname)`, so two sites sharing the same storage would otherwise
+ * derive the same host directory and read/write each other's data. Names are
+ * validated upstream (Volume.isValidName); this only joins.
  * @param {string} volumesRoot
- * @param {string} hostname - Container hostname (per-container scoping segment)
+ * @param {number|string} siteId - Owning site id (cross-site isolation segment)
+ * @param {string} hostname - Container hostname (per-site scoping segment)
  * @param {string} name - Volume name
  * @returns {string}
  */
-function containerVolumeHostPath(volumesRoot, hostname, name) {
-  return `${volumesRoot}/${hostname}/${name}`;
+function containerVolumeHostPath(volumesRoot, siteId, hostname, name) {
+  return `${volumesRoot}/site-${siteId}/${hostname}/${name}`;
 }
 
 /**
@@ -83,27 +87,31 @@ function containerVolumeHostPath(volumesRoot, hostname, name) {
  * containers (their live mount already exists on Proxmox). They are left
  * untouched: no host path is derived and they never render a new mpN — see
  * Volume.buildMountConfig, which skips them. Every other volume gets a derived
- * host path; on a docker node it is marked ready immediately (Docker
- * auto-creates bind sources).
+ * host path. Volumes on backends without a site agent that provisions
+ * directories are marked `ready` immediately so `prepareVolumes` does not block
+ * for the whole timeout: `docker` (Docker auto-creates bind sources) and
+ * `dummy` (the simulated dev/test backend has no agent).
  *
  * @param {Array<object>} volumes - Volume model instances
  * @param {object} opts
  * @param {string} opts.volumesRoot - Resolved volumes root for the node
- * @param {string} opts.hostname - Container hostname (per-container scoping)
+ * @param {number|string} opts.siteId - Owning site id (path isolation)
+ * @param {string} opts.hostname - Container hostname (per-site scoping)
  * @param {string} opts.nodeType - Node type ('proxmox' | 'docker' | 'dummy')
  * @returns {Promise<void>}
  */
-async function deriveVolumeHostPaths(volumes, { volumesRoot, hostname, nodeType }) {
+async function deriveVolumeHostPaths(volumes, { volumesRoot, siteId, hostname, nodeType }) {
+  // Backends with no directory-provisioning site agent: mark ready directly so
+  // the create barrier does not poll until timeout.
+  const agentlessBackend = nodeType === 'docker' || nodeType === 'dummy';
   for (const v of volumes) {
     // Legacy built-in rows are informational only; don't derive or re-mount.
     if (v.builtin) continue;
     const updates = {};
     if (!v.hostPath) {
-      updates.hostPath = containerVolumeHostPath(volumesRoot, hostname, v.name);
+      updates.hostPath = containerVolumeHostPath(volumesRoot, siteId, hostname, v.name);
     }
-    // Docker auto-creates bind-source directories at container start, so there
-    // is no site agent to wait on — mark docker volumes ready directly.
-    if (nodeType === 'docker' && v.status !== 'ready') {
+    if (agentlessBackend && v.status !== 'ready') {
       updates.status = 'ready';
       updates.appliedAt = new Date();
     }

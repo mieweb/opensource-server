@@ -142,6 +142,7 @@ async function prepareVolumes(client, node, container) {
   // Derive + persist missing host paths; mark builtin/docker volumes ready.
   await deriveVolumeHostPaths(volumes, {
     volumesRoot,
+    siteId: container.siteId,
     hostname: container.hostname,
     nodeType: node.nodeType,
   });

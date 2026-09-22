@@ -46,14 +46,23 @@ async function ensureVolumesReady(client, node, container) {
   const volumes = await Volume.findAll({ where: { containerId: container.id } });
   if (volumes.length === 0) return [];
 
-  const { root: volumesRoot } = await resolveVolumesRoot(client, node);
-  // Derive + persist missing host paths; mark builtin/docker volumes ready
-  // (shared with the create/reconcile jobs).
-  await deriveVolumeHostPaths(volumes, {
-    volumesRoot,
-    hostname: container.hostname,
-    nodeType: node.nodeType,
-  });
+  // Resolve the volumes root only when a non-builtin volume still needs its
+  // host path derived. Otherwise (only legacy built-in rows, or everything
+  // already derived) skip it: resolveVolumesRoot fails on block-backed storage
+  // like the default local-lvm, and a pre-#421 container whose only volume is
+  // the built-in must not fail reconfigure over storage it never needs.
+  const needsRoot = volumes.some((v) => !v.builtin && !v.hostPath);
+  if (needsRoot) {
+    const { root: volumesRoot } = await resolveVolumesRoot(client, node);
+    // Derive + persist missing host paths; mark builtin/docker volumes ready
+    // (shared with the create/reconcile jobs).
+    await deriveVolumeHostPaths(volumes, {
+      volumesRoot,
+      siteId: container.siteId,
+      hostname: container.hostname,
+      nodeType: node.nodeType,
+    });
+  }
 
   // Bounded wait for the agent to create any pending directories.
   const start = Date.now();
@@ -163,7 +172,11 @@ async function main() {
     // is idempotent; attaching a new one requires a restart to take effect.
     let volumesChanged = false;
     const volumes = await ensureVolumesReady(client, node, container);
-    if (volumes.length > 0) {
+    // Skip the mpN mount reconcile on Docker nodes: Docker binds are applied at
+    // create time and `lxcConfig()` does not expose `mpN`, so the diff below
+    // would always report "changed" and re-apply on every reconfigure. (Bind
+    // changes on Docker flow through the container-recreate path, not mpN.)
+    if (volumes.length > 0 && node.nodeType !== 'docker') {
       const mountConfig = Volume.buildMountConfig(volumes);
       const currentConfig = await client.lxcConfig(node.name, container.containerId);
       volumesChanged = Object.entries(mountConfig).some(([k, val]) => currentConfig[k] !== val);

@@ -35,14 +35,16 @@ export interface VolumeResult {
 }
 
 /** A volume directory the agent must ensure exists, as carried in the config
- * snapshot at the site level. The shared volumes root is bind-mounted into the
- * agent guest; because the agent is an unprivileged CT mapped the same way as
- * the consuming containers (host UID/GID 100000 = guest root), the agent's root
- * writes as the containers' mapped root and no chown is needed. */
+ * snapshot at the site level. `uid`/`gid` are the owning host ids (the
+ * unprivileged CT's id-mapped root); the agent applies them best-effort — a
+ * no-op in an unprivileged agent guest (mkdir already yields that owner) and the
+ * real fix in a privileged agent guest (mkdir would otherwise be root-owned). */
 export interface SiteVolume {
   id: number;
   hostPath: string;
   mode: 'ro' | 'rw';
+  uid: number;
+  gid: number;
 }
 
 export interface SiteContainer {

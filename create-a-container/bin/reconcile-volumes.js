@@ -55,14 +55,23 @@ async function reconcileContainer(container) {
   if (volumes.length === 0) return 'skipped';
 
   const client = await node.api();
-  const { root: volumesRoot } = await resolveVolumesRoot(client, node);
 
-  // Backfill any missing host paths so mpN can be rendered (shared helper).
-  await deriveVolumeHostPaths(volumes, {
-    volumesRoot,
-    hostname: container.hostname,
-    nodeType: node.nodeType,
-  });
+  // Resolve the volumes root only when a non-builtin volume still needs its
+  // host path derived — resolveVolumesRoot fails on block-backed storage (e.g.
+  // the default local-lvm), and a container whose only volume is the legacy
+  // built-in (or whose paths are already derived) must not fail over storage it
+  // never needs.
+  const needsRoot = volumes.some((v) => !v.builtin && !v.hostPath);
+  if (needsRoot) {
+    const { root: volumesRoot } = await resolveVolumesRoot(client, node);
+    // Backfill any missing host paths so mpN can be rendered (shared helper).
+    await deriveVolumeHostPaths(volumes, {
+      volumesRoot,
+      siteId: container.siteId,
+      hostname: container.hostname,
+      nodeType: node.nodeType,
+    });
+  }
 
   // Only reconcile once every volume directory is ready — directory creation is
   // the create/reconfigure job's responsibility (agent sync barrier), not this
@@ -73,6 +82,13 @@ async function reconcileContainer(container) {
     console.log(
       `Container ${container.hostname}: ${notReady.length} volume(s) not ready, skipping mount reconcile`,
     );
+    return 'skipped';
+  }
+
+  // Docker binds are applied at create time and lxcConfig() does not expose
+  // mpN, so a diff would always report "changed"; skip the mpN reconcile there.
+  if (node.nodeType === 'docker') {
+    console.log(`Container ${container.hostname}: docker node, mpN reconcile not applicable`);
     return 'skipped';
   }
 

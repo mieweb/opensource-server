@@ -11,14 +11,21 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume } = require('../models');
 
-// Note on ownership: Proxmox maps an unprivileged CT's UID/GID 0 to host
-// 100000. The site agent is itself an unprivileged CT with the same mapping, so
-// when the shared volumes root is bind-mounted into the agent, the agent's root
-// writes as host UID/GID 100000 — exactly the mapped root of the containers
-// that consume the volume. RW volumes are therefore writable without any
-// explicit chown (which would in any case be EPERM inside the agent guest, and
-// so is deliberately NOT attempted). Ownership is established by the id-map plus
-// the installer pre-creating the volumes root; the agent only mkdir/chmods.
+// Owning host UID/GID for volume directories: Proxmox maps an unprivileged CT's
+// UID/GID 0 to host 100000, so RW volumes must be owned by 100000 to be writable
+// from inside a consuming unprivileged container as its root.
+//
+// The agent applies this ownership BEST-EFFORT, which makes it correct in both
+// agent topologies:
+//   - Unprivileged agent guest (production): the agent's root already maps to
+//     host 100000, so mkdir yields the right owner; a chown to 100000 is a
+//     harmless no-op and, if the guest can't chown, the EPERM is ignored.
+//   - Privileged agent guest (e.g. the dev stack's Manager CT, created without
+//     --unprivileged 1): the agent is host root, so mkdir would otherwise yield
+//     a root-owned (0:0) dir; the explicit chown to 100000 fixes it (real root
+//     can chown), making the volume writable by the unprivileged consumer.
+const VOLUME_OWNER_UID = 100000;
+const VOLUME_OWNER_GID = 100000;
 
 /**
  * Load a site with everything the agent templates need, serialized to plain
@@ -163,17 +170,25 @@ async function buildAgentConfig(siteId) {
 
 /**
  * Build the site-level list of desired volume directories for the agent's
- * config snapshot. Each entry carries the host path and mode. Built-in and
- * host-path-less volumes are excluded (the former are admin-provisioned; the
- * latter aren't provisionable yet). Deterministic order keeps the strong ETag
- * stable.
+ * config snapshot. Each entry carries the host path and mode. Excluded:
+ *  - built-in volumes (admin-provisioned legacy mounts),
+ *  - host-path-less volumes (not derived/provisionable yet), and
+ *  - volumes on Docker nodes — Docker auto-creates their bind sources and marks
+ *    them ready locally; the site agent may not even have the Docker volumes
+ *    root mounted, so advertising them would let the agent report a spurious
+ *    failure and flip a valid Docker volume to `failed`.
+ * Deterministic order keeps the strong ETag stable.
  *
  * @param {object} site - Site with eager-loaded nodes (used to scope containers)
  * @returns {Promise<Array<object>>}
  */
 async function buildSiteVolumes(site) {
-  const nodeIds = (site.nodes || []).map((n) => n.id);
-  if (nodeIds.length === 0) return [];
+  // Only nodes whose directories the site agent actually provisions — i.e. not
+  // Docker nodes (see above).
+  const agentProvisionedNodeIds = (site.nodes || [])
+    .filter((n) => n.nodeType !== 'docker')
+    .map((n) => n.id);
+  if (agentProvisionedNodeIds.length === 0) return [];
 
   const volumes = await Volume.findAll({
     include: [
@@ -181,7 +196,7 @@ async function buildSiteVolumes(site) {
         model: Container,
         as: 'container',
         attributes: ['id', 'nodeId'],
-        where: { nodeId: nodeIds },
+        where: { nodeId: agentProvisionedNodeIds },
         required: true,
       },
     ],
@@ -193,6 +208,9 @@ async function buildSiteVolumes(site) {
     id: v.id,
     hostPath: v.hostPath,
     mode: v.mode,
+    // Owning host UID/GID the agent applies best-effort (see comment above).
+    uid: VOLUME_OWNER_UID,
+    gid: VOLUME_OWNER_GID,
   }));
 }
 

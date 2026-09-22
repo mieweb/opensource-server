@@ -79,12 +79,14 @@ pct push 100 \
 # The Manager runs the embedded site agent, which provisions persistent volume
 # directories (issue #421) under the node volume storage's configured path. For
 # the dev node that storage is `local` (a `dir` at /var/lib/vz), so the derived
-# volumes root is /var/lib/vz/volumes. Pre-create it on the host owned by the
-# unprivileged-CT id-mapped root (host UID/GID 100000) so the agent — itself an
-# unprivileged CT mapped the same way — can create per-volume subdirectories
-# that are writable from inside read-write containers without a (guest-forbidden)
-# chown. This mirrors the one-time setup in the "Deploying Agents" docs and keeps
-# the compose stack turnkey for volume testing.
+# volumes root is /var/lib/vz/volumes. Pre-create it owned by the unprivileged-CT
+# id-mapped root (host UID/GID 100000) so read-write volumes are writable from
+# inside consuming unprivileged containers. This Manager CT is PRIVILEGED (no
+# --unprivileged 1 above), so the embedded agent runs as host root and would
+# otherwise create root-owned (0:0) subdirectories; the agent chowns each new
+# volume dir to 100000 (best-effort — real root here), which fixes that. This
+# mirrors the "Deploying Agents" docs and keeps the compose stack turnkey for
+# volume testing.
 VOLUMES_ROOT="/var/lib/vz/volumes"
 mkdir -p "${VOLUMES_ROOT}"
 chown 100000:100000 "${VOLUMES_ROOT}"

@@ -107,21 +107,24 @@ runs the agent:
    For example: `mp0: /mnt/pve/cephfs/volumes,mp=/mnt/pve/cephfs/volumes`.
 
 !!! note "Why the agent — not a per-node host process — creates these"
-    There is one agent per site, running as an unprivileged LXC guest. Because
-    the shared volumes root is bind-mounted in and the agent's root maps to host
-    UID/GID `100000` (the same mapped root as the containers that consume the
-    volumes), the agent can create directories that are writable from inside
-    those containers **without** any `chown` — which would be denied inside the
-    guest. The shared-storage requirement is what lets this single agent
-    provision volumes for every node in the site.
+    There is one agent per site, and the shared volumes root is bind-mounted
+    into it, so this single agent provisions every site volume's directory
+    (which is why the volumes root must be on shared storage). The agent chowns
+    each new directory to the consuming containers' id-mapped root (host UID/GID
+    `100000`) best-effort: in an unprivileged agent guest the directory already
+    has that owner and the chown is a harmless no-op (or a tolerated `EPERM`); in
+    a privileged agent guest — like the dev-stack Manager CT — the agent is host
+    root, so the chown is what makes the directory writable by the unprivileged
+    consumer.
 
 !!! warning "Assumes the default unprivileged id-map base (100000)"
     Volume ownership relies on the standard Proxmox unprivileged-CT id-map,
-    which maps guest UID/GID 0 to host `100000` for both the agent and the
-    containers. If a site overrides this with a custom `lxc.idmap`, pre-create
-    the volumes root (and set `ownership` above) to match that map's base
-    instead of `100000` — otherwise volume directories will be owned by the
-    wrong host id and read-write volumes will not be writable inside the
+    which maps guest UID/GID 0 to host `100000` for the consuming containers.
+    The agent chowns each volume directory to `100000` to match. If a site
+    overrides this with a custom `lxc.idmap`, pre-create the volumes root with
+    the matching `chown` (see the `chown 100000:100000` step above) using that
+    map's base instead of `100000` — otherwise volume directories will be owned
+    by the wrong host id and read-write volumes will not be writable inside the
     container.
 
 ## 4. Start and Verify

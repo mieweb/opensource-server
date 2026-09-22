@@ -48,6 +48,8 @@ describe('buildAgentConfig volumes', () => {
         id: expect.any(Number),
         hostPath: '/mnt/pve/cephfs/volumes/ct1/data',
         mode: 'rw',
+        uid: 100000,
+        gid: 100000,
       },
     ]);
   });
@@ -72,6 +74,33 @@ describe('buildAgentConfig volumes', () => {
     });
 
     const config = await buildAgentConfig(site.id);
+    expect(config.site.volumes).toEqual([]);
+  });
+
+  test('excludes volumes on Docker nodes (Docker provisions its own binds)', async () => {
+    const dockerNode = await Node.create({
+      siteId: site.id,
+      name: 'docker1',
+      nodeType: 'docker',
+      apiUrl: 'unix:///var/run/docker.sock',
+    });
+    const dockerCt = await Container.create({
+      hostname: 'dct',
+      username: 'tester',
+      nodeId: dockerNode.id,
+      siteId: site.id,
+    });
+    await Volume.create({
+      containerId: dockerCt.id,
+      name: 'data',
+      hostPath: '/var/lib/opensource-server/volumes/site-1/dct/data',
+      mountPath: '/mnt/data',
+      mode: 'rw',
+      status: 'ready',
+    });
+
+    const config = await buildAgentConfig(site.id);
+    // The Docker-node volume must not be advertised to the site agent.
     expect(config.site.volumes).toEqual([]);
   });
 });

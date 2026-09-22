@@ -58,19 +58,20 @@ The manager records every check-in in the `Agents` table (shown on the web clien
 ## Volumes
 
 The config snapshot includes, at the **site** level, the volume directories the
-agent must ensure exist (`site.volumes[]` = `{ id, hostPath, mode }`). There is
-one agent per site, and the shared volumes root is bind-mounted into the agent
-container, so this single agent provisions volumes for every node in the site.
-Each pass the agent `mkdir -p`s every directory and `chmod`s it per mode. It does
-**not** `chown`: the agent runs as an unprivileged CT whose root maps to host
-UID/GID `100000` — the same mapped root as the containers that consume the
-volumes — so directories it creates are already owned correctly for read-write
-access from inside those containers (an explicit `chown` would also be denied
-inside the guest). Per-volume results are reported back keyed by volume id via
-the `volumes` field above; the manager writes them into `Volume.status`
-(`ready` / `failed`). The container create job blocks on `Volume.status = 'ready'`
-before attaching the Proxmox `mpN` bind mount. The agent only ever creates
-directories — it never removes them, so volume data is retained across container
+agent must ensure exist (`site.volumes[]` = `{ id, hostPath, mode, uid, gid }`).
+There is one agent per site, and the shared volumes root is bind-mounted into the
+agent container, so this single agent provisions volumes for every node in the
+site. Each pass the agent `mkdir -p`s every directory, `chown`s it to the
+supplied `uid`/`gid` (the consuming containers' id-mapped root, `100000`)
+best-effort, and `chmod`s it per mode. The chown is a no-op (or tolerated
+`EPERM`) in an unprivileged agent guest — where the id-map already yields the
+right owner — and the actual fix in a privileged agent guest, where the agent is
+host root and mkdir would otherwise create a root-owned directory. Per-volume
+results are reported back keyed by volume id via the `volumes` field above; the
+manager writes them into `Volume.status` (`ready` / `failed`). The container
+create job blocks on `Volume.status = 'ready'` before attaching the Proxmox
+`mpN` bind mount. The agent only ever creates directories — it never removes
+them, so volume data is retained across container
 delete + recreate. See [Volumes](../admins/core-concepts/volumes.md) and
 [Deploying Agents → Volume storage](../admins/deploying-agents.md#volume-storage-for-persistent-volumes).
 

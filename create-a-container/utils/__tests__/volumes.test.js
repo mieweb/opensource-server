@@ -62,7 +62,7 @@ describe('Volume.buildMountConfig', () => {
     expect(Volume.buildMountConfig([])).toEqual({});
   });
 
-  test('skips legacy built-in rows and rows without a host path', () => {
+  test('reserves the legacy mp0 slot: user volumes render after built-in rows', () => {
     const user = Volume.build({ id: 1, containerId: 1, hostPath: '/data/c/data', mountPath: '/mnt/data', mode: 'rw' });
     const builtin = Volume.build({
       id: 2,
@@ -73,17 +73,51 @@ describe('Volume.buildMountConfig', () => {
       mode: 'ro',
       builtin: true,
     });
-    const undived = Volume.build({ id: 3, containerId: 1, hostPath: null, mountPath: '/mnt/x', mode: 'rw' });
-    // Only the user volume with a host path renders, at mp0.
-    expect(Volume.buildMountConfig([user, builtin, undived])).toEqual({
-      mp0: '/data/c/data,mp=/mnt/data,ro=0',
+    const underived = Volume.build({ id: 3, containerId: 1, hostPath: null, mountPath: '/mnt/x', mode: 'rw' });
+    // The built-in reserves mp0 (its live mount), so the user volume lands on
+    // mp1 and never overwrites the pre-#421 quick_and_dirty mount. The
+    // host-path-less user row is skipped.
+    expect(Volume.buildMountConfig([user, builtin, underived])).toEqual({
+      mp1: '/data/c/data,mp=/mnt/data,ro=0',
     });
+  });
+
+  test('no reserved slot when there is no built-in row (starts at mp0)', () => {
+    const a = Volume.build({ id: 1, containerId: 1, hostPath: '/data/c/a', mountPath: '/mnt/a', mode: 'rw' });
+    expect(Volume.buildMountConfig([a])).toEqual({ mp0: '/data/c/a,mp=/mnt/a,ro=0' });
   });
 });
 
 describe('containerVolumeHostPath', () => {
-  test('scopes user volumes by hostname under the volumes root', () => {
-    expect(containerVolumeHostPath('/srv/volumes', 'web01', 'data')).toBe('/srv/volumes/web01/data');
+  test('scopes user volumes by site and hostname under the volumes root', () => {
+    expect(containerVolumeHostPath('/srv/volumes', 7, 'web01', 'data')).toBe(
+      '/srv/volumes/site-7/web01/data',
+    );
+  });
+});
+
+describe('Volume.isValidMountPath / canonicalizeMountPath', () => {
+  test.each(['/mnt/data', '/mnt/a/b/c', '/srv/vol'])('accepts %s', (p) => {
+    expect(Volume.isValidMountPath(p)).toBe(true);
+  });
+
+  test.each([
+    'rel/ative',
+    '/',
+    '/mnt/a,ro=0',
+    '/mnt/a:b',
+    '/mnt/a\\b',
+    '/mnt/a b',
+    '/mnt/a\nb',
+    '/mnt/../etc',
+    '/mnt/./x',
+  ])('rejects %s', (p) => {
+    expect(Volume.isValidMountPath(p)).toBe(false);
+  });
+
+  test('canonicalizes duplicate and trailing slashes', () => {
+    expect(Volume.canonicalizeMountPath('/mnt//data/')).toBe('/mnt/data');
+    expect(Volume.canonicalizeMountPath('/mnt/quick_and_dirty/')).toBe('/mnt/quick_and_dirty');
   });
 });
 

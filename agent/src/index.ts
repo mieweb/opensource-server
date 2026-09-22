@@ -78,10 +78,27 @@ async function main(): Promise<void> {
     // reported on the next check-in via the volumes field.
     volumeResults = reconcileVolumes(result.config);
 
-    // The ETag is saved even after a failed apply: a rejected config won't
-    // fix itself without a server-side change (which changes the ETag), and
-    // the failure has been reported via lastApply.
-    state.etag = result.etag;
+    // A failed volume mkdir is typically transient (a not-yet-mounted volumes
+    // root, a slow shared mount, a momentary permission glitch) and WILL fix
+    // itself on a retry without any server-side config change. If we saved the
+    // ETag now, the next run would get a 304 and never retry, leaving the
+    // volume `failed` until the config changes. So when any volume failed this
+    // pass, do NOT persist the ETag — forcing the next check-in to re-fetch the
+    // config (200, not 304) and re-run the reconcile. Service applies keep the
+    // existing "save even on failure" behavior (a rejected nginx/dnsmasq config
+    // won't fix itself without a server-side change).
+    const volumeFailed = volumeResults
+      ? Object.values(volumeResults).some((r) => !r.applied)
+      : false;
+    if (volumeFailed) {
+      log.warn('one or more volume directories failed to provision; will retry on next check-in');
+      state.etag = undefined;
+    } else {
+      // The ETag is saved even after a failed service apply: a rejected config
+      // won't fix itself without a server-side change (which changes the ETag),
+      // and the failure has been reported via lastApply.
+      state.etag = result.etag;
+    }
     state.save();
   }
 

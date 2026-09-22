@@ -213,17 +213,26 @@ export function ContainerFormPage() {
   const collaborators = watch('collaborators') || [];
   const watchedEntrypoint = watch('entrypoint');
   const watchedEnvVars = watch('environmentVars');
+  const watchedVolumes = watch('volumes');
 
-  // True when the form's env vars or entrypoint differ from the saved
-  // container — the changes that only take effect after a restart (#449).
+  // True when the form's env vars, entrypoint, or volumes differ from the saved
+  // container — the changes that only take effect after a restart (#449). Volume
+  // attach/detach requires a restart to (un)mount, and the server enqueues a
+  // reconfigure job for it, so surface it here too.
   const requiresRestart = useMemo(() => {
     if (!isEdit || !container) return false;
     if ((watchedEntrypoint || '') !== (container.entrypoint || '')) return true;
     const saved = new Map(Object.entries(container.environmentVars || {}));
     const current = (watchedEnvVars || []).filter((e) => e.key.trim());
     if (current.length !== saved.size) return true;
-    return current.some((e) => saved.get(e.key) !== e.value);
-  }, [isEdit, container, watchedEntrypoint, watchedEnvVars]);
+    if (current.some((e) => saved.get(e.key) !== e.value)) return true;
+    // A volume was attached (a new row with no id) or detached (an existing row
+    // flagged for detach) — both change the container's mounts.
+    const volumeChanged = (watchedVolumes || []).some(
+      (v) => (!v.id && (v.name?.trim() || v.mountPath?.trim())) || (v.id && v.detach && !v.builtin),
+    );
+    return volumeChanged;
+  }, [isEdit, container, watchedEntrypoint, watchedEnvVars, watchedVolumes]);
 
   // The restart toggle follows restart-requiring edits (auto-on, so the user
   // isn't left wondering why changes didn't apply) until the user overrides
@@ -642,7 +651,7 @@ export function ContainerFormPage() {
               <div className="flex flex-col gap-2">
                 <Switch
                   label="Restart container after saving"
-                  description="Turns on automatically when you change environment variables or the entrypoint — those changes only take effect after a restart."
+                  description="Turns on automatically when you change environment variables, the entrypoint, or volumes — those changes only take effect after a restart."
                   checked={!!restart}
                   onCheckedChange={(c) => {
                     restartTouchedRef.current = true;

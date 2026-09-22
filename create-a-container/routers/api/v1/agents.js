@@ -8,30 +8,40 @@
  */
 
 const express = require('express');
-const { Agent, Site, Volume } = require('../../../models');
+const { Agent, Site, Container, Volume } = require('../../../models');
 const { apiAuth, apiAdmin, localhostOrAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
 const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
 
 const router = express.Router();
 
 /**
- * Apply an agent-reported per-volume results map to the Volume table.
- * Shape: { <volumeId>: { applied: true|false, message? } }. The Manager owns
- * the volume ids (sent in the config snapshot); the agent reports the outcome
- * of its mkdir/chown. Transitions each Volume.status to ready/failed with
- * statusMessage + appliedAt. Unknown ids and built-in volumes are ignored.
+ * Apply an agent-reported per-volume results map to the Volume table, scoped to
+ * the checking-in site. Shape: { <volumeId>: { applied: true|false, message? } }.
+ * The Manager owns the volume ids (sent in the config snapshot); the agent
+ * reports the outcome of its mkdir. Transitions each Volume.status to
+ * ready/failed with statusMessage + appliedAt.
+ *
+ * Each volume is loaded together with its owning container and verified to
+ * belong to `siteId` before any update — a check-in from one site (or a
+ * misconfigured/rogue agent) must not be able to mark another site's volume
+ * ready and let a create job attach an unprovisioned path. Unknown ids,
+ * cross-site ids, and built-in volumes are ignored.
+ * @param {number} siteId - The checking-in site's id.
  * @param {object} volumesResult
  * @returns {Promise<void>}
  */
-async function applyVolumeResults(volumesResult) {
+async function applyVolumeResults(siteId, volumesResult) {
   if (!volumesResult || typeof volumesResult !== 'object') return;
   for (const [rawId, result] of Object.entries(volumesResult)) {
     const id = Number(rawId);
     if (!Number.isInteger(id) || !result || typeof result !== 'object') continue;
-    const volume = await Volume.findByPk(id);
-    // Built-in volumes are admin-provisioned and not agent-owned; never let an
-    // agent report flip them.
+    const volume = await Volume.findByPk(id, {
+      include: [{ model: Container, as: 'container', attributes: ['id', 'siteId'] }],
+    });
+    // Skip unknown ids, built-in (admin-provisioned, not agent-owned) volumes,
+    // and — critically — any volume whose container is not in this site.
     if (!volume || volume.builtin) continue;
+    if (!volume.container || volume.container.siteId !== siteId) continue;
     const applied = result.applied === true || result.applied === 'true';
     const message = typeof result.message === 'string' ? result.message.slice(0, 2000) : null;
     if (applied) {
@@ -61,8 +71,9 @@ router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
       services: services || null,
       lastCheckinAt: new Date(),
     });
-    // Transition Volume.status from the agent's per-volume directory results.
-    await applyVolumeResults(volumes);
+    // Transition Volume.status from the agent's per-volume directory results,
+    // scoped to this site so a check-in can't touch another site's volumes.
+    await applyVolumeResults(parsedSiteId, volumes);
   }
 
   const config = await buildAgentConfig(parsedSiteId);

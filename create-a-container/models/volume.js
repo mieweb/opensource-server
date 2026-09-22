@@ -27,6 +27,45 @@ function isValidVolumeName(name) {
   return VALID_NAME.test(name);
 }
 
+/**
+ * Canonicalize an absolute guest mount path to a single normal form:
+ * collapse duplicate slashes and strip a trailing slash (except root). This is
+ * what the reserved-path and per-container uniqueness checks compare against,
+ * so equivalent spellings (`/mnt/x/`, `/mnt//x`) can't slip past them.
+ * Returns null if the input is not a usable absolute path.
+ * @param {*} mountPath
+ * @returns {string|null}
+ */
+function canonicalizeMountPath(mountPath) {
+  if (typeof mountPath !== 'string' || !mountPath.startsWith('/')) return null;
+  const collapsed = mountPath.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+  return collapsed === '' ? '/' : collapsed;
+}
+
+/**
+ * Validate a guest mount path. The value is interpolated into comma-delimited
+ * Proxmox `mpN` syntax (`<host>,mp=<mount>,ro=<n>`) and colon-delimited Docker
+ * bind syntax (`<host>:<mount>[:ro]`), so beyond "absolute" it must contain no
+ * provider delimiters (`,` `:`), no backslash, no whitespace, no control
+ * characters (incl. NUL/newline), and no `.`/`..` traversal segments — any of
+ * which could corrupt the provider config or override mount options.
+ * @param {*} mountPath
+ * @returns {boolean}
+ */
+function isValidMountPath(mountPath) {
+  const canon = canonicalizeMountPath(mountPath);
+  if (!canon) return false;
+  // No provider delimiters, backslash, whitespace, or control chars anywhere.
+  // eslint-disable-next-line no-control-regex
+  if (/[,:\\\s\u0000-\u001f\u007f]/.test(canon)) return false;
+  // Reject traversal / relative segments.
+  const segments = canon.split('/').slice(1); // drop leading '' from root
+  for (const seg of segments) {
+    if (seg === '.' || seg === '..') return false;
+  }
+  return canon === '/' ? false : true; // a bare '/' mount is not meaningful
+}
+
 module.exports = (sequelize, DataTypes) => {
   class Volume extends Model {
     static associate(models) {
@@ -44,23 +83,34 @@ module.exports = (sequelize, DataTypes) => {
     }
 
     /**
-     * Build the `{ mp0, mp1, ... }` config fragment for a set of volumes,
-     * assigning contiguous indices in a stable order (id ascending). This is
-     * the single place that maps Volume records to Proxmox mount-point keys, so
-     * both the create and reconfigure paths render identical config.
+     * Build the `{ mp1, mp2, ... }` config fragment for a set of volumes.
      *
-     * Built-in `quick_and_dirty` rows (a backfill artifact for pre-#421
-     * containers whose live mount already exists) and any row without a derived
-     * host path are skipped — they must never render a new/broken mpN.
+     * This is the single place that maps Volume records to Proxmox mount-point
+     * keys, so both the create and reconfigure paths render identical config.
+     *
+     * Legacy `builtin` rows (a backfill artifact for pre-#421 containers whose
+     * `quick_and_dirty` mount is still live at `mp0`) are NOT rendered — their
+     * host path is unknown and the live mount must be preserved. Crucially, the
+     * indices they occupy are RESERVED: user volumes are numbered starting AFTER
+     * the built-in rows, so the first user volume added to a pre-#421 container
+     * lands on `mp<builtinCount>` (e.g. `mp1`) and never overwrites the live
+     * `mp0`. Because updateLxcConfig is a partial update, omitting the reserved
+     * low indices leaves the legacy mount untouched. Rows without a derived host
+     * path are also skipped.
+     *
      * @param {Volume[]} volumes
-     * @returns {object} e.g. { mp0: '...', mp1: '...' }
+     * @returns {object} e.g. { mp1: '...', mp2: '...' } (mp0 reserved for a
+     *   pre-existing built-in mount when present)
      */
     static buildMountConfig(volumes) {
       const config = {};
+      // Reserve one low index per legacy built-in mount so user volumes never
+      // collide with a still-live mp0 on a pre-#421 container.
+      const reserved = volumes.filter((v) => v.builtin).length;
       const mountable = volumes.filter((v) => !v.builtin && v.hostPath);
       const sorted = [...mountable].sort((a, b) => a.id - b.id);
       sorted.forEach((v, i) => {
-        config[`mp${i}`] = v.toMpValue();
+        config[`mp${reserved + i}`] = v.toMpValue();
       });
       return config;
     }
@@ -75,6 +125,14 @@ module.exports = (sequelize, DataTypes) => {
 
     static isValidName(name) {
       return isValidVolumeName(name);
+    }
+
+    static isValidMountPath(mountPath) {
+      return isValidMountPath(mountPath);
+    }
+
+    static canonicalizeMountPath(mountPath) {
+      return canonicalizeMountPath(mountPath);
     }
   }
 
@@ -106,9 +164,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(1024),
         allowNull: false,
         validate: {
-          isAbsolute(value) {
-            if (typeof value !== 'string' || !value.startsWith('/')) {
-              throw new Error('Volume mountPath must be an absolute path');
+          isSafeMountPath(value) {
+            if (!isValidMountPath(value)) {
+              throw new Error(
+                'Volume mountPath must be an absolute path with no provider delimiters ' +
+                  "(',' ':'), backslashes, whitespace, control characters, or '.'/'..' segments",
+              );
             }
           },
         },

@@ -296,15 +296,26 @@ components:
       type: object
       required: [name, mountPath, mode]
       description: >-
-        A volume to attach at create/update. `hostPath` is NOT accepted from
-        clients — it is derived server-side from the node storage's configured
-        path. On update, `{ id, detach: true }` detaches instead.
+        A volume to attach. `hostPath` is NOT accepted from clients — it is
+        derived server-side from the node storage's configured path.
       properties:
         name: { type: string, description: 'Safe path segment (letters, digits, dot, dash, underscore)' }
-        mountPath: { type: string, description: 'Absolute guest mount point' }
+        mountPath: { type: string, description: 'Absolute guest mount point; no provider delimiters (comma/colon), backslashes, whitespace, control chars, or . / .. segments' }
         mode: { type: string, enum: [ro, rw] }
-        id: { type: integer, description: '(update only) Existing volume id; use with detach' }
-        detach: { type: boolean, description: '(update only) true detaches the volume identified by id' }
+    VolumeDetach:
+      type: object
+      required: [id, detach]
+      description: 'Detach an existing volume by id (update only).'
+      properties:
+        id: { type: integer, description: 'Existing volume id to detach' }
+        detach: { type: boolean, enum: [true], description: 'Must be true to detach' }
+    VolumeChange:
+      description: >-
+        A single volume change on update: either an attach (`{ name, mountPath,
+        mode }`) or a detach (`{ id, detach: true }`).
+      oneOf:
+        - $ref: '#/components/schemas/VolumeAttach'
+        - $ref: '#/components/schemas/VolumeDetach'
     Node:
       type: object
       properties:
@@ -930,9 +941,9 @@ paths:
                   type: array
                   description: >-
                     Volume changes. Attach entries are `{ name, mountPath, mode }`;
-                    detach entries are `{ id, detach: true }`. New volumes attach
-                    on the next reconcile/restart.
-                  items: { $ref: '#/components/schemas/VolumeAttach' }
+                    detach entries are `{ id, detach: true }`. A volume mutation on
+                    a provisioned container enqueues a reconfigure job to apply it.
+                  items: { $ref: '#/components/schemas/VolumeChange' }
                 restart: { type: boolean, description: 'A restart job is enqueued only when true — config changes alone never restart the container (they apply on the next restart); alone, it performs a restart-only request' }
       responses:
         '200':

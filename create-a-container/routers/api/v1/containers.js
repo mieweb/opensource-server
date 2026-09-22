@@ -73,17 +73,25 @@ function normalizeVolumeAttach(v) {
       'Volume name must be a safe path segment (letters, digits, dot, dash, underscore; no traversal or separators)',
     );
   }
-  const mountPath = typeof v.mountPath === 'string' ? v.mountPath.trim() : '';
-  if (!mountPath.startsWith('/')) {
-    throw new ApiError(400, 'invalid_volume', 'Volume mountPath must be an absolute path');
+  const rawMountPath = typeof v.mountPath === 'string' ? v.mountPath.trim() : '';
+  // Reject provider delimiters/control chars/traversal, then compare in
+  // canonical form so equivalent spellings can't corrupt config or bypass the
+  // reserved-path check below.
+  if (!Volume.isValidMountPath(rawMountPath)) {
+    throw new ApiError(
+      400,
+      'invalid_volume',
+      "Volume mountPath must be an absolute path with no delimiters (',' ':'), backslashes, whitespace, control characters, or '.'/'..' segments",
+    );
   }
+  const mountPath = Volume.canonicalizeMountPath(rawMountPath);
   // The name and mount point of the retired quick_and_dirty mount are reserved:
   // a user attach at either would collide with the backfilled built-in row that
-  // records the legacy mount on pre-existing containers. Reject them at ingest.
+  // records the legacy mount on pre-existing containers. Compared canonically.
   if (name === Volume.QUICK_AND_DIRTY_NAME) {
     throw new ApiError(400, 'invalid_volume', `Volume name '${name}' is reserved`);
   }
-  if (mountPath === Volume.QUICK_AND_DIRTY_MOUNT) {
+  if (mountPath === Volume.canonicalizeMountPath(Volume.QUICK_AND_DIRTY_MOUNT)) {
     throw new ApiError(
       400,
       'invalid_volume',
@@ -752,6 +760,37 @@ router.put(
           volumeAttaches.push(normalizeVolumeAttach(v));
         }
       }
+      // Reject duplicate names/mount points within the request (both normalized
+      // to their canonical form) so a single update can't create two rows that
+      // violate the (containerId, name)/(containerId, mountPath) unique indexes.
+      const seenNames = new Set();
+      const seenMounts = new Set();
+      for (const a of volumeAttaches) {
+        if (seenNames.has(a.name)) {
+          throw new ApiError(400, 'invalid_volume', `Duplicate volume name: ${a.name}`);
+        }
+        if (seenMounts.has(a.mountPath)) {
+          throw new ApiError(400, 'invalid_volume', `Duplicate volume mountPath: ${a.mountPath}`);
+        }
+        seenNames.add(a.name);
+        seenMounts.add(a.mountPath);
+      }
+      // Reject an attach that collides with an existing volume the same request
+      // isn't detaching (canonical mount comparison catches equivalent paths).
+      if (volumeAttaches.length > 0) {
+        const existing = await Volume.findAll({ where: { containerId: container.id } });
+        const detachSet = new Set(volumeDetachIds);
+        for (const e of existing) {
+          if (detachSet.has(e.id)) continue;
+          const eMount = Volume.canonicalizeMountPath(e.mountPath);
+          if (seenNames.has(e.name)) {
+            throw new ApiError(409, 'volume_exists', `A volume named '${e.name}' is already attached`);
+          }
+          if (eMount && seenMounts.has(eMount)) {
+            throw new ApiError(409, 'volume_exists', `A volume is already mounted at '${eMount}'`);
+          }
+        }
+      }
     }
 
     // Admins may reassign the container to another user by passing `username`.
@@ -781,10 +820,18 @@ router.put(
     const ownerChanged = newOwnerUsername !== null && newOwnerUsername !== container.username;
     const envChanged = !isRestartOnly && container.environmentVars !== envVarsJson;
     const entrypointChanged = !isRestartOnly && container.entrypoint !== newEntrypoint;
+    const volumesChanged = volumeAttaches.length > 0 || volumeDetachIds.length > 0;
     // Never restart implicitly (issue #449): a restart job is enqueued only
     // when the caller explicitly asks for one. Saved env/entrypoint changes
     // are applied by reconfigure-container.js on the next restart.
-    const needsRestart = forceRestart;
+    //
+    // Volume changes are different: the migration reconciler is one-time, so an
+    // attach/detach on an already-provisioned container would otherwise only
+    // write DB rows and never derive host paths, wait on the readiness barrier,
+    // or set mpN. So a volume mutation on a provisioned container ALWAYS enqueues
+    // a reconfigure job (which does exactly that) even without `restart: true`.
+    const needsReconfigureJob =
+      !!container.containerId && (forceRestart || volumesChanged);
 
     let restartJob = null;
     const dnsWarnings = [];
@@ -798,7 +845,7 @@ router.put(
           { transaction: t },
         );
       }
-      if (needsRestart && container.containerId) {
+      if (needsReconfigureJob) {
         restartJob = await Job.create(
           {
             command: `node bin/reconfigure-container.js --container-id=${container.id}`,
@@ -939,17 +986,24 @@ router.put(
       }
     }
 
+    // env/entrypoint changes still take effect only on the next restart when no
+    // job was enqueued. Volume changes on a provisioned container always enqueue
+    // a job above, so they are never "pending"; on an unprovisioned container
+    // they apply at create time.
     const pendingRestart = !restartJob && (envChanged || entrypointChanged);
+    const message = restartJob
+      ? volumesChanged && !forceRestart
+        ? 'Applying volume changes — the container will restart to mount them'
+        : 'Container is restarting'
+      : pendingRestart
+        ? 'Container updated — changes take effect on the next restart'
+        : 'Container updated';
     return ok(res, {
       containerId: container.id,
       jobId: restartJob ? restartJob.id : null,
       dnsWarnings,
       pendingRestart,
-      message: restartJob
-        ? 'Container is restarting'
-        : pendingRestart
-          ? 'Container updated — changes take effect on the next restart'
-          : 'Container updated',
+      message,
     });
   }),
 );

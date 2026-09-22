@@ -2,15 +2,20 @@
  * Volume directory reconciliation (issue #421).
  *
  * The manager includes, at the site level, the volume directories that must
- * exist (id, hostPath, mode). The shared volumes root is bind-mounted into the
- * agent guest by the installer, so these paths are visible and writable here.
+ * exist (id, hostPath, mode, and the owning host uid/gid). The shared volumes
+ * root is bind-mounted into the agent guest by the installer, so these paths are
+ * visible and writable here.
  *
- * The agent is an unprivileged LXC guest mapped the same way as the containers
- * that consume the volumes (host UID/GID 100000 = guest root). So the agent's
- * root `mkdir`s the directory as host 100000 — exactly the mapped root of those
- * containers — and RW volumes are writable from inside them WITHOUT an explicit
- * chown (which would be EPERM inside the guest anyway). The agent therefore only
- * `mkdir -p`s and `chmod`s; it never chowns.
+ * Ownership is applied BEST-EFFORT via chown, which is correct in both agent
+ * topologies:
+ *   - Unprivileged agent guest (production): the agent's root already maps to
+ *     the host owner (100000), so mkdir yields the right owner and the chown is
+ *     a no-op — and if the guest lacks the capability, the EPERM is ignored.
+ *   - Privileged agent guest (e.g. the dev-stack Manager CT): the agent is host
+ *     root, so mkdir would otherwise create a root-owned directory; the chown
+ *     fixes it so an unprivileged consuming container can write RW volumes.
+ * A failed chown is logged and ignored — it never fails the volume, since the
+ * unprivileged-guest case relies on the id-map, not the chown.
  *
  * There is one agent per site (not per node); the volumes root lives on storage
  * shared across the site's nodes, so this single agent provisions every site
@@ -41,18 +46,33 @@ export function volumesForSite(config: SiteConfig): SiteVolume[] {
 }
 
 /**
- * Ensure a single volume directory exists with the right mode. Idempotent:
- * mkdir -p, then chmod every run (cheap, self-healing). No chown — see module
- * header (the id-map establishes ownership).
+ * Ensure a single volume directory exists with the right owner and mode.
+ * Idempotent: mkdir -p, best-effort chown, then chmod every run (cheap,
+ * self-healing).
  * @param {SiteVolume} volume
  * @returns {VolumeResult}
  */
 function ensureVolume(volume: SiteVolume): VolumeResult {
-  const { hostPath, mode } = volume;
+  const { hostPath, mode, uid, gid } = volume;
   try {
     fs.mkdirSync(hostPath, { recursive: true });
+    // Best-effort ownership (see module header): required in a privileged agent
+    // guest, a harmless no-op in an unprivileged one. EPERM is ignored — the
+    // unprivileged case gets correct ownership from the id-map, not the chown.
+    if (typeof uid === 'number' && typeof gid === 'number') {
+      try {
+        fs.chownSync(hostPath, uid, gid);
+      } catch (chownErr) {
+        const code = (chownErr as NodeJS.ErrnoException).code;
+        if (code === 'EPERM' || code === 'ENOSYS') {
+          log.debug(`volume ${volume.id}: chown not permitted (${code}); relying on id-map`);
+        } else {
+          throw chownErr;
+        }
+      }
+    }
     fs.chmodSync(hostPath, mode === 'rw' ? RW_MODE : RO_MODE);
-    log.debug(`volume ${volume.id}: ensured ${hostPath} (mode=${mode})`);
+    log.debug(`volume ${volume.id}: ensured ${hostPath} (mode=${mode}, owner=${uid}:${gid})`);
     return { applied: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

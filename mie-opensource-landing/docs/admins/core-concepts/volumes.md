@@ -37,8 +37,10 @@ it is not re-applied and new containers never receive it.)
 !!! warning "Place the volumes root on shared storage"
     A single per-site agent creates volume directories on the shared volumes
     root that is bind-mounted into it. For a directory to exist wherever a
-    container is placed or migrated, the **volume storage must be shared across
-    every node** (CephFS/RBD, NFS, or equivalent, with `shared=1`).
+    container is placed or migrated, the **volume storage must be a path-backed
+    shared filesystem** — CephFS or NFS (`shared=1`) — that every node mounts.
+    Block storages (Ceph RBD, LVM, ZFS) expose no host directory path and
+    therefore cannot host volumes.
 
     On node-local storage (`dir`/`lvm`/`zfspool` with `shared=0`), the directory
     will not exist where a container on another node lands and the data will not
