@@ -12,8 +12,10 @@ const router = express.Router();
 
 router.use(apiAuth);
 
-// Nested mounts
-router.use('/:siteId/containers/:id/ssh-access', require('../../../resources/ssh-access/sites-router'));
+// Nested mounts. The ssh-access resource is one router mounted at two prefixes
+// (see resources/ssh-access/router.js); the /sites mount serves the owner/admin
+// token mint. Mounted before /:siteId/containers so the deeper path wins.
+router.use('/:siteId/containers/:id/ssh-access', require('../../../resources/ssh-access/router'));
 router.use('/:siteId/containers', require('./containers'));
 router.use('/:siteId/nodes', require('./nodes'));
 router.use('/:siteId/usage', require('../../../resources/usage/router'));
