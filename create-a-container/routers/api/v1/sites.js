@@ -13,6 +13,7 @@ const router = express.Router();
 router.use(apiAuth);
 
 // Nested mounts
+router.use('/:siteId/containers/:id/ssh-access', require('../../../resources/ssh-access/sites-router'));
 router.use('/:siteId/containers', require('./containers'));
 router.use('/:siteId/nodes', require('./nodes'));
 router.use('/:siteId/usage', require('../../../resources/usage/router'));

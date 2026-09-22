@@ -933,21 +933,6 @@ router.delete(
   }),
 );
 
-// POST /containers/:id/ssh-access/token — mint (or rotate) the token sshd in
-// the container uses to ask who may log in (owner/admin). The plaintext is
-// returned exactly once; used by the enrollment script for existing
-// containers. New containers receive theirs via env at creation.
-router.post(
-  '/:id/ssh-access/token',
-  asyncHandler(async (req, res) => {
-    const { container } = await loadContainerForSession(req.params.siteId, req.params.id, req.session, {
-      requireManage: true,
-    });
-    const token = await container.rotateSshAccessToken();
-    return created(res, { containerId: container.id, token });
-  }),
-);
-
 module.exports = router;
 // Exported for unit tests (containers.serialize.test.js).
 module.exports.serializeContainer = serializeContainer;

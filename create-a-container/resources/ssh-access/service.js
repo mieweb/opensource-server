@@ -1,4 +1,5 @@
 const repo = require('./repository');
+const containersService = require('../containers/service');
 const { ApiError } = require('../../middlewares/api');
 
 /**
@@ -35,4 +36,24 @@ function assertUserAllowed(container, username) {
   throw new ApiError(403, 'forbidden', 'User is not the owner or a collaborator of this container');
 }
 
-module.exports = { authenticateContainer, assertUserAllowed };
+/**
+ * Mint (or rotate) the token sshd inside a container presents to the check
+ * endpoint. Owner/admin-scoped: authorization is delegated to the containers
+ * service (service-to-service, manifesto §3), which 404s a container the caller
+ * can't see and 403s a collaborator who isn't the owner. The plaintext token is
+ * returned exactly once — the caller (the part-2 enrollment script, or an admin)
+ * pushes it into the container's env; only its argon2 hash is stored.
+ * @param {*} siteId - site id from the URL
+ * @param {number} containerId - container id (already validated positive int)
+ * @param {object} session - { user, isAdmin }
+ * @returns {Promise<{ containerId: number, token: string }>}
+ */
+async function mintToken(siteId, containerId, session) {
+  const { container } = await containersService.loadForSession(siteId, containerId, session, {
+    requireManage: true,
+  });
+  const token = await container.rotateSshAccessToken();
+  return { containerId: container.id, token };
+}
+
+module.exports = { authenticateContainer, assertUserAllowed, mintToken };

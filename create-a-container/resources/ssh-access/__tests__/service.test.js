@@ -6,6 +6,8 @@
 
 jest.mock('../repository');
 const repo = require('../repository');
+jest.mock('../../containers/service');
+const containersService = require('../../containers/service');
 const svc = require('../service');
 
 // Minimal container stand-in: only what the service touches.
@@ -63,5 +65,32 @@ describe('assertUserAllowed', () => {
     expect(() => svc.assertUserAllowed(fakeContainer(), 'carol')).toThrow(
       expect.objectContaining({ status: 403 }),
     );
+  });
+});
+
+describe('mintToken', () => {
+  test('delegates authorization to the containers service and rotates the token', async () => {
+    const container = { id: 7, rotateSshAccessToken: jest.fn(async () => 'plain-tok') };
+    containersService.loadForSession.mockResolvedValue({ container });
+
+    const result = await svc.mintToken('1', 7, { user: 'alice', isAdmin: false });
+
+    expect(containersService.loadForSession).toHaveBeenCalledWith(
+      '1',
+      7,
+      { user: 'alice', isAdmin: false },
+      { requireManage: true },
+    );
+    expect(container.rotateSshAccessToken).toHaveBeenCalled();
+    expect(result).toEqual({ containerId: 7, token: 'plain-tok' });
+  });
+
+  test('propagates the containers service authorization error (does not rotate)', async () => {
+    containersService.loadForSession.mockRejectedValue(
+      Object.assign(new Error('forbidden'), { status: 403 }),
+    );
+    await expect(svc.mintToken('1', 7, { user: 'bob', isAdmin: false })).rejects.toMatchObject({
+      status: 403,
+    });
   });
 });
