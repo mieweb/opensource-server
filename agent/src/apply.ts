@@ -75,10 +75,9 @@ export const services: ManagedService[] = [
     unit: 'dnsmasq',
     async render(config) {
       const site = config.site;
-      // Skip dnsmasq management until the site's DHCP/DNS settings are fully
-      // configured — the templates need all of these fields.
-      if (!site?.internalDomain || !site.dhcpRange || !site.subnetMask
-        || !site.gateway || !site.dnsForwarders) {
+      // DHCP and internal DNS can run on an isolated site. Only the core
+      // DHCP settings are required; gateway and DNS forwarders are optional.
+      if (!site?.internalDomain || !site.dhcpRange || !site.subnetMask) {
         return null;
       }
       const data = { site };
