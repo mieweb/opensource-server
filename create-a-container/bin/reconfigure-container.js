@@ -83,8 +83,11 @@ async function main() {
     // Build config from environment variables and entrypoint. Pass
     // deleteMissing so that clearing env vars or removing a custom entrypoint
     // actually unsets them on the existing container (vs. create, which must
-    // preserve template-provided values).
-    const lxcConfig = await container.buildLxcEnvConfig({ deleteMissing: true });
+    // preserve template-provided values). The SSH-access token already in the
+    // container's env is carried over so the running credential stays valid.
+    const currentConfig = await client.lxcConfig(node.name, container.containerId);
+    const sshAccessToken = await container.ensureSshAccessToken(currentConfig.env);
+    const lxcConfig = await container.buildLxcEnvConfig({ deleteMissing: true, sshAccessToken });
     
     if (Object.keys(lxcConfig).length > 0) {
       console.log('Applying LXC configuration...');

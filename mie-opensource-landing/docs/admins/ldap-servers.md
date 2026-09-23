@@ -73,6 +73,10 @@ In the admin UI: **Settings** → **Default Container Environment Variables**. T
 | `SSSD_LDAP_DEFAULT_BIND_DN` | *(blank)* | No | DN used to bind for lookups. Leave blank for anonymous bind; set it if your directory disallows anonymous searches (e.g. `cn=svc-sssd,ou=services,dc=example,dc=com`). |
 | `SSSD_DEFAULT_AUTHTOK_TYPE` | *(blank)* | No | Type of the bind credential, typically `password`. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |
 | `SSSD_DEFAULT_AUTHTOK` | *(blank)* | No | The bind credential (password) for the bind DN. Required when `SSSD_LDAP_DEFAULT_BIND_DN` is set. |
+| `MANAGER_URL` | *(blank)* | Yes | Public base URL of this manager as reachable **from containers** (e.g. `https://manager.example.com`). sshd inside each container calls `GET <MANAGER_URL>/api/v1/containers/<id>/ssh-access/<user>` to allow only the container's owner and collaborators. Blank ⇒ new containers are created unenrolled and SSH stays open to every user the `SSSD_LDAP_ACCESS_FILTER` admits. |
+
+!!! note "Per-container SSH access vs. the directory filter"
+    `SSSD_LDAP_ACCESS_FILTER` is a cluster-wide, directory-level gate (which accounts may log in anywhere). Owner/collaborator enforcement is per container and is evaluated by the manager on every SSH connection; both must allow a user. The manager injects `CONTAINER_ID` and `CONTAINER_SSH_TOKEN` into each new container's environment (they are reserved and cannot be set by users). Containers created before this feature show **SSH not enforced** until enrolled.
 
 !!! tip
     `SSSD_LDAP_DEFAULT_BIND_DN`, `SSSD_DEFAULT_AUTHTOK_TYPE`, and `SSSD_DEFAULT_AUTHTOK` work as a set. Provide all three when your directory requires an authenticated bind to read users and groups; leave all three blank to bind anonymously. The service account only needs read access to the user and group subtrees — user passwords are verified by a separate bind as the authenticating user.

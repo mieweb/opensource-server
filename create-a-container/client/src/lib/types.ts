@@ -228,6 +228,8 @@ export interface Container {
   owner: string;
   /** Usernames this container is shared with (collaborators). */
   collaborators: string[];
+  /** Whether sshd in the container limits logins to owner + collaborators. */
+  sshAccessEnforced: boolean;
   ipv4Address: string | null;
   macAddress: string | null;
   status: ContainerStatus;

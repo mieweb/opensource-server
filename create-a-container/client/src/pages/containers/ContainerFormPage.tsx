@@ -34,6 +34,7 @@ import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
 import { ResourcesSection } from '@/components/containers/ResourcesSection';
 import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { SshAccessBadge } from '@/components/containers/SshAccessBadge';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 function useDebouncedValue<T>(value: T, delay = 500): T {
@@ -823,10 +824,13 @@ export function ContainerFormPage() {
           <CardContent className={sectionContentClass}>
             {isEdit && container ? (
               <>
-                <p className="text-sm text-muted-foreground">
-                  Share this container with other users for collaboration. They will see it in
-                  their All containers tab.
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    Only the owner and collaborators can SSH into this container. Collaborators
+                    also see it in their All containers tab.
+                  </p>
+                  <SshAccessBadge container={container} />
+                </div>
                 <CollaboratorsManager
                   siteId={siteId!}
                   containerId={container.id}
@@ -836,8 +840,9 @@ export function ContainerFormPage() {
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Optionally add other users as collaborators. They will see this container in
-                  their All containers tab once it is created.
+                  Optionally add other users as collaborators. Only you and your collaborators
+                  will be able to SSH into this container; they will also see it in their All
+                  containers tab once it is created.
                 </p>
                 <CollaboratorChips
                   usernames={collaborators}

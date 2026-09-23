@@ -74,6 +74,7 @@ erDiagram
         string ipv4Address UK
         string aiContainer
         boolean nvidiaRequested "default: false"
+        string sshAccessTokenHash "nullable; argon2"
     }
 
     Services {
@@ -193,7 +194,7 @@ Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `i
 Site agent registered by its check-in (`POST /api/v1/agents`, every 30s). Unique composite index on `(siteId, hostname)`. `services` stores the per-service status reported by the agent (`{ nginx: { state, lastApply }, ... }`); `lastCheckinAt` drives the online/offline health shown on the web client's Agents page. Belongs to Site. See [agent](agent.md).
 
 ### Container
-LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. `nvidiaRequested` indicates GPU passthrough was requested — the container is assigned to an NVIDIA-capable node and the nvidia hookscript is attached. Belongs to Node and optionally to a Job.
+LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. `nvidiaRequested` indicates GPU passthrough was requested — the container is assigned to an NVIDIA-capable node and the nvidia hookscript is attached. `sshAccessTokenHash` is the argon2 hash of the token sshd inside the container presents to `GET /api/v1/containers/:id/ssh-access/:username`, which answers from `username` (owner) plus `ContainerCollaborators`; `NULL` means the container is not enrolled and SSH is not restricted. The plaintext is only ever in the container's env (`CONTAINER_SSH_TOKEN`). Belongs to Node and optionally to a Job.
 
 ### Service (STI)
 Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.
