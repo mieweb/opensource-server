@@ -21,6 +21,11 @@ const NETBOX_COMMENT = 'This container was built using opensource-server';
 // for display, so convert gigabytes to MB before sending.
 const MB_PER_GB = 1000;
 
+// Network-level failures (DNS blip, hairpin-NAT connect reset) are retried;
+// HTTP error responses are not.
+const FETCH_ATTEMPTS = 3;
+const FETCH_RETRY_DELAY_MS = 1000;
+
 /**
  * Build request headers for NetBox API calls.
  * @param {string} token - NetBox API token
@@ -34,6 +39,41 @@ function headers(token) {
 }
 
 /**
+ * undici wraps DNS/connect/TLS failures as TypeError('fetch failed') with the
+ * real reason in err.cause. Anything else (bad URL, aborted, etc.) is not
+ * a transient network error.
+ */
+function isNetworkError(err) {
+  return err instanceof TypeError && err.message === 'fetch failed' && err.cause != null;
+}
+
+/**
+ * fetch() with retries on network errors. Other errors are rethrown immediately.
+ * @param {string} url
+ * @param {object} init - fetch init options
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, init) {
+  let lastErr;
+  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      if (!isNetworkError(err)) throw err;
+      lastErr = err;
+      if (attempt < FETCH_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, FETCH_RETRY_DELAY_MS * attempt));
+      }
+    }
+  }
+  const cause = lastErr.cause.code || lastErr.cause.message;
+  throw new Error(
+    `NetBox unreachable after ${FETCH_ATTEMPTS} attempts (${init.method || 'GET'} ${url}): ${cause}`,
+    { cause: lastErr },
+  );
+}
+
+/**
  * Perform a fetch against the NetBox API.
  * Throws on non-2xx responses. Returns null for 204 No Content.
  * @param {string} baseUrl - NetBox base URL (no trailing slash)
@@ -44,7 +84,7 @@ function headers(token) {
  */
 async function nbFetch(baseUrl, token, path, options = {}) {
   const url = `${baseUrl.replace(/\/$/, '')}/api${path}`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     ...options,
     headers: { ...headers(token), ...(options.headers || {}) },
   });
