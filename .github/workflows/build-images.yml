@@ -40,7 +40,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Fork PRs get a read-only GITHUB_TOKEN and no secrets, so they only verify the build.
       - name: Log in to GitHub Container Registry
+        if: ${{ !github.event.pull_request.head.repo.fork }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -160,7 +162,7 @@ jobs:
         uses: docker/bake-action@v5
         with:
           workdir: ./images
-          push: true
+          push: ${{ !github.event.pull_request.head.repo.fork }}
           files: |
             ./docker-bake.hcl
             ${{ steps.meta-base.outputs.bake-file }}
@@ -190,7 +192,7 @@ jobs:
             proxmox-ve.cache-to=type=gha,mode=max,scope=proxmox-ve-${{ github.ref_name }}
 
   deploy-preview:
-    if: github.event.action != 'closed'
+    if: github.event.action != 'closed' && !github.event.pull_request.head.repo.fork
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
@@ -203,7 +205,7 @@ jobs:
           template_name: ${{ env.REGISTRY }}/${{ github.repository }}/docs:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
 
   cleanup-preview:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && !github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
