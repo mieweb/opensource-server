@@ -104,3 +104,10 @@ test('stream server records last-access at the access phase', async () => {
   assert.match(conf, /listen 30022;/);
   assert.match(conf, /proxy_pass 10\.254\.1\.6:22;/);
 });
+
+test('HTTP/3 is not advertised via Alt-Svc', async () => {
+  const conf = await render({ httpServices: [httpService] });
+  assert.doesNotMatch(conf, /Alt-Svc/i);
+  // QUIC listeners stay; only the advertisement is removed.
+  assert.match(conf, /listen 443 quic/);
+});
