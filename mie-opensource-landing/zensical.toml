@@ -39,6 +39,7 @@ nav = [
         { "Nodes" = "admins/core-concepts/nodes.md" },
         { "Sites" = "admins/core-concepts/sites.md" },
         { "Users and Groups" = "admins/core-concepts/users-and-groups.md" },
+        { "Volumes" = "admins/core-concepts/volumes.md" },
       ] },
       { "Settings" = "admins/settings.md" },
       { "OIDC Single Sign-On" = "admins/oidc.md" },

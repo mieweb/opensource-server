@@ -95,6 +95,33 @@ function isSystemContainer(options = {}) {
   return entrypoint.includes('/sbin/init') || entrypoint.includes('systemd');
 }
 
+/**
+ * Parse Proxmox `mpN` bind-mount config values from an LXC config object into
+ * Docker `HostConfig.Binds` strings (`<hostPath>:<mountPath>[:ro]`). This maps
+ * the volumes feature (issue #421) onto the Docker backend. Each mpN value is
+ * `<hostPath>,mp=<mountPath>,ro=<0|1>`.
+ * @param {object} config - Config object possibly containing mp0, mp1, ...
+ * @returns {string[]} Docker bind specs
+ */
+function mpConfigToDockerBinds(config = {}) {
+  const binds = [];
+  for (const [key, raw] of Object.entries(config)) {
+    if (!/^mp\d+$/.test(key) || typeof raw !== 'string') continue;
+    const parts = raw.split(',');
+    const hostPath = parts[0];
+    let mountPath = null;
+    let ro = false;
+    for (const p of parts.slice(1)) {
+      if (p.startsWith('mp=')) mountPath = p.slice(3);
+      else if (p === 'ro=1') ro = true;
+    }
+    if (hostPath && mountPath) {
+      binds.push(`${hostPath}:${mountPath}${ro ? ':ro' : ''}`);
+    }
+  }
+  return binds;
+}
+
 class DockerApi {
   constructor(node = {}) {
     if (!node.apiUrl) {
@@ -379,6 +406,13 @@ class DockerApi {
     if (deleteList.includes('entrypoint')) entrypoint = undefined;
     if (config.entrypoint) entrypoint = config.entrypoint.split(' ');
 
+    // Map any Proxmox mpN bind mounts (issue #421) to Docker binds. When mpN
+    // keys are present they fully replace the container's binds; otherwise the
+    // previous binds are preserved.
+    const mpBinds = mpConfigToDockerBinds(config);
+    const hasMpConfig = Object.keys(config).some((k) => /^mp\d+$/.test(k));
+    const binds = hasMpConfig ? mpBinds : inspect.HostConfig?.Binds || undefined;
+
     if (wasRunning) {
       await this.request('post', `/containers/${containerId}/stop`).catch(() => {});
     }
@@ -399,14 +433,16 @@ class DockerApi {
       HostConfig: {
         ...(inspect.HostConfig || {}),
         NetworkMode: inspect.HostConfig?.NetworkMode || 'bridge',
+        ...(binds ? { Binds: binds } : {}),
       },
     };
 
-    delete body.HostConfig.Binds;
     delete body.HostConfig.Mounts;
     delete body.HostConfig.PortBindings;
     delete body.HostConfig.CpuPeriod;
     delete body.HostConfig.CpuQuota;
+    // Only clear Binds when we are not explicitly setting them from mpN config.
+    if (!binds) delete body.HostConfig.Binds;
 
     const created = await this.request('post', '/containers/create', {
       params: { name },
@@ -417,9 +453,11 @@ class DockerApi {
   }
 
   async updateLxcConfig(node, vmid, config = {}) {
+    const hasMpConfig = Object.keys(config).some((k) => /^mp\d+$/.test(k));
     const hasContainerConfigChanges =
       config.env !== undefined ||
       config.entrypoint !== undefined ||
+      hasMpConfig ||
       String(config.delete || '').includes('env') ||
       String(config.delete || '').includes('entrypoint');
 
@@ -536,3 +574,4 @@ class DockerApi {
 
 module.exports = DockerApi;
 module.exports.isValidDockerHost = isValidDockerHost;
+module.exports.mpConfigToDockerBinds = mpConfigToDockerBinds;

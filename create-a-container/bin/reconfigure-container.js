@@ -23,10 +23,68 @@ const path = require('path');
 
 // Load models from parent directory
 const db = require(path.join(__dirname, '..', 'models'));
-const { Container, Node, Site } = db;
+const { Container, Node, Site, Volume } = db;
 
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
+const {
+  resolveVolumesRoot,
+  deriveVolumeHostPaths,
+} = require(path.join(__dirname, '..', 'utils', 'volumes'));
+
+/**
+ * Ensure this container's volume host paths are derived and their directories
+ * are ready, then return the ready volumes so the caller can render mpN. Mirrors
+ * the create job's prepareVolumes but for reconfigure (attaching a volume to
+ * an already-provisioned container). Built-in and docker volumes never block.
+ * @param {object} client
+ * @param {object} node
+ * @param {object} container
+ * @returns {Promise<Volume[]>}
+ */
+async function ensureVolumesReady(client, node, container) {
+  const volumes = await Volume.findAll({ where: { containerId: container.id } });
+  if (volumes.length === 0) return [];
+
+  // Resolve the volumes root only when a non-builtin volume still needs its
+  // host path derived. Otherwise (only legacy built-in rows, or everything
+  // already derived) skip it: resolveVolumesRoot fails on block-backed storage
+  // like the default local-lvm, and a pre-#421 container whose only volume is
+  // the built-in must not fail reconfigure over storage it never needs.
+  const needsRoot = volumes.some((v) => !v.builtin && !v.hostPath);
+  if (needsRoot) {
+    const { root: volumesRoot } = await resolveVolumesRoot(client, node);
+    // Derive + persist missing host paths; mark builtin/docker volumes ready
+    // (shared with the create/reconcile jobs).
+    await deriveVolumeHostPaths(volumes, {
+      volumesRoot,
+      siteId: container.siteId,
+      hostname: container.hostname,
+      nodeType: node.nodeType,
+    });
+  }
+
+  // Bounded wait for the agent to create any pending directories.
+  const start = Date.now();
+  const timeoutMs = 300000;
+  for (;;) {
+    const rows = await Volume.findAll({ where: { containerId: container.id } });
+    const failed = rows.find((v) => v.status === 'failed');
+    if (failed) {
+      throw new Error(
+        `Volume '${failed.name}' provisioning failed: ${failed.statusMessage || 'unknown error'}`,
+      );
+    }
+    if (rows.every((v) => v.status === 'ready')) break;
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('Timed out waiting for volume provisioning on the node');
+    }
+    console.log('Waiting for volume provisioning on the node...');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  return Volume.findAll({ where: { containerId: container.id }, order: [['id', 'ASC']] });
+}
 
 /**
  * Main function
@@ -109,11 +167,38 @@ async function main() {
       console.log('Resource configuration applied');
     }
 
+    // Reconcile volume bind mounts (issue #421): ensure host directories are
+    // ready and (re)render every Volume row to mpN. Setting the same mpN values
+    // is idempotent; attaching a new one requires a restart to take effect.
+    let volumesChanged = false;
+    const volumes = await ensureVolumesReady(client, node, container);
+    // Skip the mpN mount reconcile on Docker nodes: Docker binds are applied at
+    // create time and `lxcConfig()` does not expose `mpN`, so the diff below
+    // would always report "changed" and re-apply on every reconfigure. (Bind
+    // changes on Docker flow through the container-recreate path, not mpN.)
+    if (volumes.length > 0 && node.nodeType !== 'docker') {
+      const mountConfig = Volume.buildMountConfig(volumes);
+      const currentConfig = await client.lxcConfig(node.name, container.containerId);
+      volumesChanged = Object.entries(mountConfig).some(([k, val]) => currentConfig[k] !== val);
+      if (volumesChanged) {
+        console.log('Applying volume mounts...');
+        console.log('Volumes:', JSON.stringify(mountConfig, null, 2));
+        await client.updateLxcConfig(node.name, container.containerId, mountConfig);
+        await Volume.update(
+          { appliedAt: new Date() },
+          { where: { containerId: container.id } },
+        );
+        console.log('Volume mounts applied');
+      } else {
+        console.log('Volume mounts already up to date');
+      }
+    }
+
     // Determine if a stop/start cycle is required.
     // rootfs (disk) changes require a restart; memory/cpu/swap are applied live via cgroups.
     // LXC env/entrypoint config changes (actual values being set, not just deletions) require a restart.
     const hasEnvConfigChanges = Object.keys(lxcConfig).some(k => k !== 'delete');
-    const requiresRestart = !!args.rootfs || hasEnvConfigChanges;
+    const requiresRestart = !!args.rootfs || hasEnvConfigChanges || volumesChanged;
 
     // Check container status before stop/start cycle
     const lxcStatus = await client.getLxcStatus(node.name, container.containerId);

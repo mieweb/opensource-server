@@ -179,6 +179,9 @@ components:
             (max of the services' lastAccessedAt). Null when never accessed.
         nodeName: { type: string, nullable: true }
         nodeApiUrl: { type: string, nullable: true }
+        volumes:
+          type: array
+          items: { $ref: '#/components/schemas/Volume' }
         services:
           type: array
           items: { $ref: '#/components/schemas/ContainerService' }
@@ -266,6 +269,53 @@ components:
       properties:
         key: { type: string }
         value: { type: string }
+    Volume:
+      type: object
+      description: >-
+        A container bind-mount volume (issue #421). Host directories are
+        created by the site agent and attached as Proxmox mpN bind mounts. On
+        Docker nodes, volumes map to Docker binds.
+      properties:
+        id: { type: integer }
+        name: { type: string, description: 'Safe path segment; no traversal/separators' }
+        mountPath: { type: string, description: 'Absolute guest mount point (e.g. /mnt/data)' }
+        mode: { type: string, enum: [ro, rw] }
+        scope: { type: string, description: 'Currently always `container` (per-container). Per-user/site/node is a later extension.' }
+        builtin: { type: boolean, description: 'True only for the retired quick_and_dirty mount recorded on pre-existing containers. Never set on new volumes and never re-applied.' }
+        status:
+          type: string
+          enum: [pending, ready, failed]
+          description: >-
+            Directory-readiness lifecycle. `pending` until the site agent
+            creates the host directory, then `ready`; `failed` on a mkdir/chown
+            error (see statusMessage). The create job blocks on `ready` before
+            attaching the mount.
+        statusMessage: { type: string, nullable: true, description: 'Agent error detail when status is failed' }
+        appliedAt: { type: string, format: date-time, nullable: true }
+    VolumeAttach:
+      type: object
+      required: [name, mountPath, mode]
+      description: >-
+        A volume to attach. `hostPath` is NOT accepted from clients — it is
+        derived server-side from the node storage's configured path.
+      properties:
+        name: { type: string, description: 'Safe path segment (letters, digits, dot, dash, underscore)' }
+        mountPath: { type: string, description: 'Absolute guest mount point; no provider delimiters (comma/colon), backslashes, whitespace, control chars, or . / .. segments' }
+        mode: { type: string, enum: [ro, rw] }
+    VolumeDetach:
+      type: object
+      required: [id, detach]
+      description: 'Detach an existing volume by id (update only).'
+      properties:
+        id: { type: integer, description: 'Existing volume id to detach' }
+        detach: { type: boolean, enum: [true], description: 'Must be true to detach' }
+    VolumeChange:
+      description: >-
+        A single volume change on update: either an attach (`{ name, mountPath,
+        mode }`) or a detach (`{ id, detach: true }`).
+      oneOf:
+        - $ref: '#/components/schemas/VolumeAttach'
+        - $ref: '#/components/schemas/VolumeDetach'
     Node:
       type: object
       properties:
@@ -285,6 +335,13 @@ components:
         networkBridge: { type: string }
         nvidiaAvailable: { type: boolean }
         hasSecret: { type: boolean }
+        warnings:
+          type: array
+          items: { type: string }
+          description: >-
+            Advisory warnings from the last save (create/update), e.g. the
+            volume storage is not shared across the cluster (issue #421).
+            Present on create/update responses only.
     NodeInput:
       type: object
       required: [name]
@@ -787,6 +844,10 @@ paths:
                 environmentVars:
                   type: array
                   items: { $ref: '#/components/schemas/EnvVar' }
+                volumes:
+                  type: array
+                  description: Volumes (bind mounts) to attach to the new container
+                  items: { $ref: '#/components/schemas/VolumeAttach' }
                 services:
                   type: object
                   description: Keyed map of services to create (keys are arbitrary)
@@ -806,7 +867,7 @@ paths:
                       jobId: { type: integer }
                       hostname: { type: string }
                       status: { $ref: '#/components/schemas/ContainerStatus' }
-        '400': { description: 'invalid_request or invalid_service', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '400': { description: 'invalid_request, invalid_service, or invalid_volume', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '403': { description: 'forbidden — non-admins may not create containers for other users', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { description: 'site_not_found, or user_not_found when a collaborator does not exist', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '409': { description: 'No provisionable node available (code: no_node or no_nvidia_node)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
@@ -876,6 +937,13 @@ paths:
                   items: { $ref: '#/components/schemas/EnvVar' }
                   description: Full replacement set. Omitting it clears all user env vars (unless the request is restart-only).
                 entrypoint: { type: string, nullable: true, description: Omitting/blank clears the entrypoint (unless the request is restart-only) }
+                volumes:
+                  type: array
+                  description: >-
+                    Volume changes. Attach entries are `{ name, mountPath, mode }`;
+                    detach entries are `{ id, detach: true }`. A volume mutation on
+                    a provisioned container enqueues a reconfigure job to apply it.
+                  items: { $ref: '#/components/schemas/VolumeChange' }
                 restart: { type: boolean, description: 'A restart job is enqueued only when true — config changes alone never restart the container (they apply on the next restart); alone, it performs a restart-only request' }
       responses:
         '200':
@@ -1184,12 +1252,12 @@ paths:
       tags: [Agents]
       summary: Agent check-in
       description: |
-        Site agents POST their system info and per-service status every 30
-        seconds. The response carries the site's config snapshot with a strong
-        `ETag`; send it back via `If-None-Match` to receive `304 Not Modified`
-        when nothing changed. Allowed from localhost without credentials
-        (manager bootstrap) or with an admin API key. Exempt from the CSRF
-        guard.
+        Site agents POST their system info, per-service status, and per-volume
+        directory-provisioning results every 30 seconds. The response carries
+        the site's config snapshot with a strong `ETag`; send it back via
+        `If-None-Match` to receive `304 Not Modified` when nothing changed.
+        Allowed from localhost without credentials (manager bootstrap) or with
+        an admin API key. Exempt from the CSRF guard.
       parameters:
         - in: header
           name: If-None-Match
@@ -1214,6 +1282,18 @@ paths:
                     properties:
                       state: { type: string, description: 'systemd ActiveState: active, inactive, failed, ...' }
                       lastApply: { type: string, enum: [success, failure, unknown] }
+                volumes:
+                  type: object
+                  description: >-
+                    Per-volume directory-provisioning results keyed by the
+                    manager-assigned Volume id. The manager writes these into
+                    Volume.status (ready when applied, failed otherwise) at
+                    check-in (issue #421).
+                  additionalProperties:
+                    type: object
+                    properties:
+                      applied: { type: boolean }
+                      message: { type: string, description: 'Failure detail (mkdir/chown error)' }
       responses:
         '200':
           description: 'Config snapshot (`{ data: { site, nginx } }`) with `ETag` header'

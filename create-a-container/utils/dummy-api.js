@@ -154,6 +154,21 @@ class DummyApi {
     return [];
   }
 
+  /**
+   * Simulated storage config with a path-backed layout so resolveVolumesRoot()
+   * derives a plausible volumes root. `shared: 1` so the node-save
+   * shared-storage warning is quiet for dummy dev nodes.
+   */
+  async storageConfig(storage) {
+    return {
+      storage,
+      type: 'dir',
+      path: `/mnt/pve/${storage}`,
+      shared: 1,
+      content: 'rootdir,vztmpl',
+    };
+  }
+
   async pullOciImage(node, storage, options = {}) {
     console.log(`[DummyApi] pullOciImage(${options.reference || '?'}) -> simulated`);
     return this._fakeUpid('imgpull');

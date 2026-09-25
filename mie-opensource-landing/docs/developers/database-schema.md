@@ -14,6 +14,7 @@ erDiagram
     Sites ||--o{ Agents : "checked in by"
     Nodes ||--o{ Containers : hosts
     Containers ||--o{ Services : exposes
+    Containers ||--o{ Volumes : mounts
     Containers }o--o| Jobs : "created by"
     Services ||--|| HTTPServices : "type: http"
     Services ||--|| TransportServices : "type: transport"
@@ -81,6 +82,20 @@ erDiagram
         int containerId FK
         enum type "http,transport,dns"
         int containerPort
+    }
+
+    Volumes {
+        int id PK
+        int containerId FK
+        string name "unique per container"
+        string hostPath "derived; nullable until provisioned"
+        string mountPath "unique per container"
+        enum mode "ro | rw"
+        string scope "default: container"
+        boolean builtin "legacy quick_and_dirty backfill"
+        enum status "pending | ready | failed"
+        string statusMessage "nullable"
+        date appliedAt "nullable"
     }
 
     HTTPServices {
@@ -201,6 +216,9 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 - **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain. `backendProtocol` controls `proxy_pass` scheme (`http` or `https`). `authRequired` enables NGINX `auth_request` against the domain's oauth2-proxy — requires the domain's `authServer` to be configured.
 - **TransportService**: `(protocol, externalPort)` unique. `findNextAvailablePort()` static method.
 - **DnsService**: SRV records with `serviceName`.
+
+### Volume
+Persistent bind-mount attached to a container (issue #421). Unique composite indexes on `(containerId, name)` and `(containerId, mountPath)`. `hostPath` is derived server-side from the node volume storage's actual configured `path` (`<path>/volumes/site-<siteId>/<hostname>/<name>`; scoped by site so containers with the same hostname across sites don't collide on shared storage) and is null until the create job derives it. `mode` is `ro`/`rw`; each row renders to a Proxmox `mpN` bind mount (`Volume.buildMountConfig`). `status` (`pending` → `ready` | `failed`) is the readiness barrier the create/reconfigure jobs block on — the site agent creates the host directory and reports the result at check-in, which the manager writes to `status`/`statusMessage`/`appliedAt`. `builtin` marks the retired `quick_and_dirty` mount backfilled onto pre-#421 containers for reference (never re-applied; its live `mp0` slot is reserved by `buildMountConfig`). Belongs to Container. See [Volumes](../admins/core-concepts/volumes.md).
 
 ### ExternalDomain
 Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).

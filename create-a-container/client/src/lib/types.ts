@@ -29,6 +29,9 @@ export interface Node {
   networkBridge: string;
   nvidiaAvailable: boolean;
   hasSecret: boolean;
+  /** Advisory warnings returned by the last create/update save (e.g. volume
+   * storage not shared across the cluster). Present on save responses only. */
+  warnings?: string[];
 }
 
 /** Used/total byte pair for a node hardware resource. */
@@ -221,6 +224,26 @@ export interface ContainerService {
   dnsService: ServiceDns | null;
 }
 
+/** A container bind-mount volume (issue #421). */
+export interface Volume {
+  id: number;
+  name: string;
+  mountPath: string;
+  mode: 'ro' | 'rw';
+  scope: string;
+  builtin: boolean;
+  status: 'pending' | 'ready' | 'failed';
+  statusMessage: string | null;
+  appliedAt: string | null;
+}
+
+/** A volume to attach on create/update (hostPath is derived server-side). */
+export interface VolumeAttach {
+  name: string;
+  mountPath: string;
+  mode: 'ro' | 'rw';
+}
+
 export interface Container {
   id: number;
   containerId: number | null;
@@ -244,6 +267,7 @@ export interface Container {
   nodeName: string | null;
   nodeApiUrl: string | null;
   services: ContainerService[];
+  volumes: Volume[];
   createdAt: string;
 }
 
