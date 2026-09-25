@@ -90,7 +90,11 @@ http {
   add_header X-Frame-Options "SAMEORIGIN" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-XSS-Protection "1; mode=block" always;
-  add_header Alt-Svc 'h3=":443"; ma=86400' always;
+  <%_ /*
+    No Alt-Svc header: HTTP/3 stays enabled on the listeners, but without the
+    advertisement clients stay on HTTP/2. Large uploads over HTTP/3 crawl and
+    are cut off by every nginx reload (see #480).
+  */ -%>
 
   <%_ /*
     Internal error page server on a unix socket. Named locations proxy here
