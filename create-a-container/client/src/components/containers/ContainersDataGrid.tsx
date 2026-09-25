@@ -54,7 +54,13 @@ export function ContainersDataGrid({
   // DataVis's `http` source fetches a URL; a blob URL lets us feed local React
   // Query data without a network round-trip. Rebuilt whenever the rows change.
   const url = useMemo(() => {
-    const payload = { typeInfo: TYPE_INFO, data: containers };
+    // DataVis can't decode or filter null strings (crashes on `null.toString()`), so send ''.
+    const data = containers.map((c) => {
+      const row: Record<string, unknown> = { ...c };
+      for (const { field } of TYPE_INFO) row[field] ??= '';
+      return row;
+    });
+    const payload = { typeInfo: TYPE_INFO, data };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     return URL.createObjectURL(blob);
   }, [containers]);
