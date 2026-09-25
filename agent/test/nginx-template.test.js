@@ -2,7 +2,8 @@
  * nginx.conf.ejs render tests (node --test, no extra deps). Pins the
  * last-access accounting hooks: module/zone/vars in the http context,
  * per-service mirror + internal location, and their absence from the
- * default/landing/wildcard servers.
+ * default/landing/wildcard servers. Also pins that HTTP/3 is not advertised
+ * (see #480).
  */
 
 const test = require('node:test');
@@ -103,4 +104,11 @@ test('stream server records last-access at the access phase', async () => {
   assert.match(conf, /js_access accounting\.stream_record;/);
   assert.match(conf, /listen 30022;/);
   assert.match(conf, /proxy_pass 10\.254\.1\.6:22;/);
+});
+
+test('HTTP/3 is not advertised via Alt-Svc', async () => {
+  const conf = await render({ httpServices: [httpService], externalDomains: [{ name: 'example.com' }] });
+  assert.doesNotMatch(conf, /Alt-Svc/i);
+  // The QUIC listeners stay; only the advertisement is gone.
+  assert.match(conf, /listen 443 quic/);
 });
