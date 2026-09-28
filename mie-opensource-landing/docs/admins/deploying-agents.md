@@ -105,7 +105,6 @@ Forward the following ports from the Proxmox host to the agent container:
 |------|----------|---------|
 | 80 | TCP | HTTP (nginx) |
 | 443 | TCP | HTTPS (nginx) |
-| 443 | UDP | QUIC (nginx) |
 | 53 | TCP/UDP | DNS (dnsmasq) |
 
 ## 6. Import the Node

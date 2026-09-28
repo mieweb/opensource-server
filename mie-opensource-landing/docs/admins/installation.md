@@ -264,7 +264,6 @@ At your firewall, create the following port-forwards:
 | 22 | tcp | Proxmox Server | SSH access to the Proxmox server. |
 | 80 | tcp | Manager Container | HTTP -> HTTPS redirect served by the Manager. |
 | 443 | tcp | Manager Container | HTTPS load balancer service provided by the Manager. |
-| 443 | udp | Manager Container | HTTP/3.0 QUIC load balancer service provided by the Manager. |
 | 2000-2999 | tcp and udp | Manager Container | Layer-4 load balancing service provided by the Manager. |
 
 ### 4. Start the Container
