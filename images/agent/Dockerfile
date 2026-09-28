@@ -24,10 +24,9 @@ RUN curl -fsSL https://get.acme.sh | sh \
     && /root/.acme.sh/acme.sh --upgrade --auto-upgrade
 
 # Tag the exposed ports for services handled by the container
-# NGINX (http, https, quic)
+# NGINX (http, https)
 EXPOSE 80
 EXPOSE 443
-EXPOSE 443/udp
 # DNSMASQ
 EXPOSE 53
 EXPOSE 53/udp

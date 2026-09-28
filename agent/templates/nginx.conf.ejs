@@ -64,8 +64,8 @@ http {
   js_fetch_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
 
   <%_ /*
-    Upload throughput over HTTP/2 and HTTP/3. The small defaults (64k body
-    preread / h3 stream buffer, 256k per-worker h2 recv buffer) cap how much
+    Upload throughput over HTTP/2. The small defaults (64k body preread,
+    256k per-worker recv buffer) cap how much
     request body a client may send before waiting on flow control, which
     throttles large uploads through the proxy. The recv buffer is shared per
     worker, so it is sized at several prereads to keep concurrent uploads
@@ -73,7 +73,6 @@ http {
   */ -%>
   http2_body_preread_size 4m;
   http2_recv_buffer_size 16m;
-  http3_stream_buffer_size 4m;
 
   <%_ /* Modern TLS configuration */ -%>
   ssl_protocols TLSv1.2 TLSv1.3;
@@ -90,7 +89,6 @@ http {
   add_header X-Frame-Options "SAMEORIGIN" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-XSS-Protection "1; mode=block" always;
-  add_header Alt-Svc 'h3=":443"; ma=86400' always;
 
   <%_ /*
     Internal error page server on a unix socket. Named locations proxy here
@@ -142,10 +140,7 @@ http {
   server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
-    listen 443 quic default_server reuseport;
-    listen [::]:443 quic default_server reuseport;
     http2 on;
-    http3 on;
 
     server_name _;
 
@@ -231,10 +226,7 @@ http {
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    listen 443 quic;
-    listen [::]:443 quic;
     http2 on;
-    http3 on;
     
     server_name <%= service.externalHostname %>.<%= service.externalDomain.name %>;
   
@@ -403,10 +395,7 @@ http {
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    listen 443 quic;
-    listen [::]:443 quic;
     http2 on;
-    http3 on;
     
     server_name *.<%= domain.name %>;
   
@@ -440,10 +429,7 @@ http {
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    listen 443 quic;
-    listen [::]:443 quic;
     http2 on;
-    http3 on;
     
     server_name <%= domain.name %>;
   
