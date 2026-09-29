@@ -237,6 +237,22 @@ class ProxmoxApi {
   }
 
   /**
+   * Read a storage's cluster-level configuration (type, path, shared flag, ...)
+   * via GET /storage/{storage}. `path` is present for path-backed storages
+   * (dir/nfs/cephfs/glusterfs) and is the authoritative host path — used to
+   * derive volume host paths instead of assuming the /mnt/pve/<storage> layout.
+   * @param {string} storage
+   * @returns {Promise<object>} Storage config (e.g. { storage, type, path, shared, content })
+   */
+  async storageConfig(storage) {
+    const response = await axios.get(
+      `${this.baseUrl}/api2/json/storage/${storage}`,
+      this.options,
+    );
+    return response.data.data;
+  }
+
+  /**
    * @returns {Promise<number>} - The next available VMID
    */
   async nextId() {
