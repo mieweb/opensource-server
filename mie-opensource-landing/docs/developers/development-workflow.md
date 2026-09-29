@@ -85,12 +85,32 @@ This brings up:
 
 | Service | Purpose |
 |---|---|
-| `npm ci` job | Installs the Manager's Node.js dependencies in the mounted workspace |
+| `npm ci` job | Installs the Manager's and agent's Node.js dependencies into container-only volumes (see [Host vs. stack `node_modules`](#host-vs-stack-node_modules)) |
 | `client` | Installs the React client's dependencies and rebuilds its production bundle on file changes |
 | `proxmox` | Virtualized Proxmox VE host |
 | Manager container | The Manager application, running as a CT (`100`) inside the virtualized Proxmox |
 | `zensical` | Rebuilds these docs on file changes |
 | Bootstrap (one-shot) | Configures the Manager container to use the virtualized Proxmox |
+
+### Host vs. Stack `node_modules`
+
+The stack mounts your checkout into its containers, but it does **not** share
+`node_modules` with your host. `create-a-container/node_modules`,
+`create-a-container/client/node_modules`, and `agent/node_modules` are named
+volumes layered over the checkout, and the Manager CT receives them as their own
+mount points. The stack installs into those volumes and builds native modules
+(for example `@vscode/sqlite3`) against its own Debian glibc. Your host keeps a
+separate `node_modules` built against the host's glibc, so `npm install` and
+running tests on the host don't break the stack, and `docker compose up` doesn't
+break your host tooling.
+
+!!! note "Reinstalling host dependencies while the stack is running"
+    `npm ci` on the host deletes and recreates `node_modules`, which detaches
+    the stack's volume from running containers until they restart. Until then
+    they see the host's copy (the old shared behaviour), which may not load
+    there. Run `docker compose restart` (or `down`/`up`) afterwards to go back to
+    the stack's own dependencies. `npm install`, which doesn't delete the
+    directory, is unaffected.
 
 ### Manager Image Selection
 
@@ -118,6 +138,10 @@ everything and starts back up quickly without re-bootstrapping:
 |---|---|---|
 | `local` | `/var/lib/vz` | VM/CT disk images, volumes, and the cached Manager template |
 | `proxmox` | `/var/lib/pve-cluster` | Proxmox cluster state (the configuration database) |
+
+The stack's `node_modules` volumes (`create-a-container-node-modules`,
+`agent-node-modules`, `client-node-modules`) persist too; they are refreshed by
+`npm ci` on every `up`.
 
 To wipe everything and start completely fresh, remove the named volumes:
 

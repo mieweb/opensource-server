@@ -5,6 +5,51 @@ CTID="${CTID:-100}"
 BRIDGE="${BRIDGE:-vmbr0}"
 MANAGER_TAG="${MANAGER_TAG:-latest}"
 
+# Paths bind-mounted from this Proxmox container into the Manager LXC at the
+# same path. Proxmox bind mounts are non-recursive (`mount -o bind`), so the
+# node_modules named volumes that compose.yml layers over the repo are not
+# visible through the repo's mount point; each needs its own. Proxmox mounts
+# mp0, mp1, ... in index order, so the repo must come first and the nested
+# node_modules mounts after it (see ensure_bind_mounts).
+MANAGER_BIND_MOUNTS=(
+    /opt/opensource-server
+    /opt/opensource-server/create-a-container/node_modules
+    /opt/opensource-server/agent/node_modules
+)
+
+# Succeeds if the container config has a bind mount point for $1 at the same
+# path inside the container.
+has_bind_mount() {
+    pct config "${CTID}" | grep -qE "^mp[0-9]+: $1,mp=$1(,|$)"
+}
+
+# Succeeds if any path in MANAGER_BIND_MOUNTS is not yet mounted.
+missing_bind_mounts() {
+    local path
+    for path in "${MANAGER_BIND_MOUNTS[@]}"; do
+        has_bind_mount "${path}" || return 0
+    done
+    return 1
+}
+
+# Add each missing path in MANAGER_BIND_MOUNTS as a bind mount point. New mount
+# points take the index after the highest one in use, so they always mount
+# after (on top of) everything already configured — including the repo — and
+# never reuse an index another mount point relies on. The container must be
+# stopped: changing mount points while it runs triggers AppArmor/userns
+# problems under the nested Proxmox-in-Docker.
+ensure_bind_mounts() {
+    local path next
+    for path in "${MANAGER_BIND_MOUNTS[@]}"; do
+        has_bind_mount "${path}" && continue
+        next="$(pct config "${CTID}" \
+            | sed -nE 's/^mp([0-9]+):.*/\1/p' \
+            | sort -n | tail -n 1)"
+        next=$(( ${next:--1} + 1 ))
+        pct set "${CTID}" "--mp${next}=${path},mp=${path}"
+    done
+}
+
 
 # Wait for pve-cluster.service to mount the Proxmox cluster filesystem
 until [ -d /etc/pve/local ]; do
@@ -22,6 +67,17 @@ done
 CONF="/etc/pve/lxc/${CTID}.conf"
 if [ -f "${CONF}" ]; then
     if ! grep -q '^lock: create' "${CONF}"; then
+        # Already provisioned. Bring its bind mounts up to date — e.g. a
+        # container created before the node_modules volumes existed would
+        # otherwise keep loading the host's node_modules — then leave it be.
+        if missing_bind_mounts; then
+            echo "Adding missing bind mounts to container ${CTID}."
+            if pct status "${CTID}" | grep -q running; then
+                pct shutdown "${CTID}"
+            fi
+            ensure_bind_mounts
+            pct status "${CTID}" | grep -q running || pct start "${CTID}"
+        fi
         exit 0
     fi
     echo "Container ${CTID} is partially created; tearing it down and recreating."
@@ -78,11 +134,11 @@ pct push 100 \
 
 # Now we can set the entrypoint back to normal so it'll boot up to the
 # default systemd target. We also use this opportunity to add the directory
-# mount. Doing it with the container online or during the create step causes all
+# mounts (the repo plus its node_modules volumes; see MANAGER_BIND_MOUNTS).
+# Doing it with the container online or during the create step causes all
 # sorts of AppArmor and userns problems due to the nested Proxmox-in-Docker.
 pct shutdown 100
-pct set 100 \
-    --mp0=/opt/opensource-server,mp=/opt/opensource-server
+ensure_bind_mounts
 
 # Remove the temporary emergency entrypoint before the final start so the
 # Manager CT boots to the default target with networking and services enabled.
