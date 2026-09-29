@@ -29,13 +29,24 @@ services:
         fi
 
   # This service runs once when bringing the compose stack up to ensure the
-  # node_modules are populated in the user's create-a-container directory. This
-  # is usually handled by the manager's Dockerfile, but we're mounting over that
-  # directory so we need to be sure that the user has them.
+  # server's and agent's node_modules are populated. This is usually handled by
+  # the manager's Dockerfile, but we're mounting over that directory so we need
+  # to install them ourselves.
+  #
+  # The node_modules directories are named volumes layered over the repo bind
+  # mount rather than living in the checkout. The stack builds native modules
+  # (e.g. @vscode/sqlite3) against this image's glibc, which can be newer than
+  # the host's; sharing one node_modules with the host means every `up`
+  # breaks host-side tooling (and every host install breaks the stack). With
+  # the volumes, the host keeps its own node_modules and the containers keep
+  # theirs. The Proxmox service mounts the same volumes, and create-manager.sh
+  # passes them into the Manager LXC.
   node:
     image: node:24-trixie
     volumes:
       - ./:/opt/opensource-server
+      - create-a-container-node-modules:/opt/opensource-server/create-a-container/node_modules
+      - agent-node-modules:/opt/opensource-server/agent/node_modules
     working_dir: /opt/opensource-server
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -58,11 +69,13 @@ services:
     image: node:24-trixie-slim
     volumes:
       - ./:/opt/opensource-server
+      - client-node-modules:/opt/opensource-server/create-a-container/client/node_modules
     working_dir: /opt/opensource-server/create-a-container/client
     entrypoint: ["/bin/sh", "-c"]
     # Owns the client's node_modules install (separate directory from the
-    # server, so it runs in parallel with the `node` service). Then builds once
-    # and watches.
+    # server, so it runs in parallel with the `node` service), kept in a named
+    # volume for the same host-isolation reason as the `node` service. Then
+    # builds once and watches; client/dist is still written to the checkout.
     command:
       - |
         npm ci --no-audit --no-fund
@@ -128,6 +141,12 @@ services:
       - local:/var/lib/vz
       - proxmox:/var/lib/pve-cluster
       - ./:/opt/opensource-server:ro
+      # Container-built node_modules (see the `node` service). create-manager.sh
+      # bind-mounts these into the Manager LXC as their own mount points, since
+      # Proxmox's bind mount of the repo is non-recursive and would otherwise
+      # show the host's node_modules underneath.
+      - create-a-container-node-modules:/opt/opensource-server/create-a-container/node_modules:ro
+      - agent-node-modules:/opt/opensource-server/agent/node_modules:ro
     privileged: true
     devices:
       - /dev/loop-control:/dev/loop-control
@@ -190,3 +209,6 @@ services:
 volumes:
   local:
   proxmox:
+  create-a-container-node-modules:
+  agent-node-modules:
+  client-node-modules:
