@@ -1,0 +1,61 @@
+name: os-cloud-provider preview package
+
+# On every push to a same-repo pull request that touches the provider, publish
+# @mieweb/os-cloud-provider to the GitHub Packages npm registry as
+# `<version>-pr<PR>.<run>` under dist-tag `pr<PR>`, so cross-repo PRs (e.g.
+# @mieweb/cli in mieweb/cloud) can depend on it with a plain semver reference
+# plus `@mieweb:registry=https://npm.pkg.github.com` in .npmrc. Once merged and
+# released to npmjs, consumers switch to the real version and drop that line.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/os-cloud-provider/**'
+      - '.github/workflows/os-cloud-provider-preview.yml'
+
+concurrency:
+  group: os-cloud-provider-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    # GITHUB_TOKEN is read-only on fork PRs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/os-cloud-provider
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: packages/os-cloud-provider/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
+          registry-url: https://npm.pkg.github.com
+          scope: '@mieweb'
+      - run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stamp preview version
+        id: stamp
+        env:
+          SUFFIX: pr${{ github.event.pull_request.number }}.${{ github.run_number }}
+        run: |
+          v=$(node -p 'require("./package.json").version.replace(/-.*$/, "")')-$SUFFIX
+          npm pkg set version="$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      # prepack builds dist/.
+      - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: echo "Published \`@mieweb/os-cloud-provider@${{ steps.stamp.outputs.version }}\` to npm.pkg.github.com" >> "$GITHUB_STEP_SUMMARY"
