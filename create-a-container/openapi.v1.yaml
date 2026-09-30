@@ -621,6 +621,51 @@ paths:
       responses:
         '302': { description: 'Redirect to the post-login destination on success, or /login?oidc_error=<code> on failure' }
         '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/cli/callback:
+    get:
+      operationId: cli_login_authorize
+      tags: [Auth]
+      summary: CLI loopback login — browser confirmation page
+      description: >-
+        Browser-facing (HTML), used by `mieweb login`. Without a session, it
+        redirects through the normal sign-in (OIDC or /login) and comes back
+        here. With a session, it renders a confirmation form that POSTs back to
+        this path. A GET never mints a key.
+      security: []
+      parameters:
+        - { in: query, name: port, required: true, schema: { type: integer, minimum: 1024, maximum: 65535 }, description: Loopback port the CLI listens on (host is always 127.0.0.1) }
+        - { in: query, name: state, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{16,128}$' }, description: CLI-generated one-time nonce, echoed back }
+        - { in: query, name: client, schema: { type: string, pattern: '^[A-Za-z0-9._@-]{1,64}$' }, description: Label recorded in the minted key's description }
+      responses:
+        '200': { description: HTML confirmation page }
+        '302': { description: Redirect to sign-in when there is no session }
+        '400': { description: HTML error page for invalid parameters }
+    post:
+      operationId: cli_login_mint
+      tags: [Auth]
+      summary: CLI loopback login — mint an API key and hand it to the loopback listener
+      description: >-
+        Requires a browser session and a CSRF token (`_csrf`). Bearer-only
+        requests are rejected. Mints an API key for the session user and
+        303-redirects to `http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…`.
+        The key is in the URL fragment, so it never appears in a request line.
+      security: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [_csrf, port, state]
+              properties:
+                _csrf: { type: string }
+                port: { type: integer }
+                state: { type: string }
+                client: { type: string }
+      responses:
+        '303': { description: Redirect to the loopback listener with the key in the fragment }
+        '400': { description: HTML error page for invalid parameters }
+        '401': { description: No browser session }
+        '403': { description: Missing/invalid CSRF token }
   /auth/logout:
     post:
       operationId: logout
