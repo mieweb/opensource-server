@@ -1,5 +1,5 @@
 group "default" {
-    targets = ["base", "nodejs", "docker", "docker-nodejs", "docs", "agent", "manager", "proxmox-ve"]
+    targets = ["base", "nodejs", "docker", "docker-nodejs", "cloud", "docs", "agent", "manager", "proxmox-ve"]
 }
 
 target "base" {
@@ -28,6 +28,15 @@ target "docker-nodejs" {
     context = "./docker"
     contexts = {
         base = "target:nodejs"
+    }
+}
+
+# Converged app image for `mieweb deploy --target mieweb` (issue #475): the
+# NodeJS image plus MinIO, libSQL server and Valkey as systemd units.
+target "cloud" {
+    context = "./cloud"
+    contexts = {
+        nodejs = "target:nodejs"
     }
 }
 

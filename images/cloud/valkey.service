@@ -1,0 +1,16 @@
+[Unit]
+Description=Valkey (KV / Queue binding backend)
+After=network.target environment.service
+
+[Service]
+Type=notify
+User=mieweb
+Group=mieweb
+EnvironmentFile=-/etc/environment
+ExecStartPre=+/usr/local/bin/mieweb-data-dir valkey
+ExecStart=/usr/bin/valkey-server --bind 127.0.0.1 --port 6379 --protected-mode yes --dir /mnt/data/valkey --appendonly yes --daemonize no --supervised systemd
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

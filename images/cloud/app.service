@@ -1,0 +1,23 @@
+[Unit]
+Description=Deployed @mieweb/cloud app
+Wants=network-online.target minio.service libsqld.service valkey.service
+After=network-online.target environment.service minio.service libsqld.service valkey.service
+# Nothing to run until the first `mieweb deploy` has synced the code (the
+# provider restarts this unit after every sync).
+ConditionPathExists=/opt/app/src/package.json
+
+[Service]
+Type=simple
+User=mieweb
+Group=mieweb
+WorkingDirectory=/opt/app/src
+Environment=HOME=/opt/app
+# PORT, MIEWEB_APP_START and the datastore endpoints/credentials are set by
+# the deploy provider.
+EnvironmentFile=-/etc/environment
+ExecStart=/usr/local/bin/mieweb-app-start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
