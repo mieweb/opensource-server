@@ -1,0 +1,49 @@
+name: os-cloud-provider
+
+# Typecheck + test @mieweb/os-cloud-provider (packages/os-cloud-provider).
+# The regular suite runs against an in-process fake Manager; the live suite
+# (pnpm test:live) needs a running Manager and is not run here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/os-cloud-provider/**'
+      - 'create-a-container/openapi.v1.yaml'
+      - '.github/workflows/os-cloud-provider.yml'
+  pull_request:
+    paths:
+      - 'packages/os-cloud-provider/**'
+      - 'create-a-container/openapi.v1.yaml'
+      - '.github/workflows/os-cloud-provider.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        working-directory: packages/os-cloud-provider
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Generated Manager types are up to date
+        run: pnpm gen:types && git diff --exit-code -- src/generated
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
