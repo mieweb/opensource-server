@@ -16,7 +16,8 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'Services',
         key: 'id'
-      }
+      },
+      onDelete: 'CASCADE'
     },
     recordType: {
       type: DataTypes.ENUM('SRV'),
