@@ -20,6 +20,7 @@ import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 import { ButtonLink } from '@/components/ButtonLink';
 import { CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { SshAccessBadge } from '@/components/containers/SshAccessBadge';
 import { ContainersDataGrid } from '@/components/containers/ContainersDataGrid';
 import type { Container } from '@/lib/types';
 
@@ -144,10 +145,13 @@ export function ContainersListPage() {
           <ModalClose />
         </ModalHeader>
         <ModalBody className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            Share this container with other users for collaboration. Shared users can find it
-            by filtering the containers list by your username.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Only the owner and collaborators can SSH into this container. Shared users can
+              also find it by filtering the containers list by your username.
+            </p>
+            {shareTarget && <SshAccessBadge container={shareTarget} />}
+          </div>
           {shareTarget && siteId && (
             <CollaboratorsManager
               siteId={siteId}

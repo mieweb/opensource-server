@@ -132,6 +132,10 @@ function serializeContainer(c, site, status) {
     // Additional users this container is shared with. Present on every
     // payload so consumers can render/manage sharing.
     collaborators: c.collaboratorNames(),
+    // Whether sshd inside the container enforces owner+collaborators (the
+    // container has been issued a callback token). False for containers
+    // created before this feature until they are enrolled.
+    sshAccessEnforced: c.sshAccessEnforced(),
     ipv4Address: c.ipv4Address,
     macAddress: c.macAddress,
     // Live status computed from Proxmox + jobs + config (see utils/container-status).

@@ -418,8 +418,10 @@ async function main() {
     // Apply environment variables and entrypoint. Use the default
     // (deleteMissing=false): only explicit values are pushed, nothing is unset.
     // The record now already includes the template's values, and system/NVIDIA
-    // defaults are merged in by buildLxcEnvConfig.
-    const envConfig = await container.buildLxcEnvConfig();
+    // defaults are merged in by buildLxcEnvConfig. The SSH-access token lets
+    // sshd in the container ask the manager who may log in.
+    const sshAccessToken = await container.ensureSshAccessToken(templateConfig.env);
+    const envConfig = await container.buildLxcEnvConfig({ sshAccessToken });
     if (Object.keys(envConfig).length > 0) {
       console.log('Applying environment variables and entrypoint...');
       const updateTask = await client.updateLxcConfig(node.name, vmid, envConfig);
