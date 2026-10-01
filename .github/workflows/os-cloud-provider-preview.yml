@@ -54,6 +54,14 @@ jobs:
           v=$(node -p 'require("./package.json").version.replace(/-.*$/, "")')-$SUFFIX
           npm pkg set version="$v"
           echo "version=$v" >> "$GITHUB_OUTPUT"
+      # Preview builds default to this PR's cloud image (build-images.yml pushes
+      # cloud:pr-<N> on every PR push); `latest` only exists after a release.
+      - name: Default to this PR's cloud image
+        env:
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          sed -i "s#\(DEFAULT_IMAGE = 'ghcr.io/mieweb/opensource-server/cloud\):latest'#\1:$TAG'#" src/config.ts
+          grep -q "cloud:$TAG'" src/config.ts
       # prepack builds dist/.
       - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
         env:
