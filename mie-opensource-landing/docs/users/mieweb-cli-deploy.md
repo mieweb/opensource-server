@@ -108,7 +108,7 @@ The MinIO password is generated on the first deploy and reused after that. Varia
 | --- | --- |
 | `mieweb destroy --target mieweb` | Deletes the container. The `/mnt/data` directory is retained on the node and reattached if you deploy the same name again. |
 | `mieweb dev --target mieweb` | Not provided by this provider (there's no remote dev mode). Use the local host harness. |
-| `mieweb tail --target mieweb` | Not supported yet: the Manager streams job output, not app logs. |
+| `mieweb tail --target mieweb` | Streams the app's logs (`journalctl -u app.service`) over the same SSH connection deploy uses, so the same credentials apply. Shows the last 100 lines and keeps following until Ctrl-C. Options: `-n`/`--lines N`, `--no-follow`, and `--since <time>` (e.g. `-1h`, `"2026-10-01 12:00"`). |
 
 ## Testing against a local Manager
 

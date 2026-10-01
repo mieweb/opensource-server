@@ -99,6 +99,20 @@ export class FakeShell implements RemoteShell {
     return { code: 127, stdout: Buffer.alloc(0), stderr: `unknown command: ${command}` };
   }
 
+  /** Chunks `stream()` emits (split across chunk boundaries on purpose), then the exit code. */
+  streamScript: { chunks: [string, 'stdout' | 'stderr'][]; code: number; hang?: boolean } = { chunks: [], code: 0 };
+
+  async stream(
+    command: string,
+    onData: (chunk: Buffer, stream: 'stdout' | 'stderr') => void,
+    signal: AbortSignal,
+  ): Promise<number> {
+    this.commands.push(command);
+    for (const [c, w] of this.streamScript.chunks) onData(Buffer.from(c), w);
+    if (!this.streamScript.hang) return this.streamScript.code;
+    return new Promise((resolve) => signal.addEventListener('abort', () => resolve(-1), { once: true }));
+  }
+
   close(): void {
     this.closed = true;
   }

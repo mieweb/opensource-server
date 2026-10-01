@@ -481,20 +481,10 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     undefined;
 
   if (s.sync) {
-    const port = final.sshPort;
-    const host = s.sshHost ?? final.sshHost ?? undefined;
-    if (!port || !host) {
+    if (!final.sshPort || !(s.sshHost ?? final.sshHost)) {
       throw new Error(`Container ${id!} has no published SSH port/host; cannot sync code (set targets.${ctx.target}.sync to false to skip)`);
     }
-    const user = s.sshUser ?? (await client.get<SessionInfo>('/session')).user;
-    const target: SshTarget = { host, port, user };
-    const knownHostsFile = knownHostsPath(deps.env);
-    if (fresh) await forgetHostKey(knownHostsFile, host, port);
-    await (deps.waitForSsh ?? waitForSsh)(host, port, signal, logger);
-    logger.info(`Connecting to ${user}@${host}:${port}`);
-    const shell = deps.connectSsh
-      ? await deps.connectSsh(target, { knownHostsFile, signal, logger })
-      : await SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt: deps.prompt, signal, logger });
+    const shell = await openShell(ctx, deps, client, s, final, { fresh });
     try {
       await syncWorktree(ctx.root, shell, logger);
     } finally {
@@ -509,6 +499,103 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     ...(url ? { url } : {}),
     resources: [{ binding: name, kind: 'container', id: String(final.containerId) }],
   };
+}
+
+/** Open an SSH session to the container (waiting for SSH to come up). */
+export async function openShell(
+  ctx: DeployContext,
+  deps: ProviderDeps,
+  client: ManagerClient,
+  s: TargetSettings,
+  container: Container,
+  opts: { fresh?: boolean } = {},
+): Promise<RemoteShell> {
+  const { logger, signal } = ctx;
+  const port = container.sshPort;
+  const host = s.sshHost ?? container.sshHost ?? undefined;
+  if (!port || !host) throw new Error(`Container ${container.id} has no published SSH port/host`);
+  const user = s.sshUser ?? (await client.get<SessionInfo>('/session')).user;
+  const target: SshTarget = { host, port, user };
+  const knownHostsFile = knownHostsPath(deps.env);
+  if (opts.fresh) await forgetHostKey(knownHostsFile, host, port);
+  await (deps.waitForSsh ?? waitForSsh)(host, port, signal, logger);
+  logger.info(`Connecting to ${user}@${host}:${port}`);
+  return deps.connectSsh
+    ? deps.connectSsh(target, { knownHostsFile, signal, logger })
+    : SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt: deps.prompt, signal, logger });
+}
+
+export interface TailOptions {
+  lines: number;
+  follow: boolean;
+  since?: string;
+}
+
+/** Parse `mieweb tail` passthrough args: `-n/--lines N`, `--no-follow`, `--since <time>`. */
+export function parseTailArgs(argv: readonly string[]): TailOptions {
+  const out: TailOptions = { lines: 100, follow: true };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i]!;
+    const val = (): string => {
+      const eq = a.indexOf('=');
+      if (eq !== -1) return a.slice(eq + 1);
+      const v = argv[++i];
+      if (v === undefined) throw new ConfigError(`${a} needs a value`);
+      return v;
+    };
+    if (a === '-n' || a === '--lines' || a.startsWith('--lines=')) {
+      const n = Number(val());
+      if (!Number.isInteger(n) || n < 0) throw new ConfigError(`${a} must be a non-negative integer`);
+      out.lines = n;
+    } else if (a === '--no-follow') out.follow = false;
+    else if (a === '--since' || a.startsWith('--since=')) {
+      const v = val();
+      // journalctl accepts e.g. "2026-10-01 12:00", "-1h", "yesterday".
+      if (!/^[A-Za-z0-9 :+.-]{1,40}$/.test(v)) throw new ConfigError(`--since value ${JSON.stringify(v)} is not a valid time`);
+      out.since = v;
+    } else throw new ConfigError(`Unknown tail option ${JSON.stringify(a)} (supported: -n/--lines N, --no-follow, --since <time>)`);
+  }
+  return out;
+}
+
+export function journalCommand(o: TailOptions): string {
+  const args = ['sudo', 'journalctl', '-u', 'app.service', '-o', 'cat', '--no-pager', '-n', String(o.lines)];
+  if (o.since) args.push('--since', `'${o.since}'`);
+  if (o.follow) args.push('-f');
+  return args.join(' ');
+}
+
+/** `mieweb tail`: stream app.service's journal until aborted (or the end, with --no-follow). */
+export async function tail(ctx: DeployContext, deps: ProviderDeps): Promise<void> {
+  const opts = parseTailArgs(ctx.argv);
+  const name = appName(ctx.manifest);
+  const s = resolveTargetSettings(ctx, deps.env);
+  const client = await clientFor(ctx, deps, s.instanceUrl);
+  const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
+  const found = await findByHostname(client, siteId, name);
+  if (!found) throw new Error(`No container "${name}" on site ${siteId}; run \`mieweb deploy\` first`);
+  const container = await client.get<Container>(`/sites/${siteId}/containers/${found.id}`);
+  const shell = await openShell(ctx, deps, client, s, container);
+  try {
+    ctx.logger.info(`Tailing app.service on "${name}"${opts.follow ? ' (Ctrl-C to stop)' : ''}`);
+    // Re-split chunks into whole lines so each log line is one logger call.
+    const pending = { stdout: '', stderr: '' };
+    const emit = (line: string, which: 'stdout' | 'stderr'): void =>
+      which === 'stderr' ? ctx.logger.warn(line) : ctx.logger.info(line);
+    const code = await shell.stream(
+      journalCommand(opts),
+      (chunk, which) => {
+        const lines = (pending[which] + chunk.toString('utf8')).split('\n');
+        pending[which] = lines.pop() ?? '';
+        for (const l of lines) emit(l, which);
+      },
+      ctx.signal,
+    );
+    for (const which of ['stdout', 'stderr'] as const) if (pending[which]) emit(pending[which], which);
+    if (code > 0) throw new Error(`journalctl exited with code ${code}`);
+  } finally {
+    shell.close();
+  }
 }
 
 async function createOrAdopt(

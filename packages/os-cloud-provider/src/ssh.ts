@@ -41,6 +41,12 @@ export interface ExecResult {
 /** The remote operations sync needs. `SshConnection` implements it over ssh2. */
 export interface RemoteShell {
   exec(command: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<ExecResult>;
+  /**
+   * Run a long-lived command, calling `onData` with stdout/stderr chunks.
+   * Resolves with the exit code, or -1 when `signal` aborts (the channel is
+   * closed).
+   */
+  stream(command: string, onData: (chunk: Buffer, stream: 'stdout' | 'stderr') => void, signal: AbortSignal): Promise<number>;
   close(): void;
 }
 
@@ -358,6 +364,41 @@ export class SshConnection implements RemoteShell {
           stdin.on('error', () => stream.close());
           stdin.pipe(stream);
         }
+      });
+    });
+  }
+
+  stream(
+    command: string,
+    onData: (chunk: Buffer, stream: 'stdout' | 'stderr') => void,
+    signal: AbortSignal,
+  ): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        resolve(-1);
+        return;
+      }
+      this.client.exec(command, (err: Error | undefined, stream: ClientChannel) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        let code = -1;
+        const onAbort = (): void => {
+          stream.close();
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        stream.on('data', (d: Buffer) => onData(d, 'stdout'));
+        stream.stderr.on('data', (d: Buffer) => onData(d, 'stderr'));
+        stream.on('exit', (c: number | null) => {
+          code = c ?? -1;
+        });
+        stream.on('close', () => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(signal.aborted ? -1 : code);
+        });
+        stream.on('error', reject);
+        stream.end();
       });
     });
   }

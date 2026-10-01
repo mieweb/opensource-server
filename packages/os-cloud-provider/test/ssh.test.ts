@@ -44,6 +44,13 @@ function startServer(opts: { password?: string; publicKey?: Buffer; hostKey: str
           const chunks: Buffer[] = [];
           stream.on('data', (d: Buffer) => chunks.push(d));
           stream.on('end', () => {
+            if (info.command === 'follow') {
+              stream.write('a\n');
+              stream.stderr.write('e\n');
+              const t = setInterval(() => stream.write('tick\n'), 10);
+              stream.on('close', () => clearInterval(t));
+              return;
+            }
             if (info.command === 'fail') {
               stream.stderr.write('boom');
               stream.exit(3);
@@ -184,6 +191,37 @@ describe('SshConnection', () => {
       (await SshConnection.connect(opts(port))).close();
     } finally {
       await b.close();
+    }
+  });
+
+  test('stream delivers output and stops on abort', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile: join(home, 'kh4'),
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: signal(),
+        logger,
+      });
+      const ac = new AbortController();
+      const seen: string[] = [];
+      const code = await conn.stream(
+        'follow',
+        (d, w) => {
+          seen.push(`${w}:${d.toString()}`);
+          if (seen.filter((x) => x.includes('tick')).length >= 2) ac.abort();
+        },
+        ac.signal,
+      );
+      conn.close();
+      assert.equal(code, -1);
+      assert.ok(seen.includes('stdout:a\n'));
+      assert.ok(seen.includes('stderr:e\n'));
+    } finally {
+      await srv.close();
     }
   });
 

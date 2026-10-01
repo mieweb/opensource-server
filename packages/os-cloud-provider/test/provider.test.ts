@@ -22,6 +22,8 @@ let remoteDir: string;
 let sessions: { target: SshTarget; shell: FakeShell }[];
 let sshWaits: string[];
 let connectError: Error | null;
+/** Applied to each new FakeShell (e.g. to script `stream` output). */
+let setupShell: (s: FakeShell) => void;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'os-cloud-provider-'));
@@ -39,6 +41,7 @@ beforeEach(async () => {
   sessions = [];
   sshWaits = [];
   connectError = null;
+  setupShell = () => {};
 });
 afterEach(async () => {
   await fake.stop();
@@ -81,6 +84,7 @@ function provider(env: ProviderEnv = {}, options: ProviderOptions = {}) {
       connectSsh: async (target) => {
         if (connectError) throw connectError;
         const shell = new FakeShell(remoteDir);
+        setupShell(shell);
         sessions.push({ target, shell });
         return shell;
       },
@@ -118,7 +122,7 @@ describe('contract', () => {
     assert.equal(p.supports('mieweb'), true);
     assert.equal(p.supports('cloudflare'), false);
     assert.equal(p.dev, undefined);
-    assert.equal(p.tail, undefined);
+    assert.equal(typeof p.tail, 'function');
   });
 });
 
@@ -389,6 +393,52 @@ describe('deploy', () => {
   test('never reads secrets from targetConfig', async () => {
     const h = harness({ targetConfig: { siteId: 1, token: TOKEN, apiKey: TOKEN } });
     await assert.rejects(provider({ MIEWEB_OS_TOKEN: '' }).deploy(h.ctx), AuthError);
+  });
+});
+
+describe('tail', () => {
+  test('streams app.service journal lines to the logger over SSH', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    setupShell = (s) => {
+      s.streamScript = {
+        chunks: [['line one\nline t', 'stdout'], ['wo\n', 'stdout'], ['oops\n', 'stderr'], ['tail-no-newline', 'stdout']],
+        code: 0,
+      };
+    };
+    const h = harness({ argv: ['-n', '20', '--no-follow', '--since', '-1h'] });
+    await p.tail!(h.ctx);
+    const shell = sessions.at(-1)!.shell;
+    assert.equal(shell.commands.at(-1), "sudo journalctl -u app.service -o cat --no-pager -n 20 --since '-1h'");
+    assert.equal(shell.closed, true);
+    const out = h.logs.filter((l) => !l.includes('Tailing') && !l.includes('Connecting'));
+    assert.deepEqual(out, ['info:line one', 'info:line two', 'warn:oops', 'info:tail-no-newline']);
+  });
+
+  test('follows by default until aborted', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    setupShell = (s) => {
+      s.streamScript = { chunks: [['hello\n', 'stdout']], code: 0, hang: true };
+    };
+    const h = harness();
+    const run = p.tail!(h.ctx);
+    setTimeout(() => h.abort.abort(), 30);
+    await run;
+    assert.match(sessions.at(-1)!.shell.commands.at(-1)!, / -n 100 -f$/);
+    assert.ok(h.logs.includes('info:hello'));
+  });
+
+  test('errors: no container, bad args, journalctl failure', async () => {
+    const p = provider();
+    await assert.rejects(p.tail!(harness().ctx), /No container "myapp".*mieweb deploy/);
+    await assert.rejects(p.tail!(harness({ argv: ['--bogus'] }).ctx), /Unknown tail option/);
+    await assert.rejects(p.tail!(harness({ argv: ['--since', '$(rm -rf /)'] }).ctx), /not a valid time/);
+    await p.deploy(harness().ctx);
+    setupShell = (s) => {
+      s.streamScript = { chunks: [], code: 1 };
+    };
+    await assert.rejects(p.tail!(harness().ctx), /journalctl exited with code 1/);
   });
 });
 

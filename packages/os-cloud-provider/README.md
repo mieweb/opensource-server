@@ -14,7 +14,8 @@ Example config: [`examples/mieweb.jsonc`](examples/mieweb.jsonc).
 | `destroy` | `delete_container` (the `/mnt/data` volume is retained) |
 | `whoami` | `get_session` |
 | `login` / `logout` | `/api/v1/auth/cli/callback` loopback handoff / `delete_api_key` |
-| `dev`, `tail` | not implemented (no remote dev mode; no app log stream yet) |
+| `tail` | `get_container` for the SSH port, then `sudo journalctl -u app.service -f` over SSH (`-n/--lines N`, `--no-follow`, `--since <time>`) |
+| `dev` | not implemented (there's no remote dev mode) |
 
 `DeployResult.resources` holds one `{ kind: 'container', binding: <name>, id: <VMID> }`.
 
