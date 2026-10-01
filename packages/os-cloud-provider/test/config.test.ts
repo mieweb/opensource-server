@@ -59,8 +59,10 @@ describe('appName', () => {
 });
 
 describe('resolveTargetSettings', () => {
-  test('siteId is required and must be an integer', () => {
-    assert.throws(() => resolveTargetSettings(ctx({ name: 'app' }), {}), /siteId is required/);
+  test('siteId is optional (chosen at deploy time), env overrides config, must be an integer', () => {
+    assert.equal(resolveTargetSettings(ctx({ name: 'app' }), {}).siteId, undefined);
+    assert.equal(resolveTargetSettings(ctx({ name: 'app' }, { siteId: 3 }), { MIEWEB_OS_SITE_ID: '5' }).siteId, 5);
+    assert.throws(() => resolveTargetSettings(ctx({ name: 'app' }), { MIEWEB_OS_SITE_ID: 'x' }), /MIEWEB_OS_SITE_ID must be/);
     assert.throws(() => resolveTargetSettings(ctx({ name: 'app' }, { siteId: 'one' }), {}), /positive integer/);
   });
 

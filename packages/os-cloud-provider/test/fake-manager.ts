@@ -51,6 +51,8 @@ export class FakeManager {
   readonly requests: RequestLog[] = [];
   readonly domains = [{ id: 7, name: 'apps.example.test', siteId: 1 }];
   readonly siteId = 1;
+  /** What GET /sites returns. */
+  sites: { id: number; name: string }[] = [{ id: 1, name: 'site-one' }];
   nvidiaAvailable = false;
   /** Emulate a Manager that predates volumes (#421). */
   noVolumes = false;
@@ -227,6 +229,8 @@ export class FakeManager {
       }
       return ok({ id: job.id, status: job.status });
     }
+
+    if (path === '/sites' && req.method === 'GET') return ok(this.sites);
 
     m = /^\/sites\/(\d+)\/containers(?:\/(new|\d+))?$/.exec(path);
     if (!m) return fail(404, 'not_found');

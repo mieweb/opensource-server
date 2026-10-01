@@ -39,7 +39,7 @@ import {
 } from './config.ts';
 import { waitForJob } from './jobs.ts';
 import type { SessionInfo } from './api-types.ts';
-import { forgetHostKey, knownHostsPath, SshConnection, waitForSsh, type Prompter, type RemoteShell, type SshTarget } from './ssh.ts';
+import { forgetHostKey, knownHostsPath, SshConnection, ttyPrompter, waitForSsh, type Prompter, type RemoteShell, type SshTarget } from './ssh.ts';
 import { syncWorktree } from './sync.ts';
 
 /** Env keys the provider owns inside the converged container. */
@@ -296,19 +296,63 @@ async function findByHostname(client: ManagerClient, siteId: number, hostname: s
   return list.find((c) => c.hostname === hostname) ?? null;
 }
 
+interface SiteSummary {
+  id: number;
+  name: string;
+}
+
+/**
+ * The site to deploy into when none is configured: the only site the user can
+ * see, otherwise ask on the terminal. Non-interactive runs get an error that
+ * lists the choices.
+ */
+export async function resolveSiteId(
+  configured: number | undefined,
+  client: ManagerClient,
+  deps: ProviderDeps,
+  logger: DeployContext['logger'],
+  target: string,
+): Promise<number> {
+  if (configured !== undefined) return configured;
+  const sites = await client.get<SiteSummary[]>('/sites');
+  const hint = (id: number): string =>
+    `set targets.${target}.siteId to ${id} in mieweb.jsonc (or MIEWEB_OS_SITE_ID) to skip this`;
+  if (sites.length === 0) throw new ConfigError('No Manager sites are visible to your account');
+  const [only] = sites;
+  if (sites.length === 1 && only) {
+    logger.info(`Using site ${only.id} (${only.name}), the only one available; ${hint(only.id)}`);
+    return only.id;
+  }
+  const list = sites.map((x) => `  ${x.id}) ${x.name}`).join('\n');
+  const prompt = deps.prompt ?? ttyPrompter;
+  for (;;) {
+    const answer = await prompt(`Manager sites:\n${list}\nSite to deploy into: `, false);
+    if (answer === null) {
+      throw new ConfigError(`targets.${target}.siteId is required (the Manager site to deploy into). Available:\n${list}`);
+    }
+    const pick = sites.find((x) => String(x.id) === answer.trim() || x.name === answer.trim());
+    if (pick) {
+      logger.info(`Using site ${pick.id} (${pick.name}); ${hint(pick.id)}`);
+      return pick.id;
+    }
+    process.stderr.write(`"${answer.trim()}" is not one of the listed sites\n`);
+  }
+}
+
 export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<DeployResult> {
   const { logger, signal } = ctx;
   const name = appName(ctx.manifest);
   const s = resolveTargetSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
+  const siteId = await resolveSiteId(s.siteId, client, deps, ctx.logger, ctx.target);
   const image = normalizeImageRef(s.image);
   const wait = (jobId: number): Promise<void> =>
     waitForJob(client, jobId, { signal, logger, intervalMs: deps.pollIntervalMs });
 
-  logger.info(`Deploying "${name}" to site ${s.siteId} on ${s.instanceUrl}`);
+  logger.info(`Deploying "${name}" to site ${siteId} on ${s.instanceUrl}`);
   logger.info(`Image: ${image}`);
 
-  const form = await client.get<NewContainerForm>(`/sites/${s.siteId}/containers/new`);
+  const form = await client.get<NewContainerForm>(`/sites/${siteId}/containers/new`);
   const domain = pickDomain(form, s.domain);
   let nvidia = s.nvidia ?? false;
   if (s.nvidia === undefined && wantsAi(ctx.manifest)) {
@@ -336,7 +380,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       warn: (m) => logger.warn(m),
     });
 
-  let existing = await findByHostname(client, s.siteId, name);
+  let existing = await findByHostname(client, siteId, name);
   let carryEnv: Container | null = existing;
 
   if (existing) {
@@ -345,7 +389,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     if (!existing.containerId && existing.status === 'creating' && existing.creationJobId) {
       logger.info(`Container ${existing.id} is still being created; waiting for job ${existing.creationJobId}`);
       await waitForJob(client, existing.creationJobId, { signal, logger, intervalMs: deps.pollIntervalMs }).catch(() => {});
-      existing = await findByHostname(client, s.siteId, name);
+      existing = await findByHostname(client, siteId, name);
       carryEnv = existing;
     }
   }
@@ -362,7 +406,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     if (!!existing.nvidiaRequested !== nvidia) drift.push(`nvidia ${!!existing.nvidiaRequested} → ${nvidia}`);
     if (drift.length > 0) {
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
-      const del = await client.delete<DeleteContainerResult>(`/sites/${s.siteId}/containers/${existing.id}`);
+      const del = await client.delete<DeleteContainerResult>(`/sites/${siteId}/containers/${existing.id}`);
       for (const w of del.dnsWarnings ?? []) logger.warn(w);
       existing = null;
     }
@@ -372,7 +416,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   // Set when this deploy (re)created the container: its SSH host key is new.
   let fresh = false;
   if (!existing) {
-    const created = await createOrAdopt(client, s, name, image, nvidia, envFor(carryEnv), http, logger);
+    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envFor(carryEnv), http, logger);
     if ('created' in created) {
       id = created.created.containerId;
       fresh = true;
@@ -411,7 +455,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
     // Code-only redeploys skip the Manager entirely and just sync.
     if (changed) {
-    const upd = await client.put<UpdateContainerResult>(`/sites/${s.siteId}/containers/${id}`, body);
+    const upd = await client.put<UpdateContainerResult>(`/sites/${siteId}/containers/${id}`, body);
     for (const w of upd.dnsWarnings ?? []) logger.warn(w);
     if (upd.jobId) {
       logger.info(`Updated container ${id}; waiting for job ${upd.jobId}`);
@@ -424,7 +468,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
   }
 
-  const final = await client.get<Container>(`/sites/${s.siteId}/containers/${id!}`);
+  const final = await client.get<Container>(`/sites/${siteId}/containers/${id!}`);
   if (!final.containerId) {
     throw new Error(`Container ${id!} has no hypervisor id after the job finished (status: ${final.status ?? 'unknown'})`);
   }
@@ -466,6 +510,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
 
 async function createOrAdopt(
   client: ManagerClient,
+  siteId: number,
   s: TargetSettings,
   name: string,
   image: string,
@@ -475,7 +520,7 @@ async function createOrAdopt(
   logger: DeployContext['logger'],
 ): Promise<{ created: CreateContainerResult } | { adopted: Container }> {
   try {
-    const created = await client.post<CreateContainerResult>(`/sites/${s.siteId}/containers`, {
+    const created = await client.post<CreateContainerResult>(`/sites/${siteId}/containers`, {
       hostname: name,
       template: image,
       nvidiaRequested: nvidia,
@@ -486,10 +531,10 @@ async function createOrAdopt(
     return { created };
   } catch (err) {
     if (!(err instanceof ManagerApiError) || err.status !== 409 || err.code !== 'conflict') throw err;
-    const adopted = await findByHostname(client, s.siteId, name);
+    const adopted = await findByHostname(client, siteId, name);
     if (!adopted) {
       throw new Error(
-        `Hostname "${name}" is already taken on site ${s.siteId} by a container you cannot manage; ` +
+        `Hostname "${name}" is already taken on site ${siteId} by a container you cannot manage; ` +
           'rename the app (wrangler.jsonc `name`) or ask its owner to delete it.',
         { cause: err },
       );
@@ -503,12 +548,13 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   const name = appName(ctx.manifest);
   const s = resolveTargetSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
-  const existing = await findByHostname(client, s.siteId, name);
+  const siteId = await resolveSiteId(s.siteId, client, deps, ctx.logger, ctx.target);
+  const existing = await findByHostname(client, siteId, name);
   if (!existing) {
-    ctx.logger.info(`No container "${name}" on site ${s.siteId}; nothing to destroy`);
+    ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);
     return;
   }
-  const res = await client.delete<DeleteContainerResult>(`/sites/${s.siteId}/containers/${existing.id}`);
+  const res = await client.delete<DeleteContainerResult>(`/sites/${siteId}/containers/${existing.id}`);
   for (const w of res.dnsWarnings ?? []) ctx.logger.warn(w);
   const retained = (existing.volumes ?? []).some((v) => v.mountPath === DATA_VOLUME.mountPath);
   ctx.logger.info(

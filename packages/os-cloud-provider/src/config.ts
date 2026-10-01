@@ -95,7 +95,8 @@ export interface ExtraService {
 /** The parts of `targets.mieweb` deploy/destroy use. All non-secret. */
 export interface TargetSettings {
   instanceUrl: string;
-  siteId: number;
+  /** Manager site; undefined → chosen at deploy time (see resolveSiteId in deploy.ts). */
+  siteId?: number;
   image: string;
   port: number;
   /** External hostname label; defaults to the app name. */
@@ -150,10 +151,9 @@ export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): Tar
   const name = appName(ctx.manifest);
   const target = `targets.${ctx.target}`;
 
-  if (tc.siteId === undefined || tc.siteId === null || tc.siteId === '') {
-    throw new ConfigError(`mieweb.jsonc ${target}.siteId is required (the Manager site to deploy into)`);
-  }
-  const siteId = posInt(tc.siteId, `${target}.siteId`);
+  // MIEWEB_OS_SITE_ID → targets.mieweb.siteId → (deploy time) the only site, or a prompt.
+  const rawSite = str(env.MIEWEB_OS_SITE_ID) ?? (tc.siteId === null || tc.siteId === '' ? undefined : tc.siteId);
+  const siteId = rawSite === undefined ? undefined : posInt(rawSite, str(env.MIEWEB_OS_SITE_ID) ? 'MIEWEB_OS_SITE_ID' : `${target}.siteId`);
 
   const externalHostname = str(tc.externalHostname) ?? name;
   if (!DNS_LABEL.test(externalHostname)) {

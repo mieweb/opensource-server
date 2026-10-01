@@ -338,10 +338,32 @@ describe('deploy', () => {
   });
 
   test('config errors are reported before any request', async () => {
-    await assert.rejects(provider().deploy(harness({ targetConfig: {} }).ctx), /siteId is required/);
     await assert.rejects(provider().deploy(harness({ manifest: { name: 'Bad_Name' } }).ctx), /DNS label/);
     await assert.rejects(provider().deploy(harness({ targetConfig: { siteId: 1, domain: 'nope.test' } }).ctx), /not available/);
     assert.ok(fake.requests.every((r) => r.method === 'GET'));
+  });
+
+  test('no siteId: uses the only site, prompts among several, errors when not interactive', async () => {
+    const only = harness({ targetConfig: {} });
+    await provider().deploy(only.ctx);
+    assert.ok(fake.requests.some((r) => r.path.startsWith('/sites/1/containers')));
+
+    fake.sites = [{ id: 1, name: 'site-one' }, { id: 2, name: 'site-two' }];
+    try {
+      const asked: string[] = [];
+      const answers = ['nope', 'site-one'];
+      const p = provider({}, { prompt: async (q) => { asked.push(q); return answers.shift() ?? null; } });
+      await p.deploy(harness({ targetConfig: {} }).ctx);
+      assert.equal(asked.length, 2);
+      assert.match(asked[0] ?? '', /1\) site-one\n  2\) site-two/);
+
+      await assert.rejects(
+        provider({}, { prompt: async () => null }).deploy(harness({ targetConfig: {} }).ctx),
+        /siteId is required[\s\S]*2\) site-two/,
+      );
+    } finally {
+      fake.sites = [{ id: 1, name: 'site-one' }];
+    }
   });
 
   test('401 → AuthError with a login hint; no token → AuthError without a request', async () => {
