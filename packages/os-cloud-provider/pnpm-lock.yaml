@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@mieweb/deploy-contract':
-        specifier: 0.2.1-pr14.1
-        version: 0.2.1-pr14.1
+        specifier: 0.2.1-pr14.5
+        version: 0.2.1-pr14.5
       ignore:
         specifier: ^7.0.10
         version: 7.0.10
@@ -205,8 +205,8 @@ packages:
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
     engines: {node: '>=6.9.0'}
 
-  '@mieweb/deploy-contract@0.2.1-pr14.1':
-    resolution: {integrity: sha512-SGTx/dmgLc+9vb3k/ilOqORa7VBlf3MiMmoaHkgvGLR4CHYkbdFPaYBfvLtnFfaqLD9Mta2E5kOHmAFkvGBCkA==, tarball: https://npm.pkg.github.com/download/@mieweb/deploy-contract/0.2.1-pr14.1/653c8e1927998f1779a2d334558d79f8389fb2a7}
+  '@mieweb/deploy-contract@0.2.1-pr14.5':
+    resolution: {integrity: sha512-OgTpvGm8iUp0JKjsr1k9kIVsjSMzmJbr5VXNA+QNDXen6ItKOhR9fe/D2T9SzrFyO/0+qbLenz5yT0CUAr9AEA==, tarball: https://npm.pkg.github.com/download/@mieweb/deploy-contract/0.2.1-pr14.5/18d12fabb58f4b7350f4b0065ed3fd46f716d6fc}
 
   '@redocly/ajv@8.11.2':
     resolution: {integrity: sha512-io1JpnwtIcvojV7QKDUSIuMN/ikdOUd1ReEnUnMKGfDVridQZ31J0MmIuqwuRjWDZfmvr+Q0MqCcfHM2gTivOg==}
@@ -448,7 +448,7 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@mieweb/deploy-contract@0.2.1-pr14.1': {}
+  '@mieweb/deploy-contract@0.2.1-pr14.5': {}
 
   '@redocly/ajv@8.11.2':
     dependencies:

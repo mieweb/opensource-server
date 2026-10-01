@@ -347,6 +347,14 @@ describe('deploy', () => {
     const only = harness({ targetConfig: {} });
     await provider().deploy(only.ctx);
     assert.ok(fake.requests.some((r) => r.path.startsWith('/sites/1/containers')));
+    assert.ok(only.logs.some((l) => l.includes('Set targets.mieweb.siteId to 1')), 'hint when the host cannot persist');
+
+    // Host with persistTargetConfig: the choice is saved, no hint.
+    const saved: Record<string, unknown>[] = [];
+    const h = harness({ targetConfig: {} });
+    await provider().deploy({ ...h.ctx, persistTargetConfig: async (p) => { saved.push({ ...p }); return true; } });
+    assert.deepEqual(saved, [{ siteId: 1 }]);
+    assert.ok(!h.logs.some((l) => l.includes('Set targets.mieweb.siteId')));
 
     fake.sites = [{ id: 1, name: 'site-one' }, { id: 2, name: 'site-two' }];
     try {

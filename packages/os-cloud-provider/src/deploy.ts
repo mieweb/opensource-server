@@ -310,19 +310,25 @@ export async function resolveSiteId(
   configured: number | undefined,
   client: ManagerClient,
   deps: ProviderDeps,
-  logger: DeployContext['logger'],
-  target: string,
+  ctx: DeployContext,
 ): Promise<number> {
   if (configured !== undefined) return configured;
+  const { logger, target } = ctx;
   const sites = await client.get<SiteSummary[]>('/sites');
-  const hint = (id: number): string =>
-    `set targets.${target}.siteId to ${id} in mieweb.jsonc (or MIEWEB_OS_SITE_ID) to skip this`;
+  // Save the choice to mieweb.jsonc when the host supports it (CLI >= this
+  // contract); otherwise tell the user what to set.
+  const remember = async (site: SiteSummary, why: string): Promise<number> => {
+    logger.info(`Using site ${site.id} (${site.name})${why}`);
+    const saved = await ctx.persistTargetConfig?.({ siteId: site.id }).catch((err: unknown) => {
+      logger.warn(`Could not save siteId to mieweb.jsonc: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    });
+    if (!saved) logger.info(`Set targets.${target}.siteId to ${site.id} in mieweb.jsonc (or MIEWEB_OS_SITE_ID) to skip this`);
+    return site.id;
+  };
   if (sites.length === 0) throw new ConfigError('No Manager sites are visible to your account');
   const [only] = sites;
-  if (sites.length === 1 && only) {
-    logger.info(`Using site ${only.id} (${only.name}), the only one available; ${hint(only.id)}`);
-    return only.id;
-  }
+  if (sites.length === 1 && only) return remember(only, ', the only one available');
   const list = sites.map((x) => `  ${x.id}) ${x.name}`).join('\n');
   const prompt = deps.prompt ?? ttyPrompter;
   for (;;) {
@@ -331,10 +337,7 @@ export async function resolveSiteId(
       throw new ConfigError(`targets.${target}.siteId is required (the Manager site to deploy into). Available:\n${list}`);
     }
     const pick = sites.find((x) => String(x.id) === answer.trim() || x.name === answer.trim());
-    if (pick) {
-      logger.info(`Using site ${pick.id} (${pick.name}); ${hint(pick.id)}`);
-      return pick.id;
-    }
+    if (pick) return remember(pick, '');
     process.stderr.write(`"${answer.trim()}" is not one of the listed sites\n`);
   }
 }
@@ -344,7 +347,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const name = appName(ctx.manifest);
   const s = resolveTargetSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
-  const siteId = await resolveSiteId(s.siteId, client, deps, ctx.logger, ctx.target);
+  const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const image = normalizeImageRef(s.image);
   const wait = (jobId: number): Promise<void> =>
     waitForJob(client, jobId, { signal, logger, intervalMs: deps.pollIntervalMs });
@@ -548,7 +551,7 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   const name = appName(ctx.manifest);
   const s = resolveTargetSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
-  const siteId = await resolveSiteId(s.siteId, client, deps, ctx.logger, ctx.target);
+  const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const existing = await findByHostname(client, siteId, name);
   if (!existing) {
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);

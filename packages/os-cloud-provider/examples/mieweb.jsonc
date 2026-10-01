@@ -15,7 +15,8 @@
   "targets": {
     "mieweb": {
       "provider": "@mieweb/os-cloud-provider",
-      // Optional: without it deploy uses your only site, or asks which one.
+      // Optional: without it deploy uses your only site, or asks which one, and
+      // saves the choice here.
       "siteId": 1,
       "instanceUrl": "https://os.mieweb.org",
       // Optional; defaults shown.

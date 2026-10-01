@@ -4,4 +4,4 @@ allowBuilds:
   ssh2: false
   cpu-features: false
 minimumReleaseAgeExclude:
-  - '@mieweb/deploy-contract@0.2.1-pr14.1'
+  - '@mieweb/deploy-contract@0.2.1-pr14.1 || 0.2.1-pr14.5'
