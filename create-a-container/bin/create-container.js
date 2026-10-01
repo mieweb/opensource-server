@@ -259,14 +259,14 @@ async function main() {
     const client = await node.api();
     console.log('Node API client initialized');
     
-    // Allocate the provider ID right before creating to minimize race condition window.
-    // Proxmox requires us to allocate a VMID first; Docker returns its real container
-    // ID after create.
+    // Proxmox requires us to allocate a VMID first; it is generated pseudo-randomly
+    // (time + random) so concurrent jobs don't collide. Docker returns its real
+    // container ID after create.
     let vmid = null;
     if (isDockerNode) {
       console.log('Docker node selected; Docker will allocate the container ID during create.');
     } else {
-      console.log('Allocating VMID from Proxmox...');
+      console.log('Allocating VMID...');
       vmid = await client.nextId();
       console.log(`Allocated VMID: ${vmid}`);
     }
