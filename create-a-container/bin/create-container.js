@@ -35,6 +35,7 @@ const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
 const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
+const { withVmidRetry } = require(path.join(__dirname, '..', 'utils', 'vmid'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -314,8 +315,8 @@ async function main() {
       // Create container from the pulled image (Proxmox adds .tar to the filename)
       console.log(`Creating container from ${filename}.tar...`);
       const ostemplate = `${templateStorage}:vztmpl/${filename}.tar`;
-      const createUpid = await client.createLxc(node.name, {
-        vmid,
+      const createOptions = (id) => ({
+        vmid: id,
         hostname: container.hostname,
         ostemplate,
         description: `Created from Docker image ${container.template}`,
@@ -332,6 +333,12 @@ async function main() {
         // TODO(#421): hardcoded shared volume; see buildSharedVolumeMp0()
         mp0: buildSharedVolumeMp0(templateStorage)
       });
+      let createUpid;
+      if (isDockerNode) {
+        createUpid = await client.createLxc(node.name, createOptions(vmid));
+      } else {
+        ({ vmid, result: createUpid } = await withVmidRetry(vmid, (id) => client.createLxc(node.name, createOptions(id))));
+      }
       console.log(`Create task started: ${createUpid}`);
 
       if (isDockerNode) {
@@ -377,12 +384,18 @@ async function main() {
       
       // Clone the template
       console.log(`Cloning template ${templateVmid} to VMID ${vmid}...`);
-      const cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, {
+      const cloneOptions = {
         hostname: container.hostname,
         description: `Cloned from template ${container.template}`,
         full: 1,
         storage: rootfsStorage
-      });
+      };
+      let cloneUpid;
+      if (isDockerNode) {
+        cloneUpid = await client.cloneLxc(node.name, templateVmid, vmid, cloneOptions);
+      } else {
+        ({ vmid, result: cloneUpid } = await withVmidRetry(vmid, (id) => client.cloneLxc(node.name, templateVmid, id, cloneOptions)));
+      }
       console.log(`Clone task started: ${cloneUpid}`);
       
       // Wait for clone to complete

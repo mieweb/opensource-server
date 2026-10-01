@@ -22,4 +22,43 @@ function generateVmid(now = Date.now()) {
   return VMID_MIN + timeSlot * RANDOM_SPACE + crypto.randomInt(RANDOM_SPACE);
 }
 
-module.exports = { generateVmid, VMID_MIN, VMID_MAX };
+/**
+ * True if an error from a Proxmox create/clone call means the VMID is taken
+ * (e.g. "CT 123 already exists on node 'pve1'").
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function isVmidConflict(err) {
+  const msg = [
+    err?.response?.data?.message,
+    err?.response?.statusText,
+    err?.message,
+  ].filter(Boolean).join(' ');
+  return /already exists/i.test(msg);
+}
+
+/**
+ * Run `fn(vmid)` and, if it fails because the VMID is already in use, retry
+ * with a freshly generated VMID up to `maxAttempts` total attempts.
+ * @template T
+ * @param {number} vmid - Initial VMID to try
+ * @param {(vmid: number) => Promise<T>} fn
+ * @param {object} [opts]
+ * @param {number} [opts.maxAttempts=5]
+ * @param {() => number} [opts.generate=generateVmid]
+ * @returns {Promise<{ vmid: number, result: T }>}
+ */
+async function withVmidRetry(vmid, fn, { maxAttempts = 5, generate = generateVmid } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return { vmid, result: await fn(vmid) };
+    } catch (err) {
+      if (attempt >= maxAttempts || !isVmidConflict(err)) throw err;
+      const next = generate();
+      console.warn(`VMID ${vmid} already in use; retrying with ${next} (attempt ${attempt + 1}/${maxAttempts})`);
+      vmid = next;
+    }
+  }
+}
+
+module.exports = { generateVmid, isVmidConflict, withVmidRetry, VMID_MIN, VMID_MAX };
