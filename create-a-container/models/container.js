@@ -24,6 +24,12 @@ module.exports = (sequelize, DataTypes) => {
         as: 'collaborators',
         onDelete: 'CASCADE',
       });
+      // a container has zero or more volumes (bind mounts)
+      Container.hasMany(models.Volume, {
+        foreignKey: 'containerId',
+        as: 'volumes',
+        onDelete: 'CASCADE',
+      });
     }
 
     /**

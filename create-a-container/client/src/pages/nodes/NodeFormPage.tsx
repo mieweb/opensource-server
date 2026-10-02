@@ -91,8 +91,13 @@ export function NodeFormPage() {
         ? api.put<Node>(`/api/v1/sites/${siteId}/nodes/${id}`, payload)
         : api.post<Node>(`/api/v1/sites/${siteId}/nodes`, payload);
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       toast.success(isEdit ? 'Node updated' : 'Node created');
+      // Surface advisory volume-storage warnings (issue #421) so the admin sees
+      // them even though we navigate away from the form.
+      for (const w of saved?.warnings ?? []) {
+        toast.warning(w);
+      }
       qc.invalidateQueries({ queryKey: keys.nodes(siteId!) });
       navigate(`/sites/${siteId}/nodes`);
     },

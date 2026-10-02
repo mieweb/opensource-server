@@ -1,14 +1,21 @@
 /** Persistent agent state: last applied config ETag + per-service apply
- * results, stored as JSON under the state dir. */
+ * results + pending per-volume provisioning results, stored as JSON under the
+ * state dir. */
 
 import fs from 'fs';
 import path from 'path';
 import { log } from './log';
-import type { ApplyResult } from './types';
+import type { ApplyResult, VolumeResult } from './types';
 
 export class State {
   etag?: string;
   lastApply: Record<string, ApplyResult> = {};
+  // Volume provisioning results not yet confirmed delivered to the manager.
+  // Persisted so they survive a process exit between reconcile and the next
+  // check-in — otherwise a saved ETag would 304 the next run and the result
+  // would be lost, leaving the volume pending until the create barrier times
+  // out. Cleared only after a check-in that carried them completes.
+  pendingVolumeResults: Record<string, VolumeResult> = {};
 
   private constructor(private readonly file: string) {}
 
@@ -22,9 +29,14 @@ export class State {
       throw err;
     }
     try {
-      const data = JSON.parse(raw) as { etag?: string; lastApply?: Record<string, ApplyResult> };
+      const data = JSON.parse(raw) as {
+        etag?: string;
+        lastApply?: Record<string, ApplyResult>;
+        pendingVolumeResults?: Record<string, VolumeResult>;
+      };
       state.etag = data.etag;
       state.lastApply = data.lastApply ?? {};
+      state.pendingVolumeResults = data.pendingVolumeResults ?? {};
     } catch (err) {
       if (!(err instanceof SyntaxError)) throw err;
       // A corrupt state file just means a full re-apply on this run.
@@ -37,7 +49,11 @@ export class State {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     fs.writeFileSync(
       this.file,
-      JSON.stringify({ etag: this.etag, lastApply: this.lastApply }, null, 2),
+      JSON.stringify(
+        { etag: this.etag, lastApply: this.lastApply, pendingVolumeResults: this.pendingVolumeResults },
+        null,
+        2,
+      ),
     );
   }
 }
