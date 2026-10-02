@@ -12,7 +12,7 @@ OCI container images automatically built and published to GitHub Container Regis
 
 ### Debian 13 (`base`)
 
-Debian 13 with systemd (PID 1), SSSD for LDAP authentication, and PAM auto-homedir. Environment variables stored in `/etc/environment`.
+Debian 13 with systemd (PID 1), SSSD for LDAP authentication, PAM auto-homedir, and `build-essential` (gcc, g++, make) so native npm/pip modules can compile. Environment variables stored in `/etc/environment`.
 
 **Registry:** `ghcr.io/mieweb/opensource-server/base` · **Source:** [`images/base/`](https://github.com/mieweb/opensource-server/tree/main/images/base)
 
@@ -33,6 +33,12 @@ Extends base with Docker Engine (Community Edition) from Docker's official APT r
 The same Dockerfile as `docker`, built on top of the `nodejs` image instead of the Debian base (the bake target swaps the named `base` build context). Inherits Node.js 24 and LDAP authentication.
 
 **Registry:** `ghcr.io/mieweb/opensource-server/docker-nodejs` · **Source:** [`images/docker/`](https://github.com/mieweb/opensource-server/tree/main/images/docker)
+
+### Converged app (`cloud`)
+
+Extends nodejs for `mieweb deploy --target mieweb` ([Deploying with the mieweb CLI](../users/mieweb-cli-deploy.md)). One container per app runs the app plus its datastores as systemd units, each bound to `127.0.0.1`: MinIO (`:9000`, R2), libSQL server `sqld` (`:8080`, D1/Vectorize), and Valkey (`:6379`, KV/Queues). Their data lives under the persistent `/mnt/data` [volume](../admins/core-concepts/volumes.md). `mieweb deploy` syncs the app's worktree into `/opt/app/src` over the container's SSH port and restarts `app.service`, which installs dependencies (only when `package.json` or the lockfile changed), runs the `build` script if present, and starts `MIEWEB_APP_START` (default `npm start`) on `$PORT`. Until the first sync, `app.service` is skipped. MinIO is built from source at a pinned release (MinIO no longer publishes binaries), and `sqld` is a checksum-verified release download.
+
+**Registry:** `ghcr.io/mieweb/opensource-server/cloud` · **Source:** [`images/cloud/`](https://github.com/mieweb/opensource-server/tree/main/images/cloud)
 
 ### Agent (`agent`)
 
@@ -61,6 +67,8 @@ images/
 │   └── ldapusers
 ├── nodejs/
 │   └── Dockerfile           # Extends base image
+├── cloud/
+│   └── Dockerfile           # Extends nodejs (MinIO + sqld + Valkey + app units)
 ├── builder/
 │   └── Dockerfile           # Builds the .deb packages (artifact-only image)
 ├── docs/

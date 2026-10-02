@@ -445,7 +445,14 @@ router.get(
   '/new',
   asyncHandler(async (req, res) => {
     const site = await loadSite(req.params.siteId);
-    const externalDomains = await site.getSortedExternalDomains();
+    // Any container creator (not just admins) can call this, so return only
+    // the public fields. Full ExternalDomain rows include the Cloudflare
+    // DNS-challenge credentials (cloudflareApiEmail/cloudflareApiKey).
+    const externalDomains = (await site.getSortedExternalDomains()).map((d) => ({
+      id: d.id,
+      name: d.name,
+      siteId: d.siteId ?? null,
+    }));
     const nvidiaAvailable =
       (await Node.count({ where: { siteId: site.id, nvidiaAvailable: true } })) > 0;
     return ok(res, { siteId: site.id, externalDomains, nvidiaAvailable });

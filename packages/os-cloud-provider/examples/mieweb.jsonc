@@ -1,0 +1,36 @@
+// Example mieweb.jsonc for deploying a @mieweb/cloud app to opensource-server
+// (os.mieweb.org) with `mieweb deploy --target mieweb`.
+//
+// Non-secret configuration only. Credentials come from the environment:
+//   MIEWEB_OS_TOKEN        API key (or run `mieweb login --target mieweb`)
+//   MIEWEB_OS_URL          Manager URL; overrides targets.mieweb.instanceUrl
+//   MIEWEB_OS_SITE_ID      Manager site; overrides targets.mieweb.siteId
+//   MIEWEB_OS_SECRET_<NAME> injected into the container as <NAME>
+//   MIEWEB_OS_SSH_USER     SSH login for the code sync (default: your Manager username)
+//
+// Each deploy syncs this worktree (minus .gitignore'd files) into the
+// container over its SSH port using your own SSH keys/agent or password.
+{
+  "target": "mieweb",
+  "targets": {
+    "mieweb": {
+      "provider": "@mieweb/os-cloud-provider",
+      // Optional: without it deploy uses your only site, or asks which one, and
+      // saves the choice here.
+      "siteId": 1,
+      "instanceUrl": "https://os.mieweb.org",
+      // Optional; defaults shown.
+      "image": "ghcr.io/mieweb/opensource-server/cloud:latest",
+      "port": 8787,
+      "authRequired": false,
+
+      // The app's bindings, served by the datastores inside the container.
+      "runtime": "node",
+      "bindings": {
+        "DB": { "driver": "libsql", "url": "http://127.0.0.1:8080" },
+        "FILES": { "driver": "s3", "endpoint": "http://127.0.0.1:9000", "bucket": "files", "forcePathStyle": true },
+        "CACHE": { "driver": "valkey", "host": "127.0.0.1", "port": 6379 }
+      }
+    }
+  }
+}

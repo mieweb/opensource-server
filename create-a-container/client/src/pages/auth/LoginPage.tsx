@@ -45,6 +45,9 @@ function asExternalUrl(target: string): string | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  // Same-origin server routes (e.g. the CLI login handoff at
+  // /api/v1/auth/cli/callback) aren't SPA pages — they need a real navigation.
+  if (url.origin === window.location.origin && url.pathname.startsWith('/api/')) return url.href;
   // Same-origin targets stay in-app (let react-router handle them as paths).
   if (url.origin === window.location.origin) return null;
   return url.href;
