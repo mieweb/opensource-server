@@ -8,5 +8,6 @@ The cluster is organized: **Sites** → **Nodes** → **Containers**
 - **[External Domains](external-domains.md)** — Public domains with automatic SSL/TLS
 - **[Nodes](nodes.md)** — Proxmox VE servers within a site
 - **[Containers](containers.md)** — LXC instances on nodes ([user guide](../../users/creating-containers/web-gui.md))
+- **[Volumes](volumes.md)** — Persistent bind-mount directories that survive delete + recreate
 
 **Setup order:** Users & Groups → Sites → External Domains (optional) → Nodes → Containers

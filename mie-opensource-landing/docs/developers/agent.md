@@ -33,7 +33,8 @@ sequenceDiagram
     Agent->>Timer: exit
 ```
 
-The check-in body carries system info and per-service status:
+The check-in body carries system info, per-service status, and — when the agent
+provisioned volume directories this pass — per-volume results:
 
 ```json
 {
@@ -44,11 +45,40 @@ The check-in body carries system info and per-service status:
   "services": {
     "nginx":   { "state": "active", "lastApply": "success" },
     "dnsmasq": { "state": "active", "lastApply": "success" }
+  },
+  "volumes": {
+    "42": { "applied": true },
+    "43": { "applied": false, "message": "mkdir: permission denied" }
   }
 }
 ```
 
 The manager records every check-in in the `Agents` table (shown on the web client's `/agents` page) and responds with the site's config snapshot as JSON. A strong `ETag` covers the snapshot; the agent stores it in `/var/lib/opensource-agent/state.json` and sends it back via `If-None-Match`, so unchanged configs cost a single `304` round trip.
+
+## Volumes
+
+The config snapshot includes, at the **site** level, the volume directories the
+agent must ensure exist (`site.volumes[]` = `{ id, hostPath, mode, uid, gid }`).
+There is one agent per site, and the shared volumes root is bind-mounted into the
+agent container, so this single agent provisions volumes for every node in the
+site. Each pass the agent first checks, via `/proc/self/mountinfo`, that the
+path lies on a mount other than its own root filesystem (otherwise the volumes
+root isn't bind-mounted and the volume is reported `failed` rather than created
+inside the agent). It then `mkdir -p`s the directory, `chown`s it to the
+supplied `uid`/`gid` (the consuming containers' id-mapped root, `100000`)
+best-effort, and `chmod`s it per mode. The chown is a tolerated no-op
+(`EINVAL`/`EPERM`) in an unprivileged agent guest — the norm, since `pct create`
+defaults to `--unprivileged 1`, where the id-map already yields the right owner
+and `100000` is outside the guest's mapped range — and the actual fix in a
+privileged agent guest (deliberately created with `--unprivileged 0`), where the
+agent is host root and mkdir would otherwise create a root-owned directory. Per-volume
+results are reported back keyed by volume id via the `volumes` field above; the
+manager writes them into `Volume.status` (`ready` / `failed`). The container
+create job blocks on `Volume.status = 'ready'` before attaching the Proxmox
+`mpN` bind mount. The agent only ever creates directories — it never removes
+them, so volume data is retained across container
+delete + recreate. See [Volumes](../admins/core-concepts/volumes.md) and
+[Deploying Agents → Volume storage](../admins/deploying-agents.md#volume-storage-for-persistent-volumes).
 
 ## Environment Variables
 

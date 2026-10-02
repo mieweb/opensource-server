@@ -9,7 +9,26 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume } = require('../models');
+const { isAgentlessNodeType } = require('./volumes');
+
+// Owning host UID/GID for volume directories: Proxmox maps an unprivileged CT's
+// UID/GID 0 to host 100000, so RW volumes must be owned by 100000 to be writable
+// from inside a consuming unprivileged container as its root.
+//
+// The agent applies this ownership BEST-EFFORT so it is correct regardless of
+// whether the agent itself runs in an unprivileged or (rare) privileged guest:
+//   - Unprivileged agent guest (the norm — `pct create` defaults to
+//     --unprivileged 1, so this includes the embedded Manager agent): the
+//     agent's root already maps to host 100000, so mkdir yields the right owner.
+//     A chown to 100000 then targets an id outside the guest's mapped range and
+//     is a tolerated no-op (EINVAL/EPERM ignored by the agent).
+//   - Privileged agent guest (only if an operator deliberately creates it with
+//     --unprivileged 0): the agent is host root, so mkdir would yield a
+//     root-owned (0:0) dir; the chown to 100000 fixes it so the unprivileged
+//     consumer can write.
+const VOLUME_OWNER_UID = 100000;
+const VOLUME_OWNER_GID = 100000;
 
 /**
  * Load a site with everything the agent templates need, serialized to plain
@@ -112,6 +131,17 @@ async function buildAgentConfig(siteId) {
     order: [['id', 'ASC']],
   });
 
+  // Desired volume directories the agent must ensure exist. Advertised at the
+  // SITE level (not per node): there is one agent per site, and the volumes root
+  // lives on storage shared across the site's nodes and bind-mounted into the
+  // agent, so a single agent creates every site volume's directory regardless of
+  // which node the container is placed on. Loaded independently of the nginx
+  // container graph because a volume must be advertised to the agent BEFORE its
+  // container gets an IP (during creation). Built-in volumes (the retired
+  // quick_and_dirty mount recorded on pre-existing containers) are excluded —
+  // the agent only owns user volume directories.
+  const volumes = await buildSiteVolumes(site);
+
   return {
     site: {
       id: site.id,
@@ -130,6 +160,8 @@ async function buildAgentConfig(siteId) {
           macAddress: c.macAddress,
         })),
       })),
+      // Volume directories to ensure for this site (id, hostPath, mode).
+      volumes,
     },
     nginx: {
       httpServices,
@@ -137,6 +169,51 @@ async function buildAgentConfig(siteId) {
       externalDomains: externalDomains.map((d) => ({ name: d.name })),
     },
   };
+}
+
+/**
+ * Build the site-level list of desired volume directories for the agent's
+ * config snapshot. Each entry carries the host path and mode. Excluded:
+ *  - built-in volumes (admin-provisioned legacy mounts),
+ *  - host-path-less volumes (not derived/provisionable yet), and
+ *  - volumes on agentless nodes (Docker, dummy — see isAgentlessNodeType):
+ *    they're marked ready locally without the agent, and the site agent may not
+ *    even have their paths mounted, so advertising them would let it report a
+ *    spurious failure and flip a valid volume to `failed`.
+ * Deterministic order keeps the strong ETag stable.
+ *
+ * @param {object} site - Site with eager-loaded nodes (used to scope containers)
+ * @returns {Promise<Array<object>>}
+ */
+async function buildSiteVolumes(site) {
+  // Only nodes whose directories the site agent actually provisions (see above).
+  const agentProvisionedNodeIds = (site.nodes || [])
+    .filter((n) => !isAgentlessNodeType(n.nodeType))
+    .map((n) => n.id);
+  if (agentProvisionedNodeIds.length === 0) return [];
+
+  const volumes = await Volume.findAll({
+    include: [
+      {
+        model: Container,
+        as: 'container',
+        attributes: ['id', 'nodeId'],
+        where: { nodeId: agentProvisionedNodeIds },
+        required: true,
+      },
+    ],
+    where: { builtin: false, hostPath: { [Op.ne]: null } },
+    order: [['id', 'ASC']],
+  });
+
+  return volumes.map((v) => ({
+    id: v.id,
+    hostPath: v.hostPath,
+    mode: v.mode,
+    // Owning host UID/GID the agent applies best-effort (see comment above).
+    uid: VOLUME_OWNER_UID,
+    gid: VOLUME_OWNER_GID,
+  }));
 }
 
 /**

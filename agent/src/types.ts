@@ -19,6 +19,32 @@ export interface CheckinRequest {
   currentTime: number;
   ipv4Address: string | null;
   services: Record<string, ServiceStatus>;
+  /**
+   * Per-volume directory-provisioning results, keyed by the manager-assigned
+   * Volume id: `{ <volumeId>: { applied, message? } }`. Present only when the
+   * agent processed volumes this pass. The manager writes these into
+   * Volume.status (ready/failed) at check-in.
+   */
+  volumes?: Record<string, VolumeResult>;
+}
+
+/** Outcome of ensuring one volume directory on this node. */
+export interface VolumeResult {
+  applied: boolean;
+  message?: string;
+}
+
+/** A volume directory the agent must ensure exists, as carried in the config
+ * snapshot at the site level. `uid`/`gid` are the owning host ids (the
+ * unprivileged CT's id-mapped root); the agent applies them best-effort — a
+ * no-op in an unprivileged agent guest (mkdir already yields that owner) and the
+ * real fix in a privileged agent guest (mkdir would otherwise be root-owned). */
+export interface SiteVolume {
+  id: number;
+  hostPath: string;
+  mode: 'ro' | 'rw';
+  uid: number;
+  gid: number;
 }
 
 export interface SiteContainer {
@@ -45,6 +71,8 @@ export interface SiteInfo {
   gateway: string | null;
   dnsForwarders: string | null;
   nodes: SiteNode[];
+  /** Volume directories to ensure for the whole site. Absent on older managers. */
+  volumes?: SiteVolume[];
 }
 
 export interface HttpService {

@@ -11,7 +11,14 @@ Nodes are Proxmox VE servers within a site that host containers.
 - **Authentication**: Username/password or API token
 - **TLS Verification**: Enable/disable certificate validation
 - **Template Storage**: Proxmox storage for CT template images (`vztmpl` content)
-- **Volume Storage**: Proxmox storage for container root filesystems (`rootdir` content)
+- **Volume Storage**: Proxmox storage for container root filesystems (`rootdir` content) and persistent [volumes](volumes.md)
+
+!!! warning "Volume storage should be shared across the cluster"
+    Persistent [volumes](volumes.md) require their host directories to exist on
+    whichever node a container lands on. Place the **volume storage** on storage
+    that is shared across every node (a path-backed shared filesystem such as CephFS or NFS). On save, the manager
+    warns (but does not block) if the chosen volume storage is not shared or is
+    not active on every node. Single-node sites are unaffected.
 
 ## Adding Nodes
 

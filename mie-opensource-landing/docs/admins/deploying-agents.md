@@ -1,7 +1,7 @@
 
 # Deploying Agents
 
-An agent container runs nginx, dnsmasq, and [acme.sh](https://github.com/acmesh-official/acme.sh) for a site. Deploy one agent per Proxmox node to handle networking for containers on that node.
+An agent container runs nginx, dnsmasq, and [acme.sh](https://github.com/acmesh-official/acme.sh) for a site. Deploy **one agent per site** — a site is one subnet, and the agent is that subnet's single DHCP/DNS and reverse-proxy authority, so running more than one per site on a shared L2 would collide. The agent also provisions persistent [volume](core-concepts/volumes.md) directories for the whole site (see [Volume storage](#volume-storage-for-persistent-volumes) below).
 
 Agents are deployed **manually in Proxmox** (not through the manager UI) and should be set up **after** configuring the site in the manager but **before** importing the node. This ensures DNS and reverse proxy services are running when the node comes online.
 
@@ -70,6 +70,70 @@ lxc.environment = API_KEY=<admin-api-key>
 | `SITE_ID` | Numeric site ID from the manager (visible in the URL when viewing the site) |
 | `MANAGER_URL` | Base URL of the manager container (e.g., `http://192.168.1.10:3000`) |
 | `API_KEY` | API key from an admin account. Used to authenticate check-ins. |
+
+## Volume storage for persistent volumes
+
+If the site uses persistent [volumes](core-concepts/volumes.md), the agent
+creates each volume's host directory on check-in. For that to work, the site's
+**volumes root** must be visible and writable inside the agent container, and it
+must be on storage shared across every node so a directory the agent creates
+exists wherever a container lands.
+
+The volumes root is `<volume-storage-path>/volumes` — where `<volume-storage-path>`
+is the configured **path** of the node's volume storage (e.g. a CephFS/NFS mount
+like `/mnt/pve/cephfs`). Do the following once per site, on the Proxmox host that
+runs the agent:
+
+1. **Pre-create the volumes root on the shared storage**, owned by the
+   unprivileged-container id-mapped root (host UID/GID `100000`), so the agent —
+   itself an unprivileged CT mapped the same way — can create and own
+   per-volume subdirectories:
+
+   ```bash
+   # <volumes-root> e.g. /mnt/pve/cephfs/volumes
+   mkdir -p <volumes-root>
+   chown 100000:100000 <volumes-root>
+   chmod 0770 <volumes-root>
+   ```
+
+2. **Bind-mount the volumes root into the agent container at the same path** so
+   the host path the manager derives resolves identically inside the agent. Add
+   to `/etc/pve/lxc/<agent-vmid>.conf`:
+
+   ```ini
+   mp0: <volumes-root>,mp=<volumes-root>
+   ```
+
+   For example: `mp0: /mnt/pve/cephfs/volumes,mp=/mnt/pve/cephfs/volumes`.
+
+   The agent checks for this mount: it only creates a volume directory if the
+   path lies on a mounted filesystem other than its own root. If the volumes
+   root isn't mounted, the volume is reported as `failed` with a message saying
+   so, instead of being created inside the agent container where Proxmox can't
+   see it.
+
+!!! note "Why the agent — not a per-node host process — creates these"
+    There is one agent per site, and the shared volumes root is bind-mounted
+    into it, so this single agent provisions every site volume's directory
+    (which is why the volumes root must be on shared storage). The agent chowns
+    each new directory to the consuming containers' id-mapped root (host UID/GID
+    `100000`) best-effort. In an **unprivileged** agent guest — the norm, since
+    `pct create` defaults to `--unprivileged 1` (this includes the embedded
+    Manager agent) — the agent's root maps to host `100000`, so `mkdir` already
+    yields the right owner and the chown is a tolerated no-op (`EINVAL`/`EPERM`).
+    In a **privileged** agent guest (only if you deliberately create it with
+    `--unprivileged 0`) the agent is host root, so the chown is what makes the
+    directory writable by the unprivileged consumer.
+
+!!! warning "Custom id-maps are not supported for volumes"
+    Volume ownership assumes the **default** Proxmox unprivileged-CT id-map,
+    which maps guest UID/GID 0 to host `100000`. The manager always advertises
+    `100000` as the owner and the agent chowns each volume directory to it, so
+    read-write volumes are writable by the consuming containers' mapped root.
+    Sites that override this with a custom `lxc.idmap` (a different base) are
+    **not supported** for persistent volumes: the per-volume directories would
+    still be owned by `100000` and would not be writable inside those
+    containers. Keep containers that use volumes on the default id-map.
 
 ## 4. Start and Verify
 
