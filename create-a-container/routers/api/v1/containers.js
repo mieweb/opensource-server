@@ -806,12 +806,14 @@ router.put(
       }
     }
 
-    // The owner or an admin (requireManage above) may transfer ownership to
-    // another active user by passing `username`.
+    // Admins may transfer ownership to another active user by passing `username`.
     let newOwnerUsername = null;
     if (bodyUsername !== undefined) {
       if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
         throw new ApiError(400, 'invalid_request', 'username must be a non-empty string');
+      }
+      if (!req.session.isAdmin) {
+        throw new ApiError(403, 'forbidden', 'only admins may reassign container ownership');
       }
       newOwnerUsername = bodyUsername.trim();
       if (newOwnerUsername !== container.username) {

@@ -18,7 +18,7 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 
 ## Ownership Transfer
 
-The owner or an admin can hand a container to another active user from the container's edit page (**Ownership** → **Transfer**), e.g. when the owner leaves the organization.
+Admins can hand a container to another active user from the container's edit page (**Ownership** → **Transfer**), e.g. when the owner leaves the organization.
 
 | Moves to the new owner | Not changed |
 |---|---|
@@ -26,7 +26,7 @@ The owner or an admin can hand a container to another active user from the conta
 | Approved/pending resource requests | Volume data (host paths are fixed at creation) |
 | | Other collaborators |
 
-The new owner's sharing grant, if any, is removed. A non-admin previous owner loses access unless the new owner shares it back. API: `PUT /api/v1/sites/{siteId}/containers/{id}` with `{ "username": "<new owner>" }`.
+The new owner's sharing grant, if any, is removed. The previous owner loses access unless the new owner shares it back. API (admin only): `PUT /api/v1/sites/{siteId}/containers/{id}` with `{ "username": "<new owner>" }`.
 
 ## Volumes
 

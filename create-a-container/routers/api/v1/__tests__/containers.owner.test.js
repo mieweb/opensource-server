@@ -1,6 +1,6 @@
 /**
- * PUT /api/v1/sites/:siteId/containers/:id with `username` — ownership
- * transfer by the owner or an admin.
+ * PUT /api/v1/sites/:siteId/containers/:id with `username` — admin-only
+ * ownership transfer.
  */
 
 const request = require('supertest');
@@ -49,8 +49,8 @@ describe('PUT container ownership transfer', () => {
       .send(body);
   }
 
-  test('the owner can transfer ownership and then loses access', async () => {
-    const res = await put(ownerKey, { username: other.uid });
+  test('an admin can transfer ownership and the previous owner loses access', async () => {
+    const res = await put(adminKey, { username: other.uid });
     expect(res.status).toBe(200);
     expect(res.body.data.message).toBe(`Ownership transferred to ${other.uid}`);
     await container.reload();
@@ -62,11 +62,11 @@ describe('PUT container ownership transfer', () => {
     expect(after.status).toBe(404);
   });
 
-  test('an admin can transfer a container they do not own', async () => {
-    const res = await put(adminKey, { username: other.uid });
-    expect(res.status).toBe(200);
+  test('the owner cannot transfer ownership', async () => {
+    const res = await put(ownerKey, { username: other.uid });
+    expect(res.status).toBe(403);
     await container.reload();
-    expect(container.username).toBe(other.uid);
+    expect(container.username).toBe(owner.uid);
   });
 
   test('a collaborator cannot transfer ownership', async () => {
@@ -78,21 +78,21 @@ describe('PUT container ownership transfer', () => {
   });
 
   test('rejects an unknown user', async () => {
-    const res = await put(ownerKey, { username: 'nobody' });
+    const res = await put(adminKey, { username: 'nobody' });
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('user_not_found');
   });
 
   test('rejects an inactive user', async () => {
     const inactive = await createUser({ status: 'pending' });
-    const res = await put(ownerKey, { username: inactive.uid });
+    const res = await put(adminKey, { username: inactive.uid });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('user_inactive');
   });
 
   test("removes the new owner's sharing grant", async () => {
     await ContainerCollaborator.create({ containerId: container.id, username: other.uid });
-    const res = await put(ownerKey, { username: other.uid });
+    const res = await put(adminKey, { username: other.uid });
     expect(res.status).toBe(200);
     expect(await ContainerCollaborator.count({ where: { containerId: container.id } })).toBe(0);
   });

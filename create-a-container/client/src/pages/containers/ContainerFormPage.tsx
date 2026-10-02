@@ -984,7 +984,7 @@ export function ContainerFormPage() {
             })}
           </CardContent>
         </Card>
-        {isEdit && container && !isReadOnly && (
+        {isEdit && container && session?.isAdmin && (
           <Card padding="none" className={sectionCardClass}>
             <CardHeader className={sectionHeaderClass}>
               <CardTitle className="text-base">Ownership</CardTitle>

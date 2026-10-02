@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -14,14 +13,9 @@ import {
 } from '@mieweb/ui';
 import { UserRoundCog } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { useSession } from '@/lib/auth';
 import { keys, queries } from '@/lib/queries';
 
-/**
- * Transfers a container to another user (owner or admin only — the server
- * enforces this). A non-admin owner loses access once the transfer succeeds,
- * so they are sent back to the containers list.
- */
+/** Admin-only control to transfer a container to another user (server-enforced). */
 export function TransferOwnership({
   siteId,
   containerId,
@@ -33,10 +27,8 @@ export function TransferOwnership({
   hostname: string;
   owner: string;
 }) {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const { data: session } = useSession();
   const [value, setValue] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +42,7 @@ export function TransferOwnership({
       setValue('');
       toast.success(result.message);
       qc.invalidateQueries({ queryKey: keys.containers(siteId) });
-      if (session?.isAdmin) {
-        qc.invalidateQueries({ queryKey: keys.container(siteId, containerId) });
-      } else {
-        navigate(`/sites/${siteId}/containers`);
-      }
+      qc.invalidateQueries({ queryKey: keys.container(siteId, containerId) });
     },
     onError: (err: ApiError) => {
       setConfirmOpen(false);
@@ -113,8 +101,8 @@ export function TransferOwnership({
         <ModalBody>
           <p className="text-sm">
             <strong>{hostname}</strong> will be owned by <strong>{newOwner}</strong>. Its approved
-            resources and volume data move with it.
-            {!session?.isAdmin && ' You will lose access unless the new owner shares it with you.'}
+            resources and volume data move with it. {owner} will lose access unless the new owner
+            shares it with them.
           </p>
         </ModalBody>
         <ModalFooter>
