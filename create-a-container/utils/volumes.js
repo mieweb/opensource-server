@@ -13,8 +13,21 @@
 const { QUICK_AND_DIRTY_NAME, QUICK_AND_DIRTY_MOUNT } = require('../models/volume');
 
 /**
+ * Name of the Proxmox storage that hosts persistent volumes on a node.
+ * `sharedVolumeStorage` (path-backed shared FS) takes precedence; when unset we
+ * fall back to `volumeStorage` (rootfs storage) for backward compatibility.
+ *
+ * @param {object} node - Node instance or plain object
+ * @returns {string}
+ */
+function volumesStorageName(node) {
+  return node.sharedVolumeStorage || node.volumeStorage || node.imageStorage || 'local';
+}
+
+/**
  * Resolve the on-disk root directory for user volumes on a node, derived from
- * the node's configured `volumeStorage` (falling back to `imageStorage`). The
+ * the storage chosen by `volumesStorageName` (sharedVolumeStorage →
+ * volumeStorage → imageStorage). The
  * path is taken from Proxmox's storage config (`GET /storage/{storage}` →
  * `path`), never assumed. Volumes live under `<path>/volumes`.
  *
@@ -30,7 +43,7 @@ async function resolveVolumesRoot(client, node) {
     return { root: '/var/lib/opensource-server/volumes', storage: 'docker', shared: false };
   }
 
-  const storageName = node.volumeStorage || node.imageStorage || 'local';
+  const storageName = volumesStorageName(node);
   if (typeof client.storageConfig !== 'function') {
     // Dummy nodes and any client without storage-config support: fall back to a
     // conventional path so the simulated create path still runs end to end.
@@ -158,6 +171,7 @@ async function deriveVolumeHostPaths(volumes, { volumesRoot, siteId, owner, host
 }
 
 module.exports = {
+  volumesStorageName,
   resolveVolumesRoot,
   containerVolumeHostPath,
   deriveVolumeHostPaths,

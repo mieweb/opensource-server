@@ -332,6 +332,7 @@ components:
         tlsVerify: { type: boolean, nullable: true }
         imageStorage: { type: string }
         volumeStorage: { type: string }
+        sharedVolumeStorage: { type: string, nullable: true }
         networkBridge: { type: string }
         nvidiaAvailable: { type: boolean }
         hasSecret: { type: boolean }
@@ -360,7 +361,17 @@ components:
           description: Proxmox API token secret. Never returned (see `hasSecret`). On update, blank/omitted keeps the existing secret.
         tlsVerify: { type: boolean, nullable: true }
         imageStorage: { type: string, default: local }
-        volumeStorage: { type: string, default: local-lvm }
+        volumeStorage:
+          type: string
+          default: local-lvm
+          description: Proxmox storage for container root filesystems (`rootdir`); may be block storage (lvmthin/rbd/zfspool).
+        sharedVolumeStorage:
+          type: string
+          nullable: true
+          description: >-
+            Path-backed shared storage (cephfs/nfs/dir) hosting persistent
+            volumes under `<path>/volumes`. Null/blank falls back to
+            `volumeStorage`.
         networkBridge: { type: string, default: vmbr0 }
         nvidiaAvailable: { type: boolean, default: false }
     Job:
