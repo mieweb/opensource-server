@@ -878,7 +878,15 @@ router.put(
         // approved resources keep following the container.
         await ResourceRequest.update(
           { username: newOwnerUsername },
-          { where: { siteId: site.id, hostname: container.hostname, username: previousOwner }, transaction: t },
+          {
+            where: {
+              siteId: site.id,
+              hostname: container.hostname,
+              username: previousOwner,
+              status: { [Sequelize.Op.in]: ['pending', 'approved'] },
+            },
+            transaction: t,
+          },
         );
       }
       if (needsReconfigureJob) {
