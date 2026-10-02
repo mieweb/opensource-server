@@ -34,6 +34,7 @@ import { FormPageHeader } from '@/components/FormPageHeader';
 import { randomHostname } from '@/lib/randomHostname';
 import { ResourcesSection } from '@/components/containers/ResourcesSection';
 import { AddCollaboratorField, CollaboratorChips, CollaboratorsManager } from '@/components/containers/CollaboratorsManager';
+import { TransferOwnership } from '@/components/containers/TransferOwnership';
 import type { ContainerCreateResult, ContainerMetadata } from '@/lib/types';
 
 function useDebouncedValue<T>(value: T, delay = 500): T {
@@ -983,6 +984,21 @@ export function ContainerFormPage() {
             })}
           </CardContent>
         </Card>
+        {isEdit && container && !isReadOnly && (
+          <Card padding="none" className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
+              <CardTitle className="text-base">Ownership</CardTitle>
+            </CardHeader>
+            <CardContent className={sectionContentClass}>
+              <TransferOwnership
+                siteId={siteId!}
+                containerId={container.id}
+                hostname={container.hostname}
+                owner={container.owner}
+              />
+            </CardContent>
+          </Card>
+        )}
         <Card padding="none" className={sectionCardClass}>
           <CardHeader className={sectionHeaderClass}>
             <CardTitle className="text-base">Sharing</CardTitle>
