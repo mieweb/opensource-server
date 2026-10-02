@@ -11,7 +11,9 @@
  *    `mieweb` service account, mtimes preserved so the next diff is exact).
  * 4. Delete remote files that no longer exist locally. Remote paths matching
  *    the ignore rules (node_modules, build output) are left alone.
- * 5. `sudo systemctl restart app.service`.
+ * 5. `sudo systemctl restart app.service`, streaming the unit's journal while
+ *    it installs/builds (ExecStartPre) and failing the deploy if the restart
+ *    fails or the app doesn't stay up for APP_SETTLE_SECONDS.
  *
  * LDAP users have passwordless sudo in the base image.
  */
@@ -175,12 +177,31 @@ export function packTar(root: string, files: readonly FileEntry[]): Readable {
 
 const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
+/** Seconds the app must stay running after a restart to count as started. */
+export const APP_SETTLE_SECONDS = 5;
+/** Exit code the restart script uses for "started, then stopped/crashed". */
+const APP_NOT_RUNNING = 86;
+
 export const REMOTE = {
   list: `sudo mkdir -p ${q(REMOTE_APP_DIR)} && cd ${q(REMOTE_APP_DIR)} && sudo find . -mindepth 1 \\( -type f -o -type l \\) -printf '%P\\0%s\\0%T@\\0'`,
   extract: `sudo tar -x -f - -C ${q(REMOTE_APP_DIR)}`,
   remove: `cd ${q(REMOTE_APP_DIR)} && sudo xargs -0 -r rm -f --`,
   pruneDirs: `cd ${q(REMOTE_APP_DIR)} && sudo xargs -0 -r rmdir -p --ignore-fail-on-non-empty -- 2>/dev/null; true`,
-  restart: 'sudo systemctl restart app.service',
+  /**
+   * Follow the journal (live install/build output) while restarting; exit
+   * non-zero if the restart fails (ExecStartPre install/build failed) or the
+   * app isn't still active after the settle period (crashed on start).
+   */
+  restart: [
+    'sudo journalctl -u app.service -o cat -f -n 0 & j=$!',
+    'sleep 1',
+    'sudo systemctl restart app.service; rc=$?',
+    `if [ $rc -eq 0 ]; then sleep ${APP_SETTLE_SECONDS}; sudo systemctl is-active --quiet app.service || rc=${APP_NOT_RUNNING}; fi`,
+    'sleep 1; sudo kill $j 2>/dev/null; kill $j 2>/dev/null; wait $j 2>/dev/null',
+    'exit $rc',
+  ].join('\n'),
+  /** Recent journal, shown when the restart fails. */
+  logs: 'sudo journalctl -u app.service -o cat --no-pager -n 50',
 };
 
 async function run(shell: RemoteShell, what: string, cmd: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<Buffer> {
@@ -195,8 +216,43 @@ function human(n: number): string {
   return n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`;
 }
 
+/** Restart app.service, streaming its output; throw if it doesn't come up. */
+export async function restartApp(shell: RemoteShell, logger: DeployLogger, signal: AbortSignal): Promise<void> {
+  let pending = '';
+  const code = await shell.stream(
+    REMOTE.restart,
+    (chunk, which) => {
+      if (which === 'stderr') {
+        // sudo/systemctl errors; surface them as-is.
+        for (const l of chunk.toString('utf8').split('\n')) if (l.trim()) logger.warn(`  ${l}`);
+        return;
+      }
+      const lines = (pending + chunk.toString('utf8')).split('\n');
+      pending = lines.pop() ?? '';
+      for (const l of lines) logger.info(`  | ${l}`);
+    },
+    signal,
+  );
+  if (pending) logger.info(`  | ${pending}`);
+  if (code === 0) return;
+  if (code === -1) throw signal.reason ?? new Error('Restart aborted');
+  const tail = await shell.exec(REMOTE.logs).catch(() => null);
+  const recent = tail?.code === 0 ? tail.stdout.toString('utf8').trim() : '';
+  if (recent) logger.error(`Recent app.service logs:\n${recent}`);
+  throw new Error(
+    code === APP_NOT_RUNNING
+      ? `The app started but stopped within ${APP_SETTLE_SECONDS}s; see the logs above (\`mieweb tail\` for more)`
+      : `Restarting the app failed (exit ${code}): dependency install or build failed; see the logs above`,
+  );
+}
+
 /** Sync `root` into the container and restart the app. */
-export async function syncWorktree(root: string, shell: RemoteShell, logger: DeployLogger): Promise<SyncPlan> {
+export async function syncWorktree(
+  root: string,
+  shell: RemoteShell,
+  logger: DeployLogger,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<SyncPlan> {
   const [{ files, rules }, listing] = await Promise.all([scanLocal(root), run(shell, 'listing', REMOTE.list)]);
   const plan = planSync(files, parseRemoteListing(listing), rules);
   const bytes = plan.upload.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
@@ -212,7 +268,8 @@ export async function syncWorktree(root: string, shell: RemoteShell, logger: Dep
     const dirs = [...new Set(plan.remove.map((p) => posix.dirname(p)).filter((d) => d !== '.'))];
     if (dirs.length > 0) await run(shell, 'cleanup', REMOTE.pruneDirs, nul(dirs));
   }
-  await run(shell, 'restart', REMOTE.restart);
-  logger.info('Code synced; app restarted');
+  logger.info('Code synced; restarting the app (install/build output follows)');
+  await restartApp(shell, logger, signal);
+  logger.info('App restarted and running');
   return plan;
 }

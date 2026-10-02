@@ -490,7 +490,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
     const shell = await openShell(ctx, deps, client, s, final, { fresh });
     try {
-      await syncWorktree(ctx.root, shell, logger);
+      await syncWorktree(ctx.root, shell, logger, signal);
     } finally {
       shell.close();
     }

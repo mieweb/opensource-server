@@ -19,7 +19,7 @@ The app is exposed through one HTTP service at `https://<name>.<domain>`; the si
    - Files are sent exactly as they are on disk. Whether a file is committed, staged, or untracked doesn't matter.
    - `.gitignore` rules are honored (including nested `.gitignore` files) and `.git/` is skipped. `.git/info/exclude` and your global git excludes are **not** applied.
    - Files you deleted locally are deleted in the container. Ignored paths in the container, such as `node_modules` and build output, are left alone.
-3. **Restart the app** over the same SSH connection. On start it installs dependencies if `package.json` or the lockfile changed, runs the `build` script if there is one, then runs the start command.
+3. **Restart the app** over the same SSH connection and **wait for it**. Dependencies are installed if `package.json` or the lockfile changed, then the `build` script runs if there is one, and their output is shown as it happens. Then the start command runs. `deploy` fails, showing the app's recent logs, if the install or build fails, or if the app stops within 5 seconds of starting.
 
 So a code-only redeploy is just a file sync and a restart.
 

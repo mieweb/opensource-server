@@ -116,6 +116,34 @@ describe('syncWorktree', () => {
     await assert.rejects(lstat(join(remote, 'old')));
   });
 
+  test('restart output is streamed line by line', async () => {
+    const shell = new FakeShell(remote);
+    shell.restartScript = { chunks: [['Installing depend', 'stdout'], ['encies: npm ci\nadded 3 packages\n', 'stdout']], code: 0 };
+    const logs: string[] = [];
+    await syncWorktree(local, shell, { info: (m) => logs.push(m), warn() {}, error() {} });
+    assert.ok(logs.includes('  | Installing dependencies: npm ci'));
+    assert.ok(logs.includes('  | added 3 packages'));
+    assert.equal(logs.at(-1), 'App restarted and running');
+  });
+
+  test('a failed install/build fails the sync and shows recent logs', async () => {
+    const shell = new FakeShell(remote);
+    shell.restartScript = { chunks: [['npm ERR! missing script\n', 'stdout']], code: 1 };
+    shell.recentLogs = 'npm ERR! missing script\nProcess exited';
+    const errors: string[] = [];
+    await assert.rejects(
+      syncWorktree(local, shell, { info() {}, warn() {}, error: (m) => errors.push(m) }),
+      /Restarting the app failed \(exit 1\): dependency install or build failed/,
+    );
+    assert.match(errors[0]!, /Recent app\.service logs:\nnpm ERR! missing script/);
+  });
+
+  test('an app that crashes right after starting fails the sync', async () => {
+    const shell = new FakeShell(remote);
+    shell.restartScript = { chunks: [], code: 86 };
+    await assert.rejects(syncWorktree(local, shell, logger), /started but stopped within 5s/);
+  });
+
   test('a failing remote command fails the sync with its stderr', async () => {
     const shell = new FakeShell(remote);
     shell.exec = async () => ({ code: 1, stdout: Buffer.alloc(0), stderr: 'sudo: a password is required' });

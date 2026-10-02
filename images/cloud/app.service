@@ -15,7 +15,13 @@ Environment=HOME=/opt/app
 # PORT, MIEWEB_APP_START and the datastore endpoints/credentials are set by
 # the deploy provider.
 EnvironmentFile=-/etc/environment
-ExecStart=/usr/local/bin/mieweb-app-start
+# Install + build run as ExecStartPre so `systemctl restart` (which deploy
+# runs) blocks until they finish and fails if they fail. The app itself is
+# the main process.
+ExecStartPre=/usr/local/bin/mieweb-app-start prepare
+ExecStart=/usr/local/bin/mieweb-app-start run
+# npm install / build can be slow on a cold cache.
+TimeoutStartSec=30min
 Restart=on-failure
 RestartSec=5
 

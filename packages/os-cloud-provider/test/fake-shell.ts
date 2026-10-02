@@ -95,9 +95,14 @@ export class FakeShell implements RemoteShell {
       }
       return ok();
     }
-    if (command === REMOTE.restart) return ok();
+    if (command === REMOTE.logs) return ok(Buffer.from(this.recentLogs));
     return { code: 127, stdout: Buffer.alloc(0), stderr: `unknown command: ${command}` };
   }
+
+  /** What the restart stream emits / exits with. */
+  restartScript: { chunks: [string, 'stdout' | 'stderr'][]; code: number } = { chunks: [], code: 0 };
+  /** Output of the recent-logs command. */
+  recentLogs = '';
 
   /** Chunks `stream()` emits (split across chunk boundaries on purpose), then the exit code. */
   streamScript: { chunks: [string, 'stdout' | 'stderr'][]; code: number; hang?: boolean } = { chunks: [], code: 0 };
@@ -108,6 +113,10 @@ export class FakeShell implements RemoteShell {
     signal: AbortSignal,
   ): Promise<number> {
     this.commands.push(command);
+    if (command === REMOTE.restart) {
+      for (const [c, w] of this.restartScript.chunks) onData(Buffer.from(c), w);
+      return this.restartScript.code;
+    }
     for (const [c, w] of this.streamScript.chunks) onData(Buffer.from(c), w);
     if (!this.streamScript.hang) return this.streamScript.code;
     return new Promise((resolve) => signal.addEventListener('abort', () => resolve(-1), { once: true }));
