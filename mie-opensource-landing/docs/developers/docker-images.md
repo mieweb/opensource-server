@@ -12,7 +12,7 @@ OCI container images automatically built and published to GitHub Container Regis
 
 ### Debian 13 (`base`)
 
-Debian 13 with systemd (PID 1), SSSD for LDAP authentication, and PAM auto-homedir. Environment variables stored in `/etc/environment`.
+Debian 13 with systemd (PID 1), SSSD for LDAP authentication, PAM auto-homedir, and `build-essential` (gcc, g++, make) so native npm/pip modules can compile. Environment variables stored in `/etc/environment`.
 
 **Registry:** `ghcr.io/mieweb/opensource-server/base` · **Source:** [`images/base/`](https://github.com/mieweb/opensource-server/tree/main/images/base)
 

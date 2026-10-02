@@ -17,8 +17,10 @@ COPY --from=builder /rootfs /
 # fetch a user's email from the internal LDAP server on first interactive login.
 # sssd-tools provides sss_ssh_authorizedkeys, used by sshd to serve users' SSH
 # public keys (stored on the LDAP sshPublicKey attribute).
+# build-essential (gcc, g++, make) lets npm/pip native modules compile in
+# every image built on base.
 RUN apt-get update && \
-    apt-get install -y sssd sssd-tools sudo tmux curl gnupg git jq ldap-utils unattended-upgrades locales && \
+    apt-get install -y sssd sssd-tools sudo tmux curl gnupg git jq ldap-utils unattended-upgrades locales build-essential && \
     echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && \
     locale-gen && \
     update-locale LANG=en_US.UTF-8 && \
