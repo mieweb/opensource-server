@@ -37,9 +37,9 @@ import {
   type ExtraService,
   type TargetSettings,
 } from './config.ts';
-import { waitForJob } from './jobs.ts';
+import { sleep, waitForJob } from './jobs.ts';
 import type { SessionInfo } from './api-types.ts';
-import { forgetHostKey, knownHostsPath, SshConnection, ttyPrompter, waitForSsh, type Prompter, type RemoteShell, type SshTarget } from './ssh.ts';
+import { forgetHostKey, knownHostsPath, SshConnection, SshError, ttyPrompter, waitForSsh, type Prompter, type RemoteShell, type SshTarget } from './ssh.ts';
 import { syncWorktree } from './sync.ts';
 
 /** Env keys the provider owns inside the converged container. */
@@ -284,6 +284,10 @@ export interface ProviderDeps {
   waitForSsh?: typeof waitForSsh;
   /** Terminal prompt for passphrases/passwords. */
   prompt?: Prompter;
+  /** Total time to keep trying to reach SSH (default 60 s; tests shorten it). */
+  sshTimeoutMs?: number;
+  /** Delay between SSH connection attempts (default 2 s). */
+  sshRetryDelayMs?: number;
 }
 
 async function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: string): Promise<ManagerClient> {
@@ -518,11 +522,48 @@ export async function openShell(
   const target: SshTarget = { host, port, user };
   const knownHostsFile = knownHostsPath(deps.env);
   if (opts.fresh) await forgetHostKey(knownHostsFile, host, port);
-  await (deps.waitForSsh ?? waitForSsh)(host, port, signal, logger);
+
+  // A freshly created/rebuilt container can take a while before sshd answers,
+  // accepts connections reliably, and (via SSSD) serves the user's LDAP keys.
+  // Keep retrying transient failures within one overall budget.
+  const budgetMs = deps.sshTimeoutMs ?? 60_000;
+  const delayMs = deps.sshRetryDelayMs ?? 2000;
+  const deadline = Date.now() + budgetMs;
+  const remaining = (): number => Math.max(0, deadline - Date.now());
+  // Ask for a password/passphrase at most once across attempts.
+  const answers = new Map<string, string | null>();
+  const basePrompt = deps.prompt ?? ttyPrompter;
+  const prompt: Prompter = async (q, hidden) => {
+    if (!answers.has(q)) answers.set(q, await basePrompt(q, hidden));
+    return answers.get(q)!;
+  };
+
   logger.info(`Connecting to ${user}@${host}:${port}`);
-  return deps.connectSsh
-    ? deps.connectSsh(target, { knownHostsFile, signal, logger })
-    : SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt: deps.prompt, signal, logger });
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await (deps.waitForSsh ?? waitForSsh)(host, port, signal, logger, Math.max(remaining(), 1000));
+      const attemptTimeout = Math.min(20_000, Math.max(remaining(), 5000));
+      return await (deps.connectSsh
+        ? deps.connectSsh(target, { knownHostsFile, signal, logger })
+        : SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt, signal, logger, timeoutMs: attemptTimeout }));
+    } catch (err) {
+      if (signal.aborted) throw err;
+      const kind = err instanceof SshError ? err.kind : 'network';
+      // Auth failures are only plausibly transient right after (re)creation.
+      const retryable = kind === 'network' || (kind === 'auth' && opts.fresh === true);
+      if (!retryable || remaining() <= delayMs) {
+        if (retryable && attempt > 1) {
+          throw new Error(
+            `SSH on ${host}:${port} was not usable within ${Math.round(budgetMs / 1000)}s (${attempt} attempts): ${(err as Error).message}`,
+            { cause: err },
+          );
+        }
+        throw err;
+      }
+      logger.info(`SSH not ready yet (${(err as Error).message.split('. ')[0]}); retrying…`);
+      await sleep(delayMs, signal);
+    }
+  }
 }
 
 export interface TailOptions {

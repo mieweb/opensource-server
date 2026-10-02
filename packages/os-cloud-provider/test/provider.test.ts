@@ -7,7 +7,7 @@ import { AuthError } from '@mieweb/deploy-contract';
 import type { DeployContext, ProviderEnv, ResourceHandle } from '@mieweb/deploy-contract';
 import { runProviderConformance } from '@mieweb/deploy-contract/testkit';
 import { createProvider, type ProviderOptions } from '../src/index.ts';
-import type { SshTarget } from '../src/ssh.ts';
+import { SshError, type SshTarget } from '../src/ssh.ts';
 import { FakeManager } from './fake-manager.ts';
 import { FakeShell } from './fake-shell.ts';
 
@@ -22,6 +22,8 @@ let remoteDir: string;
 let sessions: { target: SshTarget; shell: FakeShell }[];
 let sshWaits: string[];
 let connectError: Error | null;
+/** Errors thrown by the next connect attempts, in order (then success). */
+let connectFailures: Error[];
 /** Applied to each new FakeShell (e.g. to script `stream` output). */
 let setupShell: (s: FakeShell) => void;
 
@@ -41,6 +43,7 @@ beforeEach(async () => {
   sessions = [];
   sshWaits = [];
   connectError = null;
+  connectFailures = [];
   setupShell = () => {};
 });
 afterEach(async () => {
@@ -81,8 +84,11 @@ function provider(env: ProviderEnv = {}, options: ProviderOptions = {}) {
     { HOME: dir, MIEWEB_OS_URL: fake.url, MIEWEB_OS_TOKEN: TOKEN, MIEWEB_OS_CREDENTIALS: join(dir, `creds-${Math.random()}.json`), ...env },
     {
       pollIntervalMs: 5,
+      sshRetryDelayMs: 5,
       connectSsh: async (target) => {
         if (connectError) throw connectError;
+        const next = connectFailures.shift();
+        if (next) throw next;
         const shell = new FakeShell(remoteDir);
         setupShell(shell);
         sessions.push({ target, shell });
@@ -203,9 +209,39 @@ describe('deploy', () => {
     assert.ok(h.logs.some((l) => l.includes('sync disabled')));
   });
 
+  test('transient SSH failures after create are retried', async () => {
+    connectFailures = [
+      new SshError('network', 'SSH connection to ssh.example.test:2000 failed: connect ECONNREFUSED'),
+      new SshError('network', 'SSH connection to ssh.example.test:2000 failed: Timed out while waiting for handshake'),
+      new SshError('auth', 'SSH authentication as alice@ssh.example.test:2000 failed.'),
+    ];
+    const h = harness();
+    const result = await provider().deploy(h.ctx);
+    assert.equal(result.resources.length, 1);
+    assert.equal(connectFailures.length, 0);
+    assert.equal(sessions.length, 1);
+    assert.equal(h.logs.filter((l) => l.includes('SSH not ready yet')).length, 3);
+  });
+
+  test('SSH retries stop at the time budget', async () => {
+    connectError = new SshError('network', 'SSH connection to ssh.example.test:2000 failed: connect ECONNREFUSED');
+    const p = provider({}, { sshTimeoutMs: 60, sshRetryDelayMs: 10 });
+    await assert.rejects(p.deploy(harness().ctx), /SSH on ssh\.example\.test:2000 was not usable within 0s \(\d+ attempts\)/);
+  });
+
+  test('auth failures on an existing container and host-key changes are not retried', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    connectFailures = [new SshError('auth', 'SSH authentication as alice failed.')];
+    await assert.rejects(p.deploy(harness().ctx), /SSH authentication as alice failed/);
+    connectFailures = [new SshError('hostkey', 'SSH host key for x changed')];
+    await assert.rejects(p.deploy(harness().ctx), /host key for x changed/);
+  });
+
   test('an SSH failure fails the deploy', async () => {
-    connectError = new Error('SSH authentication as alice@ssh.example.test:2000 failed.');
-    await assert.rejects(provider().deploy(harness().ctx), /SSH authentication as alice/);
+    connectError = new SshError('auth', 'SSH authentication as alice@ssh.example.test:2000 failed.');
+    const p = provider({}, { sshTimeoutMs: 100 });
+    await assert.rejects(p.deploy(harness().ctx), /SSH authentication as alice/);
   });
 
   test('old source/ref settings are rejected with an explanation', async () => {

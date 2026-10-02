@@ -41,6 +41,10 @@ export interface ProviderOptions {
   prompt?: Prompter;
   /** SSH readiness probe (tests). */
   waitForSsh?: typeof waitForSsh;
+  /** Total SSH readiness budget in ms (default 60000). */
+  sshTimeoutMs?: number;
+  /** Delay between SSH attempts in ms (default 2000). */
+  sshRetryDelayMs?: number;
 }
 
 /** The targets this provider serves. */
@@ -54,6 +58,8 @@ export function createProvider(env: ProviderEnv, options: ProviderOptions = {}):
     connectSsh: options.connectSsh,
     prompt: options.prompt,
     waitForSsh: options.waitForSsh,
+    sshTimeoutMs: options.sshTimeoutMs,
+    sshRetryDelayMs: options.sshRetryDelayMs,
   };
   return {
     name: PROVIDER_NAME,

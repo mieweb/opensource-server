@@ -15,7 +15,7 @@ The app is exposed through one HTTP service at `https://<name>.<domain>`; the si
 ### What `deploy` does
 
 1. **Converge the container** through the Manager API. The first deploy creates it and waits for it to be provisioned. Later deploys change the container only when its configuration differs (services, environment variables, the data volume); otherwise this step makes no changes. If the image (or the GPU requirement) changes, the container is deleted and recreated. `/mnt/data` is kept across that recreate, so datastore contents survive.
-2. **Wait for SSH**, then **sync your worktree** into `/opt/app/src` in the container (rsync-style: only changed files are sent):
+2. **Wait for SSH** (retrying for up to 60 s while a new or rebuilt container finishes booting), then **sync your worktree** into `/opt/app/src` in the container (rsync-style: only changed files are sent):
    - Files are sent exactly as they are on disk. Whether a file is committed, staged, or untracked doesn't matter.
    - `.gitignore` rules are honored (including nested `.gitignore` files) and `.git/` is skipped. `.git/info/exclude` and your global git excludes are **not** applied.
    - Files you deleted locally are deleted in the container. Ignored paths in the container, such as `node_modules` and build output, are left alone.

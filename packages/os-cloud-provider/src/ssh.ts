@@ -32,6 +32,21 @@ export interface SshTarget {
   user: string;
 }
 
+/**
+ * A failed SSH connection attempt. `kind` tells callers whether a retry can
+ * help: `network` (refused/reset/timeout, e.g. sshd still starting) and `auth`
+ * (possibly LDAP keys not served yet on a fresh container) may be transient;
+ * `hostkey` never is.
+ */
+export class SshError extends Error {
+  readonly kind: 'network' | 'auth' | 'hostkey';
+  constructor(kind: 'network' | 'auth' | 'hostkey', message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'SshError';
+    this.kind = kind;
+  }
+}
+
 export interface ExecResult {
   code: number;
   stdout: Buffer;
@@ -283,19 +298,23 @@ export class SshConnection implements RemoteShell {
         opts.signal.removeEventListener('abort', onAbort);
         if (mismatch) {
           reject(
-            new Error(
+            new SshError(
+              'hostkey',
               `SSH host key for ${id} changed (expected ${known.get(id)}, got ${mismatch}). ` +
                 `If the container was rebuilt, remove that line from ${opts.knownHostsFile}.`,
             ),
           );
         } else if (/authentication methods failed/i.test(err.message)) {
           reject(
-            new Error(
+            new SshError(
+              'auth',
               `SSH authentication as ${target.user}@${target.host}:${target.port} failed. ` +
                 'Add your public key to your account, load it into ssh-agent, or run deploy in a terminal to enter your password.',
             ),
           );
-        } else reject(new Error(`SSH connection to ${target.host}:${target.port} failed: ${err.message}`, { cause: err }));
+        } else {
+          reject(new SshError('network', `SSH connection to ${target.host}:${target.port} failed: ${err.message}`, { cause: err }));
+        }
       };
       client.once('error', fail);
       client.once('ready', () => {
