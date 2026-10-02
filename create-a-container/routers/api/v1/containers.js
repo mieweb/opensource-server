@@ -15,7 +15,9 @@ const {
   Site,
   ExternalDomain,
   Job,
+  ResourceRequest,
   Setting,
+  User,
   Volume,
   Sequelize,
   sequelize,
@@ -804,8 +806,7 @@ router.put(
       }
     }
 
-    // Admins may reassign the container to another user by passing `username`.
-    // Non-admins may not pass a different username — that is a 403.
+    // Admins may transfer ownership to another active user by passing `username`.
     let newOwnerUsername = null;
     if (bodyUsername !== undefined) {
       if (typeof bodyUsername !== 'string' || !bodyUsername.trim()) {
@@ -815,6 +816,15 @@ router.put(
         throw new ApiError(403, 'forbidden', 'only admins may reassign container ownership');
       }
       newOwnerUsername = bodyUsername.trim();
+      if (newOwnerUsername !== container.username) {
+        const newOwner = await User.findOne({ where: { uid: newOwnerUsername }, attributes: ['status'] });
+        if (!newOwner) {
+          throw new ApiError(404, 'user_not_found', `User "${newOwnerUsername}" does not exist`);
+        }
+        if (newOwner.status !== 'active') {
+          throw new ApiError(422, 'user_inactive', `User "${newOwnerUsername}" is not active`);
+        }
+      }
     }
 
     // Only recompute env/entrypoint when the request actually carried the key;
@@ -829,7 +839,8 @@ router.put(
         ? entrypoint.trim()
         : null
       : container.entrypoint;
-    const ownerChanged = newOwnerUsername !== null && newOwnerUsername !== container.username;
+    const previousOwner = container.username;
+    const ownerChanged = newOwnerUsername !== null && newOwnerUsername !== previousOwner;
     const envChanged = envProvided && container.environmentVars !== envVarsJson;
     const entrypointChanged = entrypointProvided && container.entrypoint !== newEntrypoint;
     const volumesChanged = volumeAttaches.length > 0 || volumeDetachIds.length > 0;
@@ -855,6 +866,27 @@ router.put(
             ...(ownerChanged ? { username: newOwnerUsername } : {}),
           },
           { transaction: t },
+        );
+      }
+      if (ownerChanged) {
+        // The new owner no longer needs a sharing grant on their own container.
+        await ContainerCollaborator.destroy({
+          where: { containerId: container.id, username: newOwnerUsername },
+          transaction: t,
+        });
+        // Resource requests are keyed by (site, hostname, owner); move them so
+        // approved resources keep following the container.
+        await ResourceRequest.update(
+          { username: newOwnerUsername },
+          {
+            where: {
+              siteId: site.id,
+              hostname: container.hostname,
+              username: previousOwner,
+              status: { [Sequelize.Op.in]: ['pending', 'approved'] },
+            },
+            transaction: t,
+          },
         );
       }
       if (needsReconfigureJob) {
@@ -1009,7 +1041,9 @@ router.put(
         : 'Container is restarting'
       : pendingRestart
         ? 'Container updated — changes take effect on the next restart'
-        : 'Container updated';
+        : ownerChanged
+          ? `Ownership transferred to ${newOwnerUsername}`
+          : 'Container updated';
     return ok(res, {
       containerId: container.id,
       jobId: restartJob ? restartJob.id : null,

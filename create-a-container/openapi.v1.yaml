@@ -923,7 +923,10 @@ paths:
               properties:
                 username:
                   type: string
-                  description: '(Admin only) Reassign ownership of this container to the specified existing user'
+                  description: >-
+                    (Admin only) Transfer ownership to another active user. The
+                    new owner's sharing grant is removed and the container's
+                    resource requests move with it.
                 services:
                   type: object
                   description: >-
@@ -963,7 +966,8 @@ paths:
                       message: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { description: 'forbidden — only the owner/admin may edit (collaborators have a read-only view); non-admins may not reassign ownership', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404': { description: 'not_found (container) or user_not_found (transfer target)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: 'user_inactive — transfer target is not an active user', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       operationId: delete_container
       tags: [Containers]
