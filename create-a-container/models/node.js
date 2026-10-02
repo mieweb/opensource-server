@@ -140,6 +140,13 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'local-lvm'
     },
+    // Path-backed shared storage (cephfs/nfs) for persistent volumes. Null
+    // falls back to volumeStorage. See Node#volumesStorageName.
+    sharedVolumeStorage: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null
+    },
     networkBridge: {
       type: DataTypes.STRING(255),
       allowNull: false,

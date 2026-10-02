@@ -26,6 +26,7 @@ export interface Node {
   tlsVerify: boolean | null;
   imageStorage: string;
   volumeStorage: string;
+  sharedVolumeStorage: string | null;
   networkBridge: string;
   nvidiaAvailable: boolean;
   hasSecret: boolean;

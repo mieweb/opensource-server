@@ -19,7 +19,8 @@ it is not re-applied and new containers never receive it.)
    (e.g. `/mnt/data`), and a **mode** (`ro` read-only or `rw` read-write).
 2. The host directory lives under
    `<volumesRoot>/site-<siteId>/<owner>/<hostname>/<name>`, where `<volumesRoot>`
-   is derived from the node's **volume storage** actual configured path (not
+   is derived from the node's **shared volume storage** (falling back to the root
+   disk storage when unset) actual configured path (not
    assumed) plus `/volumes`. The `site-<siteId>` segment isolates containers
    that share a hostname across sites on the same shared storage; the `<owner>`
    segment (the container owner's username) ensures retained data is only ever
@@ -42,16 +43,17 @@ it is not re-applied and new containers never receive it.)
 !!! warning "Place the volumes root on shared storage"
     A single per-site agent creates volume directories on the shared volumes
     root that is bind-mounted into it. For a directory to exist wherever a
-    container is placed or migrated, the **volume storage must be a path-backed
+    container is placed or migrated, the node's **shared volume storage must be a path-backed
     shared filesystem** — CephFS or NFS (`shared=1`) — that every node mounts.
     Block storages (Ceph RBD, LVM, ZFS) expose no host directory path and
-    therefore cannot host volumes.
+    therefore cannot host volumes — keep those for root disks and set
+    **Shared volume storage** separately.
 
     On node-local storage (`dir`/`lvm`/`zfspool` with `shared=0`), the directory
     will not exist where a container on another node lands and the data will not
     follow it. Single-node sites are unaffected.
 
-    When you save a node's configuration, the manager checks the chosen volume
+    When you save a node's configuration, the manager checks the chosen shared volume
     storage against the cluster topology and **warns** (it does not block) if the
     storage is not shared or is not active on every node. Move the volumes root
     to shared storage to clear the warning.

@@ -6,6 +6,7 @@ const express = require('express');
 const https = require('https');
 const { Node, Site, Container } = require('../../../models');
 const { isValidDockerHost } = require('../../../utils/docker-api');
+const { volumesStorageName } = require('../../../utils/volumes');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
 
@@ -25,6 +26,7 @@ function serialize(n) {
     tlsVerify: n.tlsVerify,
     imageStorage: n.imageStorage,
     volumeStorage: n.volumeStorage,
+    sharedVolumeStorage: n.sharedVolumeStorage,
     networkBridge: n.networkBridge,
     nvidiaAvailable: n.nvidiaAvailable,
     hasSecret: !!n.secret,
@@ -56,7 +58,7 @@ function normalizeNodeType(nodeType) {
  */
 async function volumeStorageWarnings(node) {
   if (node.nodeType !== 'proxmox' || !node.hasApiAccess()) return [];
-  const storageName = node.volumeStorage || node.imageStorage || 'local';
+  const storageName = volumesStorageName(node);
   const warnings = [];
   try {
     const client = await node.api();
@@ -75,12 +77,12 @@ async function volumeStorageWarnings(node) {
       const shared = cfg.shared === 1 || cfg.shared === '1' || cfg.shared === true;
       if (!cfg.path) {
         warnings.push(
-          `Volume storage "${storageName}" (type ${cfg.type || 'unknown'}) has no host path; ` +
-            'persistent volumes require a path-backed storage (dir/nfs/cephfs). Move the volumes root to shared storage.',
+          `Shared volume storage "${storageName}" (type ${cfg.type || 'unknown'}) has no host path; ` +
+            'persistent volumes require a path-backed storage (dir/nfs/cephfs). Set "Shared volume storage" to a shared filesystem.',
         );
       } else if (!shared) {
         warnings.push(
-          `Volume storage "${storageName}" is not marked shared across the cluster; ` +
+          `Shared volume storage "${storageName}" is not marked shared across the cluster; ` +
             'persistent volume data is not guaranteed to follow containers across nodes. ' +
             'Move the volumes root to a path-backed shared filesystem (CephFS or NFS) available on every node.',
         );
@@ -104,7 +106,7 @@ async function volumeStorageWarnings(node) {
         const missing = [...nodeNames].filter((n) => !presentOn.has(n));
         if (missing.length > 0) {
           warnings.push(
-            `Volume storage "${storageName}" is not present/active on every node ` +
+            `Shared volume storage "${storageName}" is not present/active on every node ` +
               `(missing on: ${missing.join(', ')}). Persistent volumes will not be creatable/durable ` +
               'where a container lands on those nodes.',
           );
@@ -252,7 +254,7 @@ router.post(
   apiAdmin,
   asyncHandler(async (req, res) => {
     const site = await loadSite(req);
-    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, sharedVolumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
     const type = validateNodeInput({ nodeType, apiUrl });
     const node = await Node.create({
@@ -266,6 +268,7 @@ router.post(
         tlsVerify === '' || tlsVerify === null || tlsVerify === undefined ? null : tlsVerify === true || tlsVerify === 'true',
       imageStorage: imageStorage || 'local',
       volumeStorage: volumeStorage || 'local-lvm',
+      sharedVolumeStorage: sharedVolumeStorage ? String(sharedVolumeStorage).trim() || null : null,
       networkBridge: networkBridge || 'vmbr0',
       nvidiaAvailable: nvidiaAvailable === true || nvidiaAvailable === 'true',
       siteId: site.id,
@@ -284,7 +287,7 @@ router.put(
       where: { id: parseInt(req.params.id, 10), siteId: site.id },
     });
     if (!node) throw new ApiError(404, 'not_found', 'Node not found');
-    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, networkBridge, nvidiaAvailable } =
+    const { name, nodeType, ipv4Address, apiUrl, tokenId, secret, tlsVerify, imageStorage, volumeStorage, sharedVolumeStorage, networkBridge, nvidiaAvailable } =
       req.body || {};
     const type = validateNodeInput({
       nodeType: nodeType || node.nodeType,
@@ -300,6 +303,7 @@ router.put(
         tlsVerify === '' || tlsVerify === null || tlsVerify === undefined ? null : tlsVerify === true || tlsVerify === 'true',
       imageStorage: imageStorage || 'local',
       volumeStorage: volumeStorage || 'local-lvm',
+      sharedVolumeStorage: sharedVolumeStorage ? String(sharedVolumeStorage).trim() || null : null,
       networkBridge: networkBridge || 'vmbr0',
       nvidiaAvailable: nvidiaAvailable === true || nvidiaAvailable === 'true',
     };
