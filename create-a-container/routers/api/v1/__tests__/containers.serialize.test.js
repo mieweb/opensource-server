@@ -31,6 +31,7 @@ function stubContainer(services) {
     hostname: 'testct',
     username: 'alice',
     collaboratorNames: () => [],
+    sshAccessEnforced: () => false,
     ipv4Address: '10.254.1.5',
     macAddress: null,
     template: null,
