@@ -80,7 +80,8 @@ must be on storage shared across every node so a directory the agent creates
 exists wherever a container lands.
 
 The volumes root is `<volume-storage-path>/volumes` — where `<volume-storage-path>`
-is the configured **path** of the node's volume storage (e.g. a CephFS/NFS mount
+is the configured **path** of the node's **shared volume storage** (or the root
+disk storage, if shared volume storage is unset) (e.g. a CephFS/NFS mount
 like `/mnt/pve/cephfs`). Do the following once per site, on the Proxmox host that
 runs the agent:
 

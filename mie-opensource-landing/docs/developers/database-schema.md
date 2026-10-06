@@ -48,6 +48,7 @@ erDiagram
         boolean disableTlsVerification
         string imageStorage "default: local"
         string volumeStorage "default: local-lvm"
+        string sharedVolumeStorage "nullable"
         string networkBridge "default: vmbr0"
         boolean nvidiaAvailable "default: false"
         int siteId FK
@@ -202,7 +203,7 @@ erDiagram
 Top-level organizational unit. Has many Nodes. Has many ExternalDomains (as default site). `externalIp` is the public IP used as the target for Cloudflare DNS A records when cross-site HTTP services are created.
 
 ### Node
-Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). `networkBridge` defaults to `'vmbr0'` (Proxmox bridge used in container net0 config). `nvidiaAvailable` indicates the node has NVIDIA drivers and nvidia-container-toolkit configured for GPU passthrough. Belongs to Site, has many Containers.
+Proxmox VE server within a site. `name` must match Proxmox hostname (unique). `imageStorage` defaults to `'local'` (CT templates). `volumeStorage` defaults to `'local-lvm'` (container rootfs). `sharedVolumeStorage` (nullable) names the path-backed shared storage hosting persistent volumes; null falls back to `volumeStorage`. `networkBridge` defaults to `'vmbr0'` (Proxmox bridge used in container net0 config). `nvidiaAvailable` indicates the node has NVIDIA drivers and nvidia-container-toolkit configured for GPU passthrough. Belongs to Site, has many Containers.
 
 ### Agent
 Site agent registered by its check-in (`POST /api/v1/agents`, every 30s). Unique composite index on `(siteId, hostname)`. `services` stores the per-service status reported by the agent (`{ nginx: { state, lastApply }, ... }`); `lastCheckinAt` drives the online/offline health shown on the web client's Agents page. Belongs to Site. See [agent](agent.md).

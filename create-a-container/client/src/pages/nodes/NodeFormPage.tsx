@@ -29,6 +29,7 @@ const schema = z.object({
   tlsVerify: z.boolean().optional(),
   imageStorage: z.string().min(1, 'Required'),
   volumeStorage: z.string().min(1, 'Required'),
+  sharedVolumeStorage: z.string().optional(),
   networkBridge: z.string().min(1, 'Required'),
   nvidiaAvailable: z.boolean().optional(),
 });
@@ -77,6 +78,7 @@ export function NodeFormPage() {
         tlsVerify: node.tlsVerify ?? true,
         imageStorage: node.imageStorage,
         volumeStorage: node.volumeStorage,
+        sharedVolumeStorage: node.sharedVolumeStorage ?? '',
         networkBridge: node.networkBridge,
         nvidiaAvailable: node.nvidiaAvailable,
       });
@@ -199,9 +201,20 @@ export function NodeFormPage() {
         )}
         <div className="grid gap-4 sm:grid-cols-3">
           <Input label="Image storage" required {...register('imageStorage')} />
-          <Input label="Volume storage" required {...register('volumeStorage')} />
+          <Input
+            label="Root disk storage"
+            required
+            helperText="Container root filesystems (lvmthin, rbd, zfs…)"
+            {...register('volumeStorage')}
+          />
           <Input label="Network bridge" required {...register('networkBridge')} />
         </div>
+        <Input
+          label="Shared volume storage"
+          placeholder="Defaults to root disk storage"
+          helperText="Path-backed shared filesystem (CephFS/NFS) for persistent volumes; volumes live under <path>/volumes"
+          {...register('sharedVolumeStorage')}
+        />
         <Switch
           label="NVIDIA available"
           description="GPU passthrough is supported on this node"

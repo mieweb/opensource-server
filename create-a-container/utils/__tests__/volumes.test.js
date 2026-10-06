@@ -9,6 +9,7 @@ const { Volume } = require('../../models');
 const volumeModule = require('../../models/volume');
 const {
   resolveVolumesRoot,
+  volumesStorageName,
   containerVolumeHostPath,
 } = require('../volumes');
 
@@ -173,6 +174,30 @@ describe('resolveVolumesRoot', () => {
     };
     const res = await resolveVolumesRoot(client, { ...node, volumeStorage: 'local' });
     expect(res.shared).toBe(false);
+  });
+
+  test('prefers sharedVolumeStorage over block rootfs volumeStorage', async () => {
+    const client = {
+      async storageConfig(storage) {
+        expect(storage).toBe('cephfs');
+        return { storage, type: 'cephfs', path: '/mnt/pve/cephfs', shared: 1 };
+      },
+    };
+    const res = await resolveVolumesRoot(client, {
+      ...node,
+      volumeStorage: 'local-lvm',
+      sharedVolumeStorage: 'cephfs',
+    });
+    expect(res).toEqual({ root: '/mnt/pve/cephfs/volumes', storage: 'cephfs', shared: true });
+  });
+});
+
+describe('volumesStorageName', () => {
+  test('falls back sharedVolumeStorage -> volumeStorage -> imageStorage -> local', () => {
+    expect(volumesStorageName({ sharedVolumeStorage: 'nfs', volumeStorage: 'lvm' })).toBe('nfs');
+    expect(volumesStorageName({ sharedVolumeStorage: null, volumeStorage: 'lvm' })).toBe('lvm');
+    expect(volumesStorageName({ imageStorage: 'img' })).toBe('img');
+    expect(volumesStorageName({})).toBe('local');
   });
 });
 
