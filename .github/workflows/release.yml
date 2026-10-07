@@ -11,6 +11,10 @@ name: Release Packages
 # images ship this source so `apt upgrade` tracks future releases. This
 # workflow never creates or modifies the release itself — create the release
 # (and choose full vs prerelease) in GitHub first, then this attaches assets.
+#
+# The same release also publishes @mieweb/os-cloud-provider to npmjs (job
+# `publish-npm`), versioned from the release tag (v2026.10.2 -> 2026.10.2).
+# Full releases get the `latest` dist-tag, prereleases `next`.
 
 on:
   release:
@@ -68,3 +72,91 @@ jobs:
             dist/dist/Packages.gz \
             --repo "${{ github.repository }}" \
             --clobber
+
+  publish-npm:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm trusted publishing (OIDC) + provenance attestation.
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/os-cloud-provider
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve version and dist-tag
+        id: meta
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          version="${TAG#v}"
+          node -e 'const v=process.argv[1]; if(!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v)){console.error(`Release tag ${process.argv[2]} is not a semver version`);process.exit(1)}' "$version" "$TAG"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist-tag=$([ "$PRERELEASE" = true ] && echo next || echo latest)" >> "$GITHUB_OUTPUT"
+
+      # The provider must depend on a deploy-contract release from npmjs, not a
+      # GitHub Packages preview build (e.g. 0.2.1-pr14.5), or npm users can't
+      # install it.
+      - name: Require a published deploy-contract
+        run: |
+          spec=$(node -p 'require("./package.json").dependencies["@mieweb/deploy-contract"]')
+          if printf '%s' "$spec" | grep -Eq -- '-pr[0-9]|github:|git\+'; then
+            echo "::error::@mieweb/deploy-contract is '$spec' (a preview/git build). Switch it to an npmjs release before publishing."
+            exit 1
+          fi
+          npm view "@mieweb/deploy-contract@$spec" version --registry https://registry.npmjs.org >/dev/null \
+            || { echo "::error::@mieweb/deploy-contract@$spec is not on npmjs"; exit 1; }
+
+      # .npmrc routes @mieweb/* to GitHub Packages for PR previews; a release
+      # must install from and publish to npmjs only.
+      - name: Use npmjs for @mieweb
+        run: rm -f .npmrc
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: packages/os-cloud-provider/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run test
+
+      - name: Skip if already published
+        id: exists
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if npm view "@mieweb/os-cloud-provider@$VERSION" version >/dev/null 2>&1; then
+            echo "@mieweb/os-cloud-provider@$VERSION is already on npm; skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set package version
+        if: steps.exists.outputs.skip != 'true'
+        run: npm pkg set version="${{ steps.meta.outputs.version }}"
+
+      # pnpm pack runs prepack (builds dist/); npm publish does the upload so
+      # trusted publishing (OIDC) and provenance work. NPM_TOKEN is only a
+      # fallback for when trusted publishing isn't configured on npmjs.
+      - name: Publish to npm
+        if: steps.exists.outputs.skip != 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ steps.meta.outputs.dist-tag }}
+        run: |
+          npm install -g npm@latest
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          npm publish "$RUNNER_TEMP"/mieweb-os-cloud-provider-*.tgz --access public --provenance --tag "$DIST_TAG"
+          echo "Published \`@mieweb/os-cloud-provider@${{ steps.meta.outputs.version }}\` to npmjs (\`$DIST_TAG\`)." >> "$GITHUB_STEP_SUMMARY"
