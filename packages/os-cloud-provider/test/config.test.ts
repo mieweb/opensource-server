@@ -16,7 +16,6 @@ function ctx(manifest: Record<string, unknown>, targetConfig: Record<string, unk
     root: '/tmp',
     target: 'mieweb',
     manifest,
-    mieweb: {},
     targetConfig,
     argv: [],
     logger: { info() {}, warn() {}, error() {} },

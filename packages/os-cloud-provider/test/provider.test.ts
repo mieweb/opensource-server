@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { AuthError } from '@mieweb/deploy-contract';
-import type { DeployContext, ProviderEnv, ResourceHandle } from '@mieweb/deploy-contract';
+import type { DeployContext, ProviderEnv } from '@mieweb/deploy-contract';
 import { runProviderConformance } from '@mieweb/deploy-contract/testkit';
 import { createProvider, type ProviderOptions } from '../src/index.ts';
 import { SshError, type SshTarget } from '../src/ssh.ts';
@@ -66,7 +66,6 @@ function harness(opts: { manifest?: Record<string, unknown>; targetConfig?: Reco
       root: appRoot,
       target: 'mieweb',
       manifest: opts.manifest ?? { name: 'myapp', vars: { GREETING: 'hi' } },
-      mieweb: {},
       targetConfig: opts.targetConfig ?? { siteId: 1 },
       argv: opts.argv ?? [],
       logger: {
@@ -115,8 +114,6 @@ describe('contract', () => {
       targetConfig: { siteId: 1 },
       root: dir,
       live: true,
-      // Identity is the hostname, which is already in the manifest.
-      applyIds: (m: Readonly<Record<string, unknown>>, _r: readonly ResourceHandle[]) => ({ ...m }),
     });
     assert.deepEqual(report.failures, []);
     assert.equal(fake.containers.length, 1);

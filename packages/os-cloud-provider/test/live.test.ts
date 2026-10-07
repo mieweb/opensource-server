@@ -14,7 +14,7 @@
  * The code sync is disabled here (DummyApi containers have no SSH).
  * Exercises the real API mapping + job polling end to end (create → update →
  * image-change recreate → destroy) and runs the contract's live conformance
- * suite with an `applyIds` hook. It creates and deletes a container named
+ * suite. It creates and deletes a container named
  * `os-provider-live-<random>` on that site.
  */
 
@@ -22,7 +22,7 @@ import { strict as assert } from 'node:assert';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { describe, test } from 'node:test';
-import type { DeployContext, ResourceHandle } from '@mieweb/deploy-contract';
+import type { DeployContext } from '@mieweb/deploy-contract';
 import { runProviderConformance } from '@mieweb/deploy-contract/testkit';
 import { createProvider } from '../src/index.ts';
 
@@ -39,7 +39,6 @@ function ctx(overrides: Partial<DeployContext> = {}): DeployContext {
     root: tmpdir(),
     target: 'mieweb',
     manifest: { name, vars: { HELLO: 'world' } },
-    mieweb: {},
     targetConfig,
     argv: [],
     logger: { info: (m) => console.log(m), warn: (m) => console.warn(m), error: (m) => console.error(m) },
@@ -73,14 +72,13 @@ describe('live Manager', { skip: !live && 'set MIEWEB_OS_LIVE=1 (see file header
     await provider.destroy!(ctx());
   });
 
-  test('conformance (live, with applyIds)', async () => {
+  test('conformance (live)', async () => {
     const report = await runProviderConformance(provider, {
       target: 'mieweb',
       manifest: { name },
       targetConfig,
       root: tmpdir(),
       live: true,
-      applyIds: (m: Readonly<Record<string, unknown>>, _r: readonly ResourceHandle[]) => ({ ...m }),
     });
     await provider.destroy!(ctx());
     assert.deepEqual(report.failures, []);
