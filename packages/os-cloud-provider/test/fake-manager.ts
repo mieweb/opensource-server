@@ -182,7 +182,10 @@ export class FakeManager {
     // Browser-facing CLI handoff (the real route requires a session + confirm;
     // the fake just "approves" immediately).
     if (path === '/auth/cli/callback' && req.method === 'GET') {
-      const port = url.searchParams.get('port');
+      // Like the real route: only redirect to a loopback port, never to a
+      // caller-chosen host.
+      const port = Number(url.searchParams.get('port'));
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return fail(400, 'bad_port');
       const state = url.searchParams.get('state')!;
       const frag = new URLSearchParams({ ...this.nextKey, state });
       this.tokens.set(this.nextKey.key, { user: this.nextKey.user, keyId: this.nextKey.id });
