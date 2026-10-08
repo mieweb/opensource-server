@@ -97,8 +97,12 @@ export async function scanLocal(
     const abs = join(root, dir);
     try {
       rules.add(dir, await readFile(join(abs, '.gitignore'), 'utf8'));
-    } catch {
-      // no .gitignore here
+    } catch (err) {
+      // Only "there is no .gitignore here" is fine. An unreadable one must
+      // stop the sync: skipping its rules could upload excluded files (secrets).
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw new Error(`Cannot read ${join(abs, '.gitignore')}: ${(err as Error).message}`, { cause: err });
+      }
     }
     const entries = await readdir(abs, { withFileTypes: true });
     entries.sort((a, b) => (a.name < b.name ? -1 : 1));

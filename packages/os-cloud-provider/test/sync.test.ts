@@ -108,6 +108,14 @@ describe('syncWorktree', () => {
     assert.equal(await readFile(join(remote, 'dist/built.js'), 'utf8'), 'remote build');
   });
 
+  test('an unreadable .gitignore stops the sync instead of being skipped', async () => {
+    await rm(join(local, 'src/.gitignore'));
+    await mkdir(join(local, 'src/.gitignore')); // EISDIR on read; a permission error behaves the same
+    const shell = new FakeShell(remote);
+    await assert.rejects(syncWorktree(local, shell, logger), /Cannot read .*src\/\.gitignore/);
+    await assert.rejects(lstat(join(remote, 'src/secret.txt')));
+  });
+
   test('a same-size rewrite within the same second is synced', async () => {
     const f = join(local, 'src/index.js');
     const t0 = new Date(Math.floor(Date.now() / 1000) * 1000 + 100); // x.100s
