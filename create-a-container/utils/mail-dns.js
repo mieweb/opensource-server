@@ -131,6 +131,26 @@ async function lookupPtr({ ip, resolvers, resolver }) {
   }
 }
 
+/** Dev-stack bypass: `localhost` (and *.localhost) can never pass a real
+ * check. Outside production, Check DNS returns an all-pass synthetic result
+ * so the mail flow is testable end-to-end against MailDev. */
+function isDevBypassDomain(domain) {
+  return process.env.NODE_ENV !== 'production' && /(^|\.)localhost$/i.test(domain);
+}
+
+function devBypassCheckResult(domain) {
+  return {
+    checkedAt: new Date().toISOString(),
+    devBypass: true,
+    spf: { pass: true, record: 'dev bypass' },
+    dkim: { pass: true, selector: null, published: false },
+    dmarc: { pass: true, record: 'dev bypass' },
+    mx: { pass: true, hosts: [] },
+    ptr: { name: null, forwardConfirmed: false },
+    warnings: [`${domain} is a development domain — DNS checks were bypassed (non-production only).`],
+  };
+}
+
 /**
  * Run the Check DNS pass for a domain.
  *
@@ -146,6 +166,7 @@ async function lookupPtr({ ip, resolvers, resolver }) {
  *   { checkedAt, spf|dkim|dmarc|mx: { pass, ... }, ptr: {...}, warnings: [] }
  */
 async function checkMailDns({ domain, mailIp, mailHostname, spfInclude, dkimKey, resolvers, resolver }) {
+  if (isDevBypassDomain(domain)) return devBypassCheckResult(domain);
   const r = resolver || makeResolver(resolvers);
   const result = { checkedAt: new Date().toISOString(), warnings: [] };
 

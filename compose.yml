@@ -136,6 +136,12 @@ services:
       - 127.0.0.1:443:443
       - 127.0.0.1:8006:8006
       - 127.0.0.1:1080:1080  # maildev web UI (maildev shares this network namespace)
+      # Mail (issue #67): DNATed to the manager CT like 80/443.
+      - 127.0.0.1:25:25
+      - 127.0.0.1:143:143
+      - 127.0.0.1:465:465
+      - 127.0.0.1:587:587
+      - 127.0.0.1:993:993
     hostname: proxmox
     domainname: cluster.internal
     dns:
@@ -197,7 +203,8 @@ services:
         curl -H "X-CSRF-Token: $${CSRF}" --json '{"apiUrl":"https://10.254.0.1:8006","username":"root@pam","password":"root","tlsVerify":false}' https://proxmox/api/v1/sites/1/nodes/import
         curl -H "X-CSRF-Token: $${CSRF}" --json '{"name":"localhost","siteId":1,"acmeEmail":"","acmeDirectoryUrl":"","cloudflareApiEmail":"","cloudflareApiKey":"","authServer":""}' https://proxmox/api/v1/external-domains
         # Point SMTP at maildev only when unset, so a developer's own SMTP setting survives. PUT replaces every setting, hence the GET round-trip.
-        curl https://proxmox/api/v1/settings | jq '.data | select(.smtpUrl == "") | .smtpUrl = "smtp://10.254.0.1:1025" | .smtpNoreplyAddress |= if . == "" then "noreply@cluster.internal" else . end' > settings.json
+        # Mail service (issue #67): maildev doubles as the relayhost so outbound mail lands in http://localhost:1080; mailSpfInclude is required alongside a relayhost (dev placeholder).
+        curl https://proxmox/api/v1/settings | jq '.data | select(.smtpUrl == "" or .mailRelayhost == "") | .smtpUrl |= if . == "" then "smtp://10.254.0.1:1025" else . end | .smtpNoreplyAddress |= if . == "" then "noreply@cluster.internal" else . end | .mailRelayhost |= if . == "" then "[10.254.0.1]:1025" else . end | .mailSpfInclude |= if . == "" then "maildev.localhost" else . end | .mailHostname |= if . == "" then "localhost" else . end | .mailUnsubscribeBaseUrl |= if . == "" then "https://manager.localhost" else . end' > settings.json
         [ -s settings.json ] && curl -H "X-CSRF-Token: $${CSRF}" -X PUT --json @settings.json https://proxmox/api/v1/settings
         curl -H "X-CSRF-Token: $${CSRF}" -X PUT --json '{"hostname":"manager","template":"","entrypoint":"","nvidiaRequested":false,"services":{"s0":{"type":"http","internalPort":3000,"externalHostname":"manager","externalDomainId":1,"dnsName":"","authRequired":false}},"environmentVars":[],"restart":false}' https://proxmox/api/v1/sites/1/containers/1
     depends_on:
