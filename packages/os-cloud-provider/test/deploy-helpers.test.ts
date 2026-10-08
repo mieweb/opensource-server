@@ -140,6 +140,11 @@ test('mask hides secrets raw and JSON-escaped', () => {
   assert.match(out, /API_KEY=\*\*\*.* raw=\*\*\*/);
 });
 
+test('mask handles overlapping secrets (longest first)', () => {
+  assert.equal(mask('k1=abc k2=abcdef', ['abc', 'abcdef']), 'k1=*** k2=***');
+  assert.equal(mask('k1=abc k2=abcdef', ['abcdef', 'abc']), 'k1=*** k2=***');
+});
+
 describe('change detection', () => {
   test('servicesUnchanged', () => {
     const cur: Container['services'] = [

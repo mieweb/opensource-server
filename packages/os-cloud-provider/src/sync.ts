@@ -244,7 +244,7 @@ export function packTar(root: string, files: readonly FileEntry[], signal?: Abor
 
 /** Seconds the app must stay running after a restart to count as started. */
 export const APP_SETTLE_SECONDS = 5;
-/** Exit code the restart script uses for "started, then stopped/crashed". */
+/** Exit code the restart script uses for "started, then stopped/crashed/restarted". */
 const APP_NOT_RUNNING = 86;
 
 export const REMOTE = {
@@ -264,7 +264,13 @@ export const REMOTE = {
     'sudo journalctl -u app.service -o cat -f -n 0 & j=$!',
     'sleep 1',
     'sudo systemctl restart app.service; rc=$?',
-    `if [ $rc -eq 0 ]; then sleep ${APP_SETTLE_SECONDS}; sudo systemctl is-active --quiet app.service || rc=${APP_NOT_RUNNING}; fi`,
+    // Healthy = still active *and* still the same invocation after the settle
+    // period: a crash followed by an automatic restart (Restart=on-failure)
+    // gets a new InvocationID, even if it happens to be active at the check.
+    'inv=$(sudo systemctl show -p InvocationID --value app.service)',
+    `if [ $rc -eq 0 ]; then sleep ${APP_SETTLE_SECONDS}; ` +
+      `if ! sudo systemctl is-active --quiet app.service || ` +
+      `[ "$(sudo systemctl show -p InvocationID --value app.service)" != "$inv" ]; then rc=${APP_NOT_RUNNING}; fi; fi`,
     'sleep 1; sudo kill $j 2>/dev/null; kill $j 2>/dev/null; wait $j 2>/dev/null',
     'exit $rc',
   ].join('\n'),

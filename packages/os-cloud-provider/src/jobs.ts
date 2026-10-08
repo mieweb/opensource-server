@@ -33,11 +33,16 @@ export class JobFailedError extends Error {
  * which escapes `"`, `\`, tabs, …).
  */
 export function mask(text: string, secrets: Iterable<string> | undefined): string {
-  let out = text;
+  const forms = new Set<string>();
   for (const s of secrets ?? []) {
     if (!s) continue;
-    for (const form of new Set([s, JSON.stringify(s).slice(1, -1)])) out = out.split(form).join('***');
+    forms.add(s);
+    forms.add(JSON.stringify(s).slice(1, -1));
   }
+  // Longest first: with `abc` and `abcdef`, masking `abc` first would turn the
+  // longer secret into `***def` and leave part of it visible.
+  let out = text;
+  for (const form of [...forms].sort((a, b) => b.length - a.length)) out = out.split(form).join('***');
   return out;
 }
 

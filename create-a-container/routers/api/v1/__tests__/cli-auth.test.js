@@ -152,6 +152,20 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
   });
 
+  test('two concurrent POSTs of the same handoff mint only one key', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const state = 'concurrentstate0123456789';
+    const form = await agent.get(`${BASE}?port=53682&state=${state}`).set(...REMOTE);
+    const body = { _csrf: csrfFrom(form.text), port: '53682', state };
+    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
+    const results = await Promise.all([
+      agent.post(BASE).set(...REMOTE).type('form').send(body),
+      agent.post(BASE).set(...REMOTE).type('form').send(body),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([303, 400]);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
+  });
+
   test('a POST without a matching confirmation page (other state/port) is rejected', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const form = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);

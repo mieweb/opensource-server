@@ -33,6 +33,20 @@ const apiKeys = require('../../../resources/apikeys/service');
 
 const router = express.Router();
 
+// Handoffs claimed by an in-flight POST, keyed by session + state. The claim
+// is taken synchronously (no await in between), so two concurrent POSTs of
+// the same form can't both read the session's handoff before either save
+// lands and both mint a key. (The Manager is a single Node process.)
+const claims = new Map();
+const CLAIM_TTL_MS = 10 * 60 * 1000;
+function claimHandoff(key) {
+  const now = Date.now();
+  for (const [k, at] of claims) if (now - at > CLAIM_TTL_MS) claims.delete(k);
+  if (claims.has(key)) return false;
+  claims.set(key, now);
+  return true;
+}
+
 function saveSession(req) {
   return new Promise((resolve, reject) => req.session.save((err) => (err ? reject(err) : resolve())));
 }
@@ -145,7 +159,12 @@ router.post('/callback', asyncHandler(async (req, res) => {
   }
 
   const pending = req.session.cliHandoff;
-  if (!pending || pending.state !== handoff.state || pending.port !== handoff.port) {
+  if (
+    !pending ||
+    pending.state !== handoff.state ||
+    pending.port !== handoff.port ||
+    !claimHandoff(`${req.sessionID}:${handoff.state}`)
+  ) {
     return errorPage(res, 'This sign-in was already completed or has expired.');
   }
   delete req.session.cliHandoff;
