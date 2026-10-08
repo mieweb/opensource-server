@@ -1,18 +1,19 @@
 /**
- * Minimal Manager API client: Bearer auth, `{ data }` / `{ error }` envelope
- * unwrapping, AbortSignal support, and 401/403 → AuthError.
+ * Manager API client: `openapi-fetch` typed by the Manager's own OpenAPI spec
+ * (`src/generated/manager-api.ts`), plus what the provider needs on top:
+ * Bearer auth, `{ data }` envelope unwrapping, 401/403 → AuthError,
+ * AbortSignal support, and retrying idempotent GETs on dropped connections.
  *
- * Only `Authorization: Bearer` is sent — no cookies — so the Manager's CSRF
+ * Only `Authorization: Bearer` is sent, no cookies, so the Manager's CSRF
  * guard skips these requests (middlewares/api.js).
  */
 
 import { AuthError } from '@mieweb/deploy-contract';
 import type { DeployTarget } from '@mieweb/deploy-contract';
+import createClient, { type Client } from 'openapi-fetch';
+import pRetry from 'p-retry';
 import { LOGIN_HINT, PROVIDER_NAME } from './config.ts';
-import { sleep } from './jobs.ts';
-
-const RETRIES = 3;
-const RETRY_DELAY_MS = 500;
+import type { paths } from './generated/manager-api.ts';
 
 /** A non-auth error response from the Manager. */
 export class ManagerApiError extends Error {
@@ -34,103 +35,73 @@ export interface ClientOptions {
   fetch?: typeof fetch;
 }
 
-type Query = Record<string, string | number | undefined>;
+/** The `data` member of an endpoint's `{ data }` success envelope. */
+type Envelope<T> = T extends { data?: infer D } ? D : never;
+
+export type ManagerApi = Client<paths>;
 
 export class ManagerClient {
   readonly instanceUrl: string;
   readonly target: DeployTarget;
+  readonly api: ManagerApi;
   private readonly token: string | null;
   private readonly signal: AbortSignal | undefined;
-  private readonly fetchImpl: typeof fetch;
 
   constructor(opts: ClientOptions) {
     this.instanceUrl = opts.instanceUrl;
     this.target = opts.target;
     this.token = opts.token;
     this.signal = opts.signal;
-    this.fetchImpl = opts.fetch ?? globalThis.fetch;
-  }
-
-  private url(path: string, query?: Query): string {
-    const u = new URL(`${this.instanceUrl}/api/v1${path}`);
-    for (const [k, v] of Object.entries(query ?? {})) {
-      if (v !== undefined) u.searchParams.set(k, String(v));
-    }
-    return u.toString();
+    const base = opts.fetch ?? globalThis.fetch;
+    const signal = opts.signal;
+    this.api = createClient<paths>({
+      baseUrl: `${opts.instanceUrl}/api/v1`,
+      headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : {},
+      // GETs are idempotent: retry them on network-level failures (a dropped
+      // keep-alive socket mid job-poll shouldn't fail a deploy). Writes are
+      // never retried.
+      fetch: (req: Request) => {
+        const once = (): Promise<Response> => base(req.clone(), { signal, redirect: 'manual' });
+        return req.method === 'GET' ? pRetry(once, { retries: 3, minTimeout: 500, signal }) : once();
+      },
+    });
   }
 
   authError(): AuthError {
     return new AuthError(PROVIDER_NAME, this.target, LOGIN_HINT);
   }
 
-  /** Perform a request and return the unwrapped `data` payload. */
-  async request<T>(method: string, path: string, opts: { body?: unknown; query?: Query; auth?: boolean } = {}): Promise<T> {
-    const needsAuth = opts.auth !== false;
-    if (needsAuth && !this.token) throw this.authError();
-
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (needsAuth && this.token) headers.Authorization = `Bearer ${this.token}`;
-    if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
-
-    // GETs are idempotent, so retry them on connection-level failures (a
-    // dropped keep-alive socket mid job-poll shouldn't fail a deploy).
-    // Writes are never retried.
-    const attempts = method === 'GET' ? RETRIES + 1 : 1;
-    let res!: Response;
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        res = await this.fetchImpl(this.url(path, opts.query), {
-          method,
-          headers,
-          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-          signal: this.signal,
-          redirect: 'manual',
-        });
-        break;
-      } catch (err) {
-        if ((err as Error).name === 'AbortError' || this.signal?.aborted) throw err;
-        if (attempt < attempts) {
-          await sleep(RETRY_DELAY_MS * attempt, this.signal ?? new AbortController().signal);
-          continue;
-        }
-        throw new Error(`Cannot reach the Manager at ${this.instanceUrl}: ${(err as Error).message}`, { cause: err });
-      }
-    }
-
-    if (res.status === 401 || res.status === 403) {
-      await res.body?.cancel();
-      throw this.authError();
-    }
-    if (res.status === 204) return undefined as T;
-
-    const text = await res.text();
-    let json: { data?: unknown; error?: { code?: string; message?: string } } | undefined;
+  /**
+   * Run one typed request and return the `data` payload of its envelope.
+   *
+   *   const site = await client.call((api) => api.GET('/sites/{id}', { params: { path: { id } } }));
+   */
+  async call<R extends { data?: unknown; error?: unknown; response: Response }>(
+    request: (api: ManagerApi) => Promise<R>,
+    opts: { auth?: boolean } = {},
+  ): Promise<Envelope<NonNullable<R['data']>>> {
+    if (opts.auth !== false && !this.token) throw this.authError();
+    let result: R;
     try {
-      json = text ? JSON.parse(text) : undefined;
-    } catch {
-      json = undefined;
+      result = await request(this.api);
+    } catch (err) {
+      if (this.signal?.aborted) throw this.signal.reason ?? err;
+      if ((err as Error).name === 'AbortError') throw err;
+      if (err instanceof SyntaxError) {
+        throw new ManagerApiError(0, 'bad_response', `Unexpected non-JSON response from ${this.instanceUrl}`);
+      }
+      throw new Error(`Cannot reach the Manager at ${this.instanceUrl}: ${(err as Error).message}`, { cause: err });
     }
-    if (!res.ok) {
-      const code = json?.error?.code ?? `http_${res.status}`;
-      const message = json?.error?.message ?? (text.slice(0, 200) || res.statusText);
-      throw new ManagerApiError(res.status, code, `${method} ${path} failed (${res.status} ${code}): ${message}`);
+    const { response } = result;
+    const where = `${new URL(response.url || this.instanceUrl).pathname}`;
+    if (response.status === 401 || response.status === 403) throw this.authError();
+    if (!response.ok) {
+      const body = result.error as { error?: { code?: string; message?: string } } | string | undefined;
+      const e = typeof body === 'object' ? body?.error : undefined;
+      const code = e?.code ?? `http_${response.status}`;
+      const message = e?.message ?? (typeof body === 'string' && body ? body.slice(0, 200) : response.statusText);
+      throw new ManagerApiError(response.status, code, `${where} failed (${response.status} ${code}): ${message}`);
     }
-    if (json === undefined || !('data' in json)) {
-      throw new ManagerApiError(res.status, 'bad_response', `${method} ${path}: unexpected non-JSON response from ${this.instanceUrl}`);
-    }
-    return json.data as T;
-  }
-
-  get<T>(path: string, query?: Query): Promise<T> {
-    return this.request<T>('GET', path, { query });
-  }
-  post<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('POST', path, { body });
-  }
-  put<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('PUT', path, { body });
-  }
-  delete<T>(path: string): Promise<T> {
-    return this.request<T>('DELETE', path);
+    return (result.data as { data?: unknown } | undefined)?.data as Envelope<NonNullable<R['data']>>;
   }
 }

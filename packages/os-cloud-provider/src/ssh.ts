@@ -16,13 +16,12 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { connect as netConnect } from 'node:net';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { DeployLogger, ProviderEnv } from '@mieweb/deploy-contract';
 import ssh2 from 'ssh2';
 import type { AnyAuthMethod, AuthenticationType, ClientChannel, ConnectConfig, Prompt } from 'ssh2';
-import { sleep } from './jobs.ts';
+import { ttyPrompter, type Prompter } from './prompt.ts';
 
 const { Client, utils } = ssh2;
 
@@ -65,52 +64,7 @@ export interface RemoteShell {
   close(): void;
 }
 
-/** Terminal prompt; `hidden` suppresses echo. Returns null when not interactive. */
-export type Prompter = (question: string, hidden: boolean) => Promise<string | null>;
-
-export const ttyPrompter: Prompter = (question, hidden) =>
-  new Promise((resolve) => {
-    const stdin = process.stdin;
-    if (!stdin.isTTY) {
-      resolve(null);
-      return;
-    }
-    process.stderr.write(question);
-    let answer = '';
-    const wasRaw = stdin.isRaw;
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding('utf8');
-    const onData = (chunk: string): void => {
-      for (const ch of chunk) {
-        if (ch === '\r' || ch === '\n') {
-          done(answer);
-          return;
-        }
-        if (ch === '\u0003') {
-          done(null);
-          return;
-        }
-        if (ch === '\u007f' || ch === '\b') {
-          if (answer.length > 0) {
-            answer = answer.slice(0, -1);
-            if (!hidden) process.stderr.write('\b \b');
-          }
-          continue;
-        }
-        answer += ch;
-        if (!hidden) process.stderr.write(ch);
-      }
-    };
-    const done = (value: string | null): void => {
-      stdin.off('data', onData);
-      stdin.setRawMode(wasRaw);
-      stdin.pause();
-      process.stderr.write('\n');
-      resolve(value);
-    };
-    stdin.on('data', onData);
-  });
+export type { Prompter } from './prompt.ts';
 
 // --- known hosts ------------------------------------------------------------
 
@@ -294,8 +248,14 @@ export class SshConnection implements RemoteShell {
         reject(opts.signal.reason);
       };
       opts.signal.addEventListener('abort', onAbort, { once: true });
+      let settled = false;
       const fail = (err: Error): void => {
+        // ssh2 can emit several errors for one failed handshake (e.g. ECONNRESET
+        // then "Connection lost before handshake"); only the first counts.
+        if (settled) return;
+        settled = true;
         opts.signal.removeEventListener('abort', onAbort);
+        client.end();
         if (mismatch) {
           reject(
             new SshError(
@@ -316,11 +276,12 @@ export class SshConnection implements RemoteShell {
           reject(new SshError('network', `SSH connection to ${target.host}:${target.port} failed: ${err.message}`, { cause: err }));
         }
       };
-      client.once('error', fail);
+      // Keep a listener for the client's whole life: an unhandled 'error'
+      // event would crash the process.
+      client.on('error', fail);
       client.once('ready', () => {
+        settled = true;
         opts.signal.removeEventListener('abort', onAbort);
-        client.off('error', fail);
-        client.on('error', () => {});
         const done = (): void => resolve(new SshConnection(client));
         if (pinned) {
           known.set(id, pinned.fp);
@@ -425,51 +386,4 @@ export class SshConnection implements RemoteShell {
   close(): void {
     this.client.end();
   }
-}
-
-// --- readiness --------------------------------------------------------------
-
-/** Resolve once host:port answers with an SSH banner. */
-export async function waitForSsh(
-  host: string,
-  port: number,
-  signal: AbortSignal,
-  logger: DeployLogger,
-  timeoutMs = 5 * 60 * 1000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let announced = false;
-  for (;;) {
-    if (await probeSsh(host, port, signal)) return;
-    if (!announced) {
-      logger.info(`Waiting for SSH on ${host}:${port}…`);
-      announced = true;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`SSH on ${host}:${port} did not become available within ${Math.round(timeoutMs / 1000)}s`);
-    }
-    await sleep(2000, signal);
-  }
-}
-
-function probeSsh(host: string, port: number, signal: AbortSignal): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sock = netConnect({ host, port, timeout: 5000 });
-    let buf = '';
-    const done = (ok: boolean): void => {
-      signal.removeEventListener('abort', onAbort);
-      sock.destroy();
-      resolve(ok);
-    };
-    const onAbort = (): void => done(false);
-    signal.addEventListener('abort', onAbort, { once: true });
-    sock.setEncoding('latin1');
-    sock.on('data', (d: string) => {
-      buf += d;
-      if (buf.includes('\n') || buf.length >= 4) done(buf.startsWith('SSH-'));
-    });
-    sock.on('timeout', () => done(false));
-    sock.on('error', () => done(false));
-    sock.on('end', () => done(false));
-  });
 }

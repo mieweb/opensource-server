@@ -20,7 +20,6 @@ let appRoot: string;
 let remoteDir: string;
 /** SSH sessions the provider opened, and SSH readiness waits. */
 let sessions: { target: SshTarget; shell: FakeShell }[];
-let sshWaits: string[];
 let connectError: Error | null;
 /** Errors thrown by the next connect attempts, in order (then success). */
 let connectFailures: Error[];
@@ -41,7 +40,6 @@ beforeEach(async () => {
   await writeFile(join(appRoot, 'package.json'), '{"name":"myapp"}');
   await writeFile(join(appRoot, '.gitignore'), 'node_modules/\n');
   sessions = [];
-  sshWaits = [];
   connectError = null;
   connectFailures = [];
   setupShell = () => {};
@@ -93,9 +91,6 @@ function provider(env: ProviderEnv = {}, options: ProviderOptions = {}) {
         sessions.push({ target, shell });
         return shell;
       },
-      waitForSsh: async (host, port) => {
-        sshWaits.push(`${host}:${port}`);
-      },
       ...options,
     },
   );
@@ -112,7 +107,7 @@ describe('contract', () => {
       target: 'mieweb',
       manifest: { name: 'myapp' },
       targetConfig: { siteId: 1 },
-      root: dir,
+      root: appRoot,
       live: true,
     });
     assert.deepEqual(report.failures, []);
@@ -172,7 +167,6 @@ describe('deploy', () => {
     const sshPort = c.services.find((x) => x.internalPort === 22)!.transportService!.externalPort;
     assert.equal(sshPort, 2000);
     assert.equal(await readFile(join(dir, '.mieweb', 'known_hosts'), 'utf8'), '[other]:22 SHA256:keep\n');
-    assert.deepEqual(sshWaits, [`ssh.example.test:${sshPort}`]);
     assert.equal(sessions.length, 1);
     assert.deepEqual(sessions[0]!.target, { host: 'ssh.example.test', port: sshPort, user: 'alice' }, 'ssh user = Manager account');
     assert.equal(await readFile(join(remoteDir, 'package.json'), 'utf8'), '{"name":"myapp"}');
@@ -233,6 +227,29 @@ describe('deploy', () => {
     await assert.rejects(p.deploy(harness().ctx), /SSH authentication as alice failed/);
     connectFailures = [new SshError('hostkey', 'SSH host key for x changed')];
     await assert.rejects(p.deploy(harness().ctx), /host key for x changed/);
+  });
+
+  test('an app without package.json fails before touching the Manager', async () => {
+    await rm(join(appRoot, 'package.json'));
+    await assert.rejects(provider().deploy(harness().ctx), /has no package\.json/);
+    assert.equal(fake.requests.length, 0);
+  });
+
+  test('after a create, auth failures are retried only until the user has typed a password', async () => {
+    let attempts = 0;
+    let prompts = 0;
+    const connectSsh: ProviderOptions['connectSsh'] = async (_t, o) => {
+      attempts += 1;
+      // Like the real client: no key accepted, so it asks for a password.
+      if (attempts >= 2) await o.prompt("alice's password: ", true);
+      throw new SshError('auth', 'SSH authentication as alice failed.');
+    };
+    const p = provider({}, { connectSsh, prompt: async () => (prompts++, 'wrong'), sshTimeoutMs: 5000 });
+    await assert.rejects(p.deploy(harness().ctx), /SSH authentication as alice failed/);
+    // 1st attempt: keys not served yet → retried. 2nd: password typed and
+    // rejected → stop instead of retrying the same wrong password for 60s.
+    assert.equal(attempts, 2);
+    assert.equal(prompts, 1);
   });
 
   test('an SSH failure fails the deploy', async () => {
@@ -442,7 +459,7 @@ describe('tail', () => {
     const h = harness({ argv: ['-n', '20', '--no-follow', '--since', '-1h'] });
     await p.tail!(h.ctx);
     const shell = sessions.at(-1)!.shell;
-    assert.equal(shell.commands.at(-1), "sudo journalctl -u app.service -o cat --no-pager -n 20 --since '-1h'");
+    assert.equal(shell.commands.at(-1), 'sudo journalctl -u app.service -o cat --no-pager -n 20 --since -1h');
     assert.equal(shell.closed, true);
     const out = h.logs.filter((l) => !l.includes('Tailing') && !l.includes('Connecting'));
     assert.deepEqual(out, ['info:line one', 'info:line two', 'warn:oops', 'info:tail-no-newline']);

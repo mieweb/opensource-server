@@ -2235,9 +2235,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         data?: {
-                            siteId?: number;
-                            externalDomains?: Record<string, never>[];
-                            nvidiaAvailable?: boolean;
+                            siteId: number;
+                            /** @description Usable domains; the site's own default domains first */
+                            externalDomains: {
+                                id: number;
+                                name: string;
+                                siteId?: number | null;
+                            }[];
+                            nvidiaAvailable: boolean;
                         };
                     };
                 };

@@ -22,7 +22,7 @@ import type { DeployContext, DeployProvider, DeployTarget, ProviderEnv } from '@
 import { login, logout, whoami, type LoginHooks } from './auth.ts';
 import { PROVIDER_NAME } from './config.ts';
 import { deploy, destroy, tail, type ProviderDeps } from './deploy.ts';
-import type { Prompter, waitForSsh } from './ssh.ts';
+import type { Prompter } from './prompt.ts';
 
 export { PROVIDER_NAME, DEFAULT_IMAGE, DEFAULT_INSTANCE_URL, DATA_VOLUME, ConfigError } from './config.ts';
 export { ManagerApiError } from './client.ts';
@@ -39,8 +39,6 @@ export interface ProviderOptions {
   connectSsh?: ProviderDeps['connectSsh'];
   /** Terminal prompt for SSH passphrases/passwords. */
   prompt?: Prompter;
-  /** SSH readiness probe (tests). */
-  waitForSsh?: typeof waitForSsh;
   /** Total SSH readiness budget in ms (default 60000). */
   sshTimeoutMs?: number;
   /** Delay between SSH attempts in ms (default 2000). */
@@ -57,7 +55,6 @@ export function createProvider(env: ProviderEnv, options: ProviderOptions = {}):
     pollIntervalMs: options.pollIntervalMs,
     connectSsh: options.connectSsh,
     prompt: options.prompt,
-    waitForSsh: options.waitForSsh,
     sshTimeoutMs: options.sshTimeoutMs,
     sshRetryDelayMs: options.sshRetryDelayMs,
   };

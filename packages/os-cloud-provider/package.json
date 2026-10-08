@@ -39,11 +39,17 @@
   "dependencies": {
     "@mieweb/deploy-contract": "^0.3.0",
     "ignore": "^7.0.10",
+    "open": "^11.0.4",
+    "openapi-fetch": "^0.17.0",
+    "p-retry": "^8.0.1",
+    "read": "^5.0.1",
+    "shell-quote": "^1.12.0",
     "ssh2": "^1.17.0",
     "tar-stream": "^3.2.1"
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
+    "@types/shell-quote": "^1.7.5",
     "@types/ssh2": "^1.15.6",
     "@types/tar-stream": "^3.1.5",
     "openapi-typescript": "^7.13.0",

@@ -41,7 +41,7 @@ export class FakeShell implements RemoteShell {
           if (e.isDirectory()) await walk(p);
           else {
             const st = await lstat(join(this.dir, p));
-            out.push(p, String(st.size), String(st.mtimeMs / 1000));
+            out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), st.isSymbolicLink() ? 'l' : 'f');
           }
         }
       };

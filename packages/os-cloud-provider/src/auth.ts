@@ -9,13 +9,11 @@
  * page that POSTs it to `/token` on the same listener.
  */
 
-import { spawn } from 'node:child_process';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { hostname as osHostname } from 'node:os';
-import { createInterface } from 'node:readline/promises';
 import type { AuthStatus, DeployContext, DeployLogger } from '@mieweb/deploy-contract';
-import type { SessionInfo } from './api-types.ts';
+import open from 'open';
 import { ManagerClient } from './client.ts';
 import {
   DEFAULT_INSTANCE_URL,
@@ -26,15 +24,24 @@ import {
 } from './config.ts';
 import { deleteCredential, readCredential, writeCredential } from './credentials.ts';
 import type { ProviderDeps } from './deploy.ts';
+import { ttyPrompter } from './prompt.ts';
+
+function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: string, token: string | null): ManagerClient {
+  return new ManagerClient({ instanceUrl, token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
+}
+
+/** The account a token belongs to (`get_session`). */
+async function sessionUser(client: ManagerClient): Promise<string> {
+  return (await client.call((api) => api.GET('/session')))?.user ?? '';
+}
 
 export async function whoami(ctx: DeployContext, deps: ProviderDeps): Promise<AuthStatus> {
   const instanceUrl = resolveInstanceUrl(deps.env, ctx.targetConfig);
   const tok = await resolveToken(deps.env, instanceUrl);
   if (!tok) return { authenticated: false };
-  const client = new ManagerClient({ instanceUrl, token: tok.token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
   try {
-    const session = await client.get<SessionInfo>('/session');
-    return { authenticated: true, account: session.user, method: tok.method };
+    const account = await sessionUser(clientFor(ctx, deps, instanceUrl, tok.token));
+    return { authenticated: true, account, method: tok.method };
   } catch (err) {
     if ((err as Error).name === 'AuthError') return { authenticated: false, method: tok.method };
     throw err;
@@ -44,44 +51,28 @@ export async function whoami(ctx: DeployContext, deps: ProviderDeps): Promise<Au
 // --- login ------------------------------------------------------------------
 
 export interface LoginHooks {
-  /** Open a URL in the user's browser (default: platform opener). */
+  /** Open a URL in the user's browser (default: the `open` package). */
   openBrowser?: (url: string) => void;
-  /** Ask for the instance URL when nothing configures it. */
-  prompt?: (question: string) => Promise<string>;
   /** Give up waiting after this long (default 5 min). */
   timeoutMs?: number;
 }
 
 function defaultOpenBrowser(url: string): void {
-  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '""', url] : [url];
-  try {
-    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
-    child.on('error', () => {});
-    child.unref();
-  } catch {
-    // The URL is always printed too; a missing opener isn't fatal.
-  }
-}
-
-async function defaultPrompt(question: string): Promise<string> {
-  if (!process.stdin.isTTY) return '';
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    return await rl.question(question);
-  } finally {
-    rl.close();
-  }
+  // The URL is always printed too; a missing opener isn't fatal.
+  open(url).then(
+    (child) => child.on('error', () => {}),
+    () => {},
+  );
 }
 
 /** Instance for `login`: --instance → env → targetConfig.instanceUrl → prompt (default os.mieweb.org). */
-async function loginInstanceUrl(ctx: DeployContext, deps: ProviderDeps, hooks: LoginHooks): Promise<string> {
+async function loginInstanceUrl(ctx: DeployContext, deps: ProviderDeps): Promise<string> {
   const configured =
     instanceFromArgv(ctx.argv) ||
     deps.env.MIEWEB_OS_URL?.trim() ||
     (typeof ctx.targetConfig.instanceUrl === 'string' ? ctx.targetConfig.instanceUrl.trim() : '');
   if (configured) return normalizeInstanceUrl(configured);
-  const answer = (await (hooks.prompt ?? defaultPrompt)(`Manager URL [${DEFAULT_INSTANCE_URL}]: `)).trim();
+  const answer = ((await (deps.prompt ?? ttyPrompter)(`Manager URL [${DEFAULT_INSTANCE_URL}]: `, false)) ?? '').trim();
   return normalizeInstanceUrl(answer || DEFAULT_INSTANCE_URL);
 }
 
@@ -208,14 +199,13 @@ function clientLabel(): string {
 
 export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: LoginHooks = {}): Promise<void> {
   const { logger } = ctx;
-  const instanceUrl = await loginInstanceUrl(ctx, deps, hooks);
+  const instanceUrl = await loginInstanceUrl(ctx, deps);
   if (deps.env.MIEWEB_OS_TOKEN?.trim()) {
     logger.warn('MIEWEB_OS_TOKEN is set in the environment and takes precedence over the login cache.');
   }
 
   // Fail fast (before opening a browser) if the instance isn't a Manager.
-  const probe = new ManagerClient({ instanceUrl, token: null, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
-  await probe.request<{ status: string }>('GET', '/health', { auth: false });
+  await clientFor(ctx, deps, instanceUrl, null).call((api) => api.GET('/health'), { auth: false });
 
   const state = randomBytes(24).toString('base64url');
   const loop = await startLoopback(state, ctx.signal, hooks.timeoutMs ?? 5 * 60 * 1000);
@@ -228,21 +218,20 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
 
     const handoff = await loop.result;
 
-    const client = new ManagerClient({ instanceUrl, token: handoff.key, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
-    const session = await client.get<SessionInfo>('/session');
+    const user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
 
     // Revoke the key this login replaces, so repeated logins don't pile up keys.
     const previous = await readCredential(deps.env, instanceUrl);
     await writeCredential(deps.env, instanceUrl, {
       token: handoff.key,
       apiKeyId: handoff.id,
-      user: session.user,
+      user,
       savedAt: new Date().toISOString(),
     });
     if (previous && previous.apiKeyId !== handoff.id) {
       await revoke(instanceUrl, previous.token, previous.apiKeyId, ctx, deps, logger);
     }
-    logger.info(`Logged in to ${instanceUrl} as ${session.user}`);
+    logger.info(`Logged in to ${instanceUrl} as ${user}`);
   } finally {
     loop.close();
   }
@@ -256,9 +245,10 @@ async function revoke(
   deps: ProviderDeps,
   logger: DeployLogger,
 ): Promise<void> {
-  const client = new ManagerClient({ instanceUrl, token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
   try {
-    await client.delete(`/apikeys/${encodeURIComponent(apiKeyId)}`);
+    await clientFor(ctx, deps, instanceUrl, token).call((api) =>
+      api.DELETE('/apikeys/{id}', { params: { path: { id: apiKeyId } } }),
+    );
   } catch (err) {
     const status = (err as { status?: number }).status;
     // Already gone or already invalid: nothing to revoke.

@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
@@ -106,6 +106,16 @@ describe('syncWorktree', () => {
     await assert.rejects(lstat(join(remote, 'untracked.txt')));
     assert.equal(await readFile(join(remote, 'node_modules/installed/index.js'), 'utf8'), 'remote deps');
     assert.equal(await readFile(join(remote, 'dist/built.js'), 'utf8'), 'remote build');
+  });
+
+  test('a permission-only change (chmod +x) is synced', async () => {
+    await syncWorktree(local, new FakeShell(remote), logger);
+    const st = await lstat(join(local, 'src/index.js'));
+    await chmod(join(local, 'src/index.js'), 0o755);
+    await utimes(join(local, 'src/index.js'), st.atime, st.mtime); // chmod alone keeps mtime
+    const plan = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(plan.upload.map((f) => f.path), ['src/index.js']);
+    assert.equal((await lstat(join(remote, 'src/index.js'))).mode & 0o777, 0o755);
   });
 
   test('empty directories left by deletions are pruned', async () => {

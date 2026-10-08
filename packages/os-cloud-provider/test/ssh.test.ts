@@ -5,13 +5,14 @@
 
 import { strict as assert } from 'node:assert';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { timingSafeEqual } from 'node:crypto';
 import ssh2 from 'ssh2';
 import type { AuthContext, Connection } from 'ssh2';
-import { forgetHostKey, SshConnection, waitForSsh } from '../src/ssh.ts';
+import { forgetHostKey, SshConnection } from '../src/ssh.ts';
 
 const { Server, utils } = ssh2;
 const logger = { info() {}, warn() {}, error() {} };
@@ -194,6 +195,35 @@ describe('SshConnection', () => {
     }
   });
 
+  test('a connection dropped mid-handshake rejects (with kind network) instead of crashing', async () => {
+    // Send a banner, then reset: ssh2 emits more than one 'error' for this.
+    const tcp = createTcpServer((sock) => {
+      sock.write('SSH-2.0-OpenSSH_9.9\r\n');
+      setTimeout(() => sock.resetAndDestroy(), 20);
+    });
+    await new Promise<void>((r) => tcp.listen(0, '127.0.0.1', () => r()));
+    const port = (tcp.address() as { port: number }).port;
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        await assert.rejects(
+          SshConnection.connect({
+            target: { host: '127.0.0.1', port, user: 'alice' },
+            env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+            knownHostsFile: join(home, 'kh-drop'),
+            interactive: false,
+            signal: signal(),
+            logger,
+          }),
+          (err: Error & { kind?: string }) => err.kind === 'network',
+        );
+      }
+      // Give any late duplicate 'error' events a chance to fire (and crash).
+      await new Promise((r) => setTimeout(r, 200));
+    } finally {
+      await new Promise<void>((r) => tcp.close(() => r()));
+    }
+  });
+
   test('stream delivers output and stops on abort', async () => {
     const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
     try {
@@ -220,15 +250,6 @@ describe('SshConnection', () => {
       assert.equal(code, -1);
       assert.ok(seen.includes('stdout:a\n'));
       assert.ok(seen.includes('stderr:e\n'));
-    } finally {
-      await srv.close();
-    }
-  });
-
-  test('waitForSsh sees the banner', async () => {
-    const srv = await startServer({ password: 'x', hostKey: hostKeyA });
-    try {
-      await waitForSsh('127.0.0.1', srv.port, signal(), logger, 5000);
     } finally {
       await srv.close();
     }

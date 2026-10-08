@@ -25,6 +25,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { DeployLogger } from '@mieweb/deploy-contract';
 import ignore, { type Ignore } from 'ignore';
+import { quote } from 'shell-quote';
 import tarStream from 'tar-stream';
 import type { RemoteShell } from './ssh.ts';
 
@@ -112,12 +113,23 @@ export async function scanLocal(root: string): Promise<{ files: Map<string, File
   return { files, rules };
 }
 
-/** Parse `find -printf '%P\0%s\0%T@\0'` output. */
-export function parseRemoteListing(out: Buffer): Map<string, { size: number; mtime: number }> {
-  const map = new Map<string, { size: number; mtime: number }>();
+export interface RemoteEntry {
+  size: number;
+  mtime: number;
+  /** Permission bits; undefined for symlinks (always 0777). */
+  mode?: number;
+}
+
+/** Parse `find -printf '%P\0%s\0%T@\0%m\0%y\0'` output. */
+export function parseRemoteListing(out: Buffer): Map<string, RemoteEntry> {
+  const map = new Map<string, RemoteEntry>();
   const parts = out.toString('utf8').split('\0');
-  for (let i = 0; i + 2 < parts.length; i += 3) {
-    map.set(parts[i]!, { size: Number(parts[i + 1]), mtime: Math.floor(Number(parts[i + 2])) });
+  for (let i = 0; i + 4 < parts.length; i += 5) {
+    map.set(parts[i]!, {
+      size: Number(parts[i + 1]),
+      mtime: Math.floor(Number(parts[i + 2])),
+      mode: parts[i + 4] === 'l' ? undefined : Number.parseInt(parts[i + 3]!, 8),
+    });
   }
   return map;
 }
@@ -129,13 +141,15 @@ export interface SyncPlan {
 
 export function planSync(
   local: Map<string, FileEntry>,
-  remote: Map<string, { size: number; mtime: number }>,
+  remote: Map<string, RemoteEntry>,
   rules: IgnoreRules,
 ): SyncPlan {
   const upload: FileEntry[] = [];
   for (const f of local.values()) {
     const r = remote.get(f.path);
-    if (!r || r.size !== f.size || r.mtime !== f.mtime) upload.push(f);
+    // Mode is compared too: `chmod +x` changes neither size nor mtime.
+    const modeChanged = f.type === 'file' && r?.mode !== undefined && r.mode !== f.mode;
+    if (!r || r.size !== f.size || r.mtime !== f.mtime || modeChanged) upload.push(f);
   }
   const remove = [...remote.keys()].filter((p) => !local.has(p) && !rules.ignores(p)).sort();
   return { upload, remove };
@@ -175,18 +189,18 @@ export function packTar(root: string, files: readonly FileEntry[]): Readable {
   return Readable.from(pack);
 }
 
-const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
-
 /** Seconds the app must stay running after a restart to count as started. */
 export const APP_SETTLE_SECONDS = 5;
 /** Exit code the restart script uses for "started, then stopped/crashed". */
 const APP_NOT_RUNNING = 86;
 
 export const REMOTE = {
-  list: `sudo mkdir -p ${q(REMOTE_APP_DIR)} && cd ${q(REMOTE_APP_DIR)} && sudo find . -mindepth 1 \\( -type f -o -type l \\) -printf '%P\\0%s\\0%T@\\0'`,
-  extract: `sudo tar -x -f - -C ${q(REMOTE_APP_DIR)}`,
-  remove: `cd ${q(REMOTE_APP_DIR)} && sudo xargs -0 -r rm -f --`,
-  pruneDirs: `cd ${q(REMOTE_APP_DIR)} && sudo xargs -0 -r rmdir -p --ignore-fail-on-non-empty -- 2>/dev/null; true`,
+  list: `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
+    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0',
+  ])}`,
+  extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
+  remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
+  pruneDirs: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rmdir -p --ignore-fail-on-non-empty -- 2>/dev/null; true`,
   /**
    * Follow the journal (live install/build output) while restarting; exit
    * non-zero if the restart fails (ExecStartPre install/build failed) or the
@@ -216,24 +230,33 @@ function human(n: number): string {
   return n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`;
 }
 
+/**
+ * Re-split stdout/stderr chunks into whole lines (a chunk can end mid-line),
+ * so each line is one logger call. Call `flush()` once the stream ends.
+ */
+export function lineSplitter(onLine: (line: string, stream: 'stdout' | 'stderr') => void) {
+  const pending = { stdout: '', stderr: '' };
+  return {
+    push: (chunk: Buffer, stream: 'stdout' | 'stderr'): void => {
+      const lines = (pending[stream] + chunk.toString('utf8')).split('\n');
+      pending[stream] = lines.pop() ?? '';
+      for (const l of lines) onLine(l, stream);
+    },
+    flush: (): void => {
+      for (const stream of ['stdout', 'stderr'] as const) {
+        if (pending[stream]) onLine(pending[stream], stream);
+        pending[stream] = '';
+      }
+    },
+  };
+}
+
 /** Restart app.service, streaming its output; throw if it doesn't come up. */
 export async function restartApp(shell: RemoteShell, logger: DeployLogger, signal: AbortSignal): Promise<void> {
-  let pending = '';
-  const code = await shell.stream(
-    REMOTE.restart,
-    (chunk, which) => {
-      if (which === 'stderr') {
-        // sudo/systemctl errors; surface them as-is.
-        for (const l of chunk.toString('utf8').split('\n')) if (l.trim()) logger.warn(`  ${l}`);
-        return;
-      }
-      const lines = (pending + chunk.toString('utf8')).split('\n');
-      pending = lines.pop() ?? '';
-      for (const l of lines) logger.info(`  | ${l}`);
-    },
-    signal,
-  );
-  if (pending) logger.info(`  | ${pending}`);
+  // stdout is the unit's journal; stderr is sudo/systemctl's own errors.
+  const lines = lineSplitter((l, stream) => (stream === 'stderr' ? l.trim() && logger.warn(`  ${l}`) : logger.info(`  | ${l}`)));
+  const code = await shell.stream(REMOTE.restart, lines.push, signal);
+  lines.flush();
   if (code === 0) return;
   if (code === -1) throw signal.reason ?? new Error('Restart aborted');
   const tail = await shell.exec(REMOTE.logs).catch(() => null);

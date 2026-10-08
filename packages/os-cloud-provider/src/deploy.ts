@@ -16,17 +16,12 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DeployContext, DeployResult, ProviderEnv } from '@mieweb/deploy-contract';
-import type {
-  Container,
-  CreateContainerResult,
-  DeleteContainerResult,
-  EnvVar,
-  NewContainerForm,
-  ServiceUpdate,
-  UpdateContainerResult,
-  VolumeAttach,
-} from './api-types.ts';
+import pRetry from 'p-retry';
+import { quote } from 'shell-quote';
+import type { Container, EnvVar, NewContainerForm, ServiceUpdate, UpdateBody } from './api-types.ts';
 import { ManagerApiError, ManagerClient } from './client.ts';
 import {
   appName,
@@ -37,10 +32,10 @@ import {
   type ExtraService,
   type TargetSettings,
 } from './config.ts';
-import { sleep, waitForJob } from './jobs.ts';
-import type { SessionInfo } from './api-types.ts';
-import { forgetHostKey, knownHostsPath, SshConnection, SshError, ttyPrompter, waitForSsh, type Prompter, type RemoteShell, type SshTarget } from './ssh.ts';
-import { syncWorktree } from './sync.ts';
+import { waitForJob } from './jobs.ts';
+import { ttyPrompter, type Prompter } from './prompt.ts';
+import { forgetHostKey, knownHostsPath, SshConnection, SshError, type RemoteShell, type SshTarget } from './ssh.ts';
+import { lineSplitter, syncWorktree } from './sync.ts';
 
 /** Env keys the provider owns inside the converged container. */
 export const MANAGED_ENV = {
@@ -259,10 +254,6 @@ export function envUnchanged(current: unknown, desired: readonly EnvVar[]): bool
   );
 }
 
-function createServices(http: DesiredHttp, extras: readonly ExtraService[]): Record<string, ServiceUpdate> {
-  return planServices([], http, extras);
-}
-
 function asEnvMap(v: unknown): Record<string, string> {
   if (Array.isArray(v)) return Object.fromEntries(v.map((e: EnvVar) => [e.key ?? '', e.value ?? '']));
   return v && typeof v === 'object' ? (v as Record<string, string>) : {};
@@ -279,9 +270,10 @@ export interface ProviderDeps {
   /** Job poll interval (tests shorten it). */
   pollIntervalMs?: number;
   /** Open the SSH session used for the code sync (tests inject a fake). */
-  connectSsh?: (target: SshTarget, opts: { knownHostsFile: string; signal: AbortSignal; logger: DeployContext['logger'] }) => Promise<RemoteShell>;
-  /** Wait for the SSH banner (tests inject a fake). */
-  waitForSsh?: typeof waitForSsh;
+  connectSsh?: (
+    target: SshTarget,
+    opts: { knownHostsFile: string; signal: AbortSignal; logger: DeployContext['logger']; prompt: Prompter },
+  ) => Promise<RemoteShell>;
   /** Terminal prompt for passphrases/passwords. */
   prompt?: Prompter;
   /** Total time to keep trying to reach SSH (default 60 s; tests shorten it). */
@@ -296,13 +288,19 @@ async function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: st
 }
 
 async function findByHostname(client: ManagerClient, siteId: number, hostname: string): Promise<Container | null> {
-  const list = await client.get<Container[]>(`/sites/${siteId}/containers`, { hostname });
-  return list.find((c) => c.hostname === hostname) ?? null;
+  const list = await client.call((api) =>
+    api.GET('/sites/{siteId}/containers', { params: { path: { siteId }, query: { hostname } } }),
+  );
+  return list?.find((c) => c.hostname === hostname) ?? null;
 }
 
-interface SiteSummary {
-  id: number;
-  name: string;
+function getContainer(client: ManagerClient, siteId: number, id: number): Promise<Container | undefined> {
+  return client.call((api) => api.GET('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } } }));
+}
+
+async function deleteContainer(client: ManagerClient, siteId: number, id: number, logger: DeployContext['logger']): Promise<void> {
+  const res = await client.call((api) => api.DELETE('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } } }));
+  for (const w of res?.dnsWarnings ?? []) logger.warn(w);
 }
 
 /**
@@ -318,7 +316,10 @@ export async function resolveSiteId(
 ): Promise<number> {
   if (configured !== undefined) return configured;
   const { logger, target } = ctx;
-  const sites = await client.get<SiteSummary[]>('/sites');
+  const sites = ((await client.call((api) => api.GET('/sites'))) ?? []).flatMap((x) =>
+    x.id === undefined ? [] : [{ id: x.id, name: x.name ?? `site ${x.id}` }],
+  );
+  type SiteSummary = (typeof sites)[number];
   // Save the choice to mieweb.jsonc when the host supports it (CLI >= this
   // contract); otherwise tell the user what to set.
   const remember = async (site: SiteSummary, why: string): Promise<number> => {
@@ -342,7 +343,7 @@ export async function resolveSiteId(
     }
     const pick = sites.find((x) => String(x.id) === answer.trim() || x.name === answer.trim());
     if (pick) return remember(pick, '');
-    process.stderr.write(`"${answer.trim()}" is not one of the listed sites\n`);
+    logger.warn(`"${answer.trim()}" is not one of the listed sites`);
   }
 }
 
@@ -350,6 +351,11 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const { logger, signal } = ctx;
   const name = appName(ctx.manifest);
   const s = resolveTargetSettings(ctx, deps.env);
+  // app.service only starts once /opt/app/src/package.json exists; fail before
+  // creating anything rather than after a confusing "app stopped" timeout.
+  if (s.sync && !existsSync(join(ctx.root, 'package.json'))) {
+    throw new ConfigError(`${ctx.root} has no package.json; the container runs the app with npm`);
+  }
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const image = normalizeImageRef(s.image);
@@ -359,7 +365,8 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   logger.info(`Deploying "${name}" to site ${siteId} on ${s.instanceUrl}`);
   logger.info(`Image: ${image}`);
 
-  const form = await client.get<NewContainerForm>(`/sites/${siteId}/containers/new`);
+  const form = await client.call((api) => api.GET('/sites/{siteId}/containers/new', { params: { path: { siteId } } }));
+  if (!form) throw new Error(`Site ${siteId} returned no container form`);
   const domain = pickDomain(form, s.domain);
   let nvidia = s.nvidia ?? false;
   if (s.nvidia === undefined && wantsAi(ctx.manifest)) {
@@ -395,7 +402,10 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     // let it finish before deciding anything.
     if (!existing.containerId && existing.status === 'creating' && existing.creationJobId) {
       logger.info(`Container ${existing.id} is still being created; waiting for job ${existing.creationJobId}`);
-      await waitForJob(client, existing.creationJobId, { signal, logger, intervalMs: deps.pollIntervalMs }).catch(() => {});
+      // Its outcome is re-read below; only an abort should stop us here.
+      await wait(existing.creationJobId).catch((err: unknown) => {
+        if (signal.aborted) throw err;
+      });
       existing = await findByHostname(client, siteId, name);
       carryEnv = existing;
     }
@@ -413,8 +423,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     if (!!existing.nvidiaRequested !== nvidia) drift.push(`nvidia ${!!existing.nvidiaRequested} → ${nvidia}`);
     if (drift.length > 0) {
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
-      const del = await client.delete<DeleteContainerResult>(`/sites/${siteId}/containers/${existing.id}`);
-      for (const w of del.dnsWarnings ?? []) logger.warn(w);
+      await deleteContainer(client, siteId, existing.id!, logger);
       existing = null;
     }
   }
@@ -425,10 +434,10 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   if (!existing) {
     const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envFor(carryEnv), http, logger);
     if ('created' in created) {
-      id = created.created.containerId;
+      id = created.created.containerId!;
       fresh = true;
       logger.info(`Created container ${id}; waiting for job ${created.created.jobId}`);
-      await wait(created.created.jobId);
+      await wait(created.created.jobId!);
     } else {
       // Lost a concurrent-create race: someone else created the same hostname
       // between our list and create. Converge it with an update instead.
@@ -441,7 +450,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     id = existing.id!;
     const services = planServices(existing.services, http, extras);
     const environmentVars = envFor(carryEnv);
-    const body: Record<string, unknown> = {
+    const body: UpdateBody = {
       services,
       environmentVars,
       entrypoint: existing.entrypoint ?? null,
@@ -454,30 +463,33 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
         `This Manager does not support volumes; ${DATA_VOLUME.mountPath} is not persistent and datastore state will not survive a container recreate`,
       );
     } else if (!existing.volumes.some((v) => v.mountPath === DATA_VOLUME.mountPath)) {
-      body.volumes = [DATA_VOLUME satisfies VolumeAttach];
+      body.volumes = [DATA_VOLUME];
       changed = true;
       logger.info(`Attaching the ${DATA_VOLUME.mountPath} data volume`);
-    } else if ((existing.volumes ?? []).some((v) => v.mountPath === DATA_VOLUME.mountPath && v.mode !== 'rw')) {
+    } else if (existing.volumes.some((v) => v.mountPath === DATA_VOLUME.mountPath && v.mode !== 'rw')) {
       logger.warn(`${DATA_VOLUME.mountPath} is attached read-only; the datastores need it read-write`);
     }
     // Code-only redeploys skip the Manager entirely and just sync.
-    if (changed) {
-    const upd = await client.put<UpdateContainerResult>(`/sites/${siteId}/containers/${id}`, body);
-    for (const w of upd.dnsWarnings ?? []) logger.warn(w);
-    if (upd.jobId) {
-      logger.info(`Updated container ${id}; waiting for job ${upd.jobId}`);
-      await wait(upd.jobId);
-    } else {
-      logger.info(`Updated container ${id}${upd.message ? `: ${upd.message}` : ''}`);
-    }
-    } else {
+    if (!changed) {
       logger.info(`Container ${id} configuration is up to date`);
+    } else {
+      const containerId = id;
+      const upd = await client.call((api) =>
+        api.PUT('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id: containerId } }, body }),
+      );
+      for (const w of upd?.dnsWarnings ?? []) logger.warn(w);
+      if (upd?.jobId) {
+        logger.info(`Updated container ${id}; waiting for job ${upd.jobId}`);
+        await wait(upd.jobId);
+      } else {
+        logger.info(`Updated container ${id}${upd?.message ? `: ${upd.message}` : ''}`);
+      }
     }
   }
 
-  const final = await client.get<Container>(`/sites/${siteId}/containers/${id!}`);
-  if (!final.containerId) {
-    throw new Error(`Container ${id!} has no hypervisor id after the job finished (status: ${final.status ?? 'unknown'})`);
+  const final = await getContainer(client, siteId, id!);
+  if (!final?.containerId) {
+    throw new Error(`Container ${id!} has no hypervisor id after the job finished (status: ${final?.status ?? 'unknown'})`);
   }
   const url =
     final.httpEntries?.find((e) => e.port === s.port && e.externalUrl)?.externalUrl ??
@@ -505,7 +517,12 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   };
 }
 
-/** Open an SSH session to the container (waiting for SSH to come up). */
+/**
+ * Open an SSH session to the container. A freshly created/rebuilt container
+ * can take a while before sshd accepts connections and (via SSSD) serves the
+ * user's LDAP keys, so transient failures are retried within one budget
+ * (default 60 s).
+ */
 export async function openShell(
   ctx: DeployContext,
   deps: ProviderDeps,
@@ -518,19 +535,15 @@ export async function openShell(
   const port = container.sshPort;
   const host = s.sshHost ?? container.sshHost ?? undefined;
   if (!port || !host) throw new Error(`Container ${container.id} has no published SSH port/host`);
-  const user = s.sshUser ?? (await client.get<SessionInfo>('/session')).user;
+  const user = s.sshUser ?? (await client.call((api) => api.GET('/session')))?.user ?? '';
   const target: SshTarget = { host, port, user };
   const knownHostsFile = knownHostsPath(deps.env);
   if (opts.fresh) await forgetHostKey(knownHostsFile, host, port);
 
-  // A freshly created/rebuilt container can take a while before sshd answers,
-  // accepts connections reliably, and (via SSSD) serves the user's LDAP keys.
-  // Keep retrying transient failures within one overall budget.
   const budgetMs = deps.sshTimeoutMs ?? 60_000;
-  const delayMs = deps.sshRetryDelayMs ?? 2000;
   const deadline = Date.now() + budgetMs;
-  const remaining = (): number => Math.max(0, deadline - Date.now());
-  // Ask for a password/passphrase at most once across attempts.
+  // Ask for a password/passphrase at most once across attempts. Once the
+  // user has typed one, an auth failure is theirs to fix, not a startup race.
   const answers = new Map<string, string | null>();
   const basePrompt = deps.prompt ?? ttyPrompter;
   const prompt: Prompter = async (q, hidden) => {
@@ -539,30 +552,39 @@ export async function openShell(
   };
 
   logger.info(`Connecting to ${user}@${host}:${port}`);
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      await (deps.waitForSsh ?? waitForSsh)(host, port, signal, logger, Math.max(remaining(), 1000));
-      const attemptTimeout = Math.min(20_000, Math.max(remaining(), 5000));
-      return await (deps.connectSsh
-        ? deps.connectSsh(target, { knownHostsFile, signal, logger })
-        : SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt, signal, logger, timeoutMs: attemptTimeout }));
-    } catch (err) {
-      if (signal.aborted) throw err;
-      const kind = err instanceof SshError ? err.kind : 'network';
-      // Auth failures are only plausibly transient right after (re)creation.
-      const retryable = kind === 'network' || (kind === 'auth' && opts.fresh === true);
-      if (!retryable || remaining() <= delayMs) {
-        if (retryable && attempt > 1) {
-          throw new Error(
-            `SSH on ${host}:${port} was not usable within ${Math.round(budgetMs / 1000)}s (${attempt} attempts): ${(err as Error).message}`,
-            { cause: err },
-          );
-        }
-        throw err;
-      }
-      logger.info(`SSH not ready yet (${(err as Error).message.split('. ')[0]}); retrying…`);
-      await sleep(delayMs, signal);
+  let attempts = 0;
+  try {
+    return await pRetry(
+      () => {
+        attempts += 1;
+        const timeoutMs = Math.min(20_000, Math.max(deadline - Date.now(), 5000));
+        return deps.connectSsh
+          ? deps.connectSsh(target, { knownHostsFile, signal, logger, prompt })
+          : SshConnection.connect({ target, env: deps.env, knownHostsFile, prompt, signal, logger, timeoutMs });
+      },
+      {
+        retries: Number.POSITIVE_INFINITY,
+        factor: 1,
+        minTimeout: deps.sshRetryDelayMs ?? 2000,
+        maxRetryTime: budgetMs,
+        signal,
+        shouldRetry: ({ error }) => {
+          const kind = error instanceof SshError ? error.kind : 'network';
+          const retry = kind === 'network' || (kind === 'auth' && opts.fresh === true && answers.size === 0);
+          if (retry) logger.info(`SSH not ready yet (${error.message.split('. ')[0]}); retrying…`);
+          return retry;
+        },
+      },
+    );
+  } catch (err) {
+    const transient = !(err instanceof SshError) || err.kind === 'network' || (err.kind === 'auth' && opts.fresh);
+    if (attempts > 1 && transient && !signal.aborted) {
+      throw new Error(
+        `SSH on ${host}:${port} was not usable within ${Math.round(budgetMs / 1000)}s (${attempts} attempts): ${(err as Error).message}`,
+        { cause: err },
+      );
     }
+    throw err;
   }
 }
 
@@ -591,7 +613,8 @@ export function parseTailArgs(argv: readonly string[]): TailOptions {
     } else if (a === '--no-follow') out.follow = false;
     else if (a === '--since' || a.startsWith('--since=')) {
       const v = val();
-      // journalctl accepts e.g. "2026-10-01 12:00", "-1h", "yesterday".
+      // journalctl accepts e.g. "2026-10-01 12:00", "-1h", "yesterday". The
+      // value is shell-quoted; this just rejects obvious garbage early.
       if (!/^[A-Za-z0-9 :+.-]{1,40}$/.test(v)) throw new ConfigError(`--since value ${JSON.stringify(v)} is not a valid time`);
       out.since = v;
     } else throw new ConfigError(`Unknown tail option ${JSON.stringify(a)} (supported: -n/--lines N, --no-follow, --since <time>)`);
@@ -601,9 +624,9 @@ export function parseTailArgs(argv: readonly string[]): TailOptions {
 
 export function journalCommand(o: TailOptions): string {
   const args = ['sudo', 'journalctl', '-u', 'app.service', '-o', 'cat', '--no-pager', '-n', String(o.lines)];
-  if (o.since) args.push('--since', `'${o.since}'`);
+  if (o.since) args.push('--since', o.since);
   if (o.follow) args.push('-f');
-  return args.join(' ');
+  return quote(args);
 }
 
 /** `mieweb tail`: stream app.service's journal until aborted (or the end, with --no-follow). */
@@ -614,25 +637,14 @@ export async function tail(ctx: DeployContext, deps: ProviderDeps): Promise<void
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const found = await findByHostname(client, siteId, name);
-  if (!found) throw new Error(`No container "${name}" on site ${siteId}; run \`mieweb deploy\` first`);
-  const container = await client.get<Container>(`/sites/${siteId}/containers/${found.id}`);
+  const container = found?.id === undefined ? undefined : await getContainer(client, siteId, found.id);
+  if (!container) throw new Error(`No container "${name}" on site ${siteId}; run \`mieweb deploy\` first`);
   const shell = await openShell(ctx, deps, client, s, container);
   try {
     ctx.logger.info(`Tailing app.service on "${name}"${opts.follow ? ' (Ctrl-C to stop)' : ''}`);
-    // Re-split chunks into whole lines so each log line is one logger call.
-    const pending = { stdout: '', stderr: '' };
-    const emit = (line: string, which: 'stdout' | 'stderr'): void =>
-      which === 'stderr' ? ctx.logger.warn(line) : ctx.logger.info(line);
-    const code = await shell.stream(
-      journalCommand(opts),
-      (chunk, which) => {
-        const lines = (pending[which] + chunk.toString('utf8')).split('\n');
-        pending[which] = lines.pop() ?? '';
-        for (const l of lines) emit(l, which);
-      },
-      ctx.signal,
-    );
-    for (const which of ['stdout', 'stderr'] as const) if (pending[which]) emit(pending[which], which);
+    const lines = lineSplitter((line, which) => (which === 'stderr' ? ctx.logger.warn(line) : ctx.logger.info(line)));
+    const code = await shell.stream(journalCommand(opts), lines.push, ctx.signal);
+    lines.flush();
     if (code > 0) throw new Error(`journalctl exited with code ${code}`);
   } finally {
     shell.close();
@@ -649,16 +661,24 @@ async function createOrAdopt(
   environmentVars: EnvVar[],
   http: DesiredHttp,
   logger: DeployContext['logger'],
-): Promise<{ created: CreateContainerResult } | { adopted: Container }> {
+): Promise<{ created: { containerId?: number; jobId?: number } } | { adopted: Container }> {
   try {
-    const created = await client.post<CreateContainerResult>(`/sites/${siteId}/containers`, {
-      hostname: name,
-      template: image,
-      nvidiaRequested: nvidia,
-      environmentVars,
-      volumes: [DATA_VOLUME],
-      services: createServices(http, withSsh(s.services)),
-    });
+    const created = await client.call((api) =>
+      api.POST('/sites/{siteId}/containers', {
+        params: { path: { siteId } },
+        body: {
+          hostname: name,
+          template: image,
+          nvidiaRequested: nvidia,
+          environmentVars,
+          volumes: [DATA_VOLUME],
+          services: planServices([], http, withSsh(s.services)),
+        },
+      }),
+    );
+    if (created?.containerId === undefined || created.jobId === undefined) {
+      throw new Error('The Manager did not return the new container and job ids');
+    }
     return { created };
   } catch (err) {
     if (!(err instanceof ManagerApiError) || err.status !== 409 || err.code !== 'conflict') throw err;
@@ -685,8 +705,7 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);
     return;
   }
-  const res = await client.delete<DeleteContainerResult>(`/sites/${siteId}/containers/${existing.id}`);
-  for (const w of res.dnsWarnings ?? []) ctx.logger.warn(w);
+  await deleteContainer(client, siteId, existing.id!, ctx.logger);
   const retained = (existing.volumes ?? []).some((v) => v.mountPath === DATA_VOLUME.mountPath);
   ctx.logger.info(
     `Destroyed container "${name}" (${existing.id}).` +
