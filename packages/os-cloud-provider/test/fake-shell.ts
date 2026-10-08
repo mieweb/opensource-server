@@ -3,7 +3,7 @@
  * directory, so sync tests exercise the real tar/diff/delete logic.
  */
 
-import { lstat, mkdir, readdir, rm, rmdir, symlink, utimes, lutimes, writeFile } from 'node:fs/promises';
+import { lstat, lutimes, mkdir, readdir, readlink, rm, rmdir, symlink, utimes, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import tarStream from 'tar-stream';
@@ -27,8 +27,13 @@ export class FakeShell implements RemoteShell {
     this.dir = dir;
   }
 
-  async exec(command: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<ExecResult> {
+  /** Called before each exec (e.g. to abort mid-sync). */
+  beforeExec?: (command: string) => void;
+
+  async exec(command: string, stdin?: Buffer | NodeJS.ReadableStream, signal?: AbortSignal): Promise<ExecResult> {
     this.commands.push(command);
+    this.beforeExec?.(command);
+    signal?.throwIfAborted();
     const input = await toBuffer(stdin);
     const ok = (stdout = Buffer.alloc(0)): ExecResult => ({ code: 0, stdout, stderr: '' });
 
@@ -41,7 +46,8 @@ export class FakeShell implements RemoteShell {
           if (e.isDirectory()) await walk(p);
           else {
             const st = await lstat(join(this.dir, p));
-            out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), st.isSymbolicLink() ? 'l' : 'f');
+            const link = st.isSymbolicLink();
+            out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), link ? 'l' : 'f', link ? await readlink(join(this.dir, p)) : '');
           }
         }
       };

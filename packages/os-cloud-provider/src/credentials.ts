@@ -19,9 +19,17 @@ export interface StoredCredential {
   savedAt: string;
 }
 
+/** A key that is no longer used but couldn't be revoked yet. */
+export interface PendingRevocation {
+  token: string;
+  apiKeyId: string;
+}
+
 interface CredentialFile {
   version: 1;
   instances: Record<string, StoredCredential>;
+  /** Per instance: keys whose server-side revocation failed, retried by login/logout. */
+  pendingRevocations: Record<string, PendingRevocation[]>;
 }
 
 export function credentialsPath(env: ProviderEnv): string {
@@ -34,12 +42,16 @@ async function load(path: string): Promise<CredentialFile> {
   try {
     text = await readFile(path, 'utf8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, instances: {} };
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, instances: {}, pendingRevocations: {} };
     throw err;
   }
   try {
     const parsed = JSON.parse(text) as Partial<CredentialFile>;
-    return { version: 1, instances: { ...(parsed.instances ?? {}) } };
+    return {
+      version: 1,
+      instances: { ...(parsed.instances ?? {}) },
+      pendingRevocations: { ...(parsed.pendingRevocations ?? {}) },
+    };
   } catch {
     throw new Error(`Credential cache ${path} is not valid JSON; delete it and run \`mieweb login\` again`);
   }
@@ -62,6 +74,24 @@ export async function writeCredential(env: ProviderEnv, instanceUrl: string, cre
   const path = credentialsPath(env);
   const data = await load(path);
   data.instances[instanceUrl] = cred;
+  await save(path, data);
+}
+
+export async function readPendingRevocations(env: ProviderEnv, instanceUrl: string): Promise<PendingRevocation[]> {
+  return (await load(credentialsPath(env))).pendingRevocations[instanceUrl] ?? [];
+}
+
+/** Replace the instance's pending revocations (empty list clears them). */
+export async function writePendingRevocations(
+  env: ProviderEnv,
+  instanceUrl: string,
+  pending: readonly PendingRevocation[],
+): Promise<void> {
+  const path = credentialsPath(env);
+  const data = await load(path);
+  if (pending.length > 0) data.pendingRevocations[instanceUrl] = [...pending];
+  else if (instanceUrl in data.pendingRevocations) delete data.pendingRevocations[instanceUrl];
+  else return;
   await save(path, data);
 }
 

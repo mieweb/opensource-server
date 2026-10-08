@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { chmod, lstat, lutimes, mkdir, mkdtemp, readFile, readlink, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
@@ -118,6 +118,35 @@ describe('syncWorktree', () => {
     assert.equal((await lstat(join(remote, 'src/index.js'))).mode & 0o777, 0o755);
   });
 
+  test('a file↔symlink swap and a same-length, same-second symlink retarget are synced', async () => {
+    await put(local, 'src/other.js', 'v1');
+    await syncWorktree(local, new FakeShell(remote), logger);
+    const t = (await lstat(join(local, 'link.js'))).mtime;
+    // Retarget link.js to a same-length path, keeping its mtime.
+    await rm(join(local, 'link.js'));
+    await symlink('src/other.js', join(local, 'link.js'));
+    await lutimes(join(local, 'link.js'), t, t);
+    // Replace untracked.txt (a file) with a symlink of the same size.
+    const st = await lstat(join(local, 'untracked.txt'));
+    await rm(join(local, 'untracked.txt'));
+    await symlink('x'.repeat(st.size), join(local, 'untracked.txt'));
+    await lutimes(join(local, 'untracked.txt'), st.mtime, st.mtime);
+    const plan = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(plan.upload.map((f) => f.path).sort(), ['link.js', 'untracked.txt']);
+    assert.equal(await readlink(join(remote, 'link.js')), 'src/other.js');
+    assert.equal((await lstat(join(remote, 'untracked.txt'))).isSymbolicLink(), true);
+  });
+
+  test('cancellation stops the sync before it uploads or deletes', async () => {
+    const ac = new AbortController();
+    const shell = new FakeShell(remote);
+    shell.beforeExec = (cmd) => {
+      if (cmd === REMOTE.list) ac.abort(new Error('user cancelled'));
+    };
+    await assert.rejects(syncWorktree(local, shell, logger, ac.signal), /user cancelled/);
+    assert.deepEqual(shell.commands, [REMOTE.list]);
+  });
+
   test('empty directories left by deletions are pruned', async () => {
     await put(local, 'old/deep/file.txt', 'x');
     await syncWorktree(local, new FakeShell(remote), logger);
@@ -169,10 +198,10 @@ test('planSync diff', () => {
     ['b', { path: 'b', type: 'file' as const, size: 2, mtime: 10, mode: 0o644 }],
   ]);
   const remoteFiles = new Map([
-    ['a', { size: 1, mtime: 10 }],
-    ['b', { size: 2, mtime: 9 }],
-    ['c', { size: 1, mtime: 1 }],
-    ['node_modules/x', { size: 1, mtime: 1 }],
+    ['a', { type: 'file' as const, size: 1, mtime: 10 }],
+    ['b', { type: 'file' as const, size: 2, mtime: 9 }],
+    ['c', { type: 'file' as const, size: 1, mtime: 1 }],
+    ['node_modules/x', { type: 'file' as const, size: 1, mtime: 1 }],
   ]);
   const plan = planSync(localFiles, remoteFiles, rules);
   assert.deepEqual(plan.upload.map((f) => f.path), ['b']);

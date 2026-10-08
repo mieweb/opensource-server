@@ -89,29 +89,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve version and dist-tag
+      # Version/dist-tag from the tag, the deploy-contract check, and the
+      # already-published check live in a script you can run locally:
+      #   node packages/os-cloud-provider/scripts/release-meta.mjs <tag> [--prerelease]
+      - name: Resolve release metadata
         id: meta
         env:
           TAG: ${{ github.event.release.tag_name }}
           PRERELEASE: ${{ github.event.release.prerelease }}
-        run: |
-          version="${TAG#v}"
-          node -e 'const v=process.argv[1]; if(!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v)){console.error(`Release tag ${process.argv[2]} is not a semver version`);process.exit(1)}' "$version" "$TAG"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "dist-tag=$([ "$PRERELEASE" = true ] && echo next || echo latest)" >> "$GITHUB_OUTPUT"
-
-      # The provider must depend on a deploy-contract release from npmjs, not a
-      # GitHub Packages preview build (e.g. 0.2.1-pr14.5), or npm users can't
-      # install it.
-      - name: Require a published deploy-contract
-        run: |
-          spec=$(node -p 'require("./package.json").dependencies["@mieweb/deploy-contract"]')
-          if printf '%s' "$spec" | grep -Eq -- '-pr[0-9]|github:|git\+'; then
-            echo "::error::@mieweb/deploy-contract is '$spec' (a preview/git build). Switch it to an npmjs release before publishing."
-            exit 1
-          fi
-          npm view "@mieweb/deploy-contract@$spec" version --registry https://registry.npmjs.org >/dev/null \
-            || { echo "::error::@mieweb/deploy-contract@$spec is not on npmjs"; exit 1; }
+        run: node scripts/release-meta.mjs "$TAG" $([ "$PRERELEASE" = true ] && echo --prerelease)
 
       - uses: pnpm/action-setup@v4
         with:
@@ -128,25 +114,15 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm run test
 
-      - name: Skip if already published
-        id: exists
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          if npm view "@mieweb/os-cloud-provider@$VERSION" version >/dev/null 2>&1; then
-            echo "@mieweb/os-cloud-provider@$VERSION is already on npm; skipping." >> "$GITHUB_STEP_SUMMARY"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Set package version
-        if: steps.exists.outputs.skip != 'true'
+        if: steps.meta.outputs.skip != 'true'
         run: npm pkg set version="${{ steps.meta.outputs.version }}"
 
       # pnpm pack runs prepack (builds dist/); npm publish does the upload so
       # trusted publishing (OIDC) and provenance work. NPM_TOKEN is only a
       # fallback for when trusted publishing isn't configured on npmjs.
       - name: Publish to npm
-        if: steps.exists.outputs.skip != 'true'
+        if: steps.meta.outputs.skip != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ steps.meta.outputs.dist-tag }}

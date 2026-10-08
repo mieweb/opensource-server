@@ -54,7 +54,8 @@ export interface ExecResult {
 
 /** The remote operations sync needs. `SshConnection` implements it over ssh2. */
 export interface RemoteShell {
-  exec(command: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<ExecResult>;
+  /** Run a command to completion. On abort the channel is closed and the promise rejects with the signal's reason. */
+  exec(command: string, stdin?: Buffer | NodeJS.ReadableStream, signal?: AbortSignal): Promise<ExecResult>;
   /**
    * Run a long-lived command, calling `onData` with stdout/stderr chunks.
    * Resolves with the exit code, or -1 when `signal` aborts (the channel is
@@ -286,7 +287,16 @@ export class SshConnection implements RemoteShell {
         if (pinned) {
           known.set(id, pinned.fp);
           logger.info(`Trusting SSH host key ${pinned.fp} for ${id}`);
-          writeKnownHosts(opts.knownHostsFile, known).then(done, done);
+          // Without a saved pin the next connection would trust any key, so
+          // refuse to continue rather than silently dropping the guarantee.
+          writeKnownHosts(opts.knownHostsFile, known).then(done, (err: Error) => {
+            client.end();
+            reject(
+              new SshError('hostkey', `Could not save the SSH host key to ${opts.knownHostsFile}: ${err.message}`, {
+                cause: err,
+              }),
+            );
+          });
         } else done();
       });
 
@@ -319,13 +329,24 @@ export class SshConnection implements RemoteShell {
     });
   }
 
-  exec(command: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<ExecResult> {
+  exec(command: string, stdin?: Buffer | NodeJS.ReadableStream, signal?: AbortSignal): Promise<ExecResult> {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+      }
       this.client.exec(command, (err: Error | undefined, stream: ClientChannel) => {
         if (err) {
           reject(err);
           return;
         }
+        const onAbort = (): void => {
+          reject(signal!.reason);
+          (stdin as { destroy?: () => void } | undefined)?.destroy?.();
+          stream.close();
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+        stream.on('close', () => signal?.removeEventListener('abort', onAbort));
         const out: Buffer[] = [];
         let stderr = '';
         let code = -1;

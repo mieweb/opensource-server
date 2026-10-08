@@ -157,6 +157,29 @@ describe('SshConnection', () => {
     }
   });
 
+  test('the connection fails if the new host key cannot be saved', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    // Its parent is a regular file, so the file can't be created.
+    await writeFile(join(home, 'not-a-dir'), '');
+    const knownHostsFile = join(home, 'not-a-dir', 'known_hosts');
+    try {
+      await assert.rejects(
+        SshConnection.connect({
+          target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+          env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+          knownHostsFile,
+          interactive: true,
+          prompt: async () => 'pw',
+          signal: signal(),
+          logger,
+        }),
+        (err: Error & { kind?: string }) => err.kind === 'hostkey' && /Could not save the SSH host key/.test(err.message),
+      );
+    } finally {
+      await srv.close();
+    }
+  });
+
   test('a changed host key is rejected until the pin is forgotten', async () => {
     const knownHostsFile = join(home, 'kh3');
     const opts = (port: number) => ({

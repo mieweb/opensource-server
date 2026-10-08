@@ -2,11 +2,16 @@ name: os-cloud-provider preview package
 
 # On every push to a same-repo pull request that touches the provider, publish
 # @mieweb/os-cloud-provider to the GitHub Packages npm registry as
-# `<version>-pr<PR>.<run>` under dist-tag `pr<PR>`, so cross-repo PRs (e.g.
-# @mieweb/cli in mieweb/cloud) can depend on it with a plain semver reference
-# plus `@mieweb:registry=https://npm.pkg.github.com` in .npmrc. Dependencies
-# (including @mieweb/deploy-contract) always install from npmjs. Once merged and
-# released to npmjs, consumers switch to the real version and drop that line.
+# `<version>-pr<PR>.<run>` under dist-tag `pr<PR>`, for cross-repo testing
+# (e.g. @mieweb/cli in mieweb/cloud).
+#
+# Consumers install it by its tarball URL (printed in the job summary) plus a
+# GitHub Packages token, NOT a scope-wide `@mieweb:registry=` override: that
+# would route every @mieweb/* lookup, including @mieweb/deploy-contract (only
+# on npmjs), to GitHub Packages and fail.
+#
+#   .npmrc:        //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+#   package.json:  "@mieweb/os-cloud-provider": "<tarball URL>"
 
 on:
   pull_request:
@@ -67,4 +72,19 @@ jobs:
       - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: echo "Published \`@mieweb/os-cloud-provider@${{ steps.stamp.outputs.version }}\` to npm.pkg.github.com" >> "$GITHUB_STEP_SUMMARY"
+      - name: Summarize how to install this preview
+        env:
+          VERSION: ${{ steps.stamp.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tarball=$(npm view "@mieweb/os-cloud-provider@$VERSION" dist.tarball --registry https://npm.pkg.github.com)
+          {
+            echo "Published \`@mieweb/os-cloud-provider@$VERSION\` to npm.pkg.github.com."
+            echo
+            echo "Install it by tarball URL (keeps @mieweb/deploy-contract on npmjs), with a GitHub Packages token in .npmrc:"
+            echo
+            echo '```'
+            echo "//npm.pkg.github.com/:_authToken=\${GITHUB_TOKEN}"
+            echo "\"@mieweb/os-cloud-provider\": \"$tarball\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -56,6 +56,10 @@ export class FakeManager {
   nvidiaAvailable = false;
   /** Emulate a Manager that predates volumes (#421). */
   noVolumes = false;
+  /** Answer DELETE /apikeys/:id with a 500 (Manager trouble). */
+  failRevokes = false;
+  /** Extra output line every new job logs (e.g. to check secret masking). */
+  extraJobLog = '';
   /** Drop the connection for this many upcoming GET /jobs/:id requests. */
   dropJobPolls = 0;
   /** Status new jobs end in. */
@@ -113,8 +117,21 @@ export class FakeManager {
     return full;
   }
 
+  /** A container another deploy is still creating: no VMID until its job succeeds. */
+  seedCreating(hostname: string): FakeContainer {
+    const job = this.newJob();
+    const c = this.seedContainer({ hostname, containerId: null, status: 'creating', creationJobId: job.id });
+    const vmid = String(this.nextVmid++);
+    job.onSuccess = () => {
+      c.containerId = vmid;
+      c.status = undefined;
+    };
+    return c;
+  }
+
   private newJob(): FakeJob {
-    const job: FakeJob = { id: this.nextId++, status: 'pending', polls: 0, logs: ['starting', 'done'] };
+    const logs = ['starting', ...(this.extraJobLog ? [this.extraJobLog] : []), 'done'];
+    const job: FakeJob = { id: this.nextId++, status: 'pending', polls: 0, logs };
     this.jobs.set(job.id, job);
     return job;
   }
@@ -202,6 +219,7 @@ export class FakeManager {
 
     let m = /^\/apikeys\/([^/]+)$/.exec(path);
     if (m && req.method === 'DELETE') {
+      if (this.failRevokes) return fail(500, 'internal_error', 'database unavailable');
       const id = decodeURIComponent(m[1]!);
       for (const [tok, v] of this.tokens) if (v.keyId === id) this.tokens.delete(tok);
       res.writeHead(204);

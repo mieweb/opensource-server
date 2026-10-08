@@ -50,7 +50,10 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
   "targets": {
     "mieweb": {
       "provider": "@mieweb/os-cloud-provider",
-      "siteId": 1,                              // required: the Manager site to deploy into
+      // The Manager site to deploy into. Optional: if omitted, deploy uses the
+      // only site you can see, or asks (in a terminal) and saves your choice
+      // here. MIEWEB_OS_SITE_ID overrides it.
+      "siteId": 1,
       "instanceUrl": "https://os.mieweb.org",   // optional (default)
       // Everything below is optional.
       "image": "ghcr.io/mieweb/opensource-server/cloud:latest", // e.g. a :<branch>/:sha-<sha> tag to test

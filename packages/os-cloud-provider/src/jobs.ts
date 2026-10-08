@@ -12,6 +12,8 @@ export interface WaitOptions {
   signal: AbortSignal;
   logger: DeployLogger;
   intervalMs?: number;
+  /** Secret values to mask as `***` in relayed job output. */
+  redact?: Iterable<string>;
 }
 
 export class JobFailedError extends Error {
@@ -23,6 +25,13 @@ export class JobFailedError extends Error {
     this.jobId = jobId;
     this.status = status;
   }
+}
+
+/** Replace every occurrence of each secret with `***`. */
+export function mask(text: string, secrets: Iterable<string> | undefined): string {
+  let out = text;
+  for (const s of secrets ?? []) if (s) out = out.split(s).join('***');
+  return out;
 }
 
 const TERMINAL = new Set(['success', 'failure', 'cancelled']);
@@ -43,7 +52,7 @@ export async function waitForJob(client: ManagerClient, jobId: number, opts: Wai
           api.GET('/jobs/{id}/status', { params: { path: { id: jobId }, query: { offset, limit: PAGE } } }),
         )) ?? [];
       for (const row of rows) {
-        for (const line of (row.output ?? '').split('\n')) {
+        for (const line of mask(row.output ?? '', opts.redact).split('\n')) {
           if (line.trim() === '') continue;
           opts.logger.info(`  [job ${jobId}] ${line}`);
           tail.push(line);

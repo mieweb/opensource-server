@@ -79,11 +79,15 @@ export class IgnoreRules {
 }
 
 /** Walk the worktree, honoring .gitignore. */
-export async function scanLocal(root: string): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules }> {
+export async function scanLocal(
+  root: string,
+  signal?: AbortSignal,
+): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules }> {
   const rules = new IgnoreRules();
   const files = new Map<string, FileEntry>();
 
   const walk = async (dir: string): Promise<void> => {
+    signal?.throwIfAborted();
     const abs = join(root, dir);
     try {
       rules.add(dir, await readFile(join(abs, '.gitignore'), 'utf8'));
@@ -114,21 +118,27 @@ export async function scanLocal(root: string): Promise<{ files: Map<string, File
 }
 
 export interface RemoteEntry {
+  type: 'file' | 'symlink';
   size: number;
   mtime: number;
   /** Permission bits; undefined for symlinks (always 0777). */
   mode?: number;
+  /** Symlink target. */
+  linkname?: string;
 }
 
-/** Parse `find -printf '%P\0%s\0%T@\0%m\0%y\0'` output. */
+/** Parse `find -printf '%P\0%s\0%T@\0%m\0%y\0%l\0'` output. */
 export function parseRemoteListing(out: Buffer): Map<string, RemoteEntry> {
   const map = new Map<string, RemoteEntry>();
   const parts = out.toString('utf8').split('\0');
-  for (let i = 0; i + 4 < parts.length; i += 5) {
+  for (let i = 0; i + 5 < parts.length; i += 6) {
+    const symlink = parts[i + 4] === 'l';
     map.set(parts[i]!, {
+      type: symlink ? 'symlink' : 'file',
       size: Number(parts[i + 1]),
       mtime: Math.floor(Number(parts[i + 2])),
-      mode: parts[i + 4] === 'l' ? undefined : Number.parseInt(parts[i + 3]!, 8),
+      mode: symlink ? undefined : Number.parseInt(parts[i + 3]!, 8),
+      linkname: symlink ? parts[i + 5] : undefined,
     });
   }
   return map;
@@ -147,9 +157,16 @@ export function planSync(
   const upload: FileEntry[] = [];
   for (const f of local.values()) {
     const r = remote.get(f.path);
-    // Mode is compared too: `chmod +x` changes neither size nor mtime.
-    const modeChanged = f.type === 'file' && r?.mode !== undefined && r.mode !== f.mode;
-    if (!r || r.size !== f.size || r.mtime !== f.mtime || modeChanged) upload.push(f);
+    // Size+mtime alone miss a `chmod +x`, a file↔symlink swap, and a
+    // same-length symlink retarget within the same second.
+    const changed =
+      !r ||
+      r.type !== f.type ||
+      r.size !== f.size ||
+      r.mtime !== f.mtime ||
+      (f.type === 'file' && r.mode !== undefined && r.mode !== f.mode) ||
+      (f.type === 'symlink' && r.linkname !== f.linkname);
+    if (changed) upload.push(f);
   }
   const remove = [...remote.keys()].filter((p) => !local.has(p) && !rules.ignores(p)).sort();
   return { upload, remove };
@@ -162,7 +179,7 @@ function ancestors(path: string): string[] {
 }
 
 /** A tar stream of `files` (plus their parent dirs), all owned by OWNER. */
-export function packTar(root: string, files: readonly FileEntry[]): Readable {
+export function packTar(root: string, files: readonly FileEntry[], signal?: AbortSignal): Readable {
   const pack = tarStream.pack();
   const owner = { uname: OWNER, gname: OWNER, uid: 0, gid: 0 };
   void (async () => {
@@ -179,7 +196,7 @@ export function packTar(root: string, files: readonly FileEntry[]): Readable {
           continue;
         }
         const entry = pack.entry({ name: f.path, type: 'file', size: f.size, mode: f.mode, mtime, ...owner });
-        await pipeline(createReadStream(join(root, f.path)), entry);
+        await pipeline(createReadStream(join(root, f.path)), entry, { signal });
       }
       pack.finalize();
     } catch (err) {
@@ -196,7 +213,7 @@ const APP_NOT_RUNNING = 86;
 
 export const REMOTE = {
   list: `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
-    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0',
+    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0%l\\0',
   ])}`,
   extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
   remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
@@ -218,8 +235,14 @@ export const REMOTE = {
   logs: 'sudo journalctl -u app.service -o cat --no-pager -n 50',
 };
 
-async function run(shell: RemoteShell, what: string, cmd: string, stdin?: Buffer | NodeJS.ReadableStream): Promise<Buffer> {
-  const res = await shell.exec(cmd, stdin);
+async function run(
+  shell: RemoteShell,
+  what: string,
+  cmd: string,
+  signal: AbortSignal,
+  stdin?: Buffer | NodeJS.ReadableStream,
+): Promise<Buffer> {
+  const res = await shell.exec(cmd, stdin, signal);
   if (res.code !== 0) {
     throw new Error(`Remote ${what} failed (exit ${res.code})${res.stderr.trim() ? `: ${res.stderr.trim()}` : ''}`);
   }
@@ -276,7 +299,7 @@ export async function syncWorktree(
   logger: DeployLogger,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<SyncPlan> {
-  const [{ files, rules }, listing] = await Promise.all([scanLocal(root), run(shell, 'listing', REMOTE.list)]);
+  const [{ files, rules }, listing] = await Promise.all([scanLocal(root, signal), run(shell, 'listing', REMOTE.list, signal)]);
   const plan = planSync(files, parseRemoteListing(listing), rules);
   const bytes = plan.upload.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
   logger.info(
@@ -284,12 +307,12 @@ export async function syncWorktree(
       `${plan.upload.length} to upload (${human(bytes)}), ${plan.remove.length} to delete`,
   );
 
-  if (plan.upload.length > 0) await run(shell, 'extract', REMOTE.extract, packTar(root, plan.upload));
+  if (plan.upload.length > 0) await run(shell, 'extract', REMOTE.extract, signal, packTar(root, plan.upload, signal));
   if (plan.remove.length > 0) {
     const nul = (xs: string[]): Buffer => Buffer.from(xs.map((x) => `${x}\0`).join(''));
-    await run(shell, 'delete', REMOTE.remove, nul(plan.remove));
+    await run(shell, 'delete', REMOTE.remove, signal, nul(plan.remove));
     const dirs = [...new Set(plan.remove.map((p) => posix.dirname(p)).filter((d) => d !== '.'))];
-    if (dirs.length > 0) await run(shell, 'cleanup', REMOTE.pruneDirs, nul(dirs));
+    if (dirs.length > 0) await run(shell, 'cleanup', REMOTE.pruneDirs, signal, nul(dirs));
   }
   logger.info('Code synced; restarting the app (install/build output follows)');
   await restartApp(shell, logger, signal);

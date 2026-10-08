@@ -359,9 +359,6 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const image = normalizeImageRef(s.image);
-  const wait = (jobId: number): Promise<void> =>
-    waitForJob(client, jobId, { signal, logger, intervalMs: deps.pollIntervalMs });
-
   logger.info(`Deploying "${name}" to site ${siteId} on ${s.instanceUrl}`);
   logger.info(`Image: ${image}`);
 
@@ -394,62 +391,80 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       warn: (m) => logger.warn(m),
     });
 
-  let existing = await findByHostname(client, siteId, name);
-  let carryEnv: Container | null = existing;
-
-  if (existing) {
-    // A create still in flight (e.g. a concurrent or interrupted deploy):
-    // let it finish before deciding anything.
-    if (!existing.containerId && existing.status === 'creating' && existing.creationJobId) {
-      logger.info(`Container ${existing.id} is still being created; waiting for job ${existing.creationJobId}`);
-      // Its outcome is re-read below; only an abort should stop us here.
-      await wait(existing.creationJobId).catch((err: unknown) => {
-        if (signal.aborted) throw err;
-      });
-      existing = await findByHostname(client, siteId, name);
-      carryEnv = existing;
-    }
+  // Values to mask in relayed job output (older Managers log the full LXC
+  // config, whose `env` holds every variable). Filled as env sets are built.
+  const secrets = new Set<string>();
+  const secretKeys = new Set<string>([MANAGED_ENV.minioPassword, MANAGED_ENV.s3SecretKey]);
+  for (const k of Object.keys(deps.env)) {
+    if (k.startsWith(SECRET_ENV_PREFIX) && k.length > SECRET_ENV_PREFIX.length) secretKeys.add(k.slice(SECRET_ENV_PREFIX.length));
   }
+  const envWithSecrets = (existing?: Container | null): EnvVar[] => {
+    const env = envFor(existing);
+    for (const e of env) if (e.key && secretKeys.has(e.key) && e.value) secrets.add(e.value);
+    return env;
+  };
+  const wait = (jobId: number): Promise<void> =>
+    waitForJob(client, jobId, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
 
-  if (existing) {
+  /**
+   * Let an in-flight create (a concurrent or interrupted deploy) finish, then
+   * re-read the container. Null if it no longer exists.
+   */
+  const settle = async (c: Container): Promise<Container | null> => {
+    if (c.containerId || c.status !== 'creating' || !c.creationJobId) return c;
+    logger.info(`Container ${c.id} is still being created; waiting for job ${c.creationJobId}`);
+    // Its outcome is judged below from the re-read; only an abort stops us.
+    await wait(c.creationJobId).catch((err: unknown) => {
+      if (signal.aborted) throw err;
+    });
+    return findByHostname(client, siteId, name);
+  };
+  /** Why `c` must be deleted and recreated rather than updated, if it must. */
+  const driftOf = (c: Container): string[] => {
     const drift: string[] = [];
-    if (!existing.containerId) {
-      // Never provisioned (failed/missing create); an update can't fix that.
-      drift.push(`not provisioned (status ${existing.status ?? 'unknown'})`);
+    // Never provisioned (failed/missing create); an update can't fix that.
+    if (!c.containerId) drift.push(`not provisioned (status ${c.status ?? 'unknown'})`);
+    if (c.template && normalizeImageRef(c.template) !== image) drift.push(`image ${c.template} → ${image}`);
+    if (!!c.nvidiaRequested !== nvidia) drift.push(`nvidia ${!!c.nvidiaRequested} → ${nvidia}`);
+    return drift;
+  };
+
+  let existing = await findByHostname(client, siteId, name);
+  // The env of the container being replaced: reused so the MinIO credentials
+  // that own the data on /mnt/data survive recreates.
+  let carryEnv: Container | null = existing;
+  let createdId: number | undefined;
+  // A lost create race hands us someone else's container, which goes through
+  // the same settle/drift checks; bound the loop in case of repeated races.
+  for (let round = 0; createdId === undefined; round += 1) {
+    if (existing) {
+      existing = await settle(existing);
+      if (existing) carryEnv = existing;
     }
-    if (existing.template && normalizeImageRef(existing.template) !== image) {
-      drift.push(`image ${existing.template} → ${image}`);
-    }
-    if (!!existing.nvidiaRequested !== nvidia) drift.push(`nvidia ${!!existing.nvidiaRequested} → ${nvidia}`);
-    if (drift.length > 0) {
+    const drift = existing ? driftOf(existing) : [];
+    if (existing && drift.length > 0) {
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
       await deleteContainer(client, siteId, existing.id!, logger);
       existing = null;
     }
-  }
-
-  let id: number;
-  // Set when this deploy (re)created the container: its SSH host key is new.
-  let fresh = false;
-  if (!existing) {
-    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envFor(carryEnv), http, logger);
-    if ('created' in created) {
-      id = created.created.containerId!;
-      fresh = true;
-      logger.info(`Created container ${id}; waiting for job ${created.created.jobId}`);
-      await wait(created.created.jobId!);
-    } else {
-      // Lost a concurrent-create race: someone else created the same hostname
-      // between our list and create. Converge it with an update instead.
+    if (existing) break;
+    if (round >= 2) throw new Error(`Could not create container "${name}": it kept being created concurrently`);
+    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envWithSecrets(carryEnv), http, logger);
+    if ('adopted' in created) {
       existing = created.adopted;
-      carryEnv = existing;
+      continue;
     }
+    createdId = created.created.containerId!;
+    logger.info(`Created container ${createdId}; waiting for job ${created.created.jobId}`);
+    await wait(created.created.jobId!);
   }
+  // Set when this deploy (re)created the container: its SSH host key is new.
+  const fresh = createdId !== undefined;
+  const id = createdId ?? existing!.id!;
 
   if (existing) {
-    id = existing.id!;
     const services = planServices(existing.services, http, extras);
-    const environmentVars = envFor(carryEnv);
+    const environmentVars = envWithSecrets(carryEnv);
     const body: UpdateBody = {
       services,
       environmentVars,
@@ -457,25 +472,24 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       restart: true,
     };
     let changed = !servicesUnchanged(existing.services, services) || !envUnchanged(existing.environmentVars, environmentVars);
-    if (existing.volumes === undefined) {
-      // Manager predates volumes (#421): it neither reports nor accepts them.
-      logger.warn(
-        `This Manager does not support volumes; ${DATA_VOLUME.mountPath} is not persistent and datastore state will not survive a container recreate`,
-      );
-    } else if (!existing.volumes.some((v) => v.mountPath === DATA_VOLUME.mountPath)) {
+    // `volumes` is absent on Managers that predate volumes (#421); warned about below.
+    const dataVolume = existing.volumes?.find((v) => v.mountPath === DATA_VOLUME.mountPath);
+    if (existing.volumes && !dataVolume) {
       body.volumes = [DATA_VOLUME];
       changed = true;
       logger.info(`Attaching the ${DATA_VOLUME.mountPath} data volume`);
-    } else if (existing.volumes.some((v) => v.mountPath === DATA_VOLUME.mountPath && v.mode !== 'rw')) {
-      logger.warn(`${DATA_VOLUME.mountPath} is attached read-only; the datastores need it read-write`);
+    } else if (dataVolume && dataVolume.mode !== 'rw') {
+      throw new ConfigError(
+        `${DATA_VOLUME.mountPath} is attached read-only to container ${id}, but MinIO, libSQL and Valkey need to write ` +
+          'to it. Detach it (or delete the container) and deploy again.',
+      );
     }
     // Code-only redeploys skip the Manager entirely and just sync.
     if (!changed) {
       logger.info(`Container ${id} configuration is up to date`);
     } else {
-      const containerId = id;
       const upd = await client.call((api) =>
-        api.PUT('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id: containerId } }, body }),
+        api.PUT('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } }, body }),
       );
       for (const w of upd?.dnsWarnings ?? []) logger.warn(w);
       if (upd?.jobId) {
@@ -487,9 +501,14 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
   }
 
-  const final = await getContainer(client, siteId, id!);
+  const final = await getContainer(client, siteId, id);
   if (!final?.containerId) {
-    throw new Error(`Container ${id!} has no hypervisor id after the job finished (status: ${final?.status ?? 'unknown'})`);
+    throw new Error(`Container ${id} has no hypervisor id after the job finished (status: ${final?.status ?? 'unknown'})`);
+  }
+  if (final.volumes === undefined) {
+    logger.warn(
+      `This Manager does not support volumes; ${DATA_VOLUME.mountPath} is not persistent and datastore state will not survive a container recreate`,
+    );
   }
   const url =
     final.httpEntries?.find((e) => e.port === s.port && e.externalUrl)?.externalUrl ??
@@ -498,7 +517,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
 
   if (s.sync) {
     if (!final.sshPort || !(s.sshHost ?? final.sshHost)) {
-      throw new Error(`Container ${id!} has no published SSH port/host; cannot sync code (set targets.${ctx.target}.sync to false to skip)`);
+      throw new Error(`Container ${id} has no published SSH port/host; cannot sync code (set targets.${ctx.target}.sync to false to skip)`);
     }
     const shell = await openShell(ctx, deps, client, s, final, { fresh });
     try {

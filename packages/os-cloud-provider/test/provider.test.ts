@@ -352,6 +352,33 @@ describe('deploy', () => {
     assert.ok(fake.requests.some((r) => r.method === 'PUT'));
   });
 
+  test('a lost create race waits for the other create to finish before updating', async () => {
+    fake.beforeCreate = (hostname) => {
+      fake.beforeCreate = undefined;
+      fake.seedCreating(hostname);
+    };
+    const h = harness();
+    const result = await provider().deploy(h.ctx);
+    assert.equal(fake.containers.length, 1);
+    assert.equal(result.resources[0]!.id, fake.containers[0]!.containerId);
+    assert.ok(h.logs.some((l) => l.includes('is still being created; waiting for job')));
+  });
+
+  test('a read-only /mnt/data fails the deploy', async () => {
+    fake.seedContainer({ hostname: 'myapp', volumes: [{ id: 9, name: 'data', mountPath: '/mnt/data', mode: 'ro' }] });
+    await assert.rejects(provider().deploy(harness().ctx), /attached read-only.*need to write/);
+    assert.ok(!fake.requests.some((r) => r.method === 'PUT'));
+  });
+
+  test('secret values are masked in relayed job output', async () => {
+    fake.extraJobLog = 'Config: {"env":"API_KEY=topsecret\u0000PORT=8787"}';
+    const h = harness();
+    await provider({ MIEWEB_OS_SECRET_API_KEY: 'topsecret' }).deploy(h.ctx);
+    const jobLines = h.logs.filter((l) => l.includes('[job '));
+    assert.ok(jobLines.some((l) => l.includes('API_KEY=***')));
+    assert.ok(!h.logs.some((l) => l.includes('topsecret')));
+  });
+
   test('a hostname owned by someone else is a clear error', async () => {
     fake.seedContainer({ hostname: 'myapp', owner: 'bob' });
     await assert.rejects(provider().deploy(harness().ctx), /already taken on site 1/);
@@ -364,10 +391,12 @@ describe('deploy', () => {
     assert.equal(fake.dropJobPolls, 0);
   });
 
-  test('a Manager without volume support: warn, and redeploys stay sync-only', async () => {
+  test('a Manager without volume support: warn (also on create), and redeploys stay sync-only', async () => {
     fake.noVolumes = true;
     const p = provider();
-    await p.deploy(harness().ctx);
+    const first = harness();
+    await p.deploy(first.ctx);
+    assert.ok(first.logs.some((l) => l.startsWith('warn:This Manager does not support volumes')));
     const writes = fake.requests.filter((r) => r.method !== 'GET').length;
     const h = harness();
     await p.deploy(h.ctx);
@@ -569,6 +598,39 @@ describe('login / logout', () => {
     assert.equal(fake.tokens.has('minted-key-2'), false, 'key revoked server-side');
     assert.deepEqual(JSON.parse(await readFile(creds, 'utf8')).instances, {});
     assert.deepEqual(await p.whoami!(harness().ctx), { authenticated: false });
+  });
+
+  test('keys that fail to revoke are kept and retried by the next login/logout', async () => {
+    const creds = join(dir, 'revoke-creds.json');
+    const p = provider(
+      { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: creds },
+      { login: { openBrowser: (u) => void browser(u) } },
+    );
+    const h = harness({ argv: ['--instance', fake.url] });
+    await p.login!(h.ctx); // key-2
+
+    // Re-login while the Manager can't revoke: key-2 must not be forgotten.
+    fake.failRevokes = true;
+    fake.nextKey = { key: 'minted-key-2', id: 'key-3', user: 'alice' };
+    const h2 = harness({ argv: ['--instance', fake.url] });
+    await p.login!(h2.ctx);
+    assert.ok(h2.logs.some((l) => l.includes('Could not revoke API key key-2') && l.includes('retried')));
+    assert.equal(fake.tokens.has('minted-key'), true);
+    let stored = JSON.parse(await readFile(creds, 'utf8'));
+    assert.deepEqual(stored.pendingRevocations[fake.url], [{ token: 'minted-key', apiKeyId: 'key-2' }]);
+
+    // Logout while revocation still fails: logged out locally, both keys queued.
+    await p.logout!(harness({ argv: ['--instance', fake.url] }).ctx);
+    stored = JSON.parse(await readFile(creds, 'utf8'));
+    assert.deepEqual(stored.instances, {});
+    assert.deepEqual(stored.pendingRevocations[fake.url].map((k: { apiKeyId: string }) => k.apiKeyId).sort(), ['key-2', 'key-3']);
+
+    // Once the Manager recovers, the next logout revokes everything queued.
+    fake.failRevokes = false;
+    await p.logout!(harness({ argv: ['--instance', fake.url] }).ctx);
+    assert.equal(fake.tokens.has('minted-key'), false);
+    assert.equal(fake.tokens.has('minted-key-2'), false);
+    assert.deepEqual(JSON.parse(await readFile(creds, 'utf8')).pendingRevocations, {});
   });
 
   test('a handoff with the wrong state is rejected', async () => {
