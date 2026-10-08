@@ -134,15 +134,28 @@ export class FakeManager {
   }
 
   /** A container another deploy is still creating: no VMID until its job succeeds. */
-  seedCreating(hostname: string): FakeContainer {
+  seedCreating(hostname: string, opts: { withVmid?: boolean } = {}): FakeContainer {
     const job = this.newJob();
-    const c = this.seedContainer({ hostname, containerId: null, status: 'creating', creationJobId: job.id });
+    // The real create job records the VMID as soon as the create is accepted.
+    const c = this.seedContainer({
+      hostname,
+      containerId: opts.withVmid ? String(this.nextVmid++) : null,
+      status: opts.withVmid ? undefined : 'creating',
+      creationJobId: job.id,
+    });
     const vmid = String(this.nextVmid++);
     job.onSuccess = () => {
-      c.containerId = vmid;
+      c.containerId ??= vmid;
       c.status = undefined;
     };
     return c;
+  }
+
+  /** A container whose create job already finished with failure (it may have a VMID). */
+  seedFailedCreate(hostname: string): FakeContainer {
+    const job = this.newJob();
+    job.status = 'failure';
+    return this.seedContainer({ hostname, creationJobId: job.id });
   }
 
   private newJob(): FakeJob {

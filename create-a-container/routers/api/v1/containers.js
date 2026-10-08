@@ -1084,10 +1084,12 @@ router.delete(
         ],
       },
     );
-    // A container still being created has no VMID yet, so deleting the row
-    // now would skip node-side deletion while its create job goes on to
-    // provision (and start) a VM nobody manages. Refuse until it finishes.
-    if (!container.containerId && container.creationJobId) {
+    // Never delete while the create job is still pending/running: the job may
+    // still be creating, cloning or configuring the VM (it records the VMID
+    // as soon as the create is accepted, before the VM is fully there), so a
+    // delete now could miss it node-side and leave an orphan. Refuse until it
+    // finishes, VMID or not.
+    if (container.creationJobId) {
       const job = await Job.findByPk(container.creationJobId, { attributes: ['status'] });
       if (job && (job.status === 'pending' || job.status === 'running')) {
         throw new ApiError(

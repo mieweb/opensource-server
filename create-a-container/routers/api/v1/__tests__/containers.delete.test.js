@@ -89,6 +89,22 @@ describe('DELETE container: node-side failures', () => {
     expect((await del(c)).status).toBe(200);
   });
 
+  test('...even once the create job has recorded a VMID', async () => {
+    const job = await Job.create({ command: 'node bin/create-container.js', createdBy: user.uid, status: 'running' });
+    const c = await Container.create({
+      hostname: 'creating-with-id',
+      username: user.uid,
+      nodeId: node.id,
+      siteId: site.id,
+      containerId: '7777',
+      creationJobId: job.id,
+    });
+    const res = await del(c, '?force=true');
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('create_in_progress');
+    expect(await Container.findByPk(c.id)).not.toBeNull();
+  });
+
   test('VM already gone → success', async () => {
     nodeDeleteFails({ stillListed: false });
     const c = await provisioned('already-gone');

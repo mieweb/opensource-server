@@ -395,6 +395,26 @@ describe('deploy', () => {
     assert.equal(await readFile(join(dir, '.mieweb', 'known_hosts'), 'utf8'), '');
   });
 
+  test('a VMID alone does not mean the create finished: deploy waits for the job', async () => {
+    const c = fake.seedCreating('myapp', { withVmid: true });
+    const h = harness();
+    await provider().deploy(h.ctx);
+    assert.ok(h.logs.some((l) => l.includes(`waiting for job ${c.creationJobId}`)));
+    const firstWrite = fake.requests.findIndex((r) => r.method === 'PUT' || r.method === 'DELETE' || r.method === 'POST');
+    const lastJobPoll = fake.requests.map((r) => r.path).lastIndexOf(`/jobs/${c.creationJobId}`);
+    assert.ok(firstWrite === -1 || lastJobPoll < firstWrite, 'no update before the create job finished');
+    assert.equal(fake.containers.length, 1);
+  });
+
+  test('a container whose create job failed is recreated even though it has a VMID', async () => {
+    const old = fake.seedFailedCreate('myapp');
+    const h = harness();
+    await provider().deploy(h.ctx);
+    assert.ok(h.logs.some((l) => l.includes('its create job failed')));
+    assert.deepEqual(fake.requests.filter((r) => r.method !== 'GET').map((r) => r.method), ['DELETE', 'POST']);
+    assert.notEqual(fake.containers[0]!.id, old.id);
+  });
+
   test('an in-flight create whose job cannot be polled is left alone, not recreated', async () => {
     const c = fake.seedCreating('myapp');
     fake.failJobPolls = c.creationJobId!;
@@ -625,6 +645,13 @@ describe('destroy', () => {
     assert.ok(h.logs.some((l) => l.includes('still being created; waiting for job')));
     // The DELETE came after the create job finished (the VMID existed).
     assert.ok(fake.jobs.get(c.creationJobId!)!.status === 'success');
+  });
+
+  test('destroy waits for a running create job even when a VMID is recorded', async () => {
+    const c = fake.seedCreating('myapp', { withVmid: true });
+    await provider().destroy!(harness().ctx);
+    assert.equal(fake.containers.length, 0);
+    assert.equal(fake.jobs.get(c.creationJobId!)!.status, 'success');
   });
 
   test('an in-flight create whose job cannot be polled is not deleted', async () => {

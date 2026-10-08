@@ -479,23 +479,23 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
    * Let an in-flight create (a concurrent or interrupted deploy) finish, then
    * re-read the container. Null if it no longer exists.
    */
-  const settle = async (c: Container): Promise<Container | null> => {
-    if (c.containerId || c.status !== 'creating' || !c.creationJobId) return c;
-    logger.info(`Container ${c.id} is still being created; waiting for job ${c.creationJobId}`);
-    // A create that *finished* with failure is judged from the re-read below
-    // (and recreated). Anything else (a Manager 5xx, a dropped connection, a
-    // timeout, an abort) leaves the outcome unknown: the create may still be
-    // running, so stop rather than delete a container that's being built.
-    await wait(c.creationJobId).catch((err: unknown) => {
-      if (!(err instanceof JobFailedError)) throw err;
-    });
-    return findByHostname(client, siteId, name);
+  /**
+   * Let the container's create job finish if it's still pending/running (a
+   * concurrent or interrupted deploy), then re-read it. A VMID doesn't prove
+   * the create finished: the job records it as soon as the create is
+   * accepted. `createFailed` is set when the job finished with failure.
+   */
+  const settle = async (c: Container): Promise<{ c: Container | null; createFailed: boolean }> => {
+    const outcome = await awaitCreateJob(client, c, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
+    const reread = outcome.waited ? await findByHostname(client, siteId, name) : c;
+    return { c: reread, createFailed: outcome.failed };
   };
-  /** Why `c` must be deleted and recreated rather than updated, if it must. */
-  const driftOf = (c: Container): string[] => {
+  const driftOf = (c: Container, createFailed: boolean): string[] => {
     const drift: string[] = [];
-    // Never provisioned (failed/missing create); an update can't fix that.
+    // Never provisioned, or its create failed partway (it may have a VMID);
+    // an update can't fix either.
     if (!c.containerId) drift.push(`not provisioned (status ${c.status ?? 'unknown'})`);
+    else if (createFailed) drift.push('its create job failed');
     if (c.template && normalizeImageRef(c.template) !== image) drift.push(`image ${c.template} → ${image}`);
     if (!!c.nvidiaRequested !== nvidia) drift.push(`nvidia ${!!c.nvidiaRequested} → ${nvidia}`);
     return drift;
@@ -510,11 +510,12 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   // A lost create race hands us someone else's container, which goes through
   // the same settle/drift checks; bound the loop in case of repeated races.
   for (let round = 0; createdId === undefined; round += 1) {
+    let createFailed = false;
     if (existing) {
-      existing = await settle(existing);
+      ({ c: existing, createFailed } = await settle(existing));
       if (existing) carryEnv = existing;
     }
-    const drift = existing ? driftOf(existing) : [];
+    const drift = existing ? driftOf(existing, createFailed) : [];
     if (existing && drift.length > 0) {
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
       await deleteContainer(client, siteId, existing.id!, logger);
@@ -783,6 +784,40 @@ export async function tail(ctx: DeployContext, deps: ProviderDeps): Promise<void
   }
 }
 
+/**
+ * If `c`'s create job is still pending/running, wait for it. Returns whether
+ * we waited, and whether the create finished with failure. Only a create
+ * that *finished* failing is absorbed: anything uncertain (a Manager 5xx, a
+ * dropped connection, a timeout, an abort) is thrown, since the create may
+ * still be running and acting on it (update, recreate, delete) is unsafe.
+ * A job we can't see (cleaned up, created by someone else) counts as done.
+ */
+export async function awaitCreateJob(
+  client: ManagerClient,
+  c: Container,
+  opts: { signal: AbortSignal; logger: DeployContext['logger']; intervalMs?: number; redact?: Iterable<string> },
+): Promise<{ waited: boolean; failed: boolean }> {
+  const jobId = c.creationJobId;
+  if (!jobId) return { waited: false, failed: false };
+  let status: string | undefined;
+  try {
+    status = (await client.call((api) => api.GET('/jobs/{id}', { params: { path: { id: jobId } } })))?.status;
+  } catch (err) {
+    if (err instanceof ManagerApiError && err.status === 404) return { waited: false, failed: false };
+    throw err;
+  }
+  if (status === 'failure' || status === 'cancelled') return { waited: false, failed: true };
+  if (status !== 'pending' && status !== 'running') return { waited: false, failed: false };
+  opts.logger.info(`Container ${c.id} is still being created; waiting for job ${jobId}`);
+  try {
+    await waitForJob(client, jobId, opts);
+    return { waited: true, failed: false };
+  } catch (err) {
+    if (err instanceof JobFailedError) return { waited: true, failed: true };
+    throw err;
+  }
+}
+
 async function createOrAdopt(
   client: ManagerClient,
   siteId: number,
@@ -836,18 +871,12 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   let existing = await findByHostname(client, siteId, name);
-  // Still being created (an interrupted or concurrent deploy): it has no VMID
-  // yet, so deleting now would leave its create job provisioning a VM nobody
-  // manages. Wait for the job, then delete what it produced. Only a create
-  // that *finished* failing is absorbed; an uncertain poll stops here.
-  if (existing && !existing.containerId && existing.status === 'creating' && existing.creationJobId) {
-    ctx.logger.info(`Container ${existing.id} is still being created; waiting for job ${existing.creationJobId} before deleting`);
-    await waitForJob(client, existing.creationJobId, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs }).catch(
-      (err: unknown) => {
-        if (!(err instanceof JobFailedError)) throw err;
-      },
-    );
-    existing = await findByHostname(client, siteId, name);
+  // Still being created (an interrupted or concurrent deploy): deleting now
+  // could miss a VM the create job is still building (the Manager refuses with
+  // 409 anyway). Wait for the job, then delete what it produced.
+  if (existing) {
+    const outcome = await awaitCreateJob(client, existing, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs });
+    if (outcome.waited) existing = await findByHostname(client, siteId, name);
   }
   if (!existing) {
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);
