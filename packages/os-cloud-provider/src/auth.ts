@@ -33,6 +33,9 @@ import {
 import type { ProviderDeps } from './deploy.ts';
 import { ttyPrompter } from './prompt.ts';
 
+/** How long a freshly minted key is reserved for the login that minted it (> the 5-min login timeout). */
+const PROVISIONAL_MS = 10 * 60 * 1000;
+
 function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: string, token: string | null): ManagerClient {
   return new ManagerClient({ instanceUrl, token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
 }
@@ -226,7 +229,9 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     (hooks.openBrowser ?? defaultOpenBrowser)(authUrl);
 
     const handoff = await loop.result;
-    const minted = { token: handoff.key, apiKeyId: handoff.id };
+    // Provisional for longer than a login can take: no other login/logout
+    // revokes it before this one commits or abandons it.
+    const minted = { token: handoff.key, apiKeyId: handoff.id, provisionalUntil: Date.now() + PROVISIONAL_MS };
 
     // The key now exists on the Manager. Track it before anything else can
     // fail: queued for revocation until it's stored as the login below.
@@ -242,7 +247,7 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     try {
       user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
     } catch (err) {
-      await revokeAll(instanceUrl, ctx, deps, logger); // includes the new key
+      await revokeAll(instanceUrl, ctx, deps, logger, [minted.apiKeyId]); // abandon our own key
       throw err;
     }
 
@@ -281,9 +286,19 @@ async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployCo
  * login/logout to retry, so no live key is ever forgotten. Only confirmed
  * revocations are removed, so a concurrent login's queued key is untouched.
  */
-async function revokeAll(instanceUrl: string, ctx: DeployContext, deps: ProviderDeps, logger: DeployLogger): Promise<void> {
+async function revokeAll(
+  instanceUrl: string,
+  ctx: DeployContext,
+  deps: ProviderDeps,
+  logger: DeployLogger,
+  /** Provisional keys this caller owns and is abandoning. */
+  own: readonly string[] = [],
+): Promise<void> {
   const done: string[] = [];
+  const now = Date.now();
   for (const key of await readPendingRevocations(deps.env, instanceUrl)) {
+    // Another login's key it hasn't committed or abandoned yet: not ours to revoke.
+    if ((key.provisionalUntil ?? 0) > now && !own.includes(key.apiKeyId)) continue;
     if (await revoke(instanceUrl, key, ctx, deps)) done.push(key.apiKeyId);
     else logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; it will be retried on the next login or logout`);
   }

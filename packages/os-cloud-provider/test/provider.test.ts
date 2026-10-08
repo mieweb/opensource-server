@@ -7,6 +7,7 @@ import { AuthError } from '@mieweb/deploy-contract';
 import type { DeployContext, ProviderEnv } from '@mieweb/deploy-contract';
 import { runProviderConformance } from '@mieweb/deploy-contract/testkit';
 import { startLoopback } from '../src/auth.ts';
+import { addPendingRevocation, readPendingRevocations, removePendingRevocations } from '../src/credentials.ts';
 import { createProvider, type ProviderOptions } from '../src/index.ts';
 import { SshError, type SshTarget } from '../src/ssh.ts';
 import { FakeManager } from './fake-manager.ts';
@@ -333,6 +334,28 @@ describe('deploy', () => {
     assert.deepEqual(methods, ['DELETE', 'POST']);
     assert.equal(result.resources[0]!.id, fake.containers[0]!.containerId);
     assert.ok(h.logs.some((l) => l.includes('not provisioned (status failed)')));
+  });
+
+  test('a recreate keeps the owner and collaborators (so /mnt/data is reattached)', async () => {
+    fake.admins.add('root');
+    fake.addToken('admin-token', 'root', 'k-admin');
+    fake.seedContainer({ hostname: 'myapp', owner: 'alice', collaborators: ['carol'], template: 'ghcr.io/x/old:1' });
+
+    // Owner deploying: no ownership override (non-admins can't send one).
+    await provider().deploy(harness().ctx);
+    let post = fake.requests.find((r) => r.method === 'POST')!;
+    assert.equal(post.body.username, undefined);
+    assert.deepEqual(post.body.collaborators, ['carol']);
+    assert.equal(fake.containers[0]!.owner, 'alice');
+
+    // An admin recreating alice's container keeps alice as the owner.
+    fake.requests.length = 0;
+    await provider({ MIEWEB_OS_TOKEN: 'admin-token' }).deploy(harness({ targetConfig: { siteId: 1, image: 'ghcr.io/x/new:2' } }).ctx);
+    post = fake.requests.find((r) => r.method === 'POST')!;
+    assert.equal(post.body.username, 'alice');
+    assert.deepEqual(post.body.collaborators, ['carol']);
+    assert.equal(fake.containers[0]!.owner, 'alice');
+    assert.deepEqual(fake.containers[0]!.collaborators, ['carol']);
   });
 
   test('AI binding requests a GPU only when the site has one; nvidia drift recreates', async () => {
@@ -695,6 +718,23 @@ describe('login / logout', () => {
     assert.equal(fake.tokens.has('minted-key'), false);
     assert.equal(fake.tokens.has('minted-key-2'), false);
     assert.deepEqual(JSON.parse(await readFile(creds, 'utf8')).pendingRevocations, {});
+  });
+
+  test("a concurrent logout doesn't revoke another login's key before it is committed", async () => {
+    const creds = join(dir, 'provisional.json');
+    const env = { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: creds };
+    fake.addToken('in-flight', 'alice', 'k-in-flight');
+    // Another process's login has minted a key and queued it provisionally.
+    await addPendingRevocation(env, fake.url, { token: 'in-flight', apiKeyId: 'k-in-flight', provisionalUntil: Date.now() + 60_000 });
+    await provider(env).logout!(harness({ argv: ['--instance', fake.url] }).ctx);
+    assert.equal(fake.tokens.has('in-flight'), true, 'not revoked');
+    assert.equal((await readPendingRevocations(env, fake.url)).length, 1);
+
+    // If that login died, its reservation lapses and the key is cleaned up.
+    await removePendingRevocations(env, fake.url, ['k-in-flight']);
+    await addPendingRevocation(env, fake.url, { token: 'in-flight', apiKeyId: 'k-in-flight', provisionalUntil: Date.now() - 1 });
+    await provider(env).logout!(harness({ argv: ['--instance', fake.url] }).ctx);
+    assert.equal(fake.tokens.has('in-flight'), false, 'expired reservation → revoked');
   });
 
   test('a key minted by a login that then fails is revoked, not leaked', async () => {

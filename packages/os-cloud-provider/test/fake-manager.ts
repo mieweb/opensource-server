@@ -25,6 +25,7 @@ export interface FakeContainer {
   entrypoint: string | null;
   environmentVars: Record<string, string>;
   services: FakeService[];
+  collaborators?: string[];
   volumes: {
     id: number;
     name: string;
@@ -65,6 +66,8 @@ export class FakeManager {
   noVolumes = false;
   /** Status new volumes end up in once their job runs. */
   volumeOutcome: 'ready' | 'failed' = 'ready';
+  /** Users treated as Manager admins (see and manage every container). */
+  readonly admins = new Set<string>();
   /** Answer GET /jobs/:id with a 500 for this job id (Manager trouble). */
   failJobPolls?: number;
   /** Answer GET /session with a 500 for this token. */
@@ -284,7 +287,7 @@ export class FakeManager {
       const hostname = url.searchParams.get('hostname');
       return ok(
         this.containers
-          .filter((c) => c.owner === who.user && (!hostname || c.hostname === hostname))
+          .filter((c) => (c.owner === who.user || this.admins.has(who.user)) && (!hostname || c.hostname === hostname))
           .map((c) => this.serialize(c)),
       );
     }
@@ -294,7 +297,9 @@ export class FakeManager {
       const c: FakeContainer = {
         id: this.nextId++,
         hostname: body.hostname,
-        owner: who.user,
+        // Like the Manager: admins may create on behalf of another user.
+        owner: body.username && this.admins.has(who.user) ? body.username : who.user,
+        collaborators: body.collaborators ?? [],
         template: body.template,
         containerId: null,
         nvidiaRequested: !!body.nvidiaRequested,
@@ -315,7 +320,7 @@ export class FakeManager {
     }
 
     const c = this.containers.find((x) => x.id === Number(sub));
-    if (!c || c.owner !== who.user) return fail(404, 'not_found');
+    if (!c || (c.owner !== who.user && !this.admins.has(who.user))) return fail(404, 'not_found');
     if (req.method === 'GET') return ok(this.serialize(c));
     if (req.method === 'DELETE') {
       this.containers.splice(this.containers.indexOf(c), 1);

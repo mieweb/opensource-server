@@ -522,7 +522,18 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
     if (existing) break;
     if (round >= 2) throw new Error(`Could not create container "${name}": it kept being created concurrently`);
-    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envWithSecrets(carryEnv), http, logger);
+    // A recreate keeps the replaced container's owner and shares: volume paths
+    // are per owner, so a different owner would get an empty /mnt/data.
+    const prev = carryEnv;
+    const keep = prev
+      ? {
+          // The Manager only accepts `username` from admins, and only when it
+          // names someone else (deploying your own app needs no override).
+          owner: prev.owner && prev.owner !== account ? prev.owner : undefined,
+          collaborators: (prev.collaborators ?? []).filter((c) => c !== prev.owner),
+        }
+      : {};
+    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envWithSecrets(carryEnv), http, keep, logger);
     if ('adopted' in created) {
       // Someone else's create just won the race: the container behind this
       // host:port may be new too, so its host-key pin must be cleared.
@@ -776,6 +787,7 @@ async function createOrAdopt(
   nvidia: boolean,
   environmentVars: EnvVar[],
   http: DesiredHttp,
+  keep: { owner?: string; collaborators?: string[] },
   logger: DeployContext['logger'],
 ): Promise<{ created: { containerId?: number; jobId?: number } } | { adopted: Container }> {
   try {
@@ -789,6 +801,8 @@ async function createOrAdopt(
           environmentVars,
           volumes: [DATA_VOLUME],
           services: planServices([], http, withSsh(s.services)),
+          ...(keep.owner ? { username: keep.owner } : {}),
+          ...(keep.collaborators?.length ? { collaborators: keep.collaborators } : {}),
         },
       }),
     );

@@ -24,6 +24,13 @@ export interface StoredCredential {
 export interface PendingRevocation {
   token: string;
   apiKeyId: string;
+  /**
+   * Set while a login that just minted this key is still validating/storing
+   * it (epoch ms). Other logins/logouts leave it alone until then, so they
+   * can't revoke a key its owner is about to commit; after it passes (the
+   * login crashed or was killed) anyone may revoke it.
+   */
+  provisionalUntil?: number;
 }
 
 interface CredentialFile {
@@ -87,7 +94,9 @@ export async function readCredential(env: ProviderEnv, instanceUrl: string): Pro
 function queue(data: CredentialFile, instanceUrl: string, key: PendingRevocation): void {
   const list = data.pendingRevocations[instanceUrl] ?? [];
   if (!list.some((p) => p.apiKeyId === key.apiKeyId)) {
-    data.pendingRevocations[instanceUrl] = [...list, { token: key.token, apiKeyId: key.apiKeyId }];
+    const entry: PendingRevocation = { token: key.token, apiKeyId: key.apiKeyId };
+    if (key.provisionalUntil !== undefined) entry.provisionalUntil = key.provisionalUntil;
+    data.pendingRevocations[instanceUrl] = [...list, entry];
   }
 }
 
