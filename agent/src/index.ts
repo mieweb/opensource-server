@@ -13,9 +13,9 @@
 import os from 'os';
 import { loadConfig, type AgentConfig } from './config';
 import { State } from './state';
-import { getPrimaryIpv4, getServiceState, disconnectSystemBus } from './system';
+import { getPrimaryIpv4, getServiceState, findMissingBinaries, disconnectSystemBus } from './system';
 import { checkin } from './api';
-import { services, applyService } from './apply';
+import { enabledServices, GROUP_BINARIES, applyService } from './apply';
 import { reconcileVolumes } from './volumes';
 import { log } from './log';
 import type { CheckinRequest, ServiceStatus } from './types';
@@ -26,7 +26,7 @@ const MAX_PASSES = 5;
 
 async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<CheckinRequest> {
   const serviceStatus: Record<string, ServiceStatus> = {};
-  for (const svc of services) {
+  for (const svc of enabledServices(cfg)) {
     serviceStatus[svc.unit] = {
       state: await getServiceState(svc.unit),
       lastApply: state.lastApply[svc.unit] ?? 'unknown',
@@ -38,6 +38,8 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
     currentTime: Math.floor(Date.now() / 1000),
     ipv4Address: getPrimaryIpv4(),
     services: serviceStatus,
+    enabledServices: cfg.services,
+    missingBinaries: findMissingBinaries(cfg.services.flatMap((g) => GROUP_BINARIES[g])),
   };
   // Report any not-yet-delivered volume results (persisted across runs). Only
   // include the field when there is something to report so the manager isn't
@@ -51,7 +53,7 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
 async function main(): Promise<void> {
   const cfg = loadConfig();
   const state = State.load(cfg.stateDir);
-  log.info(`agent starting: siteId=${cfg.siteId}, manager=${cfg.managerUrl}`);
+  log.info(`agent starting: siteId=${cfg.siteId}, manager=${cfg.managerUrl}, services=${cfg.services.join(',')}`);
   log.debug(`state dir=${cfg.stateDir}, saved etag=${state.etag ?? '(none)'}`);
   if (Object.keys(state.pendingVolumeResults).length > 0) {
     log.debug(`carrying ${Object.keys(state.pendingVolumeResults).length} pending volume result(s) from a prior run`);
@@ -77,7 +79,7 @@ async function main(): Promise<void> {
     }
 
     log.info(`check-in: new config received (etag=${result.etag ?? '(none)'}), applying`);
-    for (const svc of services) {
+    for (const svc of enabledServices(cfg)) {
       state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
     }
 

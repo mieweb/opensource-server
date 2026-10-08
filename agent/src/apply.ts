@@ -12,10 +12,18 @@ import { execFileSync } from 'child_process';
 import ejs from 'ejs';
 import { reloadOrRestartService, restartService, sighupService } from './system';
 import { log, commandOutput } from './log';
-import type { AgentConfig } from './config';
+import type { AgentConfig, ServiceGroup } from './config';
 import type { ApplyResult, SiteConfig } from './types';
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
+
+/** Binaries each service group needs; missing ones are reported at check-in
+ * (the manager refuses the mail-host claim until they're installed). */
+export const GROUP_BINARIES: Record<ServiceGroup, string[]> = {
+  nginx: ['nginx'],
+  dnsmasq: ['dnsmasq'],
+  mail: ['postfix', 'dovecot', 'opendkim'],
+};
 
 interface RenderedFile {
   dest: string;
@@ -27,6 +35,8 @@ interface RenderedFile {
 export interface ManagedService {
   /** systemd unit name (also the key reported at check-in). */
   unit: string;
+  /** Service group this unit belongs to (AGENT_SERVICES opt-in). */
+  group: ServiceGroup;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
   render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;
@@ -51,6 +61,7 @@ function run(cmd: string[]): string {
 export const services: ManagedService[] = [
   {
     unit: 'nginx',
+    group: 'nginx',
     async render(config, agent) {
       return [{
         dest: '/etc/nginx/nginx.conf',
@@ -73,6 +84,7 @@ export const services: ManagedService[] = [
   },
   {
     unit: 'dnsmasq',
+    group: 'dnsmasq',
     async render(config) {
       const site = config.site;
       // Skip dnsmasq management until the site's DHCP/DNS settings are fully
@@ -101,6 +113,11 @@ export const services: ManagedService[] = [
     },
   },
 ];
+
+/** The managed services for the agent's enabled service groups. */
+export function enabledServices(agent: AgentConfig): ManagedService[] {
+  return services.filter((svc) => agent.services.includes(svc.group));
+}
 
 function readIfExists(file: string): string | null {
   try {

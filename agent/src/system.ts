@@ -1,6 +1,8 @@
 /** Host system info and systemd unit control via the systemd D-Bus API. */
 
+import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import dbus, { type MessageBus, type ProxyObject, type Variant } from '@particle/dbus-next';
 
 /** First non-internal IPv4 address, or null when none is configured. */
@@ -11,6 +13,23 @@ export function getPrimaryIpv4(): string | null {
     }
   }
   return null;
+}
+
+// sbin dirs are not on the agent's PATH under systemd, but that's where
+// postfix/dovecot/dnsmasq binaries live.
+const EXTRA_BIN_DIRS = ['/usr/sbin', '/usr/bin', '/sbin', '/bin', '/usr/local/sbin', '/usr/local/bin'];
+
+/** Which of `binaries` cannot be found on PATH or the usual sbin dirs. */
+export function findMissingBinaries(binaries: string[]): string[] {
+  const dirs = [...new Set([...(process.env.PATH ?? '').split(':').filter(Boolean), ...EXTRA_BIN_DIRS])];
+  return binaries.filter((bin) => !dirs.some((dir) => {
+    try {
+      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }));
 }
 
 // --- systemd (org.freedesktop.systemd1 on the system bus) -------------------

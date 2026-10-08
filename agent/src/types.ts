@@ -19,6 +19,10 @@ export interface CheckinRequest {
   currentTime: number;
   ipv4Address: string | null;
   services: Record<string, ServiceStatus>;
+  /** Service groups this agent is configured to run (AGENT_SERVICES). */
+  enabledServices: string[];
+  /** Binaries missing for the enabled groups; blocks the mail-host claim. */
+  missingBinaries: string[];
   /**
    * Per-volume directory-provisioning results, keyed by the manager-assigned
    * Volume id: `{ <volumeId>: { applied, message? } }`. Present only when the
@@ -106,4 +110,31 @@ export interface NginxConfig {
 export interface SiteConfig {
   site: SiteInfo | null;
   nginx: NginxConfig;
+  /** Mail-host claim outcome for agents reporting the `mail` group:
+   * holder | conflict | unsupported | missing_packages. Absent otherwise. */
+  mailStatus?: string;
+  /** Mail snapshot — present ONLY when this agent holds the mail-host claim. */
+  mail?: MailConfig;
+}
+
+/** The `mail` snapshot section (manager utils/agent-config.js buildMailSnapshot). */
+export interface MailConfig {
+  hostname: string | null;
+  relayhost: { host: string; username: string | null; password: string | null } | null;
+  messageSizeLimitMb: number;
+  defaultQuotaMb: number;
+  dkim: { domain: string; selector: string; privateKey: string }[];
+  receiveDomains: string[];
+  db: {
+    dialect: string;
+    host: string | null;
+    port: number | null;
+    database: string | null;
+    dovecotUser: string;
+    postfixUser: string;
+  };
+  unsubscribe: {
+    baseUrl: string | null;
+    keys: { kid: string; secret: string; active: boolean }[];
+  };
 }
