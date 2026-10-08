@@ -1,6 +1,11 @@
 [Unit]
 Description=Deployed @mieweb/cloud app
-Wants=network-online.target minio.service libsqld.service valkey.service
+# Required, not just wanted: if the environment export or a datastore fails to
+# start, starting/restarting the app fails too, so deploy reports it instead of
+# a "healthy" app without its storage. (A datastore crashing later and being
+# restarted by its own Restart= doesn't take the app down.)
+Requires=mieweb-env.service minio.service libsqld.service valkey.service
+Wants=network-online.target
 After=network-online.target environment.service mieweb-env.service minio.service libsqld.service valkey.service
 # Nothing to run until the first `mieweb deploy` has synced the code (the
 # provider restarts this unit after every sync).
