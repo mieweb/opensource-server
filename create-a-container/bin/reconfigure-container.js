@@ -147,7 +147,9 @@ async function main() {
     
     if (Object.keys(lxcConfig).length > 0) {
       console.log('Applying LXC configuration...');
-      console.log('Config:', JSON.stringify(lxcConfig, null, 2));
+      // Log only which keys change: `env` carries every user env var
+      // (including secrets), and job output is shown to users and in CI logs.
+      console.log(`Config keys: ${Object.keys(lxcConfig).join(', ')}`);
       await client.updateLxcConfig(node.name, container.containerId, lxcConfig);
       console.log('Configuration applied');
     } else {
