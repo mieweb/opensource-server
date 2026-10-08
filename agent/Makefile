@@ -52,6 +52,7 @@ install: build
 	$(INSTALL) -d $(UNIT_DIR)
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.service $(UNIT_DIR)/
 	$(INSTALL_DATA) contrib/systemd/opensource-agent.timer $(UNIT_DIR)/
+	$(INSTALL_DATA) contrib/systemd/opensource-mail-helper.service $(UNIT_DIR)/
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/error-pages
 	$(INSTALL_DATA) $(ERROR_PAGES)/* $(DESTDIR)$(PREFIX)/error-pages/
 	$(INSTALL) -d -m 0755 $(DESTDIR)/var/cache/nginx/auth_cache

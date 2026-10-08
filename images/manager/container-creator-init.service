@@ -23,7 +23,8 @@ ExecStart=/bin/bash -e -c '\
   echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> /etc/default/container-creator; \
   echo "POSTGRES_USER=$${POSTGRES_USER}" >> /etc/default/container-creator; \
   echo "POSTGRES_PASSWORD=$${POSTGRES_PASSWORD}" >> /etc/default/container-creator; \
-  echo "MCP_SERVER_URL=http://127.0.0.1:8100" >> /etc/default/container-creator;'
+  echo "MCP_SERVER_URL=http://127.0.0.1:8100" >> /etc/default/container-creator; \
+  bash /opt/opensource-server/create-a-container/bin/setup-mail-db-roles.sh || true;'
 
 [Install]
 WantedBy=multi-user.target

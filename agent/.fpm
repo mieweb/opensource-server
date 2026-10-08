@@ -14,5 +14,14 @@
 --depends ca-certificates
 --depends ssl-cert
 --depends dnsmasq
+--deb-suggests postfix
+--deb-suggests postfix-pgsql
+--deb-suggests postfix-mysql
+--deb-suggests dovecot-core
+--deb-suggests dovecot-imapd
+--deb-suggests dovecot-lmtpd
+--deb-suggests dovecot-pgsql
+--deb-suggests dovecot-mysql
+--deb-suggests opendkim
 --deb-no-default-config-files
 --after-install contrib/postinstall.sh

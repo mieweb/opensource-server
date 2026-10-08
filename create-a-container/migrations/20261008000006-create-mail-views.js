@@ -14,6 +14,30 @@ module.exports = {
     for (const sql of createViewsSql(dialect)) {
       await queryInterface.sequelize.query(sql);
     }
+    // Grant SELECT when the roles already exist (setup-mail-db-roles.sh may
+    // run before or after this migration; each side grants best-effort so
+    // either ordering converges).
+    const grants = [];
+    if (dialect === 'postgres') {
+      grants.push(
+        'GRANT SELECT ON mail_accounts_v TO mail_dovecot',
+        'GRANT SELECT ON mail_senders_v, mail_suppressions_v TO mail_postfix',
+      );
+    } else if (dialect === 'mysql' || dialect === 'mariadb') {
+      const db = queryInterface.sequelize.config.database;
+      grants.push(
+        `GRANT SELECT ON \`${db}\`.mail_accounts_v TO 'mail_dovecot'@'%'`,
+        `GRANT SELECT ON \`${db}\`.mail_senders_v TO 'mail_postfix'@'%'`,
+        `GRANT SELECT ON \`${db}\`.mail_suppressions_v TO 'mail_postfix'@'%'`,
+      );
+    }
+    for (const sql of grants) {
+      try {
+        await queryInterface.sequelize.query(sql);
+      } catch {
+        /* roles not created yet — the script grants when it creates them */
+      }
+    }
   },
 
   async down(queryInterface) {

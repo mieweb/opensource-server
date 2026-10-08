@@ -80,9 +80,13 @@ DO \$\$ BEGIN
   ELSE
     ALTER ROLE mail_postfix WITH LOGIN PASSWORD '${POSTFIX_PW}';
   END IF;
+  -- Views appear with the first migration run; that migration also grants,
+  -- so skipping here just means the other side finishes the handshake.
+  IF EXISTS (SELECT 1 FROM pg_views WHERE viewname = 'mail_accounts_v') THEN
+    GRANT SELECT ON mail_accounts_v TO mail_dovecot;
+    GRANT SELECT ON mail_senders_v, mail_suppressions_v TO mail_postfix;
+  END IF;
 END \$\$;
-GRANT SELECT ON mail_accounts_v TO mail_dovecot;
-GRANT SELECT ON mail_senders_v, mail_suppressions_v TO mail_postfix;
 SQL
 }
 
