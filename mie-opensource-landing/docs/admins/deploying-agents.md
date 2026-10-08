@@ -70,6 +70,7 @@ lxc.environment = API_KEY=<admin-api-key>
 | `SITE_ID` | Numeric site ID from the manager (visible in the URL when viewing the site) |
 | `MANAGER_URL` | Base URL of the manager container (e.g., `http://192.168.1.10:3000`) |
 | `API_KEY` | API key from an admin account. Used to authenticate check-ins. |
+| `AGENT_SERVICES` | Optional. Comma-separated service groups to run: `nginx`, `dnsmasq`, `mail`. Default `nginx,dnsmasq`. Add `mail` to make this host the [mail host](email.md) (install the mail packages first). |
 
 ## Volume storage for persistent volumes
 

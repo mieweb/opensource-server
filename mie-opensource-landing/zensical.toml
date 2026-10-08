@@ -21,6 +21,7 @@ nav = [
         { "API Keys" = "users/creating-containers/api-keys.md" },
       ] },
       { "Monitoring Containers" = "users/monitoring-container.md" },
+      { "Email Accounts" = "users/email-accounts.md" },
       { "Adding Authentication" = "users/consuming-auth.md" },
       { "Launchpad" = [
         { "What is Launchpad" = "users/proxmox-launchpad/what-is-proxmox-launchpad.md" },
@@ -42,6 +43,7 @@ nav = [
         { "Volumes" = "admins/core-concepts/volumes.md" },
       ] },
       { "Settings" = "admins/settings.md" },
+      { "Email Service" = "admins/email.md" },
       { "OIDC Single Sign-On" = "admins/oidc.md" },
       { "LDAP Authentication" = "admins/ldap-servers.md" },
       { "Deploying Agents" = "admins/deploying-agents.md" },

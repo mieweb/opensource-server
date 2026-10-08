@@ -20,6 +20,10 @@ erDiagram
     Services ||--|| TransportServices : "type: transport"
     Services ||--|| DnsServices : "type: dns"
     ExternalDomains ||--o{ HTTPServices : "used by"
+    ExternalDomains ||--o{ DkimKeys : signs
+    ExternalDomains ||--o{ MailAccounts : hosts
+    MailAccounts ||--o{ MailSuppressions : "unsubscribed by"
+    Users ||--o{ MailAccounts : owns
     Jobs ||--o{ JobStatuses : tracks
     Users }o--o{ Groups : "member of"
     UserGroups }|--|| Users : joins
@@ -60,6 +64,11 @@ erDiagram
         string hostname "unique per site"
         string ipv4Address
         json services "per-service state + lastApply"
+        json enabledServices "AGENT_SERVICES groups"
+        json missingBinaries "blocks the mail-host claim"
+        date mailHostSince "single holder (partial unique index)"
+        boolean isLocal
+        uuid apiKeyId FK "pinned on first remote check-in"
         date lastCheckinAt
     }
 
@@ -132,6 +141,46 @@ erDiagram
         string cloudflareApiKey
         int siteId FK "nullable, default site"
         string authServer "nullable, oauth2-proxy process address"
+        boolean mailEnabled "admin switch, default false"
+        boolean mailDnsVerified "SPF+DKIM+DMARC; with mailEnabled => can send"
+        boolean mailMxVerified "MX -> mail IP; with mailEnabled => can receive"
+        date mailDnsCheckedAt
+        json mailDnsCheckResult "last Check DNS outcome"
+    }
+
+    DkimKeys {
+        int id PK
+        int externalDomainId FK
+        string selector "unique per domain"
+        text privateKey "never serialized in API responses"
+        text publicKey "DNS p= value"
+        enum status "active | retired"
+    }
+
+    MailAccounts {
+        uuid id PK
+        int uidNumber FK "owner; admin-transferable"
+        int externalDomainId FK
+        string localPart "lowercase; unique per domain"
+        string description
+        string passwordHash "Argon2id p=1; never serialized"
+        boolean enabled "default true; gates the SQL views"
+        bigint quotaBytes
+        boolean unsubscribeHeaders "default true (RFC 8058)"
+        date lastRotatedAt
+    }
+
+    MailSuppressions {
+        int id PK
+        uuid mailAccountId FK
+        string recipient "lowercase; unique per account"
+        enum source "one-click | admin"
+    }
+
+    MailUnsubscribeKeys {
+        string kid PK
+        string secret "AES-256-GCM key; never serialized"
+        enum status "active | retired (verifies 1 more year)"
     }
 
     Jobs {
@@ -222,7 +271,32 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 Persistent bind-mount attached to a container (issue #421). Unique composite indexes on `(containerId, name)` and `(containerId, mountPath)`. `hostPath` is derived server-side from the node volume storage's actual configured `path` (`<path>/volumes/site-<siteId>/<owner>/<hostname>/<name>`; scoped by site so containers with the same hostname across sites don't collide on shared storage, and by owner so retained data is only reattached for the same owner) and is null until the create job derives it. `mode` is `ro`/`rw`; each row renders to a Proxmox `mpN` bind mount (`Volume.buildMountConfig`). `status` (`pending` → `ready` | `failed`) is the readiness barrier the create/reconfigure jobs block on — the site agent creates the host directory and reports the result at check-in, which the manager writes to `status`/`statusMessage`/`appliedAt`. `builtin` marks the retired `quick_and_dirty` mount backfilled onto pre-#421 containers for reference (never re-applied; its live `mp0` slot is reserved by `buildMountConfig`). Belongs to Container. See [Volumes](../admins/core-concepts/volumes.md).
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)).
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). Mail gates (`mailEnabled`, `mailDnsVerified`, `mailMxVerified`) are changed only via the `…/mail/*` endpoints; has many DkimKeys and MailAccounts.
+
+## Mail Models (issue #67)
+
+### DkimKey
+RSA-2048 signing key per external domain, generated at domain creation (selector `osYYYYMMDD`). `status` supports future rotation. The private key is never serialized in API responses — it reaches only the mail-host agent snapshot and the admin DKIM export.
+
+### MailAccount
+A user-owned SMTP/IMAP account on a can-send domain. Password stored as an Argon2id PHC string with `p=1` (Dovecot verifies via libsodium, which only supports parallelism 1); the plaintext is returned exactly once at create/rotate. `enabled` gates the SQL views, so disabling locks the account out instantly.
+
+### MailSuppression
+A recipient who one-click-unsubscribed (RFC 8058) from a MailAccount, or was suppressed by an admin. Enforced synchronously at RCPT on the submission ports.
+
+### MailUnsubscribeKey
+AES-256-GCM key for unsubscribe tokens. One `active` key; `retired` keys keep verifying previously issued links for one year.
+
+### Mail Views
+The dialect-aware views created by migration `20261008000006` (SQL built in `create-a-container/utils/mail-views.js`) are the **stable contract** Dovecot/Postfix — or a self-managed MTA — read live:
+
+| View | Columns | Consumer |
+|------|---------|----------|
+| `mail_accounts_v` | `address`, `password` (`{ARGON2ID}`-prefixed), `home`, `quota_bytes`, `can_send`, `can_receive` — enabled accounts only | Dovecot passdb/userdb (`mail_dovecot` role) |
+| `mail_senders_v` | `sender`, `login`, `account_id`, `unsubscribe_headers` — can-send accounts | Postfix `smtpd_sender_login_maps` + opensource-mail-helper (`mail_postfix` role) |
+| `mail_suppressions_v` | `sender`, `recipient` | Submission policy service (`mail_postfix` role) |
+
+`bin/setup-mail-db-roles.sh` creates the two read-only roles and grants; the views migration also grants best-effort so either ordering converges.
 
 ## User Management Models
 

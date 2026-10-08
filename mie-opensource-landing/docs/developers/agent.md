@@ -89,20 +89,31 @@ Read from the process environment (systemd loads `/etc/environment`). Set via co
 | `SITE_ID` | Yes | Numeric site ID from the manager |
 | `MANAGER_URL` | Yes | Base URL of the manager (e.g., `http://192.168.1.10:3000`) |
 | `API_KEY` | No | Admin API key for remote agents. Not needed on the manager (localhost is trusted). |
+| `AGENT_SERVICES` | No | Comma-separated service groups: `nginx`, `dnsmasq`, `mail`. Default `nginx,dnsmasq`. |
+| `MAIL_POSTFIX_DB_PASSWORD` | No | DB password for the `mail_postfix` role (mail hosts without local socket auth) |
+| `MAIL_DOVECOT_DB_PASSWORD` | No | DB password for the `mail_dovecot` role (mail hosts without local socket auth) |
 | `STATE_DIRECTORY` | No | State directory, set by systemd via `StateDirectory=` (default `/var/lib/opensource-agent`) |
 
 The agent Dockerfile defaults to `SITE_ID=1` and `MANAGER_URL=http://localhost:3000` so the manager container works without configuration.
 
 ## Managed Services
 
-| Service | Files | Test | Reload |
-|---------|-------|------|--------|
-| nginx | `/etc/nginx/nginx.conf` | `nginx -t` | `systemctl reload-or-restart nginx` |
-| dnsmasq | `/etc/dnsmasq.conf`, `/var/lib/dnsmasq/{dhcp-hosts,hosts,dhcp-opts,servers}` | `dnsmasq --test` | restart when `/etc/dnsmasq.conf` changed, otherwise SIGHUP |
+Services are organized in groups enabled via `AGENT_SERVICES`. The check-in reports the enabled groups plus any missing binaries; the manager refuses the mail-host claim while anything is missing.
 
-Apply flow per service: render templates, skip if nothing changed, stage new files, run the test command, roll back on failure, then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
+| Group | Service | Files | Test | Reload |
+|-------|---------|-------|------|--------|
+| nginx | nginx | `/etc/nginx/nginx.conf` | `nginx -t` | `systemctl reload-or-restart nginx` |
+| dnsmasq | dnsmasq | `/etc/dnsmasq.conf`, `/var/lib/dnsmasq/{dhcp-hosts,hosts,dhcp-opts,servers}` | `dnsmasq --test` | restart when `/etc/dnsmasq.conf` changed, otherwise SIGHUP |
+| mail | opendkim | `/etc/opendkim.conf`, `/etc/opendkim/{keytable,signingtable}`, `/etc/dkimkeys/*.private` | `opendkim -n` | restart |
+| mail | dovecot | `/etc/dovecot/dovecot.conf` | `doveconf -n` | reload + `doveadm auth cache flush` |
+| mail | postfix (status: `postfix@-`) | `/etc/postfix/{main.cf,master.cf,vdomains,sni_map,sql/senders.cf}` | `postfix check` (after `postmap -F` postWrite) | reload-or-restart |
+| mail | opensource-mail-helper | `/etc/opensource-server/mail-helper.json` | — | restart |
 
-To add a managed service, add a `ManagedService` entry in [`agent/src/apply.ts`](https://github.com/mieweb/opensource-server/blob/main/agent/src/apply.ts) plus its template(s) under `agent/templates/`, and extend the config snapshot in `create-a-container/utils/agent-config.js`.
+The mail group renders only on the agent holding the mail-host claim (the `mail` section of the snapshot). Taking the claim creates the `vmail`/`opensource-mail` users and enables + starts the units; losing it (or removing `mail` from `AGENT_SERVICES`) stops and disables them, leaving configs and `/var/vmail` in place. Maildirs of deleted accounts are garbage-collected after 30 days.
+
+Apply flow per service: render templates, skip if nothing changed, stage new files, run post-write commands, run the test command, roll back on failure, then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
+
+To add a managed service, add a `ManagedService` entry in [`agent/src/apply.ts`](https://github.com/mieweb/opensource-server/blob/main/agent/src/apply.ts) (or `agent/src/mail.ts` for the mail group) plus its template(s) under `agent/templates/`, and extend the config snapshot in `create-a-container/utils/agent-config.js`.
 
 ## Running Manually
 
