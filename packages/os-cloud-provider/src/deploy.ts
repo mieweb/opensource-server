@@ -49,7 +49,22 @@ export const MANAGED_ENV = {
   s3SecretKey: 'MIEWEB_S3_SECRET_ACCESS_KEY',
   libsqlUrl: 'MIEWEB_LIBSQL_URL',
   valkeyUrl: 'MIEWEB_VALKEY_URL',
+  sshAllowUsers: 'MIEWEB_SSH_ALLOW_USERS',
 } as const;
+
+/** Account names sshd may match literally (no patterns, no separators). */
+const SSH_USER_RE = /^[a-z_][a-z0-9_.-]{0,63}$/i;
+
+/**
+ * Who may SSH into the converged container: its owner and collaborators, the
+ * account deploying (an admin may deploy someone else's app) and the sync
+ * login. The cloud image restricts sshd to exactly these accounts, because
+ * the container holds app secrets and datastore files and every LDAP user
+ * otherwise has SSH + passwordless sudo on every container.
+ */
+export function sshAllowUsers(names: readonly (string | null | undefined)[]): string[] {
+  return [...new Set(names.filter((n): n is string => !!n && SSH_USER_RE.test(n)))].sort();
+}
 
 /** Provider env vars with this prefix are injected (prefix stripped) as app secrets. */
 export const SECRET_ENV_PREFIX = 'MIEWEB_OS_SECRET_';
@@ -120,6 +135,8 @@ export interface EnvInputs {
   settings: Pick<TargetSettings, 'port' | 'start'>;
   /** Current env map of the existing container (read shape is an object). */
   existing?: Record<string, string>;
+  /** Accounts allowed to SSH in (see {@link sshAllowUsers}). */
+  sshAllowUsers?: readonly string[];
   warn: (m: string) => void;
 }
 
@@ -159,6 +176,7 @@ export function buildEnv(inputs: EnvInputs): EnvVar[] {
     [MANAGED_ENV.s3SecretKey, minioPassword],
     [MANAGED_ENV.libsqlUrl, 'http://127.0.0.1:8080'],
     [MANAGED_ENV.valkeyUrl, 'redis://127.0.0.1:6379'],
+    [MANAGED_ENV.sshAllowUsers, inputs.sshAllowUsers?.length ? inputs.sshAllowUsers.join(' ') : undefined],
   ];
   for (const [k, v] of managed) {
     if (v === undefined) continue;
@@ -179,10 +197,11 @@ export interface DesiredHttp {
  * Diff the container's services against the desired set and produce an
  * `update_container` services map.
  *
- * The provider owns the app's HTTP exposure: every HTTP service that doesn't
- * match is removed. Non-HTTP services are only added (to match
- * `targets.mieweb.services`), never removed — e.g. an SSH port someone added
- * in the UI survives a redeploy.
+ * The provider owns the container's exposure: one HTTP service, plus the
+ * non-HTTP services in `extras` (which always include the provider's SSH
+ * service). Each desired service is matched to at most one existing service;
+ * every unmatched existing service is deleted, so removing an entry from
+ * `targets.mieweb.services` closes that port on the next deploy.
  */
 export function planServices(
   current: Container['services'],
@@ -218,16 +237,26 @@ export function planServices(
     };
   }
 
+  const others = (current ?? []).filter((svc) => svc.type !== 'http' && svc.id !== undefined);
+  const matched = new Set<number>();
   extras.forEach((want, i) => {
-    const exists = (current ?? []).some((svc) =>
-      want.type === 'srv'
-        ? svc.type === 'dns' && svc.internalPort === want.internalPort && svc.dnsService?.dnsName === want.dnsName
-        : svc.type === 'transport' && svc.internalPort === want.internalPort && svc.transportService?.protocol === want.type,
+    const hit = others.find(
+      (svc) =>
+        !matched.has(svc.id!) &&
+        svc.internalPort === want.internalPort &&
+        (want.type === 'srv'
+          ? svc.type === 'dns' && svc.dnsService?.dnsName === want.dnsName
+          : svc.type === 'transport' && svc.transportService?.protocol === want.type),
     );
-    if (!exists) {
-      plan[`extra-${i}`] = { type: want.type, internalPort: want.internalPort, ...(want.dnsName ? { dnsName: want.dnsName } : {}) };
-    }
+    if (hit) matched.add(hit.id!);
+    else plan[`extra-${i}`] = { type: want.type, internalPort: want.internalPort, ...(want.dnsName ? { dnsName: want.dnsName } : {}) };
   });
+  for (const svc of others) {
+    if (!matched.has(svc.id!)) {
+      const type = svc.type === 'dns' ? 'srv' : (svc.transportService?.protocol ?? 'tcp');
+      plan[`del-${svc.id}`] = { id: svc.id, deleted: true, type, internalPort: svc.internalPort ?? 0 };
+    }
+  }
   return plan;
 }
 
@@ -382,12 +411,20 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     externalDomainId: domain.id,
     authRequired: s.authRequired,
   };
+  const account = (await client.call((api) => api.GET('/session')))?.user;
   const envFor = (existing?: Container | null): EnvVar[] =>
     buildEnv({
       manifest: ctx.manifest,
       env: deps.env,
       settings: s,
       existing: existing ? asEnvMap(existing.environmentVars) : undefined,
+      // A new container is owned by the deploying account.
+      sshAllowUsers: sshAllowUsers([
+        existing?.owner ?? account,
+        ...(existing?.collaborators ?? []),
+        account,
+        s.sshUser ?? account,
+      ]),
       warn: (m) => logger.warn(m),
     });
 

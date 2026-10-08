@@ -1,0 +1,11 @@
+[Unit]
+Description=Restrict SSH to the container's owner, collaborators and deployer
+After=environment.service
+Before=ssh.service ssh.socket
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mieweb-ssh-allow
+
+[Install]
+WantedBy=multi-user.target ssh.service

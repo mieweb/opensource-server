@@ -100,10 +100,13 @@ describe('planServices', () => {
     assert.equal(plan['del-1']!.deleted, true);
   });
 
-  test('non-http services are preserved; missing extras added', () => {
+  test('non-http services converge to the desired extras (each matched once; stale ones deleted)', () => {
     const current: Container['services'] = [
       svc(1, 8787),
       { id: 2, type: 'transport', internalPort: 22, transportService: { protocol: 'tcp', externalPort: 2222 } },
+      { id: 3, type: 'transport', internalPort: 22, transportService: { protocol: 'tcp', externalPort: 2223 } },
+      { id: 4, type: 'transport', internalPort: 5432, transportService: { protocol: 'tcp', externalPort: 2224 } },
+      { id: 5, type: 'dns', internalPort: 5060, dnsService: { recordType: 'SRV', dnsName: '_old._udp' } },
     ];
     const plan = planServices(current, http, [
       { type: 'tcp', internalPort: 22 },
@@ -112,8 +115,10 @@ describe('planServices', () => {
     ]);
     assert.deepEqual(plan['extra-1'], { type: 'udp', internalPort: 53 });
     assert.deepEqual(plan['extra-2'], { type: 'srv', internalPort: 5060, dnsName: '_sip._udp' });
-    assert.equal(plan['extra-0'], undefined);
-    assert.equal(Object.values(plan).some((p) => p.id === 2), false);
+    assert.equal(plan['extra-0'], undefined, 'ssh kept (id 2)');
+    assert.equal(plan['del-2'], undefined);
+    assert.deepEqual(Object.keys(plan).filter((k) => k.startsWith('del-')).sort(), ['del-3', 'del-4', 'del-5']);
+    assert.equal(plan['del-4']!.deleted, true);
   });
 });
 

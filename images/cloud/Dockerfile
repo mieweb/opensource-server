@@ -63,11 +63,12 @@ RUN useradd --system --home-dir /opt/app --shell /usr/sbin/nologin mieweb && \
 
 COPY --chmod=0755 mieweb-data-dir.sh /usr/local/bin/mieweb-data-dir
 COPY --chmod=0755 mieweb-app-start.sh /usr/local/bin/mieweb-app-start
-COPY minio.service libsqld.service valkey.service app.service /etc/systemd/system/
+COPY --chmod=0755 mieweb-ssh-allow.sh /usr/local/bin/mieweb-ssh-allow
+COPY minio.service libsqld.service valkey.service app.service mieweb-ssh-allow.service /etc/systemd/system/
 # environment.service (from base) copies PID 1's environment, where the
 # Manager puts the container's env vars, into /etc/environment. The units read
 # that file, so enable it explicitly instead of relying on first-boot presets.
-RUN systemctl enable environment.service minio.service libsqld.service valkey.service app.service
+RUN systemctl enable environment.service mieweb-ssh-allow.service minio.service libsqld.service valkey.service app.service
 
 # The persistent volume (#421) mounts here; the directory also exists in the
 # image so the units still work (without persistence) if no volume is attached.

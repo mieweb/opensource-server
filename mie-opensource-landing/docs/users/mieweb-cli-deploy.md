@@ -12,6 +12,10 @@ Each app gets **one container** on the site, named after `wrangler.jsonc` `name`
 
 The app is exposed through one HTTP service at `https://<name>.<domain>`; the site's nginx terminates TLS in front of it. The container also publishes SSH (port 22) on a site port, which `deploy` uses to copy your code.
 
+The provider owns the container's services: each deploy makes them match the HTTP service, SSH, and `targets.mieweb.services`. Services added in the web UI, or removed from `services`, are deleted on the next deploy.
+
+Because the container holds your app's secrets and datastore files, **SSH is limited to the container's owner, its collaborators, and the account deploying it** (plus `sshUser`, if set). Other site users can't log in, even though they can SSH into ordinary containers. Sharing changes take effect on the next deploy.
+
 ### What `deploy` does
 
 1. **Converge the container** through the Manager API. The first deploy creates it and waits for it to be provisioned. Later deploys change the container only when its configuration differs (services, environment variables, the data volume); otherwise this step makes no changes. If the image (or the GPU requirement) changes, the container is deleted and recreated. `/mnt/data` is kept across that recreate, so datastore contents survive.
@@ -65,7 +69,7 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
       "sshUser": "alice",            // default: your Manager username
       "sshHost": "203.0.113.10",     // default: the container's published SSH host
       "sync": true,                  // false: converge the container only, don't copy code
-      "services": [{ "type": "tcp", "internalPort": 22 }] // extra tcp/udp/srv services
+      "services": [{ "type": "udp", "internalPort": 5060 }] // extra tcp/udp/srv services (SSH is always added)
     }
   }
 }
@@ -101,7 +105,7 @@ The container's environment is replaced on every deploy with:
 | --- | --- |
 | `wrangler.jsonc` `vars` | as declared (non-string values are JSON-encoded) |
 | `MIEWEB_OS_SECRET_<NAME>` in the deploying shell | `<NAME>` (for secrets, e.g. `MIEWEB_OS_SECRET_API_KEY` → `API_KEY`) |
-| Provider-managed | `PORT`, `MIEWEB_TARGET`, `MIEWEB_APP_START`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MIEWEB_S3_ENDPOINT`, `MIEWEB_S3_ACCESS_KEY_ID`, `MIEWEB_S3_SECRET_ACCESS_KEY`, `MIEWEB_LIBSQL_URL`, `MIEWEB_VALKEY_URL` |
+| Provider-managed | `PORT`, `MIEWEB_TARGET`, `MIEWEB_APP_START`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MIEWEB_S3_ENDPOINT`, `MIEWEB_S3_ACCESS_KEY_ID`, `MIEWEB_S3_SECRET_ACCESS_KEY`, `MIEWEB_LIBSQL_URL`, `MIEWEB_VALKEY_URL`, `MIEWEB_SSH_ALLOW_USERS` |
 
 The MinIO password is generated on the first deploy and reused after that. Variables added to the container through the web UI are removed on the next deploy.
 
