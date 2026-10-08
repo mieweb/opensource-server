@@ -1092,9 +1092,6 @@ router.delete(
         externalHostname: s.httpService.externalHostname,
         ExternalDomain: s.httpService.externalDomain,
       }));
-    if (httpServices.length > 0) {
-      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
-    }
     // Delete the backing VM through the node's API. The NodeApi abstraction
     // (`node.api()`) hides the provider; a dummy node simply no-ops here. We
     // only attempt this when the container was actually provisioned (has a
@@ -1142,6 +1139,12 @@ router.delete(
         }
         console.log(`Node-side deletion ${gone ? 'found the VM already gone' : 'failed (forced)'}: ${err.message}`);
       }
+    }
+    // Only now that the VM is gone (or deletion was forced) drop its DNS
+    // records: doing it earlier would take a still-running container offline
+    // whenever the node-side delete fails and we return 502.
+    if (httpServices.length > 0) {
+      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
     }
     // Sharing grants are removed by the database via the containerId foreign
     // key's ON DELETE CASCADE. Volume rows cascade too, but their host

@@ -55,15 +55,27 @@ export function ContainersListPage() {
   });
 
   const del = useMutation({
-    // force: keep the UI's existing behavior of removing the record even when
-    // the node-side delete can't be confirmed (e.g. a decommissioned node).
-    mutationFn: (id: number) => api.delete(`/api/v1/sites/${siteId}/containers/${id}?force=true`),
+    // Safe by default: the Manager keeps the record (502 node_delete_failed)
+    // if it can't confirm the VM is gone. Forcing is an explicit second step.
+    mutationFn: ({ id, force }: { id: number; force?: boolean }) =>
+      api.delete(`/api/v1/sites/${siteId}/containers/${id}${force ? '?force=true' : ''}`),
     onSuccess: () => {
       toast.success('Container deleted');
       qc.invalidateQueries({ queryKey: keys.containers(siteId!) });
     },
-    onError: (err: ApiError) => toast.error(err.message),
+    onError: (err: ApiError, vars) => {
+      if (err.code === 'node_delete_failed' && !vars.force) {
+        const forceIt = confirm(
+          `${err.message}\n\nRemove the container record anyway? The VM may keep running on its node ` +
+            '(only do this if the node is gone for good).',
+        );
+        if (forceIt) del.mutate({ id: vars.id, force: true });
+        return;
+      }
+      toast.error(err.message);
+    },
   });
+  const onDelete = (id: number) => del.mutate({ id });
 
   const containers = data ?? [];
   const hasContainers = containers.length > 0;
@@ -127,7 +139,7 @@ export function ContainersListPage() {
           containers={containers}
           sessionUser={sessionUser}
           siteId={siteId}
-          onDelete={del.mutate}
+          onDelete={onDelete}
           deleting={del.isPending}
           canShare={canShareContainer}
           onShare={(target) => setShareTargetId(target.id)}

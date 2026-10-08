@@ -7,8 +7,15 @@
 const request = require('supertest');
 const { buildApp, bearer } = require('../../../../tests/helpers/app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
-const { Site, Node, Container } = require('../../../../models');
+const { Site, Node, Container, ExternalDomain, Service, HTTPService } = require('../../../../models');
 const DummyApi = require('../../../../utils/dummy-api');
+const { manageDnsRecords } = require('../../../../utils/cloudflare-dns');
+
+// Record DNS cleanup calls instead of talking to Cloudflare.
+jest.mock('../../../../utils/cloudflare-dns', () => ({
+  ...jest.requireActual('../../../../utils/cloudflare-dns'),
+  manageDnsRecords: jest.fn(async () => []),
+}));
 
 describe('DELETE container: node-side failures', () => {
   let app;
@@ -27,7 +34,10 @@ describe('DELETE container: node-side failures', () => {
     node = await Node.create({ siteId: site.id, name: 'n', nodeType: 'dummy' });
   });
 
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    manageDnsRecords.mockClear();
+  });
   afterAll(async () => {
     await closeDb();
   });
@@ -50,14 +60,22 @@ describe('DELETE container: node-side failures', () => {
       .mockImplementation(async () => (stillListed ? [{ vmid, type: 'lxc' }] : []));
   }
 
-  test('VM still exists → 502 and the record is kept', async () => {
+  async function withHttpService(c) {
+    const domain = await ExternalDomain.create({ name: `d${c.id}.example.test`, siteId: site.id });
+    const svc = await Service.create({ containerId: c.id, type: 'http', internalPort: 80 });
+    await HTTPService.create({ serviceId: svc.id, externalHostname: c.hostname, externalDomainId: domain.id });
+  }
+
+  test('VM still exists → 502, the record is kept, and DNS is untouched', async () => {
     nodeDeleteFails({ stillListed: true });
     const c = await provisioned('still-there');
+    await withHttpService(c);
     const res = await del(c);
     expect(res.status).toBe(502);
     expect(res.body.error.code).toBe('node_delete_failed');
     expect(res.body.error.message).toMatch(/storage locked/);
     expect(await Container.findByPk(c.id)).not.toBeNull();
+    expect(manageDnsRecords).not.toHaveBeenCalled();
   });
 
   test('VM already gone → success', async () => {
@@ -68,11 +86,13 @@ describe('DELETE container: node-side failures', () => {
     expect(await Container.findByPk(c.id)).toBeNull();
   });
 
-  test('force=true removes the record regardless', async () => {
+  test('force=true removes the record regardless, and only then cleans up DNS', async () => {
     nodeDeleteFails({ stillListed: true });
     const c = await provisioned('forced');
+    await withHttpService(c);
     const res = await del(c, '?force=true');
     expect(res.status).toBe(200);
+    expect(manageDnsRecords).toHaveBeenCalledWith(expect.any(Array), expect.anything(), 'delete');
     expect(await Container.findByPk(c.id)).toBeNull();
   });
 
