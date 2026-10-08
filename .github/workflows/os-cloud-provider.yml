@@ -19,8 +19,6 @@ on:
 
 permissions:
   contents: read
-  # @mieweb/deploy-contract preview versions come from GitHub Packages.
-  packages: read
 
 jobs:
   test:
@@ -43,11 +41,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
           cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
-          registry-url: https://npm.pkg.github.com
-          scope: '@mieweb'
       - run: pnpm install --frozen-lockfile
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Generated Manager types are up to date
         run: pnpm gen:types && git diff --exit-code -- src/generated
       - run: pnpm typecheck

@@ -113,11 +113,6 @@ jobs:
           npm view "@mieweb/deploy-contract@$spec" version --registry https://registry.npmjs.org >/dev/null \
             || { echo "::error::@mieweb/deploy-contract@$spec is not on npmjs"; exit 1; }
 
-      # .npmrc routes @mieweb/* to GitHub Packages for PR previews; a release
-      # must install from and publish to npmjs only.
-      - name: Use npmjs for @mieweb
-        run: rm -f .npmrc
-
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: packages/os-cloud-provider/package.json

@@ -50,5 +50,6 @@ the stack's existing local-first skopeo pattern
 set `targets.mieweb.image` to that reference and deploy. That run needs a
 privileged host, so keep it behind a CI gate.
 
-`@mieweb/deploy-contract` is not published to npm yet. It's a regular dependency installed with pnpm's subdirectory git syntax, pinned to a commit of mieweb/cloud#14:
-`github:mieweb/cloud#<sha>&path:/packages/deploy-contract`. Install the provider with pnpm, because npm can't resolve that specifier. Once the contract is published, switch it to a semver range (`^0.2.1`).
+`@mieweb/deploy-contract` is a regular npm dependency (`^0.3.0`), so the provider installs with npm, pnpm or yarn from the public registry.
+
+Releases: publishing a GitHub release of this repo publishes the provider to npm (`.github/workflows/release.yml`, job `publish-npm`), versioned from the release tag. Full releases are tagged `latest` and prereleases `next`. PRs publish preview builds to GitHub Packages (`os-cloud-provider-preview.yml`).

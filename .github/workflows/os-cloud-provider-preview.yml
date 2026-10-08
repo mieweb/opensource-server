@@ -4,7 +4,8 @@ name: os-cloud-provider preview package
 # @mieweb/os-cloud-provider to the GitHub Packages npm registry as
 # `<version>-pr<PR>.<run>` under dist-tag `pr<PR>`, so cross-repo PRs (e.g.
 # @mieweb/cli in mieweb/cloud) can depend on it with a plain semver reference
-# plus `@mieweb:registry=https://npm.pkg.github.com` in .npmrc. Once merged and
+# plus `@mieweb:registry=https://npm.pkg.github.com` in .npmrc. Dependencies
+# (including @mieweb/deploy-contract) always install from npmjs. Once merged and
 # released to npmjs, consumers switch to the real version and drop that line.
 
 on:
@@ -43,9 +44,9 @@ jobs:
           cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
           registry-url: https://npm.pkg.github.com
           scope: '@mieweb'
-      - run: pnpm install --frozen-lockfile
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # setup-node points @mieweb at GitHub Packages for the publish below;
+      # dependencies (incl. @mieweb/deploy-contract) come from npmjs.
+      - run: pnpm install --frozen-lockfile --config.@mieweb:registry=https://registry.npmjs.org/
       - name: Stamp preview version
         id: stamp
         env:
