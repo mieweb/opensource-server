@@ -46,9 +46,15 @@ function startServer(opts: { password?: string; publicKey?: Buffer; hostKey: str
           stream.on('data', (d: Buffer) => chunks.push(d));
           stream.on('end', () => {
             if (info.command === 'follow') {
+              // The client may close the channel at any time (abort), even
+              // before this first write.
+              if (!stream.writable) return;
               stream.write('a\n');
               stream.stderr.write('e\n');
-              const t = setInterval(() => stream.write('tick\n'), 10);
+              const t = setInterval(() => {
+                if (stream.writable) stream.write('tick\n');
+                else clearInterval(t);
+              }, 10);
               stream.on('close', () => clearInterval(t));
               return;
             }
@@ -244,6 +250,37 @@ describe('SshConnection', () => {
       await new Promise((r) => setTimeout(r, 200));
     } finally {
       await new Promise<void>((r) => tcp.close(() => r()));
+    }
+  });
+
+  test('an abort while the channel is still opening stops stream and exec', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile: join(home, 'kh-race'),
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: signal(),
+        logger,
+      });
+      const within = <T>(p: Promise<T>): Promise<T> =>
+        Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('still running after abort')), 3000))]);
+
+      // `follow` never ends on its own (like tail -f).
+      const a1 = new AbortController();
+      const streaming = conn.stream('follow', () => {}, a1.signal);
+      a1.abort(); // before the channel-open callback runs
+      assert.equal(await within(streaming), -1);
+
+      const a2 = new AbortController();
+      const executing = conn.exec('follow', undefined, a2.signal);
+      a2.abort(new Error('user cancelled'));
+      await assert.rejects(within(executing), /user cancelled/);
+      conn.close();
+    } finally {
+      await srv.close();
     }
   });
 

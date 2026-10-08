@@ -274,6 +274,10 @@ export class SshConnection implements RemoteShell {
         reject(opts.signal.reason);
       };
       opts.signal.addEventListener('abort', onAbort, { once: true });
+      if (opts.signal.aborted) {
+        onAbort();
+        return;
+      }
       let settled = false;
       const fail = (err: Error): void => {
         // ssh2 can emit several errors for one failed handshake (e.g. ECONNRESET
@@ -383,6 +387,12 @@ export class SshConnection implements RemoteShell {
         });
         stream.on('close', () => resolve({ code, stdout: Buffer.concat(out), stderr }));
         stream.on('error', reject);
+        // An abort while the channel was opening fired before onAbort was
+        // registered (AbortSignal doesn't replay): honor it now, send nothing.
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
         if (stdin === undefined) stream.end();
         else if (Buffer.isBuffer(stdin)) stream.end(stdin);
         else {
@@ -423,6 +433,12 @@ export class SshConnection implements RemoteShell {
           resolve(signal.aborted ? -1 : code);
         });
         stream.on('error', reject);
+        // Aborted while the channel was opening: close it right away (the
+        // 'close' handler above resolves -1) instead of running e.g. `tail -f`.
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
         stream.end();
       });
     });
