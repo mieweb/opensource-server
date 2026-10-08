@@ -9,8 +9,9 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting } = require('../models');
 const { isAgentlessNodeType } = require('./volumes');
+const { DEFAULT_QUOTA_MB } = require('./mail-account');
 
 // Owning host UID/GID for volume directories: Proxmox maps an unprivileged CT's
 // UID/GID 0 to host 100000, so RW volumes must be owned by 100000 to be writable
@@ -225,4 +226,63 @@ function computeConfigEtag(config) {
   return `"${hash}"`;
 }
 
-module.exports = { buildAgentConfig, computeConfigEtag };
+/**
+ * The `mail` snapshot section, sent ONLY to the agent holding the mail-host
+ * claim (issue #67). Carries everything the agent templates into
+ * Postfix/Dovecot/OpenDKIM config that is NOT read live from SQL: DKIM
+ * private keys for can-send domains, receiving domains, mail_hostname,
+ * relayhost, limits, and the DB connection. The mail_dovecot/mail_postfix
+ * DB passwords are NOT included — they live in /etc/default/container-creator
+ * on the mail host (bin/setup-mail-db-roles.sh) or socket auth is used.
+ *
+ * @param {object} dbConfig - resolved config/config.js entry for this env
+ * @returns {Promise<object>}
+ */
+async function buildMailSnapshot(dbConfig) {
+  const settings = await Setting.getMultiple([
+    'mail_hostname', 'mail_relayhost', 'mail_relayhost_username', 'mail_relayhost_password',
+    'mail_db_host', 'mail_default_quota_mb', 'mail_message_size_limit_mb',
+  ]);
+
+  const sendDomains = await ExternalDomain.findAll({
+    where: { mailEnabled: true, mailDnsVerified: true },
+    include: [{ model: DkimKey, as: 'dkimKeys', where: { status: 'active' }, required: true }],
+    order: [['name', 'ASC'], [{ model: DkimKey, as: 'dkimKeys' }, 'createdAt', 'DESC']],
+  });
+  const receiveDomains = await ExternalDomain.findAll({
+    where: { mailEnabled: true, mailMxVerified: true },
+    attributes: ['name'],
+    order: [['name', 'ASC']],
+  });
+
+  return {
+    hostname: settings.mail_hostname || null,
+    relayhost: settings.mail_relayhost
+      ? {
+        host: settings.mail_relayhost,
+        username: settings.mail_relayhost_username || null,
+        password: settings.mail_relayhost_password || null,
+      }
+      : null,
+    messageSizeLimitMb: parseInt(settings.mail_message_size_limit_mb, 10) || 25,
+    defaultQuotaMb: parseInt(settings.mail_default_quota_mb, 10) || DEFAULT_QUOTA_MB,
+    // DKIM signing material for domains that can send (newest active key).
+    dkim: sendDomains.map((d) => ({
+      domain: d.name,
+      selector: d.dkimKeys[0].selector,
+      privateKey: d.dkimKeys[0].privateKey,
+    })),
+    // Domains Postfix accepts inbound mail for on :25.
+    receiveDomains: receiveDomains.map((d) => d.name),
+    db: {
+      dialect: dbConfig.dialect,
+      host: settings.mail_db_host || dbConfig.host || null,
+      port: dbConfig.port ? Number(dbConfig.port) : null,
+      database: dbConfig.database || null,
+      dovecotUser: 'mail_dovecot',
+      postfixUser: 'mail_postfix',
+    },
+  };
+}
+
+module.exports = { buildAgentConfig, buildMailSnapshot, computeConfigEtag };

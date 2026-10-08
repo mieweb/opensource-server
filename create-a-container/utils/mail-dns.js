@@ -110,6 +110,28 @@ async function resolveTxtSafe(resolver, name) {
 }
 
 /**
+ * Reverse-lookup an IP and forward-confirm the result. Used by Check DNS
+ * warnings and by GET /mail/ptr to suggest a mail_hostname.
+ * @returns {Promise<{name: string|null, forwardConfirmed: boolean}>}
+ */
+async function lookupPtr({ ip, resolvers, resolver }) {
+  const r = resolver || makeResolver(resolvers);
+  try {
+    const names = await r.reverse(ip);
+    const name = names[0] || null;
+    let forwardConfirmed = false;
+    if (name) {
+      try {
+        forwardConfirmed = (await r.resolve4(name)).includes(ip);
+      } catch { /* not forward-confirmed */ }
+    }
+    return { name, forwardConfirmed };
+  } catch {
+    return { name: null, forwardConfirmed: false };
+  }
+}
+
+/**
  * Run the Check DNS pass for a domain.
  *
  * @param {object} p
@@ -172,24 +194,12 @@ async function checkMailDns({ domain, mailIp, mailHostname, spfInclude, dkimKey,
 
   // PTR (warnings only)
   if (mailIp) {
-    try {
-      const names = await r.reverse(mailIp);
-      const ptr = names[0] || null;
-      let forwardConfirmed = false;
-      if (ptr) {
-        try {
-          forwardConfirmed = (await r.resolve4(ptr)).includes(mailIp);
-        } catch { /* not forward-confirmed */ }
-      }
-      result.ptr = { name: ptr, forwardConfirmed };
-      if (!ptr) result.warnings.push(`No PTR record for ${mailIp}.`);
-      else if (!forwardConfirmed) result.warnings.push(`PTR ${ptr} is not forward-confirmed.`);
-      else if (mailHostname && ptr.toLowerCase() !== mailHostname.toLowerCase()) {
-        result.warnings.push(`PTR ${ptr} does not match mail_hostname ${mailHostname}.`);
-      }
-    } catch {
-      result.ptr = { name: null, forwardConfirmed: false };
-      result.warnings.push(`No PTR record for ${mailIp}.`);
+    const ptr = await lookupPtr({ ip: mailIp, resolver: r });
+    result.ptr = ptr;
+    if (!ptr.name) result.warnings.push(`No PTR record for ${mailIp}.`);
+    else if (!ptr.forwardConfirmed) result.warnings.push(`PTR ${ptr.name} is not forward-confirmed.`);
+    else if (mailHostname && ptr.name.toLowerCase() !== mailHostname.toLowerCase()) {
+      result.warnings.push(`PTR ${ptr.name} does not match mail_hostname ${mailHostname}.`);
     }
   }
 
@@ -200,6 +210,7 @@ module.exports = {
   DEFAULT_RESOLVERS,
   buildMailDnsRecords,
   checkMailDns,
+  lookupPtr,
   // exported for tests
   ipv4InCidr,
   spfRecordPasses,

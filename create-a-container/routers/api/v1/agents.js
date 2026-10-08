@@ -9,8 +9,12 @@
 
 const express = require('express');
 const { Agent, Site, Container, Volume } = require('../../../models');
-const { apiAuth, apiAdmin, localhostOrAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
-const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
+const { apiAuth, apiAdmin, localhostOrAdmin, isLocalhostRequest, asyncHandler, ok, noContent, fail } = require('../../../middlewares/api');
+const { buildAgentConfig, buildMailSnapshot, computeConfigEtag } = require('../../../utils/agent-config');
+const { MAIL_SERVICE, processMailClaim } = require('../../../utils/mail-host');
+
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = require('../../../config/config.js')[env];
 
 const router = express.Router();
 
@@ -53,7 +57,7 @@ async function applyVolumeResults(siteId, volumesResult) {
 }
 
 router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
-  const { siteId, hostname, ipv4Address, services, volumes } = req.body || {};
+  const { siteId, hostname, ipv4Address, services, volumes, enabledServices, missingBinaries } = req.body || {};
   const parsedSiteId = typeof siteId === 'number' ? siteId : Number(siteId);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {
     return fail(res, 422, 'validation_failed', 'siteId and hostname are required');
@@ -61,22 +65,47 @@ router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
 
   // Record the check-in. Skipped during bootstrap (the site row doesn't exist
   // yet) since the foreign key has nothing to point at.
+  let mailClaim = null;
   const site = await Site.findByPk(parsedSiteId);
   if (site) {
     const [agent] = await Agent.findOrCreate({
       where: { siteId: parsedSiteId, hostname },
     });
+    const isLocal = isLocalhostRequest(req);
+    // Remote agents are pinned to the API key of their first check-in so a
+    // leaked lesser key can't impersonate an established agent (issue #67).
+    // Admins clear a pin via DELETE /agents/:id/api-key-pin.
+    if (!isLocal && agent.apiKeyId && req.apiKey && agent.apiKeyId !== req.apiKey.id) {
+      return fail(res, 403, 'agent_key_mismatch', 'This agent is pinned to a different API key');
+    }
     await agent.update({
       ipv4Address: ipv4Address || null,
       services: services || null,
+      enabledServices: Array.isArray(enabledServices) ? enabledServices : null,
+      missingBinaries: Array.isArray(missingBinaries) ? missingBinaries : null,
+      isLocal,
+      apiKeyId: agent.apiKeyId || (!isLocal && req.apiKey ? req.apiKey.id : null),
       lastCheckinAt: new Date(),
     });
     // Transition Volume.status from the agent's per-volume directory results,
     // scoped to this site so a check-in can't touch another site's volumes.
     await applyVolumeResults(parsedSiteId, volumes);
+    // Mail-host claim: first agent reporting `mail` with everything installed
+    // wins; the rest see conflict (or unsupported on SQLite).
+    mailClaim = await processMailClaim(agent, {
+      wantsMail: Array.isArray(enabledServices) && enabledServices.includes(MAIL_SERVICE),
+      missingBinaries,
+    });
   }
 
   const config = await buildAgentConfig(parsedSiteId);
+  if (mailClaim && mailClaim.status !== 'disabled') {
+    config.mailStatus = mailClaim.status;
+    // Only the claim holder receives the mail section (DKIM private keys etc.).
+    if (mailClaim.status === 'holder') {
+      config.mail = await buildMailSnapshot(dbConfig);
+    }
+  }
   // Manual conditional-request handling: Express's built-in ETag/fresh logic
   // (res.send + req.fresh) only produces 304s for GET/HEAD, and the check-in
   // is a POST.
@@ -101,6 +130,11 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
     hostname: a.hostname,
     ipv4Address: a.ipv4Address,
     services: a.services,
+    enabledServices: a.enabledServices,
+    missingBinaries: a.missingBinaries,
+    mailHostSince: a.mailHostSince,
+    isLocal: a.isLocal,
+    hasApiKeyPin: !!a.apiKeyId,
     lastCheckinAt: a.lastCheckinAt,
     // Computed server-side so UI staleness judgments don't depend on the
     // client's clock.
@@ -108,6 +142,15 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
       ? Math.max(0, Math.round((now - new Date(a.lastCheckinAt).getTime()) / 1000))
       : null,
   })));
+}));
+
+// Clear a remote agent's API-key pin so it can re-pin on its next check-in
+// (e.g. after rotating the agent's key).
+router.delete('/:id/api-key-pin', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
+  const agent = await Agent.findByPk(req.params.id);
+  if (!agent) return fail(res, 404, 'not_found', 'Agent not found');
+  await agent.update({ apiKeyId: null });
+  return noContent(res);
 }));
 
 module.exports = router;
