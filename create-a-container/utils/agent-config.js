@@ -9,7 +9,7 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting, MailUnsubscribeKey } = require('../models');
 const { isAgentlessNodeType } = require('./volumes');
 const { DEFAULT_QUOTA_MB } = require('./mail-account');
 
@@ -242,6 +242,7 @@ async function buildMailSnapshot(dbConfig) {
   const settings = await Setting.getMultiple([
     'mail_hostname', 'mail_relayhost', 'mail_relayhost_username', 'mail_relayhost_password',
     'mail_db_host', 'mail_default_quota_mb', 'mail_message_size_limit_mb',
+    'mail_unsubscribe_base_url',
   ]);
 
   const sendDomains = await ExternalDomain.findAll({
@@ -282,6 +283,19 @@ async function buildMailSnapshot(dbConfig) {
       dovecotUser: 'mail_dovecot',
       postfixUser: 'mail_postfix',
     },
+    // opensource-mail-helper mints List-Unsubscribe tokens with the active
+    // key; retired-but-verifiable keys ride along so old links keep working
+    // after a rotation. The manager verifies with the same set.
+    unsubscribe: await buildUnsubscribeSection(settings.mail_unsubscribe_base_url),
+  };
+}
+
+async function buildUnsubscribeSection(baseUrl) {
+  await MailUnsubscribeKey.ensureActive();
+  const keys = await MailUnsubscribeKey.verifiable();
+  return {
+    baseUrl: baseUrl || null,
+    keys: keys.map((k) => ({ kid: k.kid, secret: k.secret, active: k.status === 'active' })),
   };
 }
 

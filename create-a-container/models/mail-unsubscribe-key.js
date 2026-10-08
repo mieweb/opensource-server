@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('crypto');
 const { Model } = require('sequelize');
 
 // Retired keys keep verifying previously issued unsubscribe links for this long.
@@ -10,6 +11,25 @@ module.exports = (sequelize, DataTypes) => {
     canVerify(now = Date.now()) {
       if (this.status === 'active') return true;
       return now - new Date(this.updatedAt).getTime() < RETIRED_KEY_RETENTION_MS;
+    }
+
+    /** The single active key, created on first use. */
+    static async ensureActive() {
+      const existing = await MailUnsubscribeKey.findOne({
+        where: { status: 'active' },
+        order: [['createdAt', 'DESC']],
+      });
+      if (existing) return existing;
+      return MailUnsubscribeKey.create({
+        kid: crypto.randomBytes(4).toString('hex'),
+        secret: crypto.randomBytes(32).toString('base64'),
+      });
+    }
+
+    /** Active + recently retired keys, newest first — the set that may verify tokens. */
+    static async verifiable() {
+      const keys = await MailUnsubscribeKey.findAll({ order: [['createdAt', 'DESC']] });
+      return keys.filter((k) => k.canVerify());
     }
   }
 
