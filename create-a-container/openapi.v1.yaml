@@ -927,7 +927,7 @@ paths:
           description: Bootstrap payload
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: object, properties: { siteId: { type: integer }, externalDomains: { type: array, items: { type: object } }, nvidiaAvailable: { type: boolean } } } } }
+              schema: { type: object, properties: { data: { type: object, required: [siteId, externalDomains, nvidiaAvailable], properties: { siteId: { type: integer }, externalDomains: { type: array, description: 'Usable domains; the site''s own default domains first', items: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string }, siteId: { type: integer, nullable: true } } } }, nvidiaAvailable: { type: boolean } } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:

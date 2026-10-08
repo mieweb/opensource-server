@@ -24,6 +24,7 @@
  */
 
 const express = require('express');
+const escapeHtml = require('escape-html');
 const { isOidcEnabled } = require('../../../utils/oidc');
 const { generateCsrfToken, asyncHandler } = require('../../../middlewares/api');
 const apiKeys = require('../../../resources/apikeys/service');
@@ -32,12 +33,6 @@ const router = express.Router();
 
 const STATE_RE = /^[A-Za-z0-9_-]{16,128}$/;
 const CLIENT_RE = /^[A-Za-z0-9._@-]{1,64}$/;
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[c]);
-}
 
 /**
  * Validate the CLI handoff params. Returns `{ port, state, client }` or throws
