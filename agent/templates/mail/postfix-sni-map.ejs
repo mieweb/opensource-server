@@ -1,0 +1,5 @@
+<%_ /* SNI map: one line per domain with cert material on disk. Compiled with
+      `postmap -F` (postWrite), which stores the key+chain in the .db. */ -%>
+<%_ certs.domains.forEach((d) => { _%>
+<%= d.name %> <%= d.key %> <%= d.cert %>
+<%_ }) _%>

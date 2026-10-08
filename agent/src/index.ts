@@ -15,20 +15,27 @@ import { loadConfig, type AgentConfig } from './config';
 import { State } from './state';
 import { getPrimaryIpv4, getServiceState, findMissingBinaries, disconnectSystemBus } from './system';
 import { checkin } from './api';
-import { enabledServices, GROUP_BINARIES, applyService } from './apply';
+import { services, GROUP_BINARIES, applyService, type ManagedService } from './apply';
+import { mailServices, ensureMailProvisioned, syncMailUnits, gcMailboxes } from './mail';
 import { reconcileVolumes } from './volumes';
 import { log } from './log';
-import type { CheckinRequest, ServiceStatus } from './types';
+import type { CheckinRequest, ServiceStatus, SiteConfig } from './types';
 
 // Safety cap: a flapping server-side config can't keep a single run alive
 // forever; the timer starts a fresh run 30s later anyway.
 const MAX_PASSES = 5;
 
+const ALL_SERVICES: ManagedService[] = [...services, ...mailServices];
+
+function enabledServices(cfg: AgentConfig): ManagedService[] {
+  return ALL_SERVICES.filter((svc) => cfg.services.includes(svc.group));
+}
+
 async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<CheckinRequest> {
   const serviceStatus: Record<string, ServiceStatus> = {};
   for (const svc of enabledServices(cfg)) {
     serviceStatus[svc.unit] = {
-      state: await getServiceState(svc.unit),
+      state: await getServiceState(svc.statusUnit ?? svc.unit),
       lastApply: state.lastApply[svc.unit] ?? 'unknown',
     };
   }
@@ -48,6 +55,19 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
     body.volumes = { ...state.pendingVolumeResults };
   }
   return body;
+}
+
+/** Post-apply mail housekeeping: unit enable/start (holder) or stop/disable
+ * (claim lost / group off), then mailbox GC. Failures are logged, not fatal
+ * — the next timer run retries. */
+async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig): Promise<void> {
+  if (!cfg.services.includes('mail')) return;
+  try {
+    await syncMailUnits(config);
+    if (config.mail) gcMailboxes(config.mail);
+  } catch (err) {
+    log.error(`mail: unit lifecycle sync failed: ${(err as Error).message}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -79,9 +99,14 @@ async function main(): Promise<void> {
     }
 
     log.info(`check-in: new config received (etag=${result.etag ?? '(none)'}), applying`);
+    // Mail users/dirs must exist before the mail configs reference them.
+    if (cfg.services.includes('mail') && result.config.mail) {
+      ensureMailProvisioned();
+    }
     for (const svc of enabledServices(cfg)) {
       state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
     }
+    await syncMailLifecycle(cfg, result.config);
 
     // Ensure volume directories exist from the new snapshot; stash results in
     // persistent state so they are reported on the next check-in and survive a

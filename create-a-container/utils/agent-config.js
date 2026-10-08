@@ -9,7 +9,7 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting, MailUnsubscribeKey } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting, MailUnsubscribeKey, MailAccount } = require('../models');
 const { isAgentlessNodeType } = require('./volumes');
 const { DEFAULT_QUOTA_MB } = require('./mail-account');
 
@@ -255,6 +255,11 @@ async function buildMailSnapshot(dbConfig) {
     attributes: ['name'],
     order: [['name', 'ASC']],
   });
+  // Every account id (enabled or not) — the agent garbage-collects
+  // /var/vmail dirs that are no longer in this list, after a retention
+  // window (deleted accounts).
+  const mailboxIds = (await MailAccount.findAll({ attributes: ['id'], order: [['id', 'ASC']] }))
+    .map((a) => a.id);
 
   return {
     hostname: settings.mail_hostname || null,
@@ -275,6 +280,7 @@ async function buildMailSnapshot(dbConfig) {
     })),
     // Domains Postfix accepts inbound mail for on :25.
     receiveDomains: receiveDomains.map((d) => d.name),
+    mailboxIds,
     db: {
       dialect: dbConfig.dialect,
       host: settings.mail_db_host || dbConfig.host || null,

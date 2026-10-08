@@ -1,0 +1,3 @@
+<%_ mail.dkim.forEach((k) => { _%>
+<%= k.selector %>._domainkey.<%= k.domain %> <%= k.domain %>:<%= k.selector %>:/etc/dkimkeys/<%= k.domain %>.private
+<%_ }) _%>

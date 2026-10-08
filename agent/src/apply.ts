@@ -30,6 +30,8 @@ interface RenderedFile {
   content: string;
   /** File mode for atomic writes (e.g. 0o600 for configs holding secrets). */
   mode?: number;
+  /** `user:group` to chown to after writing (e.g. DKIM keys → opendkim). */
+  owner?: string;
 }
 
 export interface ManagedService {
@@ -37,9 +39,15 @@ export interface ManagedService {
   unit: string;
   /** Service group this unit belongs to (AGENT_SERVICES opt-in). */
   group: ServiceGroup;
+  /** Unit whose ActiveState is reported at check-in when it differs from
+   * `unit` (Debian's postfix.service is a wrapper around postfix@-). */
+  statusUnit?: string;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
   render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;
+  /** Commands run after staging files, before `test` (e.g. `postmap -F` to
+   * compile the SNI hash map). A failure rolls the files back. */
+  postWrite?: string[][];
   /** Command that validates the staged config before it is kept. */
   test?: string[];
   /** Reload/restart after a successful apply. */
@@ -49,6 +57,9 @@ export interface ManagedService {
 function renderTemplate(template: string, data: object): Promise<string> {
   return ejs.renderFile(path.join(TEMPLATES_DIR, template), data);
 }
+
+/** Render a template from the shared templates dir (used by mail.ts too). */
+export { renderTemplate };
 
 // Run a command, capturing its output. execFileSync with stdio 'pipe' attaches
 // the captured stdout/stderr to the thrown error on failure (see commandOutput
@@ -114,11 +125,6 @@ export const services: ManagedService[] = [
   },
 ];
 
-/** The managed services for the agent's enabled service groups. */
-export function enabledServices(agent: AgentConfig): ManagedService[] {
-  return services.filter((svc) => agent.services.includes(svc.group));
-}
-
 function readIfExists(file: string): string | null {
   try {
     return fs.readFileSync(file, 'utf8');
@@ -129,9 +135,10 @@ function readIfExists(file: string): string | null {
 
 // Write via temp file + rename so a crash mid-write can never leave a
 // truncated config on disk.
-function writeFileAtomic(dest: string, content: string, mode?: number): void {
+function writeFileAtomic(dest: string, content: string, mode?: number, owner?: string): void {
   const tmp = `${dest}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
+  if (owner) run(['chown', owner, tmp]);
   fs.renameSync(tmp, dest);
 }
 
@@ -157,20 +164,33 @@ export async function applyService(
   log.info(`${svc.unit}: ${changed.length} file(s) changed, applying: ${changed.join(', ')}`);
 
   const modeByDest = new Map(files.map((f) => [f.dest, f.mode]));
+  const ownerByDest = new Map(files.map((f) => [f.dest, f.owner]));
   // Stage the new files (previous contents kept in memory for rollback).
   for (const f of files) {
     fs.mkdirSync(path.dirname(f.dest), { recursive: true });
-    writeFileAtomic(f.dest, f.content, f.mode);
+    writeFileAtomic(f.dest, f.content, f.mode, f.owner);
     log.debug(`${svc.unit}: wrote ${f.dest}`);
   }
 
   const rollback = () => {
     for (const [dest, prev] of current) {
       if (prev === null) fs.rmSync(dest, { force: true });
-      else writeFileAtomic(dest, prev, modeByDest.get(dest));
+      else writeFileAtomic(dest, prev, modeByDest.get(dest), ownerByDest.get(dest));
     }
     log.debug(`${svc.unit}: rolled back to previous config`);
   };
+
+  for (const cmd of svc.postWrite ?? []) {
+    try {
+      run(cmd);
+    } catch (err) {
+      rollback();
+      log.error(`${svc.unit}: post-write command failed (\`${cmd.join(' ')}\`), rolled back: ${(err as Error).message}`);
+      const output = commandOutput(err);
+      if (output) log.error(`${svc.unit}: post-write output:\n${output}`);
+      return 'failure';
+    }
+  }
 
   if (svc.test) {
     const testCmd = svc.test.join(' ');

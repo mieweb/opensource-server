@@ -1,0 +1,73 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+#
+# service   type  private unpriv  chroot  wakeup  maxproc command + args
+smtp        inet  n       -       y       -       -       smtpd
+
+# Submission (STARTTLS on 587, implicit TLS on 465): AUTH only after TLS,
+# sender must match the SASL login, suppressions are enforced at RCPT by the
+# opensource-mail-helper policy service, and everything accepted goes through
+# the mailhelper content filter for List-Unsubscribe headers.
+submission  inet  n       -       y       -       -       smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_tls_auth_only=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
+  -o smtpd_sasl_path=private/auth
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+  -o { smtpd_relay_restrictions = permit_sasl_authenticated, reject }
+  -o { smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:<%= helper.policyPort %>, permit_sasl_authenticated, reject }
+  -o content_filter=mailhelper:[127.0.0.1]:<%= helper.filterPort %>
+smtps       inet  n       -       y       -       -       smtpd
+  -o syslog_name=postfix/smtps
+  -o smtpd_tls_wrappermode=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
+  -o smtpd_sasl_path=private/auth
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+  -o { smtpd_relay_restrictions = permit_sasl_authenticated, reject }
+  -o { smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:<%= helper.policyPort %>, permit_sasl_authenticated, reject }
+  -o content_filter=mailhelper:[127.0.0.1]:<%= helper.filterPort %>
+
+# Transport to the opensource-mail-helper content filter.
+mailhelper  unix  -       -       y       -       -       smtp
+  -o syslog_name=postfix/mailhelper
+  -o smtp_send_xforward_command=yes
+  -o disable_dns_lookups=yes
+  -o smtp_tls_security_level=none
+
+# Reinjection listener: the OpenDKIM milter runs HERE (not on 587/465) so the
+# signature covers the headers the helper added.
+127.0.0.1:<%= helper.reinjectPort %> inet n - y - - smtpd
+  -o syslog_name=postfix/reinject
+  -o smtpd_milters=inet:127.0.0.1:<%= opendkimPort %>
+  -o content_filter=
+  -o mynetworks=127.0.0.0/8
+  -o { smtpd_relay_restrictions = permit_mynetworks, reject }
+  -o { smtpd_recipient_restrictions = permit_mynetworks, reject }
+  -o smtpd_tls_security_level=none
+  -o smtpd_authorized_xforward_hosts=127.0.0.0/8
+
+pickup      unix  n       -       y       60      1       pickup
+cleanup     unix  n       -       y       -       0       cleanup
+qmgr        unix  n       -       n       300     1       qmgr
+tlsmgr      unix  -       -       y       1000?   1       tlsmgr
+rewrite     unix  -       -       y       -       -       trivial-rewrite
+bounce      unix  -       -       y       -       0       bounce
+defer       unix  -       -       y       -       0       bounce
+trace       unix  -       -       y       -       0       bounce
+verify      unix  -       -       y       -       1       verify
+flush       unix  n       -       y       1000?   0       flush
+proxymap    unix  -       -       n       -       -       proxymap
+proxywrite  unix  -       -       n       -       1       proxymap
+smtp        unix  -       -       y       -       -       smtp
+relay       unix  -       -       y       -       -       smtp
+  -o syslog_name=postfix/$service_name
+showq       unix  n       -       y       -       -       showq
+error       unix  -       -       y       -       -       error
+retry       unix  -       -       y       -       -       error
+discard     unix  -       -       y       -       -       discard
+lmtp        unix  -       -       y       -       -       lmtp
+anvil       unix  -       -       y       -       1       anvil
+scache      unix  -       -       y       -       1       scache
+postlog     unix-dgram n  -       n       -       1       postlogd

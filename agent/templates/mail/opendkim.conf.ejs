@@ -1,0 +1,16 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+Syslog                  yes
+UMask                   007
+Mode                    s
+Socket                  inet:<%= opendkimPort %>@127.0.0.1
+UserID                  opendkim
+PidFile                 /run/opendkim/opendkim.pid
+
+Canonicalization        relaxed/simple
+# RFC 8058: the signature must cover List-Unsubscribe(-Post). Oversigning
+# both signs them when present and prevents later injection.
+OversignHeaders         From,List-Unsubscribe,List-Unsubscribe-Post
+
+KeyTable                /etc/opendkim/keytable
+SigningTable            refile:/etc/opendkim/signingtable
+InternalHosts           127.0.0.0/8

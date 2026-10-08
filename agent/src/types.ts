@@ -125,6 +125,9 @@ export interface MailConfig {
   defaultQuotaMb: number;
   dkim: { domain: string; selector: string; privateKey: string }[];
   receiveDomains: string[];
+  /** Every account id (any state) — /var/vmail dirs not in this list belong
+   * to deleted accounts and are garbage-collected after a retention window. */
+  mailboxIds: string[];
   db: {
     dialect: string;
     host: string | null;

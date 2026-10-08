@@ -6,8 +6,11 @@
  *   mail_accounts_v     address, password ({ARGON2ID}-prefixed PHC hash),
  *                       home, quota_bytes, can_send, can_receive
  *                       — enabled accounts only (Dovecot passdb/userdb)
- *   mail_senders_v      sender, login for can-send accounts
- *                       (Postfix smtpd_sender_login_maps)
+ *   mail_senders_v      sender, login, account_id, unsubscribe_headers
+ *                       for can-send accounts (Postfix
+ *                       smtpd_sender_login_maps; opensource-mail-helper uses
+ *                       account_id + unsubscribe_headers to mint
+ *                       List-Unsubscribe tokens)
  *   mail_suppressions_v sender, recipient
  *                       (submission policy service — reject at RCPT)
  *
@@ -49,7 +52,9 @@ function createViewsSql(dialect) {
       `${joins} WHERE ma.${q('enabled')}`,
 
     `CREATE VIEW mail_senders_v AS ` +
-      `SELECT ${address} AS sender, ${address} AS login ` +
+      `SELECT ${address} AS sender, ${address} AS login, ` +
+      `ma.${q('id')} AS account_id, ` +
+      `ma.${q('unsubscribeHeaders')} AS unsubscribe_headers ` +
       `${joins} WHERE ma.${q('enabled')} AND ${canSend}`,
 
     `CREATE VIEW mail_suppressions_v AS ` +
