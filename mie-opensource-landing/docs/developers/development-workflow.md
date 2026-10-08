@@ -90,7 +90,8 @@ This brings up:
 | `proxmox` | Virtualized Proxmox VE host |
 | Manager container | The Manager application, running as a CT (`100`) inside the virtualized Proxmox |
 | `zensical` | Rebuilds these docs on file changes |
-| Bootstrap (one-shot) | Configures the Manager container to use the virtualized Proxmox |
+| `maildev` | Catches all outgoing email from the Manager (password resets, invitations, notifications) |
+| Bootstrap (one-shot) | Configures the Manager container to use the virtualized Proxmox, and points SMTP at `maildev` if SMTP is unset |
 
 ### Manager Image Selection
 
@@ -137,6 +138,10 @@ and re-runs the bootstrap from scratch.
 | `http://localhost` | Redirects to `https://localhost` |
 | `https://localhost` | Documentation site |
 | `https://manager.localhost` | Manager Web UI |
+| `http://localhost:1080` | [MailDev](https://github.com/maildev/maildev) inbox for email sent by the Manager |
+
+!!! note "Email"
+    `maildev` shares the Proxmox container's network namespace, so the Manager reaches it at `smtp://10.254.0.1:1025` (the `vmbr0` gateway). Bootstrap sets this as the SMTP URL only when none is configured; to switch an existing stack to MailDev, set **Settings** → **SMTP URL** to that value.
 
 ### Credentials and Shell Access
 

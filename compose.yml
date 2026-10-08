@@ -135,6 +135,7 @@ services:
       - 127.0.0.1:80:80
       - 127.0.0.1:443:443
       - 127.0.0.1:8006:8006
+      - 127.0.0.1:1080:1080  # maildev web UI (maildev shares this network namespace)
     hostname: proxmox
     domainname: cluster.internal
     dns:
@@ -160,6 +161,19 @@ services:
       client:
         condition: service_healthy
 
+  # Catches every email the Manager sends (password resets, invitations,
+  # notifications) so they can be read at http://localhost:1080 instead of
+  # being delivered. It shares the Proxmox network namespace, so the Manager CT
+  # reaches it at the vmbr0 gateway, smtp://10.254.0.1:1025 — a fixed address
+  # that needs no DNS (the CT's resolver can't see Docker service names).
+  maildev:
+    image: maildev/maildev:2.2.1
+    network_mode: service:proxmox
+    depends_on:
+      proxmox:
+        condition: service_started
+        restart: true
+
   # After the Proxmox (which includes the manager LXC) is healthy we have to
   # bootstrap the Manager setup. The commands below were derived from doing a
   # manual bootstrap and copying the network requests.
@@ -182,6 +196,9 @@ services:
         curl -H "X-CSRF-Token: $${CSRF}" --json '{"name":"Development","internalDomain":"cluster.internal","dhcpRange":"10.254.1.1,10.254.254.254","subnetMask":"255.255.0.0","gateway":"10.254.0.1","dnsForwarders":"8.8.8.8,1.1.1.1","externalIp":"127.0.0.1"}' https://proxmox/api/v1/sites
         curl -H "X-CSRF-Token: $${CSRF}" --json '{"apiUrl":"https://10.254.0.1:8006","username":"root@pam","password":"root","tlsVerify":false}' https://proxmox/api/v1/sites/1/nodes/import
         curl -H "X-CSRF-Token: $${CSRF}" --json '{"name":"localhost","siteId":1,"acmeEmail":"","acmeDirectoryUrl":"","cloudflareApiEmail":"","cloudflareApiKey":"","authServer":""}' https://proxmox/api/v1/external-domains
+        # Point SMTP at maildev only when unset, so a developer's own SMTP setting survives. PUT replaces every setting, hence the GET round-trip.
+        curl https://proxmox/api/v1/settings | jq '.data | select(.smtpUrl == "") | .smtpUrl = "smtp://10.254.0.1:1025" | .smtpNoreplyAddress |= if . == "" then "noreply@cluster.internal" else . end' > settings.json
+        [ -s settings.json ] && curl -H "X-CSRF-Token: $${CSRF}" -X PUT --json @settings.json https://proxmox/api/v1/settings
         curl -H "X-CSRF-Token: $${CSRF}" -X PUT --json '{"hostname":"manager","template":"","entrypoint":"","nvidiaRequested":false,"services":{"s0":{"type":"http","internalPort":3000,"externalHostname":"manager","externalDomainId":1,"dnsName":"","authRequired":false}},"environmentVars":[],"restart":false}' https://proxmox/api/v1/sites/1/containers/1
     depends_on:
       proxmox:

@@ -16,6 +16,18 @@ Users in the **ldapusers** group can SSH into any container using their cluster 
 | **Creating** | Being provisioned |
 | **Failed** | Creation or startup failed |
 
+## Ownership Transfer
+
+Admins can hand a container to another active user from the container's edit page (**Ownership** → **Transfer**), e.g. when the owner leaves the organization.
+
+| Moves to the new owner | Not changed |
+|---|---|
+| Container record and Proxmox owner tag | Running container (no restart) |
+| Approved/pending resource requests | Volume data (host paths are fixed at creation) |
+| | Other collaborators |
+
+The new owner's sharing grant, if any, is removed. The previous owner loses access unless the new owner shares it back. API (admin only): `PUT /api/v1/sites/{siteId}/containers/{id}` with `{ "username": "<new owner>" }`.
+
 ## Volumes
 
 Containers can attach persistent **[volumes](volumes.md)** — bind-mount

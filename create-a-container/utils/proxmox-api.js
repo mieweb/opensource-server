@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { URL } = require('url');
+const { generateVmid } = require('./vmid');
 
 /**
  * 
@@ -253,11 +254,12 @@ class ProxmoxApi {
   }
 
   /**
-   * @returns {Promise<number>} - The next available VMID
+   * Allocate a VMID locally instead of via /cluster/nextid, which returns the
+   * same ID to concurrent callers and causes create conflicts.
+   * @returns {Promise<number>} - A pseudo-random VMID
    */
   async nextId() {
-    const response = await axios.get(`${this.baseUrl}/api2/json/cluster/nextid`, this.options);
-    return response.data.data;
+    return generateVmid();
   }
 
   /**

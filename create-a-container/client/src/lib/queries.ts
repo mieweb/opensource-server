@@ -114,6 +114,11 @@ export const queries = {
     api.delete<{ collaborators: string[] }>(
       `/api/v1/sites/${siteId}/containers/${id}/collaborators/${encodeURIComponent(username)}`,
     ),
+  transferContainerOwnership: (siteId: number | string, id: number | string, username: string) =>
+    api.put<{ containerId: number; message: string }>(
+      `/api/v1/sites/${siteId}/containers/${id}`,
+      { username },
+    ),
   containerBootstrap: (siteId: number | string) =>
     api.get<ContainerNewBootstrap>(`/api/v1/sites/${siteId}/containers/new`),
   containerMetadata: (siteId: number | string, image: string) =>
