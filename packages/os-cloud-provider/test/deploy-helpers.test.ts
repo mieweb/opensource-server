@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
 import type { Container } from '../src/api-types.ts';
+import { mask } from '../src/jobs.ts';
 import { buildEnv, envUnchanged, MANAGED_ENV, normalizeImageRef, pickDomain, planServices, servicesUnchanged } from '../src/deploy.ts';
 
 describe('normalizeImageRef (mirrors the Manager)', () => {
@@ -129,6 +130,14 @@ describe('planServices', () => {
     assert.deepEqual(Object.keys(plan).filter((k) => k.startsWith('del-')).sort(), ['del-3', 'del-4', 'del-5']);
     assert.equal(plan['del-4']!.deleted, true);
   });
+});
+
+test('mask hides secrets raw and JSON-escaped', () => {
+  const secret = 'pa"ss\\wo\trd';
+  const logged = `Config: ${JSON.stringify({ env: `API_KEY=${secret}` })} raw=${secret}`;
+  const out = mask(logged, [secret]);
+  assert.ok(!out.includes('pa"ss') && !out.includes('pa\\"ss'), out);
+  assert.match(out, /API_KEY=\*\*\*.* raw=\*\*\*/);
 });
 
 describe('change detection', () => {

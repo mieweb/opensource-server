@@ -1,12 +1,12 @@
 [Unit]
 Description=libSQL server (D1 / Vectorize binding backend)
-After=network.target environment.service
+After=network.target environment.service mieweb-env.service
 
 [Service]
 Type=simple
 User=mieweb
 Group=mieweb
-EnvironmentFile=-/etc/environment
+EnvironmentFile=-/run/mieweb/env
 ExecStartPre=+/usr/local/bin/mieweb-data-dir libsql
 ExecStart=/usr/local/bin/sqld --no-welcome --db-path /mnt/data/libsql/data.sqld --http-listen-addr 127.0.0.1:8080
 Restart=always

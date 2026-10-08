@@ -688,6 +688,20 @@ describe('login / logout', () => {
     assert.deepEqual(JSON.parse(await readFile(creds, 'utf8')).pendingRevocations, {});
   });
 
+  test('a key minted by a login that then fails is revoked, not leaked', async () => {
+    const creds = join(dir, 'leak-creds.json');
+    fake.failSessionFor = 'minted-key';
+    const p = provider(
+      { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: creds },
+      { login: { openBrowser: (u) => void browser(u) } },
+    );
+    await assert.rejects(p.login!(harness({ argv: ['--instance', fake.url] }).ctx), /500 internal_error/);
+    assert.equal(fake.tokens.has('minted-key'), false, 'revoked on the Manager');
+    const stored = JSON.parse(await readFile(creds, 'utf8'));
+    assert.deepEqual(stored.instances, {});
+    assert.deepEqual(stored.pendingRevocations, {});
+  });
+
   test('the loopback listener honors an abort that fired before it was listening', async () => {
     const loop = await startLoopback('s'.repeat(32), AbortSignal.abort(new Error('user cancelled')), 60_000);
     try {

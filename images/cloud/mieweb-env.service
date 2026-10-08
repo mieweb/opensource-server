@@ -1,0 +1,12 @@
+[Unit]
+Description=Export the container environment for the mieweb services (escaped)
+DefaultDependencies=no
+After=systemd-remount-fs.target environment.service
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mieweb-env
+
+[Install]
+WantedBy=sysinit.target

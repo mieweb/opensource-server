@@ -84,15 +84,36 @@ export async function readCredential(env: ProviderEnv, instanceUrl: string): Pro
  * revocation in the same locked update, so no concurrent login can make a
  * replaced key untracked.
  */
+function queue(data: CredentialFile, instanceUrl: string, key: PendingRevocation): void {
+  const list = data.pendingRevocations[instanceUrl] ?? [];
+  if (!list.some((p) => p.apiKeyId === key.apiKeyId)) {
+    data.pendingRevocations[instanceUrl] = [...list, { token: key.token, apiKeyId: key.apiKeyId }];
+  }
+}
+
+/**
+ * Queue a key for revocation. `login` queues a freshly minted key first, so a
+ * failure before it is stored as the login can never leave it untracked.
+ */
+export async function addPendingRevocation(env: ProviderEnv, instanceUrl: string, key: PendingRevocation): Promise<void> {
+  await mutate(env, (data) => {
+    queue(data, instanceUrl, key);
+    return true;
+  });
+}
+
+/**
+ * Store `cred` as the instance's login in one locked update: the key it
+ * replaces is queued for revocation, and `cred`'s own key is taken off the
+ * queue (it was queued as a safety net until it was stored).
+ */
 export async function replaceCredential(env: ProviderEnv, instanceUrl: string, cred: StoredCredential): Promise<void> {
   await mutate(env, (data) => {
     const previous = data.instances[instanceUrl];
-    if (previous && previous.apiKeyId !== cred.apiKeyId) {
-      const list = data.pendingRevocations[instanceUrl] ?? [];
-      if (!list.some((p) => p.apiKeyId === previous.apiKeyId)) {
-        data.pendingRevocations[instanceUrl] = [...list, { token: previous.token, apiKeyId: previous.apiKeyId }];
-      }
-    }
+    if (previous && previous.apiKeyId !== cred.apiKeyId) queue(data, instanceUrl, previous);
+    const rest = (data.pendingRevocations[instanceUrl] ?? []).filter((p) => p.apiKeyId !== cred.apiKeyId);
+    if (rest.length > 0) data.pendingRevocations[instanceUrl] = rest;
+    else delete data.pendingRevocations[instanceUrl];
     data.instances[instanceUrl] = cred;
     return true;
   });
@@ -105,10 +126,7 @@ export async function removeCredential(env: ProviderEnv, instanceUrl: string): P
     const cred = data.instances[instanceUrl];
     if (!cred) return false;
     had = true;
-    const list = data.pendingRevocations[instanceUrl] ?? [];
-    if (!list.some((p) => p.apiKeyId === cred.apiKeyId)) {
-      data.pendingRevocations[instanceUrl] = [...list, { token: cred.token, apiKeyId: cred.apiKeyId }];
-    }
+    queue(data, instanceUrl, cred);
     delete data.instances[instanceUrl];
     return true;
   });

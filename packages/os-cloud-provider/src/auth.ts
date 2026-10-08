@@ -23,6 +23,7 @@ import {
   resolveToken,
 } from './config.ts';
 import {
+  addPendingRevocation,
   readPendingRevocations,
   removeCredential,
   removePendingRevocations,
@@ -225,10 +226,26 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     (hooks.openBrowser ?? defaultOpenBrowser)(authUrl);
 
     const handoff = await loop.result;
+    const minted = { token: handoff.key, apiKeyId: handoff.id };
 
-    const user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
+    // The key now exists on the Manager. Track it before anything else can
+    // fail: queued for revocation until it's stored as the login below.
+    try {
+      await addPendingRevocation(deps.env, instanceUrl, minted);
+    } catch (err) {
+      // Can't even record it: revoke it right away rather than leak it.
+      await revoke(instanceUrl, minted, ctx, deps);
+      throw err;
+    }
 
-    // Revoke the key this login replaces, so repeated logins don't pile up keys.
+    let user: string;
+    try {
+      user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
+    } catch (err) {
+      await revokeAll(instanceUrl, ctx, deps, logger); // includes the new key
+      throw err;
+    }
+
     // Store the new key and queue the one it replaces in one locked update.
     await replaceCredential(deps.env, instanceUrl, {
       token: handoff.key,

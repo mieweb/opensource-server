@@ -65,6 +65,8 @@ export class FakeManager {
   noVolumes = false;
   /** Status new volumes end up in once their job runs. */
   volumeOutcome: 'ready' | 'failed' = 'ready';
+  /** Answer GET /session with a 500 for this token. */
+  failSessionFor?: string;
   /** Answer DELETE /apikeys/:id with a 500 (Manager trouble). */
   failRevokes = false;
   /** Extra output line every new job logs (e.g. to check secret masking). */
@@ -224,7 +226,10 @@ export class FakeManager {
     const who = auth.startsWith('Bearer ') ? this.tokens.get(auth.slice(7)) : undefined;
     if (!who) return fail(401, 'unauthorized', 'Authentication required');
 
-    if (req.method === 'GET' && path === '/session') return ok({ user: who.user, isAdmin: false });
+    if (req.method === 'GET' && path === '/session') {
+      if (this.failSessionFor && auth === `Bearer ${this.failSessionFor}`) return fail(500, 'internal_error', 'boom');
+      return ok({ user: who.user, isAdmin: false });
+    }
 
     let m = /^\/apikeys\/([^/]+)$/.exec(path);
     if (m && req.method === 'DELETE') {

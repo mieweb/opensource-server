@@ -35,7 +35,10 @@ case "${1:-}" in
     deps="$({ cat package.json pnpm-lock.yaml yarn.lock package-lock.json 2>/dev/null || true; } | sha256sum | cut -d' ' -f1)"
     # Reinstall when the manifest/lockfile changed, or node_modules went
     # missing for an app that has dependencies (npm creates none otherwise).
-    has_deps=$([[ "$(npm pkg get dependencies)" != "{}" || "$(npm pkg get devDependencies)" != "{}" ]] && echo 1 || true)
+    has_deps=''
+    for field in dependencies devDependencies optionalDependencies; do
+      [[ "$(npm pkg get "$field")" != "{}" ]] && has_deps=1
+    done
     if [[ "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" || ( -n "$has_deps" && ! -d node_modules ) ]]; then
       echo "Installing dependencies: ${install[*]}"
       rm -f "$DEPS_STAMP"

@@ -660,7 +660,9 @@ paths:
         requests are rejected. Mints an API key for the session user and
         303-redirects to `http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…`.
         The key is in the URL fragment, so it never appears in a request line.
-      security: []
+      # Browser session only: Bearer-only requests are rejected.
+      security:
+        - SessionCookie: []
       requestBody:
         content:
           application/x-www-form-urlencoded:

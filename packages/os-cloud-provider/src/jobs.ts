@@ -27,10 +27,17 @@ export class JobFailedError extends Error {
   }
 }
 
-/** Replace every occurrence of each secret with `***`. */
+/**
+ * Replace every occurrence of each secret with `***`, both raw and in its
+ * JSON-escaped form (older Managers log the LXC config with JSON.stringify,
+ * which escapes `"`, `\`, tabs, …).
+ */
 export function mask(text: string, secrets: Iterable<string> | undefined): string {
   let out = text;
-  for (const s of secrets ?? []) if (s) out = out.split(s).join('***');
+  for (const s of secrets ?? []) {
+    if (!s) continue;
+    for (const form of new Set([s, JSON.stringify(s).slice(1, -1)])) out = out.split(form).join('***');
+  }
   return out;
 }
 
