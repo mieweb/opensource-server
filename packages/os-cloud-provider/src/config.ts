@@ -112,7 +112,7 @@ export interface TargetSettings {
   sshUser?: string;
   /** SSH host override (default: the container's published sshHost). */
   sshHost?: string;
-  /** Start command inside the container (default `npm start`). */
+  /** Start command inside the container (default: the app's `start` script via its package manager). */
   start?: string;
 }
 

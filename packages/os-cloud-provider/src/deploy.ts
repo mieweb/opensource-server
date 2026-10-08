@@ -32,7 +32,7 @@ import {
   type ExtraService,
   type TargetSettings,
 } from './config.ts';
-import { waitForJob } from './jobs.ts';
+import { JobFailedError, waitForJob } from './jobs.ts';
 import { ttyPrompter, type Prompter } from './prompt.ts';
 import { forgetHostKey, knownHostsPath, SshConnection, SshError, type RemoteShell, type SshTarget } from './ssh.ts';
 import { lineSplitter, syncWorktree } from './sync.ts';
@@ -482,9 +482,12 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const settle = async (c: Container): Promise<Container | null> => {
     if (c.containerId || c.status !== 'creating' || !c.creationJobId) return c;
     logger.info(`Container ${c.id} is still being created; waiting for job ${c.creationJobId}`);
-    // Its outcome is judged below from the re-read; only an abort stops us.
+    // A create that *finished* with failure is judged from the re-read below
+    // (and recreated). Anything else (a Manager 5xx, a dropped connection, a
+    // timeout, an abort) leaves the outcome unknown: the create may still be
+    // running, so stop rather than delete a container that's being built.
     await wait(c.creationJobId).catch((err: unknown) => {
-      if (signal.aborted) throw err;
+      if (!(err instanceof JobFailedError)) throw err;
     });
     return findByHostname(client, siteId, name);
   };

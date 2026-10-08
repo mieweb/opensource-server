@@ -212,7 +212,7 @@ Site agent registered by its check-in (`POST /api/v1/agents`, every 30s). Unique
 LXC container on a Proxmox node. Unique composite index on `(nodeId, containerId)`. `hostname`, `macAddress`, `ipv4Address` globally unique. `nvidiaRequested` indicates GPU passthrough was requested — the container is assigned to an NVIDIA-capable node and the nvidia hookscript is attached. Belongs to Node and optionally to a Job.
 
 ### Service (STI)
-Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container.
+Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Container. The child rows (`HTTPServices`, `TransportServices`, `DnsServices`) reference `Services.id` through a unique `serviceId` with `ON DELETE CASCADE`, so deleting a Service removes its child row.
 
 - **HTTPService**: `(externalHostname, externalDomainId)` unique. Belongs to ExternalDomain. `backendProtocol` controls `proxy_pass` scheme (`http` or `https`). `authRequired` enables NGINX `auth_request` against the domain's oauth2-proxy — requires the domain's `authServer` to be configured.
 - **TransportService**: `(protocol, externalPort)` unique. `findNextAvailablePort()` static method.

@@ -364,6 +364,15 @@ describe('deploy', () => {
     assert.equal(await readFile(join(dir, '.mieweb', 'known_hosts'), 'utf8'), '');
   });
 
+  test('an in-flight create whose job cannot be polled is left alone, not recreated', async () => {
+    const c = fake.seedCreating('myapp');
+    fake.failJobPolls = c.creationJobId!;
+    await assert.rejects(provider().deploy(harness().ctx), /500 internal_error/);
+    assert.equal(fake.containers.length, 1);
+    assert.equal(fake.containers[0]!.id, c.id);
+    assert.ok(!fake.requests.some((r) => r.method === 'DELETE' || r.method === 'POST'));
+  });
+
   test('a lost create race waits for the other create to finish before updating', async () => {
     fake.beforeCreate = (hostname) => {
       fake.beforeCreate = undefined;

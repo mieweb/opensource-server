@@ -6,7 +6,7 @@
 
 Each app gets **one container** on the site, named after `wrangler.jsonc` `name` (it must be a valid DNS label). The container runs the [`cloud` image](../developers/docker-images.md#converged-app-cloud):
 
-- your app, copied from your local worktree and started with `npm start` on `$PORT` (default `8787`)
+- your app, copied from your local worktree and started with its package manager's `start` script (`npm`, `pnpm` or `yarn`, picked from the lockfile) on `$PORT` (default `8787`)
 - MinIO, libSQL (`sqld`) and Valkey on `127.0.0.1`, backing the R2, D1/Vectorize and KV/Queue bindings
 - a persistent read-write [volume](../admins/core-concepts/volumes.md) at `/mnt/data` for all datastore state
 
@@ -65,7 +65,7 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
       "domain": "os.mieweb.org",     // external domain (name or id); default: the site's first
       "externalHostname": "my-app",  // default: wrangler.jsonc `name`
       "authRequired": false,         // put the site's auth proxy in front of the app
-      "start": "npm start",          // start command inside the container
+      "start": "npm run serve",      // start command (default: `<npm|pnpm|yarn> run start`)
       "sshUser": "alice",            // default: your Manager username
       "sshHost": "203.0.113.10",     // default: the container's published SSH host
       "sync": true,                  // false: converge the container only, don't copy code

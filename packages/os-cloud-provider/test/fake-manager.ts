@@ -65,6 +65,8 @@ export class FakeManager {
   noVolumes = false;
   /** Status new volumes end up in once their job runs. */
   volumeOutcome: 'ready' | 'failed' = 'ready';
+  /** Answer GET /jobs/:id with a 500 for this job id (Manager trouble). */
+  failJobPolls?: number;
   /** Answer GET /session with a 500 for this token. */
   failSessionFor?: string;
   /** Answer DELETE /apikeys/:id with a 500 (Manager trouble). */
@@ -242,6 +244,9 @@ export class FakeManager {
     }
 
     m = /^\/jobs\/(\d+)(\/status)?$/.exec(path);
+    if (m && req.method === 'GET' && !m[2] && Number(m[1]) === this.failJobPolls) {
+      return fail(500, 'internal_error', 'database unavailable');
+    }
     if (m && req.method === 'GET' && !m[2] && this.dropJobPolls > 0) {
       this.dropJobPolls -= 1;
       req.socket.destroy();

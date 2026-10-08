@@ -7,7 +7,7 @@
 # `mieweb deploy` copies the app's worktree into /opt/app/src over SSH and then
 # restarts this unit, waiting for `prepare` to finish. Environment (set by the
 # deploy provider):
-#   MIEWEB_APP_START  start command (default: `npm start`); must listen on $PORT
+#   MIEWEB_APP_START  start command (default: `<npm|pnpm|yarn> run start`); must listen on $PORT
 #   PORT              HTTP port the app listens on (default 8787)
 set -euo pipefail
 
@@ -19,7 +19,13 @@ cd "$APP_DIR"
 if [[ -f pnpm-lock.yaml ]]; then
   install=(corepack pnpm install --frozen-lockfile); run=(corepack pnpm run)
 elif [[ -f yarn.lock ]]; then
-  install=(corepack yarn install --immutable); run=(corepack yarn run)
+  # Yarn Classic (1.x) spells it --frozen-lockfile; Berry (2+) --immutable.
+  if [[ "$(corepack yarn --version)" == 1.* ]]; then
+    install=(corepack yarn install --frozen-lockfile)
+  else
+    install=(corepack yarn install --immutable)
+  fi
+  run=(corepack yarn run)
 elif [[ -f package-lock.json ]]; then
   install=(npm ci); run=(npm run)
 else
@@ -39,7 +45,9 @@ case "${1:-}" in
     for field in dependencies devDependencies optionalDependencies; do
       [[ "$(npm pkg get "$field")" != "{}" ]] && has_deps=1
     done
-    if [[ "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" || ( -n "$has_deps" && ! -d node_modules ) ]]; then
+    # Yarn Plug'n'Play installs .pnp.cjs instead of node_modules.
+    installed=$([[ -d node_modules || -f .pnp.cjs ]] && echo 1 || true)
+    if [[ "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" || ( -n "$has_deps" && -z "$installed" ) ]]; then
       echo "Installing dependencies: ${install[*]}"
       rm -f "$DEPS_STAMP"
       "${install[@]}"
@@ -51,8 +59,11 @@ case "${1:-}" in
     fi
     ;;
   run)
-    echo "Starting app on port $PORT"
-    exec bash -c "${MIEWEB_APP_START:-npm start}"
+    # Start through the app's own package manager by default: Yarn Plug'n'Play
+    # apps only resolve their dependencies under `yarn`, not `npm start`.
+    start=${MIEWEB_APP_START:-"${run[*]} start"}
+    echo "Starting app on port $PORT: $start"
+    exec bash -c "$start"
     ;;
   *)
     echo "usage: $0 prepare|run" >&2
