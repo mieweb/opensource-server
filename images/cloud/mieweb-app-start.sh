@@ -23,14 +23,20 @@ elif [[ -f yarn.lock ]]; then
 elif [[ -f package-lock.json ]]; then
   install=(npm ci); run=(npm run)
 else
-  install=(npm install); run=(npm run)
+  # No lockfile in the app: don't create one here. deploy would delete it on
+  # the next sync (it isn't in the worktree), changing the dependency stamp
+  # and forcing a full reinstall on every deploy.
+  install=(npm install --no-package-lock); run=(npm run)
 fi
 
 case "${1:-}" in
   prepare)
     # (Missing lockfiles are expected; don't let `cat` fail the script.)
     deps="$({ cat package.json pnpm-lock.yaml yarn.lock package-lock.json 2>/dev/null || true; } | sha256sum | cut -d' ' -f1)"
-    if [[ ! -d node_modules || "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" ]]; then
+    # Reinstall when the manifest/lockfile changed, or node_modules went
+    # missing for an app that has dependencies (npm creates none otherwise).
+    has_deps=$([[ "$(npm pkg get dependencies)" != "{}" || "$(npm pkg get devDependencies)" != "{}" ]] && echo 1 || true)
+    if [[ "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" || ( -n "$has_deps" && ! -d node_modules ) ]]; then
       echo "Installing dependencies: ${install[*]}"
       rm -f "$DEPS_STAMP"
       "${install[@]}"
