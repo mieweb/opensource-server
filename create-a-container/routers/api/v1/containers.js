@@ -28,6 +28,7 @@ const { deleteVirtualMachine, withNetbox } = require('../../../utils/netbox');
 const {
   computeContainerStatus,
   computeContainerStatuses,
+  findInSnapshot,
   STATUS,
 } = require('../../../utils/container-status');
 const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
@@ -1098,9 +1099,17 @@ router.delete(
     // (`node.api()`) hides the provider; a dummy node simply no-ops here. We
     // only attempt this when the container was actually provisioned (has a
     // VMID/containerId).
+    //
+    // The database row is only removed once the VM is verifiably gone: if the
+    // node-side delete fails and the VM still exists (or the node can't be
+    // asked), respond 502 so callers don't believe a running VM was deleted.
+    // `?force=true` removes the record regardless (e.g. the node is gone for
+    // good).
+    const force = req.query.force === 'true' || req.query.force === '1';
     if (container.containerId) {
+      let api = null;
       try {
-        const api = await node.api();
+        api = await node.api();
         const config = await api.lxcConfig(node.name, container.containerId);
         if (config.hostname && config.hostname !== container.hostname) {
           throw new ApiError(
@@ -1109,10 +1118,29 @@ router.delete(
             `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`,
           );
         }
-        await api.deleteContainer(node.name, container.containerId, true, true);
+        const result = await api.deleteContainer(node.name, container.containerId, true, true);
+        // Proxmox deletes asynchronously and returns a task id; wait for it so
+        // a failed delete isn't reported as success.
+        const upid = result?.data;
+        if (typeof upid === 'string' && upid.startsWith('UPID:')) await api.waitForTask(node.name, upid);
       } catch (err) {
         if (err instanceof ApiError) throw err;
-        console.log(`Node-side deletion skipped or failed: ${err.message}`);
+        let gone = false;
+        if (api) {
+          try {
+            gone = !findInSnapshot(await api.clusterResources('lxc'), container.containerId);
+          } catch {
+            gone = false; // can't verify
+          }
+        }
+        if (!gone && !force) {
+          throw new ApiError(
+            502,
+            'node_delete_failed',
+            `Could not delete the VM on node ${node.name}: ${err.message}. Retry, or pass force=true to remove the record anyway.`,
+          );
+        }
+        console.log(`Node-side deletion ${gone ? 'found the VM already gone' : 'failed (forced)'}: ${err.message}`);
       }
     }
     // Sharing grants are removed by the database via the containerId foreign

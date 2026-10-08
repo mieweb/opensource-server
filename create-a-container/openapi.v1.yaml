@@ -1027,6 +1027,12 @@ paths:
     delete:
       operationId: delete_container
       tags: [Containers]
+      description: >-
+        Deletes the VM on its node, then the record. The record is kept and 502
+        returned if the node-side delete fails and the VM still exists (or the
+        node can't be checked), unless `force=true`.
+      parameters:
+        - { in: query, name: force, schema: { type: boolean }, description: 'Remove the record even if the node-side delete fails' }
       responses:
         '200':
           description: Deleted, with DNS cleanup warnings
@@ -1036,6 +1042,7 @@ paths:
         '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: 'DB/Proxmox hostname mismatch — delete aborted (code: hostname_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '502': { description: 'Node-side delete failed and the VM still exists or could not be checked (code: node_delete_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }

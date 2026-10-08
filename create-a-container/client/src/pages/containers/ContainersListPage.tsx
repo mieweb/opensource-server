@@ -55,7 +55,9 @@ export function ContainersListPage() {
   });
 
   const del = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/v1/sites/${siteId}/containers/${id}`),
+    // force: keep the UI's existing behavior of removing the record even when
+    // the node-side delete can't be confirmed (e.g. a decommissioned node).
+    mutationFn: (id: number) => api.delete(`/api/v1/sites/${siteId}/containers/${id}?force=true`),
     onSuccess: () => {
       toast.success('Container deleted');
       qc.invalidateQueries({ queryKey: keys.containers(siteId!) });
