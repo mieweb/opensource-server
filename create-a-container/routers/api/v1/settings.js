@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { Setting } = require('../../../models');
-const { apiAuth, apiAdmin, asyncHandler, ok } = require('../../../middlewares/api');
+const { apiAuth, apiAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
 
 const router = express.Router();
 
@@ -18,6 +18,18 @@ const KEYS = [
   'netbox_token',
   'banner_message',
   'usage_psi_probe_limit',
+  // Mail service (issue #67)
+  'mail_hostname',
+  'mail_unsubscribe_base_url',
+  'mail_relayhost',
+  'mail_relayhost_username',
+  'mail_relayhost_password',
+  'mail_spf_include',
+  'mail_dns_check_resolvers',
+  'mail_db_host',
+  'mail_self_managed_site_id',
+  'mail_default_quota_mb',
+  'mail_message_size_limit_mb',
 ];
 
 router.get(
@@ -38,6 +50,17 @@ router.get(
       netboxToken: settings.netbox_token || '',
       bannerMessage: settings.banner_message || '',
       usagePsiProbeLimit: settings.usage_psi_probe_limit || '',
+      mailHostname: settings.mail_hostname || '',
+      mailUnsubscribeBaseUrl: settings.mail_unsubscribe_base_url || '',
+      mailRelayhost: settings.mail_relayhost || '',
+      mailRelayhostUsername: settings.mail_relayhost_username || '',
+      mailRelayhostPassword: settings.mail_relayhost_password || '',
+      mailSpfInclude: settings.mail_spf_include || '',
+      mailDnsCheckResolvers: settings.mail_dns_check_resolvers || '',
+      mailDbHost: settings.mail_db_host || '',
+      mailSelfManagedSiteId: settings.mail_self_managed_site_id || '',
+      mailDefaultQuotaMb: settings.mail_default_quota_mb || '',
+      mailMessageSizeLimitMb: settings.mail_message_size_limit_mb || '',
     });
   }),
 );
@@ -53,7 +76,23 @@ router.put(
       netboxToken,
       bannerMessage,
       usagePsiProbeLimit,
+      mailHostname,
+      mailUnsubscribeBaseUrl,
+      mailRelayhost,
+      mailRelayhostUsername,
+      mailRelayhostPassword,
+      mailSpfInclude,
+      mailDnsCheckResolvers,
+      mailDbHost,
+      mailSelfManagedSiteId,
+      mailDefaultQuotaMb,
+      mailMessageSizeLimitMb,
     } = req.body || {};
+
+    // A relayhost sends from the relay's IPs, so SPF must delegate to it.
+    if ((mailRelayhost || '').trim() && !(mailSpfInclude || '').trim()) {
+      return fail(res, 422, 'validation_failed', 'mailSpfInclude is required when a relayhost is set');
+    }
 
     const envVars = [];
     if (Array.isArray(defaultContainerEnvVars)) {
@@ -80,6 +119,22 @@ router.put(
       'usage_psi_probe_limit',
       Number.isNaN(psiParsed) || psiParsed < 0 ? '' : String(psiParsed),
     );
+
+    const positiveIntOrEmpty = (value) => {
+      const n = parseInt(String(value ?? '').trim(), 10);
+      return Number.isNaN(n) || n < 1 ? '' : String(n);
+    };
+    await Setting.set('mail_hostname', (mailHostname || '').trim());
+    await Setting.set('mail_unsubscribe_base_url', (mailUnsubscribeBaseUrl || '').trim().replace(/\/+$/, ''));
+    await Setting.set('mail_relayhost', (mailRelayhost || '').trim());
+    await Setting.set('mail_relayhost_username', (mailRelayhostUsername || '').trim());
+    await Setting.set('mail_relayhost_password', mailRelayhostPassword || '');
+    await Setting.set('mail_spf_include', (mailSpfInclude || '').trim());
+    await Setting.set('mail_dns_check_resolvers', (mailDnsCheckResolvers || '').trim());
+    await Setting.set('mail_db_host', (mailDbHost || '').trim());
+    await Setting.set('mail_self_managed_site_id', positiveIntOrEmpty(mailSelfManagedSiteId));
+    await Setting.set('mail_default_quota_mb', positiveIntOrEmpty(mailDefaultQuotaMb));
+    await Setting.set('mail_message_size_limit_mb', positiveIntOrEmpty(mailMessageSizeLimitMb));
 
     return ok(res, { saved: true });
   }),
