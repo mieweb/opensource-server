@@ -10,10 +10,12 @@
  *    sign-in (OIDC or the SPA password form) and returns here afterwards. It
  *    passes its own URL as a *relative* `redirect`, which the existing
  *    `safeRedirectUrl` allowlist already accepts.
- * 2. With a session, it shows a confirmation page. A GET never mints a key, so
- *    a link or <img> can't create keys silently.
+ * 2. With a session, it shows a confirmation page and records a one-time
+ *    handoff in the session. A GET never mints a key, so a link or <img>
+ *    can't create keys silently.
  * 3. The confirmation form POSTs back here (session + CSRF protected). The route
- *    mints an API key for the session user and 303-redirects to
+ *    consumes the one-time handoff (a replayed POST is rejected), mints an API
+ *    key for the session user and 303-redirects to
  *    http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…
  *
  * Loopback safety: this route does NOT use `safeRedirectUrl`. Only a port is
@@ -30,6 +32,10 @@ const { generateCsrfToken, asyncHandler } = require('../../../middlewares/api');
 const apiKeys = require('../../../resources/apikeys/service');
 
 const router = express.Router();
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => req.session.save((err) => (err ? reject(err) : resolve())));
+}
 
 const STATE_RE = /^[A-Za-z0-9_-]{16,128}$/;
 const CLIENT_RE = /^[A-Za-z0-9._@-]{1,64}$/;
@@ -95,6 +101,11 @@ router.get('/callback', asyncHandler(async (req, res) => {
     return res.redirect(302, target);
   }
 
+  // One-time handoff, bound to this browser session: the POST below consumes
+  // it before minting, so a double-click or retried request can't mint a
+  // second key the CLI would never receive (and so could never revoke).
+  req.session.cliHandoff = { state: handoff.state, port: handoff.port };
+  await saveSession(req);
   const csrfToken = generateCsrfToken(req);
   const label = handoff.client || 'mieweb-cli';
   return page(res, 200, 'Authorize command-line access', `
@@ -132,6 +143,13 @@ router.post('/callback', asyncHandler(async (req, res) => {
   } catch (msg) {
     return errorPage(res, msg);
   }
+
+  const pending = req.session.cliHandoff;
+  if (!pending || pending.state !== handoff.state || pending.port !== handoff.port) {
+    return errorPage(res, 'This sign-in was already completed or has expired.');
+  }
+  delete req.session.cliHandoff;
+  await saveSession(req);
 
   const description = `${handoff.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
   const { key, plainKey } = await apiKeys.createKey(req.session.user, { description });

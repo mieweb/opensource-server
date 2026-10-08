@@ -139,6 +139,30 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(session.body.data.user).toBe('alice');
   });
 
+  test('the handoff is one-time: a replayed POST mints no second key', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const form = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);
+    const body = { _csrf: csrfFrom(form.text), port: '53682', state: STATE };
+    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
+    const first = await agent.post(BASE).set(...REMOTE).type('form').send(body);
+    expect(first.status).toBe(303);
+    const replay = await agent.post(BASE).set(...REMOTE).type('form').send(body);
+    expect(replay.status).toBe(400);
+    expect(replay.text).toMatch(/already completed or has expired/);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
+  });
+
+  test('a POST without a matching confirmation page (other state/port) is rejected', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const form = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);
+    const res = await agent
+      .post(BASE)
+      .set(...REMOTE)
+      .type('form')
+      .send({ _csrf: csrfFrom(form.text), port: '53683', state: STATE });
+    expect(res.status).toBe(400);
+  });
+
   test('a Bearer key cannot mint another key through the handoff', async () => {
     const { plainKey } = await createApiKey(alice);
     const res = await request(app)
