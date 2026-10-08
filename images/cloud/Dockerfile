@@ -58,7 +58,11 @@ COPY --from=libsqld /out-sqld /usr/local/bin/sqld
 
 # Unprivileged service account that owns datastore state and runs the app.
 # The deploy provider streams the app into /opt/app/src over SSH (sudo tar).
-RUN useradd --system --home-dir /opt/app --shell /usr/sbin/nologin mieweb && \
+# Fixed UID/GID: datastore files on the persistent /mnt/data volume are owned
+# by these numbers and outlive the image, so a rebuild must not renumber them.
+# (useradd fails the build if 950 is ever taken.)
+RUN groupadd --system --gid 950 mieweb && \
+    useradd --system --uid 950 --gid 950 --home-dir /opt/app --shell /usr/sbin/nologin mieweb && \
     install -d -o mieweb -g mieweb /opt/app /opt/app/src
 
 COPY --chmod=0755 mieweb-data-dir.sh /usr/local/bin/mieweb-data-dir
@@ -69,6 +73,9 @@ COPY minio.service libsqld.service valkey.service app.service mieweb-ssh-allow.s
 # environment.service (from base) copies PID 1's environment, where the
 # Manager puts the container's env vars, into /etc/environment. The units read
 # that file, so enable it explicitly instead of relying on first-boot presets.
+# Both SSH activation paths require the allow-list gate (fail closed).
+COPY ssh-requires-mieweb-allow.conf /etc/systemd/system/ssh.service.d/50-mieweb-allow.conf
+COPY ssh-requires-mieweb-allow.conf /etc/systemd/system/ssh.socket.d/50-mieweb-allow.conf
 RUN systemctl enable environment.service mieweb-env.service mieweb-ssh-allow.service minio.service libsqld.service valkey.service app.service
 
 # The persistent volume (#421) mounts here; the directory also exists in the

@@ -66,8 +66,15 @@ export function resolveInstanceUrl(env: ProviderEnv, targetConfig: Readonly<Reco
 export function instanceFromArgv(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i]!;
-    if (a === '--instance') return str(argv[i + 1]);
-    if (a.startsWith('--instance=')) return str(a.slice('--instance='.length));
+    let value: string | undefined;
+    if (a === '--instance') value = argv[i + 1];
+    else if (a.startsWith('--instance=')) value = a.slice('--instance='.length);
+    else continue;
+    // A bare `--instance` must not fall back to the default Manager: login
+    // would sign in to (and logout revoke keys on) the wrong instance.
+    const url = str(value);
+    if (!url || url.startsWith('-')) throw new ConfigError('--instance needs a Manager URL, e.g. --instance https://os.mieweb.org');
+    return url;
   }
   return undefined;
 }

@@ -1,11 +1,15 @@
 [Unit]
 Description=Restrict SSH to the container's owner, collaborators and deployer
+# Fail closed: needs the environment export, and sshd requires this unit (see
+# ssh-requires-mieweb-allow.conf), so if either fails sshd doesn't start.
+Requires=environment.service
 After=environment.service
 Before=ssh.service ssh.socket
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/local/bin/mieweb-ssh-allow
 
 [Install]
-WantedBy=multi-user.target ssh.service
+WantedBy=multi-user.target

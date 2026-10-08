@@ -52,22 +52,11 @@ jobs:
       # setup-node points @mieweb at GitHub Packages for the publish below;
       # dependencies (incl. @mieweb/deploy-contract) come from npmjs.
       - run: pnpm install --frozen-lockfile --config.@mieweb:registry=https://registry.npmjs.org/
-      - name: Stamp preview version
+      # Version + default image for this PR's preview; run locally the same way:
+      #   node scripts/stamp-preview.mjs <pr> <run>
+      - name: Stamp preview version and default image
         id: stamp
-        env:
-          SUFFIX: pr${{ github.event.pull_request.number }}.${{ github.run_number }}
-        run: |
-          v=$(node -p 'require("./package.json").version.replace(/-.*$/, "")')-$SUFFIX
-          npm pkg set version="$v"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      # Preview builds default to this PR's cloud image (build-images.yml pushes
-      # cloud:pr-<N> on every PR push); `latest` only exists after a release.
-      - name: Default to this PR's cloud image
-        env:
-          TAG: pr-${{ github.event.pull_request.number }}
-        run: |
-          sed -i "s#\(DEFAULT_IMAGE = 'ghcr.io/mieweb/opensource-server/cloud\):latest'#\1:$TAG'#" src/config.ts
-          grep -q "cloud:$TAG'" src/config.ts
+        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}"
       # prepack builds dist/.
       - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
         env:

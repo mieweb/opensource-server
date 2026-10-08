@@ -46,6 +46,9 @@ test('instanceFromArgv', () => {
   assert.equal(instanceFromArgv(['--instance', 'http://a.test']), 'http://a.test');
   assert.equal(instanceFromArgv(['-x', '--instance=http://b.test']), 'http://b.test');
   assert.equal(instanceFromArgv([]), undefined);
+  for (const bad of [['--instance'], ['--instance='], ['--instance', ''], ['--instance', '--other']]) {
+    assert.throws(() => instanceFromArgv(bad), /--instance needs a Manager URL/, JSON.stringify(bad));
+  }
 });
 
 describe('appName', () => {
