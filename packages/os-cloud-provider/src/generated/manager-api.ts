@@ -1190,6 +1190,7 @@ export interface components {
             tlsVerify?: boolean | null;
             imageStorage?: string;
             volumeStorage?: string;
+            sharedVolumeStorage?: string | null;
             networkBridge?: string;
             nvidiaAvailable?: boolean;
             hasSecret?: boolean;
@@ -1212,8 +1213,13 @@ export interface components {
             tlsVerify?: boolean | null;
             /** @default local */
             imageStorage: string;
-            /** @default local-lvm */
+            /**
+             * @description Proxmox storage for container root filesystems (`rootdir`); may be block storage (lvmthin/rbd/zfspool).
+             * @default local-lvm
+             */
             volumeStorage: string;
+            /** @description Path-backed shared storage (cephfs/nfs/dir) hosting persistent volumes under `<path>/volumes`. Null/blank falls back to `volumeStorage`. */
+            sharedVolumeStorage?: string | null;
             /** @default vmbr0 */
             networkBridge: string;
             /** @default false */
@@ -2338,7 +2344,7 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /** @description (Admin only) Reassign ownership of this container to the specified existing user */
+                    /** @description (Admin only) Transfer ownership to another active user. The new owner's sharing grant is removed and the container's resource requests move with it. */
                     username?: string;
                     /** @description Keyed map of service changes (keys are arbitrary). Entries with `deleted: true` remove the service `id`; entries with an `id` may toggle `authRequired`; entries without an `id` create a new service. */
                     services?: {
@@ -2385,7 +2391,24 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            404: components["responses"]["NotFound"];
+            /** @description not_found (container) or user_not_found (transfer target) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description user_inactive — transfer target is not an active user */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     delete_container: {
