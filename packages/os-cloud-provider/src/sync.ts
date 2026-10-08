@@ -90,15 +90,19 @@ export class IgnoreRules {
 export async function scanLocal(
   root: string,
   signal?: AbortSignal,
-): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules }> {
+): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules; ignoredDirs: string[]; rootIgnore: string }> {
   const rules = new IgnoreRules();
   const files = new Map<string, FileEntry>();
+  const ignoredDirs: string[] = [];
+  let rootIgnore = '';
 
   const walk = async (dir: string): Promise<void> => {
     signal?.throwIfAborted();
     const abs = join(root, dir);
     try {
-      rules.add(dir, await readFile(join(abs, '.gitignore'), 'utf8'));
+      const content = await readFile(join(abs, '.gitignore'), 'utf8');
+      if (dir === '') rootIgnore = content;
+      rules.add(dir, content);
     } catch (err) {
       // Only "there is no .gitignore here" is fine. An unreadable one must
       // stop the sync: skipping its rules could upload excluded files (secrets).
@@ -112,6 +116,7 @@ export async function scanLocal(
       const rel = dir === '' ? e.name : `${dir}/${e.name}`;
       if (e.isDirectory()) {
         if (!rules.ignores(rel, true)) await walk(rel);
+        else ignoredDirs.push(rel);
         continue;
       }
       if (rules.ignores(rel)) continue;
@@ -126,7 +131,7 @@ export async function scanLocal(
     }
   };
   await walk('');
-  return { files, rules };
+  return { files, rules, ignoredDirs, rootIgnore };
 }
 
 export interface RemoteEntry {
@@ -247,10 +252,47 @@ export const APP_SETTLE_SECONDS = 5;
 /** Exit code the restart script uses for "started, then stopped/crashed/restarted". */
 const APP_NOT_RUNNING = 86;
 
+const LISTING_FORMAT = '%P\\0%s\\0%T@\\0%m\\0%y\\0%l\\0';
+
+/**
+ * Directory-name patterns from the root `.gitignore` that `find -name` can
+ * prune anywhere: plain names (globs allowed), optionally with a trailing
+ * slash. Anything path-shaped or using `**` is left to the client-side rules,
+ * and nothing is pruned by name if the file re-includes anything (`!`).
+ */
+export function pruneNames(rootIgnore: string): string[] {
+  const lines = rootIgnore.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  if (lines.some((l) => l.startsWith('!'))) return [];
+  return lines
+    .map((l) => l.replace(/\/$/, ''))
+    .filter((l) => l && !l.includes('/') && !l.includes('**') && !l.startsWith('\\'));
+}
+
+/**
+ * List the remote tree, without descending into ignored directories
+ * (`node_modules`, build output, ...): git never re-includes anything under
+ * an excluded directory, so their contents can't matter, and walking them
+ * would make every incremental deploy O(all generated files). Pruned
+ * directories are still listed themselves, so a file↔directory conflict at
+ * that path is still detected.
+ */
+export function listCommand(prune: { paths: readonly string[]; names: readonly string[] }): string {
+  const conds = [
+    ...prune.paths.map((p) => ['-path', `./${p}`]),
+    ...prune.names.map((n) => ['-name', n]),
+  ];
+  const pruneExpr =
+    conds.length === 0
+      ? []
+      : ['(', ...conds.flatMap((c, i) => (i === 0 ? c : ['-o', ...c])), ')', '-type', 'd', '-prune', '-printf', LISTING_FORMAT, '-o'];
+  return `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
+    'sudo', 'find', '.', '-mindepth', '1', ...pruneExpr,
+    '(', '-type', 'f', '-o', '-type', 'l', '-o', '-type', 'd', ')', '-printf', LISTING_FORMAT,
+  ])}`;
+}
+
 export const REMOTE = {
-  list: `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
-    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', '-o', '-type', 'd', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0%l\\0',
-  ])}`,
+  list: listCommand({ paths: [], names: [] }),
   extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
   remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
   removeTrees: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -rf --`,
@@ -346,7 +388,9 @@ export async function syncWorktree(
   logger: DeployLogger,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<SyncPlan> {
-  const [{ files, rules }, listing] = await Promise.all([scanLocal(root, signal), run(shell, 'listing', REMOTE.list, signal)]);
+  const { files, rules, ignoredDirs, rootIgnore } = await scanLocal(root, signal);
+  const list = listCommand({ paths: ignoredDirs, names: pruneNames(rootIgnore) });
+  const listing = await run(shell, 'listing', list, signal);
   const plan = planSync(files, parseRemoteListing(listing), rules);
   const bytes = plan.upload.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
   logger.info(

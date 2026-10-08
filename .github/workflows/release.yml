@@ -108,7 +108,9 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
-          registry-url: https://registry.npmjs.org
+          # No `registry-url`: it would write `_authToken=${NODE_AUTH_TOKEN}` to
+          # an .npmrc, and npm would pick that (token) auth instead of the OIDC
+          # trusted-publishing exchange. npm defaults to registry.npmjs.org.
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
@@ -118,16 +120,21 @@ jobs:
         if: steps.meta.outputs.skip != 'true'
         run: npm pkg set version="${{ steps.meta.outputs.version }}"
 
-      # pnpm pack runs prepack (builds dist/); npm publish does the upload so
-      # trusted publishing (OIDC) and provenance work. NPM_TOKEN is only a
-      # fallback for when trusted publishing isn't configured on npmjs.
+      # pnpm pack runs prepack (builds dist/); npm publish does the upload via
+      # trusted publishing (OIDC, configured on npmjs for this repo +
+      # release.yml) with provenance. No token: any configured token would be
+      # used instead of the OIDC exchange.
       - name: Publish to npm
         if: steps.meta.outputs.skip != 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ steps.meta.outputs.dist-tag }}
         run: |
           npm install -g npm@latest
+          # Fail fast if some npmrc still carries token auth for npmjs.
+          if npm config list 2>/dev/null | grep -q '_authToken'; then
+            echo "::error::An npm auth token is configured; trusted publishing (OIDC) needs none."
+            exit 1
+          fi
           pnpm pack --pack-destination "$RUNNER_TEMP"
           npm publish "$RUNNER_TEMP"/mieweb-os-cloud-provider-*.tgz --access public --provenance --tag "$DIST_TAG"
           echo "Published \`@mieweb/os-cloud-provider@${{ steps.meta.outputs.version }}\` to npmjs (\`$DIST_TAG\`)." >> "$GITHUB_STEP_SUMMARY"

@@ -90,6 +90,22 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(back).toBe(`${BASE}?port=53682&state=${STATE}&client=cli`);
   });
 
+  test('a proxy base path (X-Forwarded-Prefix) is kept in the sign-in and return URLs', async () => {
+    const res = await request(app)
+      .get(`${BASE}?port=53682&state=${STATE}`)
+      .set(...REMOTE)
+      .set('X-Forwarded-Prefix', '/manager/');
+    expect(res.status).toBe(302);
+    const loc = new URL(res.headers.location, 'http://manager.test');
+    expect(loc.pathname).toBe('/manager/login');
+    expect(loc.searchParams.get('redirect')).toBe(`/manager${BASE}?port=53682&state=${STATE}`);
+  });
+
+  test.each(['//evil.example', 'https://evil.example', '/a/../b', '/a b'])('an unsafe X-Forwarded-Prefix %j is ignored', async (prefix) => {
+    const res = await request(app).get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', prefix);
+    expect(new URL(res.headers.location, 'http://manager.test').pathname).toBe('/login');
+  });
+
   test('authenticated GET shows a confirmation form and mints nothing', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });

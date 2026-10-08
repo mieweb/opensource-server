@@ -27,6 +27,8 @@ export class FakeShell implements RemoteShell {
     this.dir = dir;
   }
 
+  /** Paths the last listing reported (to check pruning). */
+  listed: string[] = [];
   /** Called before each exec (e.g. to abort mid-sync). */
   beforeExec?: (command: string) => void;
 
@@ -37,8 +39,16 @@ export class FakeShell implements RemoteShell {
     const input = await toBuffer(stdin);
     const ok = (stdout = Buffer.alloc(0)): ExecResult => ({ code: 0, stdout, stderr: '' });
 
-    if (command === REMOTE.list) {
+    if (command.includes(' find . -mindepth 1 ')) {
       await mkdir(this.dir, { recursive: true });
+      // Honor the listing's prune expression like find would: list a matching
+      // directory, don't descend into it.
+      const prunePaths = [...command.matchAll(/-path \.\/(\S+)/g)].map((m) => m[1]!.replace(/^'|'$/g, ''));
+      const pruneNames = [...command.matchAll(/-name (\S+)/g)].map((m) => {
+        const glob = m[1]!.replace(/^'|'$/g, '').replace(/\\(.)/g, '$1');
+        return new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+      });
+      this.listed = [];
       const out: string[] = [];
       const walk = async (rel: string): Promise<void> => {
         for (const e of await readdir(join(this.dir, rel), { withFileTypes: true })) {
@@ -46,10 +56,13 @@ export class FakeShell implements RemoteShell {
           if (e.isDirectory()) {
             const st = await lstat(join(this.dir, p));
             out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), 'd', '');
+            this.listed.push(p);
+            if (prunePaths.includes(p) || pruneNames.some((re) => re.test(e.name))) continue;
             await walk(p);
           } else {
             const st = await lstat(join(this.dir, p));
             const link = st.isSymbolicLink();
+            this.listed.push(p);
             out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), link ? 'l' : 'f', link ? await readlink(join(this.dir, p)) : '');
           }
         }

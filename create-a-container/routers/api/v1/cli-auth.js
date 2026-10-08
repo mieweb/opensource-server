@@ -47,6 +47,18 @@ function claimHandoff(key) {
   return true;
 }
 
+/**
+ * Path prefix the Manager is served under behind a reverse proxy (e.g.
+ * `https://host/manager`), from `X-Forwarded-Prefix`. Only a plain path is
+ * accepted, so it can't turn the redirects below into another origin.
+ */
+function basePrefix(req) {
+  const raw = (req.get('X-Forwarded-Prefix') || '').trim().replace(/\/+$/, '');
+  if (!raw) return '';
+  if (!/^(\/[A-Za-z0-9._~-]+)+$/.test(raw) || raw.split('/').includes('..')) return '';
+  return raw;
+}
+
 function saveSession(req) {
   return new Promise((resolve, reject) => req.session.save((err) => (err ? reject(err) : resolve())));
 }
@@ -108,10 +120,11 @@ router.get('/callback', asyncHandler(async (req, res) => {
     // query string is dropped.
     const params = new URLSearchParams({ port: String(handoff.port), state: handoff.state });
     if (handoff.client) params.set('client', handoff.client);
-    const self = `${req.baseUrl}/callback?${params.toString()}`;
+    const prefix = basePrefix(req);
+    const self = `${prefix}${req.baseUrl}/callback?${params.toString()}`;
     const target = isOidcEnabled()
-      ? `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(self)}`
-      : `/login?redirect=${encodeURIComponent(self)}`;
+      ? `${prefix}/api/v1/auth/oidc/login?redirect=${encodeURIComponent(self)}`
+      : `${prefix}/login?redirect=${encodeURIComponent(self)}`;
     return res.redirect(302, target);
   }
 
@@ -129,7 +142,7 @@ router.get('/callback', asyncHandler(async (req, res) => {
 account. The key will be sent to a program listening on <code>127.0.0.1:${handoff.port}</code>
 on <em>this</em> computer.</p>
 <p>Only continue if you just ran <code>mieweb login</code>.</p>
-<form method="post" action="${escapeHtml(`${req.baseUrl}/callback`)}">
+<form method="post" action="${escapeHtml(`${basePrefix(req)}${req.baseUrl}/callback`)}">
   <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}">
   <input type="hidden" name="port" value="${handoff.port}">
   <input type="hidden" name="state" value="${escapeHtml(handoff.state)}">

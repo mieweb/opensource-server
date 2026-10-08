@@ -3,7 +3,7 @@ import { chmod, lstat, lutimes, mkdir, mkdtemp, readFile, readlink, rm, symlink,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { IgnoreRules, planSync, REMOTE, scanLocal, syncWorktree } from '../src/sync.ts';
+import { IgnoreRules, planSync, pruneNames, REMOTE, scanLocal, syncWorktree } from '../src/sync.ts';
 import { FakeShell } from './fake-shell.ts';
 
 const logger = { info() {}, warn() {}, error() {} };
@@ -183,14 +183,34 @@ describe('syncWorktree', () => {
     assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [] });
   });
 
+  test('the remote listing does not descend into ignored directories', async () => {
+    await syncWorktree(local, new FakeShell(remote), logger);
+    // Remote-only build output and installed deps, like the container has.
+    await put(remote, 'node_modules/big/index.js', 'x');
+    await put(remote, 'node_modules/big/lib/deep.js', 'x');
+    await put(remote, 'dist/out.js', 'x');
+    const shell = new FakeShell(remote);
+    const plan = await syncWorktree(local, shell, logger);
+    assert.deepEqual(plan, { upload: [], remove: [], conflicts: [] });
+    assert.ok(shell.listed.includes('node_modules'), 'pruned dir itself is listed');
+    assert.ok(!shell.listed.some((p) => p.startsWith('node_modules/') || p.startsWith('dist/')), shell.listed.join(','));
+    assert.equal(await readFile(join(remote, 'node_modules/big/index.js'), 'utf8'), 'x', 'left untouched');
+  });
+
+  test('pruneNames: plain names only, none if anything is re-included', () => {
+    assert.deepEqual(pruneNames('node_modules/\n*.log\ndist\n/build\nsrc/gen/\n# c\n**/tmp\n'), ['node_modules', '*.log', 'dist']);
+    assert.deepEqual(pruneNames('node_modules/\n!keep\n'), []);
+  });
+
   test('cancellation stops the sync before it uploads or deletes', async () => {
     const ac = new AbortController();
     const shell = new FakeShell(remote);
     shell.beforeExec = (cmd) => {
-      if (cmd === REMOTE.list) ac.abort(new Error('user cancelled'));
+      if (cmd.includes(' find ')) ac.abort(new Error('user cancelled'));
     };
     await assert.rejects(syncWorktree(local, shell, logger, ac.signal), /user cancelled/);
-    assert.deepEqual(shell.commands, [REMOTE.list]);
+    assert.equal(shell.commands.length, 1);
+    assert.match(shell.commands[0]!, / find \. /);
   });
 
   test('empty directories left by deletions are pruned', async () => {

@@ -615,7 +615,7 @@ describe('destroy', () => {
     const h = harness();
     await p.destroy!(h.ctx);
     assert.equal(fake.containers.length, 0);
-    assert.ok(h.logs.some((l) => l.includes('retained')));
+    assert.ok(h.logs.some((l) => l.includes('data is kept') && l.includes('reattached when alice deploys "myapp"')));
 
     const h2 = harness();
     await p.destroy!(h2.ctx);

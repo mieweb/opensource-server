@@ -840,7 +840,7 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   ctx.logger.info(
     `Destroyed container "${name}" (${existing.id}).` +
       (retained
-        ? ` The ${DATA_VOLUME.mountPath} data directory is retained on the node and is reattached if you deploy the same name again.`
+        ? ` Its ${DATA_VOLUME.mountPath} data is kept on the site's volume storage and is reattached when ${existing.owner ?? 'the same owner'} deploys "${name}" to this site again.`
         : ''),
   );
 }
