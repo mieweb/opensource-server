@@ -6,6 +6,7 @@ import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { AuthError } from '@mieweb/deploy-contract';
 import type { DeployContext, ProviderEnv } from '@mieweb/deploy-contract';
 import { runProviderConformance } from '@mieweb/deploy-contract/testkit';
+import { startLoopback } from '../src/auth.ts';
 import { createProvider, type ProviderOptions } from '../src/index.ts';
 import { SshError, type SshTarget } from '../src/ssh.ts';
 import { FakeManager } from './fake-manager.ts';
@@ -352,6 +353,17 @@ describe('deploy', () => {
     assert.ok(fake.requests.some((r) => r.method === 'PUT'));
   });
 
+  test('a lost create race clears the stale host-key pin too', async () => {
+    await mkdir(join(dir, '.mieweb'), { recursive: true });
+    await writeFile(join(dir, '.mieweb', 'known_hosts'), '[ssh.example.test]:2000 SHA256:stale\n');
+    fake.beforeCreate = (hostname) => {
+      fake.beforeCreate = undefined;
+      fake.seedContainer({ hostname });
+    };
+    await provider().deploy(harness().ctx);
+    assert.equal(await readFile(join(dir, '.mieweb', 'known_hosts'), 'utf8'), '');
+  });
+
   test('a lost create race waits for the other create to finish before updating', async () => {
     fake.beforeCreate = (hostname) => {
       fake.beforeCreate = undefined;
@@ -542,6 +554,15 @@ describe('tail', () => {
     assert.ok(h.logs.includes('info:hello'));
   });
 
+  test('a dropped SSH connection fails tail instead of ending quietly', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    setupShell = (s) => {
+      s.streamScript = { chunks: [['hello\n', 'stdout']], code: -1 };
+    };
+    await assert.rejects(p.tail!(harness().ctx), /SSH connection closed; log streaming stopped/);
+  });
+
   test('errors: no container, bad args, journalctl failure', async () => {
     const p = provider();
     await assert.rejects(p.tail!(harness().ctx), /No container "myapp".*mieweb deploy/);
@@ -665,6 +686,15 @@ describe('login / logout', () => {
     assert.equal(fake.tokens.has('minted-key'), false);
     assert.equal(fake.tokens.has('minted-key-2'), false);
     assert.deepEqual(JSON.parse(await readFile(creds, 'utf8')).pendingRevocations, {});
+  });
+
+  test('the loopback listener honors an abort that fired before it was listening', async () => {
+    const loop = await startLoopback('s'.repeat(32), AbortSignal.abort(new Error('user cancelled')), 60_000);
+    try {
+      await assert.rejects(loop.result, /user cancelled/);
+    } finally {
+      loop.close();
+    }
   });
 
   test('a handoff with the wrong state is rejected', async () => {

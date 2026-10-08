@@ -77,7 +77,9 @@ export class IgnoreRules {
     for (let i = 1; i <= parts.length; i += 1) {
       const sub = parts.slice(0, i).join('/');
       const subIsDir = i < parts.length || isDir;
-      if (parts[i - 1] === '.git' && subIsDir) return true;
+      // `.git` is a directory in a normal checkout but a file in linked
+      // worktrees and submodules (it holds the local gitdir path): skip both.
+      if (parts[i - 1] === '.git') return true;
       if (this.matches(sub, subIsDir)) return true;
     }
     return false;
@@ -316,7 +318,11 @@ export async function restartApp(shell: RemoteShell, logger: DeployLogger, signa
   const code = await shell.stream(REMOTE.restart, lines.push, signal);
   lines.flush();
   if (code === 0) return;
-  if (code === -1) throw signal.reason ?? new Error('Restart aborted');
+  if (code === -1) {
+    throw signal.aborted
+      ? (signal.reason ?? new Error('Restart aborted'))
+      : new Error('The SSH connection closed before the app restart finished; check `mieweb tail`');
+  }
   const tail = await shell.exec(REMOTE.logs).catch(() => null);
   const recent = tail?.code === 0 ? tail.stdout.toString('utf8').trim() : '';
   if (recent) logger.error(`Recent app.service logs:\n${recent}`);

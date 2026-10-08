@@ -51,6 +51,8 @@ describe('IgnoreRules', () => {
     assert.equal(r.ignores('pkg/tmp/x'), true);
     assert.equal(r.ignores('tmp/x'), false);
     assert.equal(r.ignores('.git/HEAD'), true);
+    assert.equal(r.ignores('.git'), true, 'a .git file (linked worktree / submodule)');
+    assert.equal(r.ignores('vendor/lib/.git'), true);
     assert.equal(r.ignores('src/.gitkeep'), false);
   });
 });
@@ -219,6 +221,12 @@ describe('syncWorktree', () => {
       /Restarting the app failed \(exit 1\): dependency install or build failed/,
     );
     assert.match(errors[0]!, /Recent app\.service logs:\nnpm ERR! missing script/);
+  });
+
+  test('an SSH connection lost during the restart fails the sync', async () => {
+    const shell = new FakeShell(remote);
+    shell.restartScript = { chunks: [], code: -1 };
+    await assert.rejects(syncWorktree(local, shell, logger), /SSH connection closed before the app restart finished/);
   });
 
   test('an app that crashes right after starting fails the sync', async () => {

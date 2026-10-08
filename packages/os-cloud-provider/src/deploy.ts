@@ -78,6 +78,9 @@ export function sshAllowUsers(names: readonly (string | null | undefined)[]): st
   return [...new Set(present)].sort();
 }
 
+/** Names the Manager accepts for container env vars (models/container.js). */
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 /** Provider env vars with this prefix are injected (prefix stripped) as app secrets. */
 export const SECRET_ENV_PREFIX = 'MIEWEB_OS_SECRET_';
 
@@ -194,6 +197,23 @@ export function buildEnv(inputs: EnvInputs): EnvVar[] {
     if (v === undefined) continue;
     if (out.has(k) && out.get(k) !== v) inputs.warn(`Env var ${k} is managed by the provider; ignoring the app's value`);
     out.set(k, v);
+  }
+  // The Manager silently drops names it can't use, and the container's
+  // /etc/environment is one `KEY=value` per line, so a multi-line value would
+  // arrive truncated. Fail instead of deploying something different.
+  const badNames = [...out.keys()].filter((k) => !ENV_NAME_RE.test(k));
+  if (badNames.length > 0) {
+    throw new ConfigError(
+      `Unsupported environment variable name(s): ${badNames.map((k) => JSON.stringify(k)).join(', ')} ` +
+        '(use letters, digits and _, not starting with a digit)',
+    );
+  }
+  const multiline = [...out].filter(([, v]) => /[\r\n\0]/.test(v)).map(([k]) => k);
+  if (multiline.length > 0) {
+    throw new ConfigError(
+      `Environment variable(s) ${multiline.join(', ')} contain line breaks, which the container's environment can't carry; ` +
+        'encode them (e.g. base64) and decode in the app',
+    );
   }
   return [...out.entries()].map(([key, value]) => ({ key, value }));
 }
@@ -483,6 +503,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   // that own the data on /mnt/data survive recreates.
   let carryEnv: Container | null = existing;
   let createdId: number | undefined;
+  let adopted = false;
   // A lost create race hands us someone else's container, which goes through
   // the same settle/drift checks; bound the loop in case of repeated races.
   for (let round = 0; createdId === undefined; round += 1) {
@@ -500,6 +521,9 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     if (round >= 2) throw new Error(`Could not create container "${name}": it kept being created concurrently`);
     const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envWithSecrets(carryEnv), http, logger);
     if ('adopted' in created) {
+      // Someone else's create just won the race: the container behind this
+      // host:port may be new too, so its host-key pin must be cleared.
+      adopted = true;
       existing = created.adopted;
       continue;
     }
@@ -508,7 +532,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     await wait(created.created.jobId!);
   }
   // Set when this deploy (re)created the container: its SSH host key is new.
-  const fresh = createdId !== undefined;
+  const fresh = createdId !== undefined || adopted;
   const id = createdId ?? existing!.id!;
 
   if (existing) {
@@ -733,6 +757,7 @@ export async function tail(ctx: DeployContext, deps: ProviderDeps): Promise<void
     const lines = lineSplitter((line, which) => (which === 'stderr' ? ctx.logger.warn(line) : ctx.logger.info(line)));
     const code = await shell.stream(journalCommand(opts), lines.push, ctx.signal);
     lines.flush();
+    if (code === -1 && !ctx.signal.aborted) throw new Error('The SSH connection closed; log streaming stopped');
     if (code > 0) throw new Error(`journalctl exited with code ${code}`);
   } finally {
     shell.close();

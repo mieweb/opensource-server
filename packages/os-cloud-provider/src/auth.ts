@@ -84,7 +84,7 @@ async function loginInstanceUrl(ctx: DeployContext, deps: ProviderDeps): Promise
 
 const CALLBACK_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>mieweb login</title>
 <style>body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem}</style></head>
-<body><h1 id="t">Finishing sign-in…</h1><p id="m"></p><script>
+<body><div role="status" aria-live="polite"><h1 id="t">Finishing sign-in…</h1><p id="m"></p></div><script>
 (async () => {
   const t = document.getElementById('t'), m = document.getElementById('m');
   const frag = location.hash.slice(1);
@@ -189,6 +189,8 @@ export async function startLoopback(
   const timer = setTimeout(() => settle.reject(new Error('Timed out waiting for the browser sign-in')), timeoutMs);
   const onAbort = (): void => settle.reject(signal.reason);
   signal.addEventListener('abort', onAbort, { once: true });
+  // An abort during listen() already fired; AbortSignal doesn't replay it.
+  if (signal.aborted) onAbort();
   const close = (): void => {
     clearTimeout(timer);
     signal.removeEventListener('abort', onAbort);
