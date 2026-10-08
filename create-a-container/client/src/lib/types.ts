@@ -156,6 +156,14 @@ export interface Agent {
   hostname: string;
   ipv4Address: string | null;
   services: Record<string, AgentServiceStatus> | null;
+  /** Service groups the agent runs (AGENT_SERVICES), e.g. ['nginx','dnsmasq','mail']. */
+  enabledServices: string[] | null;
+  /** Binaries missing for the enabled groups; blocks the mail-host claim. */
+  missingBinaries: string[] | null;
+  /** Non-null on the single agent holding the mail-host claim. */
+  mailHostSince: string | null;
+  isLocal: boolean;
+  hasApiKeyPin: boolean;
   lastCheckinAt: string | null;
   /** Server-computed, so it is immune to client clock drift. */
   secondsSinceCheckin: number | null;
@@ -194,6 +202,11 @@ export interface ExternalDomain {
   site: { id: number; name: string } | null;
   authServer: string | null;
   hasCloudflareApiKey: boolean;
+  /** Read-only mail state (issue #67) — changed via the …/mail endpoints. */
+  mailEnabled: boolean;
+  mailDnsVerified: boolean;
+  mailMxVerified: boolean;
+  mailDnsCheckedAt: string | null;
 }
 
 export interface ServiceHttp {
@@ -393,6 +406,59 @@ export interface MailSuppression {
   createdAt: string;
 }
 
+export interface MailDnsRecord {
+  type: 'TXT' | 'MX';
+  name: string;
+  value: string;
+}
+
+/** One gate of the stored Check DNS outcome. */
+export interface MailDnsGate {
+  pass: boolean;
+  [key: string]: unknown;
+}
+
+export interface MailDnsCheckResult {
+  checkedAt: string;
+  spf: MailDnsGate;
+  dkim: MailDnsGate;
+  dmarc: MailDnsGate;
+  mx: MailDnsGate;
+  ptr?: { name: string | null; forwardConfirmed: boolean };
+  warnings: string[];
+}
+
+export interface MailDnsInfo {
+  records: MailDnsRecord[];
+  mailEnabled: boolean;
+  mailDnsVerified: boolean;
+  mailMxVerified: boolean;
+  lastCheck: { checkedAt: string; result: MailDnsCheckResult | null } | null;
+}
+
+export interface MailHostInfo {
+  agent: {
+    id: number;
+    siteId: number;
+    siteName: string | null;
+    hostname: string;
+    mailHostSince: string;
+    enabledServices: string[] | null;
+    missingBinaries: string[] | null;
+  } | null;
+  mailIp: string | null;
+  mailHostname: string | null;
+  selfManagedSiteId: number | null;
+}
+
+export interface MailPtrInfo {
+  mailIp: string | null;
+  ptr: string | null;
+  forwardConfirmed: boolean;
+  mailHostname: string | null;
+  suggestion: string | null;
+}
+
 export interface AppSettings {
   smtpUrl: string;
   smtpNoreplyAddress: string;
@@ -403,6 +469,18 @@ export interface AppSettings {
   bannerMessage: string;
   /** Max PSI probes per usage report; '' uses the server default (16), '0' disables. */
   usagePsiProbeLimit: string;
+  /** Mail service (issue #67). All stored as strings; '' means unset. */
+  mailHostname: string;
+  mailUnsubscribeBaseUrl: string;
+  mailRelayhost: string;
+  mailRelayhostUsername: string;
+  mailRelayhostPassword: string;
+  mailSpfInclude: string;
+  mailDnsCheckResolvers: string;
+  mailDbHost: string;
+  mailSelfManagedSiteId: string;
+  mailDefaultQuotaMb: string;
+  mailMessageSizeLimitMb: string;
 }
 
 export type ResourceType = 'memory' | 'swap' | 'cpus' | 'rootfs';
