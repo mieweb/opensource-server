@@ -6,9 +6,11 @@
  * 1. Scan the worktree. `.gitignore` rules are honored (nested files too, via
  *    the `ignore` package), `.git/` is skipped. Staged vs. committed status
  *    doesn't matter; the files on disk are what gets sent.
- * 2. List the remote tree (`find -printf`) and diff by size + mtime.
+ * 2. List the remote tree (`find -printf`) and diff: files by size,
+ *    millisecond mtime and permissions; symlinks by target; plus type changes.
  * 3. Stream a tar of the changed files into `sudo tar -x` (owned by the
- *    `mieweb` service account, mtimes preserved so the next diff is exact).
+ *    `mieweb` service account; a pax `mtime` record keeps millisecond mtimes so
+ *    the next diff is exact).
  * 4. Delete remote files that no longer exist locally. Remote paths matching
  *    the ignore rules (node_modules, build output) are left alone.
  * 5. `sudo systemctl restart app.service`, streaming the unit's journal while
@@ -37,7 +39,11 @@ export interface FileEntry {
   path: string;
   type: 'file' | 'symlink';
   size: number;
-  /** Seconds since the epoch (whole seconds; tar precision). */
+  /**
+   * Milliseconds since the epoch. Carried to the container in a pax `mtime`
+   * record (ustar headers only hold whole seconds, which would miss a
+   * same-size rewrite within one second).
+   */
   mtime: number;
   mode: number;
   linkname?: string;
@@ -106,9 +112,9 @@ export async function scanLocal(
       const st = await lstat(join(root, rel));
       if (st.isSymbolicLink()) {
         const linkname = await readlink(join(root, rel));
-        files.set(rel, { path: rel, type: 'symlink', size: Buffer.byteLength(linkname), mtime: Math.floor(st.mtimeMs / 1000), mode: 0o777, linkname });
+        files.set(rel, { path: rel, type: 'symlink', size: Buffer.byteLength(linkname), mtime: Math.round(st.mtimeMs), mode: 0o777, linkname });
       } else if (st.isFile()) {
-        files.set(rel, { path: rel, type: 'file', size: st.size, mtime: Math.floor(st.mtimeMs / 1000), mode: st.mode & 0o777 });
+        files.set(rel, { path: rel, type: 'file', size: st.size, mtime: Math.round(st.mtimeMs), mode: st.mode & 0o777 });
       }
       // sockets, fifos, devices: skipped
     }
@@ -136,7 +142,8 @@ export function parseRemoteListing(out: Buffer): Map<string, RemoteEntry> {
     map.set(parts[i]!, {
       type: symlink ? 'symlink' : 'file',
       size: Number(parts[i + 1]),
-      mtime: Math.floor(Number(parts[i + 2])),
+      // %T@ is seconds with a fraction; compare at millisecond precision.
+      mtime: Math.round(Number(parts[i + 2]) * 1000),
       mode: symlink ? undefined : Number.parseInt(parts[i + 3]!, 8),
       linkname: symlink ? parts[i + 5] : undefined,
     });
@@ -157,14 +164,13 @@ export function planSync(
   const upload: FileEntry[] = [];
   for (const f of local.values()) {
     const r = remote.get(f.path);
-    // Size+mtime alone miss a `chmod +x`, a file↔symlink swap, and a
-    // same-length symlink retarget within the same second.
+    // Files: size, millisecond mtime and permissions (`chmod +x` changes
+    // neither size nor mtime). Symlinks: their target (link mtimes aren't
+    // reliably preserved). Plus a file↔symlink swap.
     const changed =
       !r ||
       r.type !== f.type ||
-      r.size !== f.size ||
-      r.mtime !== f.mtime ||
-      (f.type === 'file' && r.mode !== undefined && r.mode !== f.mode) ||
+      (f.type === 'file' && (r.size !== f.size || r.mtime !== f.mtime || (r.mode !== undefined && r.mode !== f.mode))) ||
       (f.type === 'symlink' && r.linkname !== f.linkname);
     if (changed) upload.push(f);
   }
@@ -190,12 +196,14 @@ export function packTar(root: string, files: readonly FileEntry[], signal?: Abor
         pack.entry({ name: d, type: 'directory', mode: 0o755, ...owner });
       }
       for (const f of files) {
-        const mtime = new Date(f.mtime * 1000);
+        const mtime = new Date(f.mtime);
         if (f.type === 'symlink') {
           pack.entry({ name: f.path, type: 'symlink', linkname: f.linkname, mode: 0o777, mtime, ...owner });
           continue;
         }
-        const entry = pack.entry({ name: f.path, type: 'file', size: f.size, mode: f.mode, mtime, ...owner });
+        // tar-stream writes a pax header when `pax` is set (its types omit it).
+        const header = { name: f.path, type: 'file' as const, size: f.size, mode: f.mode, mtime, ...owner };
+        const entry = pack.entry({ ...header, pax: { mtime: (f.mtime / 1000).toFixed(3) } } as typeof header);
         await pipeline(createReadStream(join(root, f.path)), entry, { signal });
       }
       pack.finalize();

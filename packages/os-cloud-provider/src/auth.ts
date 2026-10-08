@@ -23,11 +23,10 @@ import {
   resolveToken,
 } from './config.ts';
 import {
-  deleteCredential,
-  readCredential,
   readPendingRevocations,
-  writeCredential,
-  writePendingRevocations,
+  removeCredential,
+  removePendingRevocations,
+  replaceCredential,
   type PendingRevocation,
 } from './credentials.ts';
 import type { ProviderDeps } from './deploy.ts';
@@ -228,17 +227,15 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     const user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
 
     // Revoke the key this login replaces, so repeated logins don't pile up keys.
-    const previous = await readCredential(deps.env, instanceUrl);
-    if (previous && previous.apiKeyId !== handoff.id) await queueRevocation(deps, instanceUrl, previous);
-    await writeCredential(deps.env, instanceUrl, {
+    // Store the new key and queue the one it replaces in one locked update.
+    await replaceCredential(deps.env, instanceUrl, {
       token: handoff.key,
       apiKeyId: handoff.id,
       user,
       savedAt: new Date().toISOString(),
     });
-    // Revoke the key this login replaces (plus any earlier failures), so
-    // repeated logins don't pile up keys. It was queued before being
-    // overwritten, so a crash here can't lose track of it.
+    // Revoke the replaced key (plus any earlier failures), so repeated logins
+    // don't pile up keys. It's queued, so a crash here can't lose track of it.
     await revokeAll(instanceUrl, ctx, deps, logger);
     logger.info(`Logged in to ${instanceUrl} as ${user}`);
   } finally {
@@ -259,30 +256,19 @@ async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployCo
   }
 }
 
-/** Add a key to the instance's revocation queue (before dropping our only copy of it). */
-async function queueRevocation(deps: ProviderDeps, instanceUrl: string, key: PendingRevocation): Promise<void> {
-  const pending = await readPendingRevocations(deps.env, instanceUrl);
-  if (!pending.some((p) => p.apiKeyId === key.apiKeyId)) {
-    await writePendingRevocations(deps.env, instanceUrl, [...pending, { token: key.token, apiKeyId: key.apiKeyId }]);
-  }
-}
-
 /**
  * Revoke every queued key. Keys that still can't be revoked (Manager
  * unreachable, 5xx) stay queued, with their token, for the next
- * login/logout to retry, so no live key is ever forgotten.
+ * login/logout to retry, so no live key is ever forgotten. Only confirmed
+ * revocations are removed, so a concurrent login's queued key is untouched.
  */
 async function revokeAll(instanceUrl: string, ctx: DeployContext, deps: ProviderDeps, logger: DeployLogger): Promise<void> {
-  const todo = await readPendingRevocations(deps.env, instanceUrl);
-  if (todo.length === 0) return;
-  const failed: PendingRevocation[] = [];
-  for (const key of todo) {
-    if (!(await revoke(instanceUrl, key, ctx, deps))) failed.push({ token: key.token, apiKeyId: key.apiKeyId });
+  const done: string[] = [];
+  for (const key of await readPendingRevocations(deps.env, instanceUrl)) {
+    if (await revoke(instanceUrl, key, ctx, deps)) done.push(key.apiKeyId);
+    else logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; it will be retried on the next login or logout`);
   }
-  await writePendingRevocations(deps.env, instanceUrl, failed);
-  for (const key of failed) {
-    logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; it will be retried on the next login or logout`);
-  }
+  await removePendingRevocations(deps.env, instanceUrl, done);
 }
 
 export async function logout(ctx: DeployContext, deps: ProviderDeps): Promise<void> {
@@ -292,16 +278,9 @@ export async function logout(ctx: DeployContext, deps: ProviderDeps): Promise<vo
   if (deps.env.MIEWEB_OS_TOKEN?.trim()) {
     logger.warn('MIEWEB_OS_TOKEN is set in the environment; logout cannot clear it. Unset it to fully log out.');
   }
-  const cred = await readCredential(deps.env, instanceUrl);
-  if (!cred) {
-    await revokeAll(instanceUrl, ctx, deps, logger); // retry earlier failures
-    logger.info(`Not logged in to ${instanceUrl}`);
-    return;
-  }
   // Log out locally either way; the key stays queued (with its token) until
-  // the Manager confirms it's revoked.
-  await queueRevocation(deps, instanceUrl, cred);
-  await deleteCredential(deps.env, instanceUrl);
+  // the Manager confirms it's revoked. Earlier failures are retried too.
+  const wasLoggedIn = await removeCredential(deps.env, instanceUrl);
   await revokeAll(instanceUrl, ctx, deps, logger);
-  logger.info(`Logged out of ${instanceUrl}`);
+  logger.info(wasLoggedIn ? `Logged out of ${instanceUrl}` : `Not logged in to ${instanceUrl}`);
 }

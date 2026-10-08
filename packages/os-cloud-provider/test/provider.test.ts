@@ -364,6 +364,25 @@ describe('deploy', () => {
     assert.ok(h.logs.some((l) => l.includes('is still being created; waiting for job')));
   });
 
+  test('a failed /mnt/data volume is re-attached', async () => {
+    fake.seedContainer({
+      hostname: 'myapp',
+      volumes: [{ id: 9, name: 'data', mountPath: '/mnt/data', mode: 'rw', status: 'failed', statusMessage: 'mkdir: permission denied' }],
+    });
+    const h = harness();
+    await provider().deploy(h.ctx);
+    const put = fake.requests.find((r) => r.method === 'PUT')!;
+    assert.deepEqual(put.body.volumes, [{ id: 9, detach: true }, { name: 'data', mountPath: '/mnt/data', mode: 'rw' }]);
+    assert.ok(h.logs.some((l) => l.includes('volume is failed (mkdir: permission denied); re-attaching')));
+    assert.equal(fake.containers[0]!.volumes.length, 1);
+    assert.equal(fake.containers[0]!.volumes[0]!.status, 'ready');
+  });
+
+  test('a /mnt/data volume that still is not ready after the update fails the deploy', async () => {
+    fake.volumeOutcome = 'failed';
+    await assert.rejects(provider().deploy(harness().ctx), /data volume on container \d+ is failed.*would not persist/);
+  });
+
   test('a read-only /mnt/data fails the deploy', async () => {
     fake.seedContainer({ hostname: 'myapp', volumes: [{ id: 9, name: 'data', mountPath: '/mnt/data', mode: 'ro' }] });
     await assert.rejects(provider().deploy(harness().ctx), /attached read-only.*need to write/);

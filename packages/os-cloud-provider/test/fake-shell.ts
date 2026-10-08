@@ -77,7 +77,10 @@ export class FakeShell implements RemoteShell {
           const chunks: Buffer[] = [];
           for await (const c of entry) chunks.push(c as Buffer);
           await writeFile(target, Buffer.concat(chunks), { mode: h.mode });
-          await utimes(target, h.mtime!, h.mtime!);
+          // Like GNU tar: a pax `mtime` record (sub-second) wins over the header's.
+          const paxMtime = (h as { pax?: Record<string, string> }).pax?.mtime;
+          const mtime = paxMtime ? new Date(Number(paxMtime) * 1000) : h.mtime!;
+          await utimes(target, mtime, mtime);
         }
       })();
       Readable.from(input).pipe(extract as unknown as NodeJS.WritableStream);

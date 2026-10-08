@@ -349,6 +349,7 @@ export interface paths {
         /** Update services/env/entrypoint; enqueues a restart job only when explicitly requested (owner/admin) */
         put: operations["update_container"];
         post?: never;
+        /** @description Deletes the VM on its node, then the record. The record is kept and 502 returned if the node-side delete fails and the VM still exists (or the node can't be checked), unless `force=true`. */
         delete: operations["delete_container"];
         options?: never;
         head?: never;
@@ -2413,7 +2414,10 @@ export interface operations {
     };
     delete_container: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Remove the record even if the node-side delete fails */
+                force?: boolean;
+            };
             header?: never;
             path: {
                 siteId: number;
@@ -2449,6 +2453,15 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description DB/Proxmox hostname mismatch — delete aborted (code: hostname_mismatch) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Node-side delete failed and the VM still exists or could not be checked (code: node_delete_failed) */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

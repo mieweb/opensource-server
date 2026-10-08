@@ -6,10 +6,11 @@
  * `MIEWEB_OS_CREDENTIALS` (from the provider env) overrides the file path.
  */
 
-import { mkdir, readFile, rename, writeFile, chmod } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { ProviderEnv } from '@mieweb/deploy-contract';
+import { updateLockedFile } from './locked-file.ts';
 
 export interface StoredCredential {
   token: string;
@@ -37,14 +38,8 @@ export function credentialsPath(env: ProviderEnv): string {
   return override ? override : join(env.HOME?.trim() || homedir(), '.mieweb', 'os.json');
 }
 
-async function load(path: string): Promise<CredentialFile> {
-  let text: string;
-  try {
-    text = await readFile(path, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, instances: {}, pendingRevocations: {} };
-    throw err;
-  }
+function parse(path: string, text: string | null): CredentialFile {
+  if (text === null) return { version: 1, instances: {}, pendingRevocations: {} };
   try {
     const parsed = JSON.parse(text) as Partial<CredentialFile>;
     return {
@@ -57,12 +52,26 @@ async function load(path: string): Promise<CredentialFile> {
   }
 }
 
-async function save(path: string, data: CredentialFile): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const tmp = `${path}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  await chmod(tmp, 0o600);
-  await rename(tmp, path);
+async function load(path: string): Promise<CredentialFile> {
+  try {
+    return parse(path, await readFile(path, 'utf8'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return parse(path, null);
+    throw err;
+  }
+}
+
+/**
+ * Change the cache under a cross-process lock, re-reading it first, so
+ * concurrent logins/logouts (e.g. to two instances) never drop each other's
+ * entries. `change` returns false to leave the file untouched.
+ */
+async function mutate(env: ProviderEnv, change: (data: CredentialFile) => boolean): Promise<void> {
+  const path = credentialsPath(env);
+  await updateLockedFile(path, (text) => {
+    const data = parse(path, text);
+    return change(data) ? `${JSON.stringify(data, null, 2)}\n` : null;
+  });
 }
 
 export async function readCredential(env: ProviderEnv, instanceUrl: string): Promise<StoredCredential | null> {
@@ -70,36 +79,55 @@ export async function readCredential(env: ProviderEnv, instanceUrl: string): Pro
   return data.instances[instanceUrl] ?? null;
 }
 
-export async function writeCredential(env: ProviderEnv, instanceUrl: string, cred: StoredCredential): Promise<void> {
-  const path = credentialsPath(env);
-  const data = await load(path);
-  data.instances[instanceUrl] = cred;
-  await save(path, data);
+/**
+ * Store `cred` as the instance's login, queueing the key it replaces for
+ * revocation in the same locked update, so no concurrent login can make a
+ * replaced key untracked.
+ */
+export async function replaceCredential(env: ProviderEnv, instanceUrl: string, cred: StoredCredential): Promise<void> {
+  await mutate(env, (data) => {
+    const previous = data.instances[instanceUrl];
+    if (previous && previous.apiKeyId !== cred.apiKeyId) {
+      const list = data.pendingRevocations[instanceUrl] ?? [];
+      if (!list.some((p) => p.apiKeyId === previous.apiKeyId)) {
+        data.pendingRevocations[instanceUrl] = [...list, { token: previous.token, apiKeyId: previous.apiKeyId }];
+      }
+    }
+    data.instances[instanceUrl] = cred;
+    return true;
+  });
+}
+
+/** Remove the instance's login, queueing its key for revocation in the same locked update. */
+export async function removeCredential(env: ProviderEnv, instanceUrl: string): Promise<boolean> {
+  let had = false;
+  await mutate(env, (data) => {
+    const cred = data.instances[instanceUrl];
+    if (!cred) return false;
+    had = true;
+    const list = data.pendingRevocations[instanceUrl] ?? [];
+    if (!list.some((p) => p.apiKeyId === cred.apiKeyId)) {
+      data.pendingRevocations[instanceUrl] = [...list, { token: cred.token, apiKeyId: cred.apiKeyId }];
+    }
+    delete data.instances[instanceUrl];
+    return true;
+  });
+  return had;
 }
 
 export async function readPendingRevocations(env: ProviderEnv, instanceUrl: string): Promise<PendingRevocation[]> {
   return (await load(credentialsPath(env))).pendingRevocations[instanceUrl] ?? [];
 }
 
-/** Replace the instance's pending revocations (empty list clears them). */
-export async function writePendingRevocations(
-  env: ProviderEnv,
-  instanceUrl: string,
-  pending: readonly PendingRevocation[],
-): Promise<void> {
-  const path = credentialsPath(env);
-  const data = await load(path);
-  if (pending.length > 0) data.pendingRevocations[instanceUrl] = [...pending];
-  else if (instanceUrl in data.pendingRevocations) delete data.pendingRevocations[instanceUrl];
-  else return;
-  await save(path, data);
-}
-
-export async function deleteCredential(env: ProviderEnv, instanceUrl: string): Promise<boolean> {
-  const path = credentialsPath(env);
-  const data = await load(path);
-  if (!(instanceUrl in data.instances)) return false;
-  delete data.instances[instanceUrl];
-  await save(path, data);
-  return true;
+/** Drop keys from the queue once the Manager confirmed they're revoked. */
+export async function removePendingRevocations(env: ProviderEnv, instanceUrl: string, apiKeyIds: readonly string[]): Promise<void> {
+  if (apiKeyIds.length === 0) return;
+  await mutate(env, (data) => {
+    const list = data.pendingRevocations[instanceUrl] ?? [];
+    const rest = list.filter((p) => !apiKeyIds.includes(p.apiKeyId));
+    if (rest.length === list.length) return false;
+    if (rest.length > 0) data.pendingRevocations[instanceUrl] = rest;
+    else delete data.pendingRevocations[instanceUrl];
+    return true;
+  });
 }

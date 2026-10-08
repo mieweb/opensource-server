@@ -483,6 +483,16 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
         `${DATA_VOLUME.mountPath} is attached read-only to container ${id}, but MinIO, libSQL and Valkey need to write ` +
           'to it. Detach it (or delete the container) and deploy again.',
       );
+    } else if (dataVolume && dataVolume.status !== 'ready' && dataVolume.id !== undefined) {
+      // A row isn't a mount: an earlier attach failed or never finished, so
+      // the container is using the image's (ephemeral) /mnt/data. Detach and
+      // re-attach, which makes the Manager provision and mount it again.
+      body.volumes = [{ id: dataVolume.id, detach: true }, DATA_VOLUME];
+      changed = true;
+      logger.warn(
+        `The ${DATA_VOLUME.mountPath} volume is ${dataVolume.status ?? 'not ready'}` +
+          `${dataVolume.statusMessage ? ` (${dataVolume.statusMessage})` : ''}; re-attaching it`,
+      );
     }
     // Code-only redeploys skip the Manager entirely and just sync.
     if (!changed) {
@@ -509,6 +519,16 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     logger.warn(
       `This Manager does not support volumes; ${DATA_VOLUME.mountPath} is not persistent and datastore state will not survive a container recreate`,
     );
+  } else {
+    // The jobs above block until the volume is ready, so anything else here
+    // means the datastores would be writing to non-persistent storage.
+    const dv = final.volumes.find((v) => v.mountPath === DATA_VOLUME.mountPath);
+    if (dv?.status !== 'ready') {
+      throw new Error(
+        `The ${DATA_VOLUME.mountPath} data volume on container ${id} is ${dv ? (dv.status ?? 'not ready') : 'missing'}` +
+          `${dv?.statusMessage ? `: ${dv.statusMessage}` : ''}. Its data would not persist; fix the volume (see the Manager) and deploy again.`,
+      );
+    }
   }
   const url =
     final.httpEntries?.find((e) => e.port === s.port && e.externalUrl)?.externalUrl ??

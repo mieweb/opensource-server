@@ -15,12 +15,12 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { DeployLogger, ProviderEnv } from '@mieweb/deploy-contract';
 import ssh2 from 'ssh2';
 import type { AnyAuthMethod, AuthenticationType, ClientChannel, ConnectConfig, Prompt } from 'ssh2';
+import { updateLockedFile } from './locked-file.ts';
 import { ttyPrompter, type Prompter } from './prompt.ts';
 
 const { Client, utils } = ssh2;
@@ -81,25 +81,50 @@ export function fingerprint(key: Buffer): string {
   return `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`;
 }
 
-function readKnownHosts(file: string): Map<string, string> {
+function parseKnownHosts(text: string | null): Map<string, string> {
   const map = new Map<string, string>();
-  if (!existsSync(file)) return map;
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of (text ?? '').split('\n')) {
     const [id, fp] = line.trim().split(/\s+/);
     if (id && fp) map.set(id, fp);
   }
   return map;
 }
 
-async function writeKnownHosts(file: string, map: Map<string, string>): Promise<void> {
-  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  await writeFile(file, [...map].map(([id, fp]) => `${id} ${fp}\n`).join(''), { mode: 0o600 });
+function serializeKnownHosts(map: Map<string, string>): string {
+  return [...map].map(([id, fp]) => `${id} ${fp}\n`).join('');
+}
+
+function readKnownHosts(file: string): Map<string, string> {
+  return parseKnownHosts(existsSync(file) ? readFileSync(file, 'utf8') : null);
+}
+
+/**
+ * Pin `fp` for `id`, merged into the file's current contents under a lock (so
+ * parallel deploys don't overwrite each other's pins). Throws if another
+ * process pinned a different key for `id` in the meantime.
+ */
+export async function pinHostKey(file: string, id: string, fp: string): Promise<void> {
+  let conflict: string | undefined;
+  await updateLockedFile(file, (text) => {
+    const map = parseKnownHosts(text);
+    const existing = map.get(id);
+    if (existing === fp) return null;
+    if (existing) {
+      conflict = existing;
+      return null;
+    }
+    map.set(id, fp);
+    return serializeKnownHosts(map);
+  });
+  if (conflict) throw new Error(`a different key (${conflict}) was pinned for ${id} concurrently`);
 }
 
 /** Drop the pinned key for host:port (the container behind it was replaced). */
 export async function forgetHostKey(file: string, host: string, port: number): Promise<void> {
-  const map = readKnownHosts(file);
-  if (map.delete(hostKeyId(host, port))) await writeKnownHosts(file, map);
+  await updateLockedFile(file, (text) => {
+    const map = parseKnownHosts(text);
+    return map.delete(hostKeyId(host, port)) ? serializeKnownHosts(map) : null;
+  });
 }
 
 // --- auth -------------------------------------------------------------------
@@ -285,11 +310,10 @@ export class SshConnection implements RemoteShell {
         opts.signal.removeEventListener('abort', onAbort);
         const done = (): void => resolve(new SshConnection(client));
         if (pinned) {
-          known.set(id, pinned.fp);
           logger.info(`Trusting SSH host key ${pinned.fp} for ${id}`);
           // Without a saved pin the next connection would trust any key, so
           // refuse to continue rather than silently dropping the guarantee.
-          writeKnownHosts(opts.knownHostsFile, known).then(done, (err: Error) => {
+          pinHostKey(opts.knownHostsFile, id, pinned.fp).then(done, (err: Error) => {
             client.end();
             reject(
               new SshError('hostkey', `Could not save the SSH host key to ${opts.knownHostsFile}: ${err.message}`, {

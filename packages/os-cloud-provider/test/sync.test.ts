@@ -108,6 +108,21 @@ describe('syncWorktree', () => {
     assert.equal(await readFile(join(remote, 'dist/built.js'), 'utf8'), 'remote build');
   });
 
+  test('a same-size rewrite within the same second is synced', async () => {
+    const f = join(local, 'src/index.js');
+    const t0 = new Date(Math.floor(Date.now() / 1000) * 1000 + 100); // x.100s
+    await utimes(f, t0, t0);
+    await syncWorktree(local, new FakeShell(remote), logger);
+    await writeFile(f, 'v9'); // same length as 'v1'
+    const t1 = new Date(t0.getTime() + 400); // same whole second, x.500s
+    await utimes(f, t1, t1);
+    const plan = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(plan.upload.map((x) => x.path), ['src/index.js']);
+    assert.equal(await readFile(join(remote, 'src/index.js'), 'utf8'), 'v9');
+    // ...and an unchanged tree stays a no-op at millisecond precision.
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [] });
+  });
+
   test('a permission-only change (chmod +x) is synced', async () => {
     await syncWorktree(local, new FakeShell(remote), logger);
     const st = await lstat(join(local, 'src/index.js'));

@@ -25,7 +25,14 @@ export interface FakeContainer {
   entrypoint: string | null;
   environmentVars: Record<string, string>;
   services: FakeService[];
-  volumes: { id: number; name: string; mountPath: string; mode: 'ro' | 'rw' }[];
+  volumes: {
+    id: number;
+    name: string;
+    mountPath: string;
+    mode: 'ro' | 'rw';
+    status?: 'pending' | 'ready' | 'failed';
+    statusMessage?: string | null;
+  }[];
   status?: string;
   creationJobId?: number | null;
 }
@@ -56,6 +63,8 @@ export class FakeManager {
   nvidiaAvailable = false;
   /** Emulate a Manager that predates volumes (#421). */
   noVolumes = false;
+  /** Status new volumes end up in once their job runs. */
+  volumeOutcome: 'ready' | 'failed' = 'ready';
   /** Answer DELETE /apikeys/:id with a 500 (Manager trouble). */
   failRevokes = false;
   /** Extra output line every new job logs (e.g. to check secret masking). */
@@ -282,7 +291,7 @@ export class FakeManager {
         entrypoint: body.entrypoint ?? null,
         environmentVars: Object.fromEntries((body.environmentVars ?? []).map((e: any) => [e.key, e.value])),
         services: [],
-        volumes: this.noVolumes ? [] : (body.volumes ?? []).map((v: any) => ({ id: this.nextId++, ...v })),
+        volumes: this.noVolumes ? [] : (body.volumes ?? []).map((v: any) => ({ id: this.nextId++, ...v, status: this.volumeOutcome })),
       };
       this.addServices(c, body.services);
       this.containers.push(c);
@@ -315,7 +324,10 @@ export class FakeManager {
       this.addServices(c, body.services);
       c.environmentVars = Object.fromEntries((body.environmentVars ?? []).map((e: any) => [e.key, e.value]));
       c.entrypoint = body.entrypoint ?? null;
-      for (const v of body.volumes ?? []) c.volumes.push({ id: this.nextId++, ...v });
+      for (const v of body.volumes ?? []) {
+        if (v.detach) c.volumes = c.volumes.filter((x) => x.id !== v.id);
+        else c.volumes.push({ id: this.nextId++, ...v, status: this.volumeOutcome });
+      }
       const job = body.restart ? this.newJob() : null;
       return ok({ containerId: c.id, jobId: job?.id ?? null, dnsWarnings: [], pendingRestart: !body.restart });
     }
