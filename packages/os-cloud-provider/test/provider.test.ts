@@ -387,10 +387,15 @@ describe('deploy', () => {
     await provider().deploy(harness().ctx);
     assert.equal(fake.containers[0]!.environmentVars.MIEWEB_SSH_ALLOW_USERS, 'alice');
 
-    (fake.containers[0] as unknown as { collaborators: string[] }).collaborators = ['carol', 'bad name*'];
+    const c = fake.containers[0] as unknown as { collaborators: string[] };
+    c.collaborators = ['carol'];
     await provider({ MIEWEB_OS_SSH_USER: 'deploybot' }).deploy(harness().ctx);
     assert.equal(fake.containers[0]!.environmentVars.MIEWEB_SSH_ALLOW_USERS, 'alice carol deploybot');
     assert.equal(fake.requests.filter((r) => r.method === 'PUT').length, 1, 'collaborator change is applied');
+
+    // An account sshd can't match literally fails the deploy rather than being dropped.
+    c.collaborators = ['carol', 'bad name*'];
+    await assert.rejects(provider().deploy(harness().ctx), /Can't restrict SSH to account name\(s\) "bad name\*"/);
   });
 
   test('a read-only /mnt/data fails the deploy', async () => {

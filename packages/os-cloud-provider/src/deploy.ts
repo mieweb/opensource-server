@@ -52,8 +52,11 @@ export const MANAGED_ENV = {
   sshAllowUsers: 'MIEWEB_SSH_ALLOW_USERS',
 } as const;
 
-/** Account names sshd may match literally (no patterns, no separators). */
-const SSH_USER_RE = /^[a-z_][a-z0-9_.-]{0,63}$/i;
+/**
+ * Account names sshd matches literally (no patterns or separators). Must
+ * match the cloud image's `mieweb-ssh-allow` filter.
+ */
+const SSH_USER_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,254}$/;
 
 /**
  * Who may SSH into the converged container: its owner and collaborators, the
@@ -63,7 +66,16 @@ const SSH_USER_RE = /^[a-z_][a-z0-9_.-]{0,63}$/i;
  * otherwise has SSH + passwordless sudo on every container.
  */
 export function sshAllowUsers(names: readonly (string | null | undefined)[]): string[] {
-  return [...new Set(names.filter((n): n is string => !!n && SSH_USER_RE.test(n)))].sort();
+  const present = names.filter((n): n is string => !!n);
+  // Never drop a name silently: the allow-list must be exactly who should
+  // have access, or the container could end up open (or locking out the owner).
+  const bad = present.filter((n) => !SSH_USER_RE.test(n));
+  if (bad.length > 0) {
+    throw new ConfigError(
+      `Can't restrict SSH to account name(s) ${bad.map((n) => JSON.stringify(n)).join(', ')}: only letters, digits, '.', '_' and '-' are supported`,
+    );
+  }
+  return [...new Set(present)].sort();
 }
 
 /** Provider env vars with this prefix are injected (prefix stripped) as app secrets. */

@@ -128,7 +128,7 @@ export async function scanLocal(
 }
 
 export interface RemoteEntry {
-  type: 'file' | 'symlink';
+  type: 'file' | 'symlink' | 'dir';
   size: number;
   mtime: number;
   /** Permission bits; undefined for symlinks (always 0777). */
@@ -142,9 +142,10 @@ export function parseRemoteListing(out: Buffer): Map<string, RemoteEntry> {
   const map = new Map<string, RemoteEntry>();
   const parts = out.toString('utf8').split('\0');
   for (let i = 0; i + 5 < parts.length; i += 6) {
-    const symlink = parts[i + 4] === 'l';
+    const kind = parts[i + 4];
+    const symlink = kind === 'l';
     map.set(parts[i]!, {
-      type: symlink ? 'symlink' : 'file',
+      type: symlink ? 'symlink' : kind === 'd' ? 'dir' : 'file',
       size: Number(parts[i + 1]),
       // %T@ is seconds with a fraction; compare at millisecond precision.
       mtime: Math.round(Number(parts[i + 2]) * 1000),
@@ -157,7 +158,14 @@ export function parseRemoteListing(out: Buffer): Map<string, RemoteEntry> {
 
 export interface SyncPlan {
   upload: FileEntry[];
+  /** Remote files/symlinks that no longer exist locally. */
   remove: string[];
+  /**
+   * Remote paths in the way of an upload, removed recursively before
+   * extracting: a directory where a file now goes, or a file/symlink where a
+   * directory now goes (an ancestor of an uploaded path).
+   */
+  conflicts: string[];
 }
 
 export function planSync(
@@ -166,8 +174,19 @@ export function planSync(
   rules: IgnoreRules,
 ): SyncPlan {
   const upload: FileEntry[] = [];
+  const conflicts = new Set<string>();
   for (const f of local.values()) {
-    const r = remote.get(f.path);
+    const r0 = remote.get(f.path);
+    if (r0?.type === 'dir') conflicts.add(f.path);
+    for (const a of ancestors(f.path)) {
+      const ra = remote.get(a);
+      if (ra && ra.type !== 'dir') conflicts.add(a);
+    }
+  }
+  // Anything under a conflicting path is removed with it.
+  const removedWith = (p: string): boolean => [...conflicts].some((c) => p === c || p.startsWith(`${c}/`));
+  for (const f of local.values()) {
+    const r = removedWith(f.path) ? undefined : remote.get(f.path);
     // Files: size, millisecond mtime and permissions (`chmod +x` changes
     // neither size nor mtime). Symlinks: their target (link mtimes aren't
     // reliably preserved). Plus a file↔symlink swap.
@@ -178,8 +197,11 @@ export function planSync(
       (f.type === 'symlink' && r.linkname !== f.linkname);
     if (changed) upload.push(f);
   }
-  const remove = [...remote.keys()].filter((p) => !local.has(p) && !rules.ignores(p)).sort();
-  return { upload, remove };
+  const remove = [...remote]
+    .filter(([p, r]) => r.type !== 'dir' && !local.has(p) && !rules.ignores(p) && !removedWith(p))
+    .map(([p]) => p)
+    .sort();
+  return { upload, remove, conflicts: [...conflicts].sort() };
 }
 
 function ancestors(path: string): string[] {
@@ -225,10 +247,11 @@ const APP_NOT_RUNNING = 86;
 
 export const REMOTE = {
   list: `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
-    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0%l\\0',
+    'sudo', 'find', '.', '-mindepth', '1', '(', '-type', 'f', '-o', '-type', 'l', '-o', '-type', 'd', ')', '-printf', '%P\\0%s\\0%T@\\0%m\\0%y\\0%l\\0',
   ])}`,
   extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
   remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
+  removeTrees: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -rf --`,
   pruneDirs: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rmdir -p --ignore-fail-on-non-empty -- 2>/dev/null; true`,
   /**
    * Follow the journal (live install/build output) while restarting; exit
@@ -316,12 +339,13 @@ export async function syncWorktree(
   const bytes = plan.upload.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
   logger.info(
     `Syncing ${root} → ${REMOTE_APP_DIR}: ${files.size} files, ` +
-      `${plan.upload.length} to upload (${human(bytes)}), ${plan.remove.length} to delete`,
+      `${plan.upload.length} to upload (${human(bytes)}), ${plan.remove.length + plan.conflicts.length} to delete`,
   );
 
+  const nul = (xs: string[]): Buffer => Buffer.from(xs.map((x) => `${x}\0`).join(''));
+  if (plan.conflicts.length > 0) await run(shell, 'conflict removal', REMOTE.removeTrees, signal, nul(plan.conflicts));
   if (plan.upload.length > 0) await run(shell, 'extract', REMOTE.extract, signal, packTar(root, plan.upload, signal));
   if (plan.remove.length > 0) {
-    const nul = (xs: string[]): Buffer => Buffer.from(xs.map((x) => `${x}\0`).join(''));
     await run(shell, 'delete', REMOTE.remove, signal, nul(plan.remove));
     const dirs = [...new Set(plan.remove.map((p) => posix.dirname(p)).filter((d) => d !== '.'))];
     if (dirs.length > 0) await run(shell, 'cleanup', REMOTE.pruneDirs, signal, nul(dirs));

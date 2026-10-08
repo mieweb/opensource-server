@@ -91,7 +91,7 @@ describe('syncWorktree', () => {
     await put(remote, 'dist/built.js', 'remote build');
 
     const same = await syncWorktree(local, new FakeShell(remote), logger);
-    assert.deepEqual(same, { upload: [], remove: [] });
+    assert.deepEqual(same, { upload: [], remove: [], conflicts: [] });
 
     await writeFile(join(local, 'src/index.js'), 'v2!');
     const future = new Date(Date.now() + 5000);
@@ -128,7 +128,7 @@ describe('syncWorktree', () => {
     assert.deepEqual(plan.upload.map((x) => x.path), ['src/index.js']);
     assert.equal(await readFile(join(remote, 'src/index.js'), 'utf8'), 'v9');
     // ...and an unchanged tree stays a no-op at millisecond precision.
-    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [] });
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [] });
   });
 
   test('a permission-only change (chmod +x) is synced', async () => {
@@ -158,6 +158,27 @@ describe('syncWorktree', () => {
     assert.deepEqual(plan.upload.map((f) => f.path).sort(), ['link.js', 'untracked.txt']);
     assert.equal(await readlink(join(remote, 'link.js')), 'src/other.js');
     assert.equal((await lstat(join(remote, 'untracked.txt'))).isSymbolicLink(), true);
+  });
+
+  test('a file that became a directory, and a directory that became a file, converge', async () => {
+    await put(local, 'thing', 'a file');
+    await put(local, 'lib/a.js', 'a');
+    await put(local, 'lib/sub/b.js', 'b');
+    await syncWorktree(local, new FakeShell(remote), logger);
+
+    await rm(join(local, 'thing'));
+    await put(local, 'thing/inside.js', 'now a dir');
+    await rm(join(local, 'lib'), { recursive: true });
+    await put(local, 'lib', 'now a file');
+    const shell = new FakeShell(remote);
+    const plan = await syncWorktree(local, shell, logger);
+    assert.deepEqual(plan.conflicts, ['lib', 'thing']);
+    assert.deepEqual(plan.remove, [], 'nothing is deleted twice');
+    assert.equal(await readFile(join(remote, 'thing/inside.js'), 'utf8'), 'now a dir');
+    assert.equal(await readFile(join(remote, 'lib'), 'utf8'), 'now a file');
+    // Conflicts are cleared before extraction.
+    assert.ok(shell.commands.indexOf(REMOTE.removeTrees) < shell.commands.indexOf(REMOTE.extract));
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [] });
   });
 
   test('cancellation stops the sync before it uploads or deletes', async () => {

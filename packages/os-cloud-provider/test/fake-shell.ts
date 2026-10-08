@@ -43,8 +43,11 @@ export class FakeShell implements RemoteShell {
       const walk = async (rel: string): Promise<void> => {
         for (const e of await readdir(join(this.dir, rel), { withFileTypes: true })) {
           const p = rel ? `${rel}/${e.name}` : e.name;
-          if (e.isDirectory()) await walk(p);
-          else {
+          if (e.isDirectory()) {
+            const st = await lstat(join(this.dir, p));
+            out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), 'd', '');
+            await walk(p);
+          } else {
             const st = await lstat(join(this.dir, p));
             const link = st.isSymbolicLink();
             out.push(p, String(st.size), String(st.mtimeMs / 1000), (st.mode & 0o777).toString(8), link ? 'l' : 'f', link ? await readlink(join(this.dir, p)) : '');
@@ -89,6 +92,10 @@ export class FakeShell implements RemoteShell {
     }
     if (command === REMOTE.remove) {
       for (const p of input.toString().split('\0').filter(Boolean)) await rm(join(this.dir, p), { force: true });
+      return ok();
+    }
+    if (command === REMOTE.removeTrees) {
+      for (const p of input.toString().split('\0').filter(Boolean)) await rm(join(this.dir, p), { recursive: true, force: true });
       return ok();
     }
     if (command === REMOTE.pruneDirs) {
