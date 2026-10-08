@@ -508,6 +508,12 @@ async function main() {
       console.log('Container configured');
     }
     
+    // The VM exists now: record its provider ID before any further (fallible)
+    // configuration, so a failure below leaves a record the Manager can still
+    // delete node-side instead of an orphaned VM with a null ID.
+    await container.update({ containerId: String(vmid) });
+    console.log(`Container provider ID ${vmid} stored in database`);
+
     // Snapshot the template's env/entrypoint onto the container record now, as
     // if the user had supplied them (user-supplied values still win). Templates
     // are mutable Docker refs we can't re-query on a later reconfigure, so we
@@ -529,6 +535,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(updateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
+        await container.update({ containerId: String(vmid) });
         console.log(`Docker container ID after reconfigure: ${vmid}`);
       }
       console.log('Environment/entrypoint configuration applied');
@@ -556,6 +563,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(nvidiaUpdateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
+        await container.update({ containerId: String(vmid) });
         console.log(`Docker container ID after NVIDIA update: ${vmid}`);
       }
       console.log('NVIDIA hookscript attached');
@@ -564,10 +572,6 @@ async function main() {
     // Setup ACL for container owner
     await setupContainerAcl(client, node.name, vmid, container.username);
     
-    // Store the provider container ID now that creation succeeded.
-    await container.update({ containerId: String(vmid) });
-    console.log(`Container provider ID ${vmid} stored in database`);
-
     // Attach the volume bind mounts. Their host directories were already
     // provisioned by the site agent before the container was created (see
     // prepareVolumes above), so setting mpN cannot 400 on a missing directory.

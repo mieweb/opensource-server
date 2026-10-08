@@ -101,6 +101,13 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(loc.searchParams.get('redirect')).toBe(`/manager${BASE}?port=53682&state=${STATE}`);
   });
 
+  test('the confirmation page keeps the base path in its form action and Cancel link', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', '/manager');
+    expect(res.text).toContain(`action="/manager${BASE}"`);
+    expect(res.text).toContain('href="/manager/">Cancel');
+  });
+
   test.each(['//evil.example', 'https://evil.example', '/a/../b', '/a b'])('an unsafe X-Forwarded-Prefix %j is ignored', async (prefix) => {
     const res = await request(app).get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', prefix);
     expect(new URL(res.headers.location, 'http://manager.test').pathname).toBe('/login');

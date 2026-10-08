@@ -149,7 +149,7 @@ on <em>this</em> computer.</p>
   ${handoff.client ? `<input type="hidden" name="client" value="${escapeHtml(handoff.client)}">` : ''}
   <div class="actions">
     <button class="primary" type="submit">Authorize</button>
-    <a class="btn" href="/">Cancel</a>
+    <a class="btn" href="${escapeHtml(`${basePrefix(req)}/`)}">Cancel</a>
   </div>
 </form>`);
 }));

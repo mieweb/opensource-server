@@ -617,6 +617,11 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       );
     }
   }
+  // A (re)created container has a new SSH host key: drop the old pin now,
+  // even if this deploy doesn't sync, or the next one would reject the key.
+  const sshHost = s.sshHost ?? final.sshHost;
+  if (fresh && sshHost && final.sshPort) await forgetHostKey(knownHostsPath(deps.env), sshHost, final.sshPort);
+
   const url =
     final.httpEntries?.find((e) => e.port === s.port && e.externalUrl)?.externalUrl ??
     final.httpEntries?.find((e) => e.externalUrl)?.externalUrl ??

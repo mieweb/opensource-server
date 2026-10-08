@@ -376,6 +376,14 @@ describe('deploy', () => {
     assert.ok(fake.requests.some((r) => r.method === 'PUT'));
   });
 
+  test('a recreate clears the stale host-key pin even with sync: false', async () => {
+    await mkdir(join(dir, '.mieweb'), { recursive: true });
+    await writeFile(join(dir, '.mieweb', 'known_hosts'), '[ssh.example.test]:2000 SHA256:stale\n');
+    await provider().deploy(harness({ targetConfig: { siteId: 1, sync: false } }).ctx);
+    assert.equal(sessions.length, 0);
+    assert.equal(await readFile(join(dir, '.mieweb', 'known_hosts'), 'utf8'), '');
+  });
+
   test('a lost create race clears the stale host-key pin too', async () => {
     await mkdir(join(dir, '.mieweb'), { recursive: true });
     await writeFile(join(dir, '.mieweb', 'known_hosts'), '[ssh.example.test]:2000 SHA256:stale\n');
