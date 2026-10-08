@@ -62,6 +62,13 @@ export interface RemoteShell {
    * closed).
    */
   stream(command: string, onData: (chunk: Buffer, stream: 'stdout' | 'stderr') => void, signal: AbortSignal): Promise<number>;
+  /**
+   * Run `command` and keep its channel open until `release()`; resolves once
+   * stdout contains `ready`. If the command exits first, rejects with its
+   * exit code and stderr. Used to hold a remote lock (e.g. `flock ... cat`):
+   * closing the channel, or losing the connection, ends it.
+   */
+  hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }>;
   close(): void;
 }
 
@@ -440,6 +447,57 @@ export class SshConnection implements RemoteShell {
           return;
         }
         stream.end();
+      });
+    });
+  }
+
+  hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      this.client.exec(command, (err: Error | undefined, stream: ClientChannel) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        let out = '';
+        let stderr = '';
+        let code: number | null = null;
+        let held = false;
+        const release = (): void => {
+          stream.end(); // EOF: the held command (e.g. `cat`) exits, releasing the lock
+          stream.close();
+        };
+        const onAbort = (): void => {
+          release();
+          if (!held) reject(signal.reason);
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        stream.on('data', (d: Buffer) => {
+          if (held) return;
+          out += d.toString('utf8');
+          if (out.includes(ready)) {
+            held = true;
+            signal.removeEventListener('abort', onAbort);
+            resolve({ release });
+          }
+        });
+        stream.stderr.on('data', (d: Buffer) => {
+          stderr = (stderr + d.toString('utf8')).slice(-4096);
+        });
+        stream.on('exit', (c: number | null) => {
+          code = c;
+        });
+        stream.on('close', () => {
+          signal.removeEventListener('abort', onAbort);
+          if (!held) reject(Object.assign(new Error(stderr.trim() || `exited with code ${code}`), { code }));
+        });
+        stream.on('error', (e: Error) => {
+          if (!held) reject(e);
+        });
+        if (signal.aborted) onAbort();
       });
     });
   }

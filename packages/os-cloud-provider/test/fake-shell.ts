@@ -111,15 +111,12 @@ export class FakeShell implements RemoteShell {
       for (const p of input.toString().split('\0').filter(Boolean)) await rm(join(this.dir, p), { recursive: true, force: true });
       return ok();
     }
-    if (command === REMOTE.pruneDirs) {
-      for (let d of input.toString().split('\0').filter(Boolean)) {
-        while (d && d !== '.') {
-          try {
-            await rmdir(join(this.dir, d));
-          } catch {
-            break;
-          }
-          d = dirname(d);
+    if (command === REMOTE.rmdirs) {
+      for (const d of input.toString().split('\0').filter(Boolean)) {
+        try {
+          await rmdir(join(this.dir, d)); // fails (kept) when not empty
+        } catch {
+          // like --ignore-fail-on-non-empty
         }
       }
       return ok();
@@ -149,6 +146,19 @@ export class FakeShell implements RemoteShell {
     for (const [c, w] of this.streamScript.chunks) onData(Buffer.from(c), w);
     if (!this.streamScript.hang) return this.streamScript.code;
     return new Promise((resolve) => signal.addEventListener('abort', () => resolve(-1), { once: true }));
+  }
+
+  /** Deploy locks held per remote directory (shared by all fake shells). */
+  static readonly locks = new Set<string>();
+
+  async hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }> {
+    this.commands.push(command);
+    signal.throwIfAborted();
+    if (!command.includes('flock')) throw new Error(`unexpected hold: ${command}`);
+    if (FakeShell.locks.has(this.dir)) throw Object.assign(new Error('lock busy'), { code: 75 });
+    FakeShell.locks.add(this.dir);
+    void ready;
+    return { release: () => FakeShell.locks.delete(this.dir) };
   }
 
   close(): void {

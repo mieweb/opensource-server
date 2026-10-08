@@ -21,11 +21,12 @@ describe('create-container.js: provider ID is persisted before configuration', (
   beforeAll(async () => {
     await resetDb();
     preload = path.join(os.tmpdir(), `fail-after-create-${process.pid}.js`);
-    // Fail the first call after the clone (the template-config read).
+    // Make one node call fail (chosen by FAIL_AT) after the VM was cloned.
     fs.writeFileSync(
       preload,
       `const DummyApi = require(${JSON.stringify(path.join(__dirname, '..', '..', 'utils', 'dummy-api'))});
-       DummyApi.prototype.lxcConfig = async () => { throw new Error('injected: node error after create'); };`,
+       const boom = async () => { throw new Error('injected: node error after create'); };
+       DummyApi.prototype[process.env.FAIL_AT] = boom;`,
     );
   });
 
@@ -34,12 +35,22 @@ describe('create-container.js: provider ID is persisted before configuration', (
     await closeDb();
   });
 
-  test('a failure after creation leaves the VMID on the record', async () => {
-    const user = await createUser({ uid: 'vmidowner' });
-    const site = await Site.create({ name: 's', internalDomain: 'ex.test' });
-    const node = await Node.create({ siteId: site.id, name: 'n', nodeType: 'dummy' });
+  let user;
+  let site;
+  let node;
+  beforeAll(async () => {
+    user = await createUser({ uid: 'vmidowner' });
+    site = await Site.create({ name: 's', internalDomain: 'ex.test' });
+    node = await Node.create({ siteId: site.id, name: 'n', nodeType: 'dummy' });
+  });
+
+  test.each([
+    ['waitForTask', 'the clone task itself fails'],
+    ['updateLxcConfig', 'configuring the cloned VM fails'],
+    ['lxcConfig', 'reading the template config fails'],
+  ])('%s: a failure once the VM may exist (%s) leaves the VMID on the record', async (failAt) => {
     const c = await Container.create({
-      hostname: 'half-made',
+      hostname: `half-made-${failAt.toLowerCase()}`,
       username: user.uid,
       nodeId: node.id,
       siteId: site.id,
@@ -47,7 +58,7 @@ describe('create-container.js: provider ID is persisted before configuration', (
     });
 
     const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'create-container.js'), `--container-id=${c.id}`], {
-      env: { ...process.env, NODE_OPTIONS: `--require ${preload}` },
+      env: { ...process.env, NODE_OPTIONS: `--require ${preload}`, FAIL_AT: failAt },
       encoding: 'utf8',
       timeout: 60_000,
     });

@@ -271,6 +271,16 @@ function parseDockerTaskId(taskId, expectedKind = null) {
 }
 
 /**
+ * Store the provider container ID (VMID / Docker ID) on the record. Called as
+ * soon as the create/clone is accepted and whenever Docker returns a new ID,
+ * so a failure later in the job never leaves a VM the record doesn't point to.
+ */
+async function recordProviderId(container, vmid) {
+  await container.update({ containerId: String(vmid) });
+  console.log(`Container provider ID ${vmid} stored in database`);
+}
+
+/**
  * Main function
  */
 async function main() {
@@ -450,6 +460,10 @@ async function main() {
         vmid = dockerContainerId;
         console.log(`Docker container ID: ${vmid}`);
       }
+      // The create was accepted: from here on a VM may exist. Record its ID
+      // before waiting on (or configuring) it, so any failure below leaves a
+      // record the Manager can delete node-side instead of an orphaned VM.
+      await recordProviderId(container, vmid);
       
       // Wait for create to complete
       await client.waitForTask(node.name, createUpid);
@@ -486,6 +500,8 @@ async function main() {
         ({ vmid, result: cloneUpid } = await withVmidRetry(vmid, (id) => client.cloneLxc(node.name, templateVmid, id, cloneOptions)));
       }
       console.log(`Clone task started: ${cloneUpid}`);
+      // As above: record the ID as soon as the clone is accepted.
+      await recordProviderId(container, vmid);
       
       // Wait for clone to complete
       await client.waitForTask(node.name, cloneUpid);
@@ -508,12 +524,6 @@ async function main() {
       console.log('Container configured');
     }
     
-    // The VM exists now: record its provider ID before any further (fallible)
-    // configuration, so a failure below leaves a record the Manager can still
-    // delete node-side instead of an orphaned VM with a null ID.
-    await container.update({ containerId: String(vmid) });
-    console.log(`Container provider ID ${vmid} stored in database`);
-
     // Snapshot the template's env/entrypoint onto the container record now, as
     // if the user had supplied them (user-supplied values still win). Templates
     // are mutable Docker refs we can't re-query on a later reconfigure, so we
@@ -535,7 +545,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(updateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
-        await container.update({ containerId: String(vmid) });
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after reconfigure: ${vmid}`);
       }
       console.log('Environment/entrypoint configuration applied');
@@ -563,7 +573,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(nvidiaUpdateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
-        await container.update({ containerId: String(vmid) });
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after NVIDIA update: ${vmid}`);
       }
       console.log('NVIDIA hookscript attached');
@@ -582,7 +592,7 @@ async function main() {
       const mountedDockerId = isDockerNode ? parseDockerTaskId(mountTask) : null;
       if (mountedDockerId) {
         vmid = mountedDockerId;
-        await container.update({ containerId: String(vmid) });
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after volume attach: ${vmid}`);
       }
       // Mark all volumes applied now that the mounts are set.

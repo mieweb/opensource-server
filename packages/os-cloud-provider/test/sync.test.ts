@@ -93,7 +93,7 @@ describe('syncWorktree', () => {
     await put(remote, 'dist/built.js', 'remote build');
 
     const same = await syncWorktree(local, new FakeShell(remote), logger);
-    assert.deepEqual(same, { upload: [], remove: [], conflicts: [] });
+    assert.deepEqual(same, { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
 
     await writeFile(join(local, 'src/index.js'), 'v2!');
     const future = new Date(Date.now() + 5000);
@@ -130,7 +130,7 @@ describe('syncWorktree', () => {
     assert.deepEqual(plan.upload.map((x) => x.path), ['src/index.js']);
     assert.equal(await readFile(join(remote, 'src/index.js'), 'utf8'), 'v9');
     // ...and an unchanged tree stays a no-op at millisecond precision.
-    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [] });
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
   });
 
   test('a permission-only change (chmod +x) is synced', async () => {
@@ -180,7 +180,37 @@ describe('syncWorktree', () => {
     assert.equal(await readFile(join(remote, 'lib'), 'utf8'), 'now a file');
     // Conflicts are cleared before extraction.
     assert.ok(shell.commands.indexOf(REMOTE.removeTrees) < shell.commands.indexOf(REMOTE.extract));
-    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [] });
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
+  });
+
+  test('empty directories are created and removed like files', async () => {
+    await mkdir(join(local, 'uploads/tmp'), { recursive: true }); // empty, not ignored
+    await mkdir(join(local, 'node_modules/ignored-empty'), { recursive: true }); // ignored
+    const first = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(first.mkdirs.filter((d) => d.startsWith('uploads')), ['uploads', 'uploads/tmp']);
+    assert.ok((await lstat(join(remote, 'uploads/tmp'))).isDirectory());
+    await assert.rejects(lstat(join(remote, 'node_modules')), 'ignored dirs are not created');
+
+    // Removed locally → removed remotely; a dir still holding ignored
+    // content (remote-only node_modules) is kept.
+    await put(remote, 'keepme/node_modules/x.js', 'deps');
+    await mkdir(join(remote, 'gone/deeper'), { recursive: true });
+    await rm(join(local, 'uploads'), { recursive: true });
+    const second = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(second.rmdirs, ['gone/deeper', 'uploads/tmp', 'gone', 'keepme', 'uploads']);
+    await assert.rejects(lstat(join(remote, 'uploads')));
+    await assert.rejects(lstat(join(remote, 'gone')));
+    assert.equal(await readFile(join(remote, 'keepme/node_modules/x.js'), 'utf8'), 'deps');
+
+    // A directory that stays locally but loses its files is kept (and stable).
+    await put(local, 'data/only.txt', 'x');
+    await syncWorktree(local, new FakeShell(remote), logger);
+    await rm(join(local, 'data/only.txt'));
+    await syncWorktree(local, new FakeShell(remote), logger);
+    assert.ok((await lstat(join(remote, 'data'))).isDirectory());
+    const settled = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(settled.mkdirs, []);
+    assert.deepEqual(settled.rmdirs, ['keepme']); // only the kept non-empty one is retried
   });
 
   test('the remote listing does not descend into ignored directories', async () => {
@@ -191,7 +221,7 @@ describe('syncWorktree', () => {
     await put(remote, 'dist/out.js', 'x');
     const shell = new FakeShell(remote);
     const plan = await syncWorktree(local, shell, logger);
-    assert.deepEqual(plan, { upload: [], remove: [], conflicts: [] });
+    assert.deepEqual(plan, { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
     assert.ok(shell.listed.includes('node_modules'), 'pruned dir itself is listed');
     assert.ok(!shell.listed.some((p) => p.startsWith('node_modules/') || p.startsWith('dist/')), shell.listed.join(','));
     assert.equal(await readFile(join(remote, 'node_modules/big/index.js'), 'utf8'), 'x', 'left untouched');
@@ -202,6 +232,35 @@ describe('syncWorktree', () => {
     assert.deepEqual(pruneNames('node_modules/\n!keep\n'), []);
   });
 
+  test('concurrent deploys to the same container are serialized by the deploy lock', async () => {
+    const a = new FakeShell(remote);
+    const b = new FakeShell(remote);
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((r) => (releaseFirst = r));
+    // Hold deploy A inside its critical section (at the listing).
+    const origExec = a.exec.bind(a);
+    a.exec = async (cmd, stdin, sig) => {
+      if (cmd.includes(' find ')) await gate;
+      return origExec(cmd, stdin, sig);
+    };
+    const first = syncWorktree(local, a, logger);
+    await new Promise((r) => setTimeout(r, 20));
+    await assert.rejects(syncWorktree(local, b, logger), /Another deploy to this container is in progress/);
+    assert.ok(!b.commands.some((c) => c.includes(' find ')), 'B touched nothing');
+    releaseFirst();
+    await first;
+    // Released (also on failure): the next deploy proceeds.
+    await syncWorktree(local, new FakeShell(remote), logger);
+    assert.equal(FakeShell.locks.size, 0);
+  });
+
+  test('the deploy lock is released when the sync fails', async () => {
+    const shell = new FakeShell(remote);
+    shell.restartScript = { chunks: [], code: 1 };
+    await assert.rejects(syncWorktree(local, shell, logger));
+    assert.equal(FakeShell.locks.size, 0);
+  });
+
   test('cancellation stops the sync before it uploads or deletes', async () => {
     const ac = new AbortController();
     const shell = new FakeShell(remote);
@@ -209,8 +268,10 @@ describe('syncWorktree', () => {
       if (cmd.includes(' find ')) ac.abort(new Error('user cancelled'));
     };
     await assert.rejects(syncWorktree(local, shell, logger, ac.signal), /user cancelled/);
-    assert.equal(shell.commands.length, 1);
-    assert.match(shell.commands[0]!, / find \. /);
+    // The lock, then the listing; nothing after.
+    assert.equal(shell.commands.length, 2);
+    assert.match(shell.commands[0]!, /flock/);
+    assert.match(shell.commands[1]!, / find \. /);
   });
 
   test('empty directories left by deletions are pruned', async () => {

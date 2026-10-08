@@ -90,10 +90,12 @@ export class IgnoreRules {
 export async function scanLocal(
   root: string,
   signal?: AbortSignal,
-): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules; ignoredDirs: string[]; rootIgnore: string }> {
+): Promise<{ files: Map<string, FileEntry>; rules: IgnoreRules; ignoredDirs: string[]; rootIgnore: string; dirs: Set<string> }> {
   const rules = new IgnoreRules();
   const files = new Map<string, FileEntry>();
   const ignoredDirs: string[] = [];
+  /** Every (non-ignored) directory, so empty ones are synced too. */
+  const dirs = new Set<string>();
   let rootIgnore = '';
 
   const walk = async (dir: string): Promise<void> => {
@@ -115,8 +117,10 @@ export async function scanLocal(
     for (const e of entries) {
       const rel = dir === '' ? e.name : `${dir}/${e.name}`;
       if (e.isDirectory()) {
-        if (!rules.ignores(rel, true)) await walk(rel);
-        else ignoredDirs.push(rel);
+        if (!rules.ignores(rel, true)) {
+          dirs.add(rel);
+          await walk(rel);
+        } else ignoredDirs.push(rel);
         continue;
       }
       if (rules.ignores(rel)) continue;
@@ -131,7 +135,7 @@ export async function scanLocal(
     }
   };
   await walk('');
-  return { files, rules, ignoredDirs, rootIgnore };
+  return { files, rules, ignoredDirs, rootIgnore, dirs };
 }
 
 export interface RemoteEntry {
@@ -173,12 +177,17 @@ export interface SyncPlan {
    * directory now goes (an ancestor of an uploaded path).
    */
   conflicts: string[];
+  /** Local directories missing remotely (e.g. empty ones), created by the upload. */
+  mkdirs: string[];
+  /** Remote directories gone locally; removed (deepest first) only once empty. */
+  rmdirs: string[];
 }
 
 export function planSync(
   local: Map<string, FileEntry>,
   remote: Map<string, RemoteEntry>,
   rules: IgnoreRules,
+  localDirs: ReadonlySet<string> = new Set(),
 ): SyncPlan {
   const upload: FileEntry[] = [];
   const conflicts = new Set<string>();
@@ -208,7 +217,17 @@ export function planSync(
     .filter(([p, r]) => r.type !== 'dir' && !local.has(p) && !rules.ignores(p) && !removedWith(p))
     .map(([p]) => p)
     .sort();
-  return { upload, remove, conflicts: [...conflicts].sort() };
+  // A local directory where the remote has a file/symlink is a conflict too.
+  for (const d of localDirs) {
+    const r = remote.get(d);
+    if (r && r.type !== 'dir') conflicts.add(d);
+  }
+  const mkdirs = [...localDirs].filter((d) => remote.get(d)?.type !== 'dir' || removedWith(d)).sort();
+  const rmdirs = [...remote]
+    .filter(([p, r]) => r.type === 'dir' && !localDirs.has(p) && !rules.ignores(p, true) && !removedWith(p))
+    .map(([p]) => p)
+    .sort((a, b) => b.split('/').length - a.split('/').length || a.localeCompare(b));
+  return { upload, remove, conflicts: [...conflicts].sort(), mkdirs, rmdirs };
 }
 
 function ancestors(path: string): string[] {
@@ -218,13 +237,14 @@ function ancestors(path: string): string[] {
 }
 
 /** A tar stream of `files` (plus their parent dirs), all owned by OWNER. */
-export function packTar(root: string, files: readonly FileEntry[], signal?: AbortSignal): Readable {
+export function packTar(root: string, files: readonly FileEntry[], signal?: AbortSignal, extraDirs: readonly string[] = []): Readable {
   const pack = tarStream.pack();
   const owner = { uname: OWNER, gname: OWNER, uid: 0, gid: 0 };
   void (async () => {
     try {
       const dirs = new Set<string>();
       for (const f of files) for (const d of ancestors(f.path)) dirs.add(d);
+      for (const d of extraDirs) for (const x of [d, ...ancestors(d)]) dirs.add(x);
       for (const d of [...dirs].sort()) {
         pack.entry({ name: d, type: 'directory', mode: 0o755, ...owner });
       }
@@ -296,7 +316,9 @@ export const REMOTE = {
   extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
   remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
   removeTrees: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -rf --`,
-  pruneDirs: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rmdir -p --ignore-fail-on-non-empty -- 2>/dev/null; true`,
+  // Only empty directories go (a directory still holding ignored content,
+  // like node_modules, stays). The caller passes them deepest first.
+  rmdirs: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rmdir --ignore-fail-on-non-empty --`,
   /**
    * Follow the journal (live install/build output) while restarting; exit
    * non-zero if the restart fails (ExecStartPre install/build failed) or the
@@ -381,6 +403,34 @@ export async function restartApp(shell: RemoteShell, logger: DeployLogger, signa
   );
 }
 
+/** Lock serializing deploys to one container (held from listing through restart). */
+export const DEPLOY_LOCK = '/run/mieweb-deploy.lock';
+const LOCKED = 'MIEWEB_DEPLOY_LOCKED';
+const LOCK_BUSY = 75;
+
+/**
+ * Take the container's deploy lock for the duration of `fn`. `flock -n`
+ * fails fast if another deploy holds it; the lock lives as long as the SSH
+ * channel, so a crashed or killed deploy (dropped connection) releases it.
+ */
+async function withDeployLock<T>(shell: RemoteShell, signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  const cmd = `sudo flock -n -E ${LOCK_BUSY} ${quote([DEPLOY_LOCK])} sh -c ${quote([`echo ${LOCKED}; exec cat >/dev/null`])}`;
+  let lock: { release(): void };
+  try {
+    lock = await shell.hold(cmd, LOCKED, signal);
+  } catch (err) {
+    if ((err as { code?: number }).code === LOCK_BUSY) {
+      throw new Error('Another deploy to this container is in progress; try again when it finishes');
+    }
+    throw new Error(`Could not take the deploy lock: ${(err as Error).message}`, { cause: err });
+  }
+  try {
+    return await fn();
+  } finally {
+    lock.release();
+  }
+}
+
 /** Sync `root` into the container and restart the app. */
 export async function syncWorktree(
   root: string,
@@ -388,10 +438,16 @@ export async function syncWorktree(
   logger: DeployLogger,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<SyncPlan> {
-  const { files, rules, ignoredDirs, rootIgnore } = await scanLocal(root, signal);
+  // Two deploys to the same app must not interleave listing, upload, delete
+  // and restart (the result would mix both worktrees).
+  return withDeployLock(shell, signal, () => syncLocked(root, shell, logger, signal));
+}
+
+async function syncLocked(root: string, shell: RemoteShell, logger: DeployLogger, signal: AbortSignal): Promise<SyncPlan> {
+  const { files, rules, ignoredDirs, rootIgnore, dirs } = await scanLocal(root, signal);
   const list = listCommand({ paths: ignoredDirs, names: pruneNames(rootIgnore) });
   const listing = await run(shell, 'listing', list, signal);
-  const plan = planSync(files, parseRemoteListing(listing), rules);
+  const plan = planSync(files, parseRemoteListing(listing), rules, dirs);
   const bytes = plan.upload.reduce((n, f) => n + (f.type === 'file' ? f.size : 0), 0);
   logger.info(
     `Syncing ${root} → ${REMOTE_APP_DIR}: ${files.size} files, ` +
@@ -400,12 +456,11 @@ export async function syncWorktree(
 
   const nul = (xs: string[]): Buffer => Buffer.from(xs.map((x) => `${x}\0`).join(''));
   if (plan.conflicts.length > 0) await run(shell, 'conflict removal', REMOTE.removeTrees, signal, nul(plan.conflicts));
-  if (plan.upload.length > 0) await run(shell, 'extract', REMOTE.extract, signal, packTar(root, plan.upload, signal));
-  if (plan.remove.length > 0) {
-    await run(shell, 'delete', REMOTE.remove, signal, nul(plan.remove));
-    const dirs = [...new Set(plan.remove.map((p) => posix.dirname(p)).filter((d) => d !== '.'))];
-    if (dirs.length > 0) await run(shell, 'cleanup', REMOTE.pruneDirs, signal, nul(dirs));
+  if (plan.upload.length > 0 || plan.mkdirs.length > 0) {
+    await run(shell, 'extract', REMOTE.extract, signal, packTar(root, plan.upload, signal, plan.mkdirs));
   }
+  if (plan.remove.length > 0) await run(shell, 'delete', REMOTE.remove, signal, nul(plan.remove));
+  if (plan.rmdirs.length > 0) await run(shell, 'directory cleanup', REMOTE.rmdirs, signal, nul(plan.rmdirs));
   logger.info('Code synced; restarting the app (install/build output follows)');
   await restartApp(shell, logger, signal);
   logger.info('App restarted and running');
