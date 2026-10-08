@@ -7,7 +7,7 @@
 const request = require('supertest');
 const { buildApp, bearer } = require('../../../../tests/helpers/app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
-const { Site, Node, Container, ExternalDomain, Service, HTTPService } = require('../../../../models');
+const { Site, Node, Container, ExternalDomain, Service, HTTPService, Job } = require('../../../../models');
 const DummyApi = require('../../../../utils/dummy-api');
 const { manageDnsRecords } = require('../../../../utils/cloudflare-dns');
 
@@ -76,6 +76,17 @@ describe('DELETE container: node-side failures', () => {
     expect(res.body.error.message).toMatch(/storage locked/);
     expect(await Container.findByPk(c.id)).not.toBeNull();
     expect(manageDnsRecords).not.toHaveBeenCalled();
+  });
+
+  test('a container whose create job is still running is not deleted (409)', async () => {
+    const job = await Job.create({ command: 'node bin/create-container.js', createdBy: user.uid, status: 'running' });
+    const c = await Container.create({ hostname: 'creating', username: user.uid, nodeId: node.id, siteId: site.id, creationJobId: job.id });
+    const res = await del(c, '?force=true');
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('create_in_progress');
+    expect(await Container.findByPk(c.id)).not.toBeNull();
+    await job.update({ status: 'failure' });
+    expect((await del(c)).status).toBe(200);
   });
 
   test('VM already gone → success', async () => {

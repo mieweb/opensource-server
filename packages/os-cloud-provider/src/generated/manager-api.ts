@@ -2451,7 +2451,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description DB/Proxmox hostname mismatch — delete aborted (code: hostname_mismatch) */
+            /** @description DB/Proxmox hostname mismatch (code: hostname_mismatch), or the container is still being created (code: create_in_progress) — delete aborted */
             409: {
                 headers: {
                     [name: string]: unknown;

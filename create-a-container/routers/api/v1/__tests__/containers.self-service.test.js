@@ -108,6 +108,9 @@ describe('non-admin deploy path', () => {
     expect(https[0].internalPort).toBe(9000);
     expect(https[0].httpService.authRequired).toBe(true);
 
+    // No job runner here: finish the create job as the runner would, since a
+    // container still being created can't be deleted (409 create_in_progress).
+    await Job.update({ status: 'success' }, { where: { id: jobId } });
     const del = await api('delete', `/${id}`);
     expect(del.status).toBe(200);
     expect(del.body.data.deleted).toBe(true);

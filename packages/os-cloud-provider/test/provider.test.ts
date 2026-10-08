@@ -609,6 +609,24 @@ describe('tail', () => {
 });
 
 describe('destroy', () => {
+  test('waits for an in-flight create before deleting (no orphaned VM)', async () => {
+    const c = fake.seedCreating('myapp');
+    const h = harness();
+    await provider().destroy!(h.ctx);
+    assert.equal(fake.containers.length, 0);
+    assert.ok(h.logs.some((l) => l.includes('still being created; waiting for job')));
+    // The DELETE came after the create job finished (the VMID existed).
+    assert.ok(fake.jobs.get(c.creationJobId!)!.status === 'success');
+  });
+
+  test('an in-flight create whose job cannot be polled is not deleted', async () => {
+    const c = fake.seedCreating('myapp');
+    fake.failJobPolls = c.creationJobId!;
+    await assert.rejects(provider().destroy!(harness().ctx), /500 internal_error/);
+    assert.equal(fake.containers.length, 1);
+    assert.ok(!fake.requests.some((r) => r.method === 'DELETE'));
+  });
+
   test('deletes by hostname; no-op when absent', async () => {
     const p = provider();
     await p.deploy(harness().ctx);

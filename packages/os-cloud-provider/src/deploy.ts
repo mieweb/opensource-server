@@ -830,7 +830,20 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   const s = resolveTargetSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
-  const existing = await findByHostname(client, siteId, name);
+  let existing = await findByHostname(client, siteId, name);
+  // Still being created (an interrupted or concurrent deploy): it has no VMID
+  // yet, so deleting now would leave its create job provisioning a VM nobody
+  // manages. Wait for the job, then delete what it produced. Only a create
+  // that *finished* failing is absorbed; an uncertain poll stops here.
+  if (existing && !existing.containerId && existing.status === 'creating' && existing.creationJobId) {
+    ctx.logger.info(`Container ${existing.id} is still being created; waiting for job ${existing.creationJobId} before deleting`);
+    await waitForJob(client, existing.creationJobId, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs }).catch(
+      (err: unknown) => {
+        if (!(err instanceof JobFailedError)) throw err;
+      },
+    );
+    existing = await findByHostname(client, siteId, name);
+  }
   if (!existing) {
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);
     return;

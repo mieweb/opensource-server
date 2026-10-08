@@ -1084,6 +1084,19 @@ router.delete(
         ],
       },
     );
+    // A container still being created has no VMID yet, so deleting the row
+    // now would skip node-side deletion while its create job goes on to
+    // provision (and start) a VM nobody manages. Refuse until it finishes.
+    if (!container.containerId && container.creationJobId) {
+      const job = await Job.findByPk(container.creationJobId, { attributes: ['status'] });
+      if (job && (job.status === 'pending' || job.status === 'running')) {
+        throw new ApiError(
+          409,
+          'create_in_progress',
+          `Container ${container.hostname} is still being created (job ${container.creationJobId}); delete it once that job finishes`,
+        );
+      }
+    }
     const node = container.node;
     let dnsWarnings = [];
     const httpServices = (container.services || [])
