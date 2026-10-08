@@ -20,6 +20,7 @@ import {
   Container as ContainerIcon,
   Globe,
   KeyRound,
+  Mail,
   Radio,
   Server,
   Settings,
@@ -61,6 +62,7 @@ const ADMIN: NavLink[] = [
   },
   { to: '/agents', label: 'Agents', icon: <Radio className="size-4" />, adminOnly: true },
   { to: '/apikeys', label: 'API Keys', icon: <KeyRound className="size-4" /> },
+  { to: '/mail-accounts', label: 'Email', icon: <Mail className="size-4" /> },
   { to: '/settings', label: 'Settings', icon: <Settings className="size-4" />, adminOnly: true },
 ];
 

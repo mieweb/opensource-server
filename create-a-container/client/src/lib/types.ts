@@ -353,6 +353,46 @@ export interface ApiKeyCreated extends ApiKey {
   warning: string;
 }
 
+/** A domain mail accounts can be created on (mail enabled + DNS verified). */
+export interface MailDomain {
+  id: number;
+  name: string;
+}
+
+export interface MailAccount {
+  id: string;
+  address: string | null;
+  localPart: string;
+  domain: { id: number; name: string; canSend: boolean; canReceive: boolean } | null;
+  owner: string | null;
+  description: string | null;
+  enabled: boolean;
+  quotaMb: number;
+  unsubscribeHeaders: boolean;
+  lastRotatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Create/rotate response — the password is returned exactly once. */
+export interface MailAccountSecret extends MailAccount {
+  password: string;
+  connection: {
+    host: string;
+    username: string;
+    smtp: { ports: number[] };
+    imap: { ports: number[] };
+  };
+  warning: string;
+}
+
+export interface MailSuppression {
+  id: number;
+  recipient: string;
+  source: 'one-click' | 'admin';
+  createdAt: string;
+}
+
 export interface AppSettings {
   smtpUrl: string;
   smtpNoreplyAddress: string;
