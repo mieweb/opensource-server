@@ -17,6 +17,7 @@ import { Globe } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import { FormPageLayout } from '@/components/FormPageLayout';
+import { DomainMailSection } from './DomainMailSection';
 import type { ExternalDomain } from '@/lib/types';
 
 const schema = z.object({
@@ -176,6 +177,8 @@ export function ExternalDomainFormPage() {
             <AlertDescription>{(mutation.error as ApiError).message}</AlertDescription>
           </Alert>
         )}
+        {/* Mail enablement mutates via its own endpoints — not part of the PUT form. */}
+        {isEdit && domain && <DomainMailSection domain={domain} />}
       </FormPageLayout>
     </form>
   );

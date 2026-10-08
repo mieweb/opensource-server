@@ -49,6 +49,7 @@ tags:
   - name: Notifications
   - name: Jobs
   - name: External Domains
+  - name: Mail
   - name: Users
   - name: Groups
   - name: API Keys
@@ -463,6 +464,10 @@ components:
             name: { type: string }
         authServer: { type: string, nullable: true }
         hasCloudflareApiKey: { type: boolean }
+        mailEnabled: { type: boolean, description: 'Read-only here — toggled via the …/mail/enable|disable endpoints' }
+        mailDnsVerified: { type: boolean, description: 'SPF+DKIM+DMARC verified. With mailEnabled => domain can send' }
+        mailMxVerified: { type: boolean, description: 'MX resolves to the mail IP. With mailEnabled => domain can receive' }
+        mailDnsCheckedAt: { type: string, format: date-time, nullable: true }
     ExternalDomainInput:
       type: object
       properties:
@@ -493,6 +498,66 @@ components:
         netboxToken: { type: string }
         bannerMessage: { type: string, description: 'Announcement banner shown at the top of the app (supports [text](url) links); blank disables it. Also surfaced unauthenticated via GET /health as `banner`.' }
         usagePsiProbeLimit: { type: string, description: 'Max PSI (pressure stall) probes per usage report, spent on the highest-utilization running containers. Non-negative integer as string; "0" disables PSI, blank uses the default (16).' }
+        mailHostname: { type: string, description: 'HELO / MX hostname — the forward-confirmed PTR name of the mail IP (see GET /mail/ptr)' }
+        mailUnsubscribeBaseUrl: { type: string, description: 'Public base URL of the manager for one-click unsubscribe links (RFC 8058)' }
+        mailRelayhost: { type: string, description: 'Optional smarthost; requires mailSpfInclude' }
+        mailRelayhostUsername: { type: string }
+        mailRelayhostPassword: { type: string }
+        mailSpfInclude: { type: string, description: 'include: domain added to suggested SPF; required with a relayhost' }
+        mailDnsCheckResolvers: { type: string, description: 'Comma-separated resolver IPs for Check DNS (default 1.1.1.1, 8.8.8.8)' }
+        mailDbHost: { type: string, description: 'DB host the mail stack connects to when the DB is not local to the mail host' }
+        mailSelfManagedSiteId: { type: string, description: 'Site whose externalIp is the mail IP when no agent runs mail (self-managed MTA)' }
+        mailDefaultQuotaMb: { type: string, description: 'Mailbox quota for new accounts (default 1024)' }
+        mailMessageSizeLimitMb: { type: string, description: 'Postfix message size limit (default 25)' }
+    MailAccount:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        address: { type: string, description: '<localPart>@<domain>' }
+        localPart: { type: string }
+        domain:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            canSend: { type: boolean }
+            canReceive: { type: boolean }
+        owner: { type: string, nullable: true, description: Username }
+        description: { type: string, nullable: true }
+        enabled: { type: boolean }
+        quotaMb: { type: integer }
+        unsubscribeHeaders: { type: boolean, description: 'Add RFC 8058 List-Unsubscribe headers to submitted mail' }
+        lastRotatedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    MailAccountSecret:
+      allOf:
+        - $ref: '#/components/schemas/MailAccount'
+        - type: object
+          properties:
+            password: { type: string, description: 'Generated password — this is the only time it is returned' }
+            connection:
+              type: object
+              properties:
+                host: { type: string }
+                username: { type: string }
+                smtp: { type: object, properties: { ports: { type: array, items: { type: integer } } } }
+                imap: { type: object, properties: { ports: { type: array, items: { type: integer } } } }
+            warning: { type: string }
+    MailDnsRecord:
+      type: object
+      properties:
+        type: { type: string, enum: [TXT, MX] }
+        name: { type: string }
+        value: { type: string }
+    MailSuppression:
+      type: object
+      properties:
+        id: { type: integer }
+        recipient: { type: string }
+        source: { type: string, enum: [one-click, admin] }
+        createdAt: { type: string, format: date-time }
     ResourceRequest:
       type: object
       properties:
@@ -1309,10 +1374,24 @@ paths:
                     properties:
                       applied: { type: boolean }
                       message: { type: string, description: 'Failure detail (mkdir/chown error)' }
+                enabledServices:
+                  type: array
+                  items: { type: string }
+                  description: 'Service groups the agent runs (AGENT_SERVICES), e.g. [nginx, dnsmasq, mail]'
+                missingBinaries:
+                  type: array
+                  items: { type: string }
+                  description: Binaries/SQL drivers missing for the enabled services; blocks the mail-host claim
       responses:
         '200':
-          description: 'Config snapshot (`{ data: { site, nginx } }`) with `ETag` header'
+          description: >-
+            Config snapshot (`{ data: { site, nginx } }`) with `ETag` header.
+            When the agent reports `mail`, `data.mailStatus` is one of
+            holder|conflict|unsupported|missing_packages, and only the claim
+            holder additionally receives `data.mail` (DKIM keys, receiving
+            domains, relayhost, limits, DB connection, unsubscribe keys).
         '304': { description: Config unchanged since If-None-Match }
+        '403': { description: 'Agent pinned to a different API key (code: agent_key_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { description: 'Missing siteId/hostname (code: validation_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     get:
       operationId: list_agents
@@ -1337,6 +1416,11 @@ paths:
                         hostname: { type: string }
                         ipv4Address: { type: string, nullable: true }
                         services: { type: object, nullable: true }
+                        enabledServices: { type: array, items: { type: string }, nullable: true }
+                        missingBinaries: { type: array, items: { type: string }, nullable: true }
+                        mailHostSince: { type: string, format: date-time, nullable: true }
+                        isLocal: { type: boolean }
+                        hasApiKeyPin: { type: boolean }
                         lastCheckinAt: { type: string, format: date-time, nullable: true }
                         secondsSinceCheckin: { type: integer, nullable: true, description: Computed server-side at response time }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1536,6 +1620,235 @@ paths:
       summary: Delete an external domain (admin)
       responses:
         '204': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /external-domains/{id}/mail/dns:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      operationId: get_domain_mail_dns
+      tags: [Mail]
+      summary: DNS records to publish for mail + last check result (admin)
+      responses:
+        '200':
+          description: Records and verification state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      records: { type: array, items: { $ref: '#/components/schemas/MailDnsRecord' } }
+                      mailEnabled: { type: boolean }
+                      mailDnsVerified: { type: boolean }
+                      mailMxVerified: { type: boolean }
+                      lastCheck: { type: object, nullable: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /external-domains/{id}/mail/check-dns:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    post:
+      operationId: check_domain_mail_dns
+      tags: [Mail]
+      summary: Re-verify SPF/DKIM/DMARC/MX against public resolvers (admin)
+      responses:
+        '200':
+          description: Domain with updated gates plus the full check result under `check`
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /external-domains/{id}/mail/enable:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    post:
+      operationId: enable_domain_mail
+      tags: [Mail]
+      summary: Enable mail for a domain (admin) — runs Check DNS first
+      responses:
+        '200': { description: Enabled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: 'SPF/DKIM/DMARC not verified (code: dns_not_configured); MX failure only warns', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /external-domains/{id}/mail/disable:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    post:
+      operationId: disable_domain_mail
+      tags: [Mail]
+      summary: Disable mail for a domain (admin) — DKIM keys and config are kept
+      responses:
+        '200': { description: Disabled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /mail-accounts:
+    get:
+      operationId: list_mail_accounts
+      tags: [Mail]
+      summary: List the current user's mail accounts (`?all=true` for admins)
+      parameters:
+        - { in: query, name: all, required: false, schema: { type: string, enum: ['true'] } }
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/MailAccount' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: create_mail_account
+      tags: [Mail]
+      summary: Create a mail account (password returned ONCE)
+      description: >-
+        Only on domains that can send. Role local parts
+        (postmaster, abuse, hostmaster, webmaster, root, admin, security,
+        noreply, dmarc) and `quotaMb` are admin-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalDomainId, localPart]
+              properties:
+                externalDomainId: { type: integer }
+                localPart: { type: string, maxLength: 64 }
+                description: { type: string, maxLength: 255, nullable: true }
+                quotaMb: { type: integer, description: Admin-only }
+      responses:
+        '201':
+          description: Created with one-time `password` and `connection` info
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/MailAccountSecret' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { description: 'Reserved local part or admin-only field (codes: reserved_local_part, admin_required)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: 'Domain not found (code: domain_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: 'Address already exists (code: address_taken)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: 'Domain cannot send (code: domain_cannot_send)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /mail-accounts/domains:
+    get:
+      operationId: list_mail_domains
+      tags: [Mail]
+      summary: Domains mail accounts can be created on (enabled + DNS verified)
+      responses:
+        '200':
+          description: List of `{ id, name }`
+  /mail-accounts/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+    get:
+      operationId: get_mail_account
+      tags: [Mail]
+      summary: Get a mail account (owner or admin)
+      responses:
+        '200':
+          description: Item
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/MailAccount' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: update_mail_account
+      tags: [Mail]
+      summary: Update a mail account (quota/transfer admin-only)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description: { type: string, maxLength: 255, nullable: true }
+                enabled: { type: boolean, description: Disabling locks the account out instantly }
+                unsubscribeHeaders: { type: boolean }
+                quotaMb: { type: integer, description: Admin-only }
+                username: { type: string, description: 'Admin-only ownership transfer — target username' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/MailAccount' } } }
+        '403': { description: 'Admin-only field (code: admin_required)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: 'Transfer target inactive (code: user_inactive)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      operationId: delete_mail_account
+      tags: [Mail]
+      summary: Delete a mail account (owner or admin)
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mail-accounts/{id}/rotate-password:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+    post:
+      operationId: rotate_mail_account_password
+      tags: [Mail]
+      summary: Rotate the password (owner or admin; returned ONCE)
+      responses:
+        '200':
+          description: Account with one-time `password` and `connection` info
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/MailAccountSecret' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mail-accounts/{id}/suppressions:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+    get:
+      operationId: list_mail_account_suppressions
+      tags: [Mail]
+      summary: Recipients who unsubscribed from this account (owner or admin)
+      responses:
+        '200':
+          description: List
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/MailSuppression' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /mail-accounts/{id}/suppressions/{suppressionId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      - { in: path, name: suppressionId, required: true, schema: { type: integer } }
+    delete:
+      operationId: delete_mail_account_suppression
+      tags: [Mail]
+      summary: Remove a suppression (admin only — owners cannot re-subscribe people)
+      responses:
+        '204': { description: Removed }
+        '403': { description: 'Not an admin (code: admin_required)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /mail/host:
+    get:
+      operationId: get_mail_host
+      tags: [Mail]
+      summary: Current mail-host claim holder, mail IP, and hostname (admin)
+      responses:
+        '200': { description: 'Holder agent (or null), mailIp, mailHostname, selfManagedSiteId' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /mail/host/release:
+    post:
+      operationId: release_mail_host
+      tags: [Mail]
+      summary: Release the mail-host claim (admin) — next qualifying check-in takes it
+      responses:
+        '200': { description: '`{ released: boolean }`' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /mail/ptr:
+    get:
+      operationId: get_mail_ptr
+      tags: [Mail]
+      summary: PTR suggestion for the mail_hostname setting (admin)
+      responses:
+        '200': { description: '`{ mailIp, ptr, forwardConfirmed, mailHostname, suggestion }`' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /agents/{id}/api-key-pin:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    delete:
+      operationId: delete_agent_api_key_pin
+      tags: [Agents]
+      summary: Clear a remote agent's API-key pin (admin) — it re-pins on next check-in
+      responses:
+        '204': { description: Cleared }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 

@@ -1,0 +1,56 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+compatibility_level = 3.6
+
+<%_ if (mail.hostname) { _%>
+myhostname = <%= mail.hostname %>
+<%_ } _%>
+smtpd_banner = $myhostname ESMTP
+biff = no
+readme_directory = no
+append_dot_mydomain = no
+
+# This host serves virtual mailboxes only.
+mydestination =
+mynetworks = 127.0.0.0/8 [::1]/128
+alias_maps =
+alias_database =
+local_recipient_maps =
+local_transport = error:5.1.1 local delivery disabled
+
+smtpd_helo_required = yes
+disable_vrfy_command = yes
+message_size_limit = <%= mail.messageSizeLimitMb * 1048576 %>
+
+# TLS: per-domain certs via SNI (compiled with `postmap -F`), shared with
+# nginx under /etc/ssl. Fallback chain covers domains without a cert yet.
+tls_server_sni_maps = hash:/etc/postfix/sni_map
+smtpd_tls_chain_files = <%= certs.fallbackKey %>, <%= certs.fallbackCert %>
+smtpd_tls_security_level = may
+smtp_tls_security_level = may
+
+# Inbound (:25): only local recipients on can-receive domains. Dovecot's
+# quota-status policy service rejects unknown and over-quota users at RCPT.
+virtual_mailbox_domains = texthash:/etc/postfix/vdomains
+virtual_mailbox_maps = static:x
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
+smtpd_recipient_restrictions = reject_unauth_destination, check_policy_service unix:private/quota-status
+
+# Sender ownership: submission enforces sender == SASL login (live from SQL).
+smtpd_sender_login_maps = <%= db.prefix %>:/etc/postfix/sql/senders.cf
+
+# After-queue content filter copies are delivered one recipient at a time so
+# opensource-mail-helper can add a per-recipient List-Unsubscribe token
+# (RFC 8058) before OpenDKIM signs on reinjection.
+mailhelper_destination_recipient_limit = 1
+<%_ if (mail.relayhost) { _%>
+
+# Outbound smarthost — SPF for sending domains must include the relay
+# (mail_spf_include setting).
+relayhost = <%= mail.relayhost.host %>
+<%_ if (mail.relayhost.username) { _%>
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = texthash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+<%_ } _%>
+<%_ } _%>

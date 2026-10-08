@@ -1,0 +1,8 @@
+# Managed by opensource-agent — Postfix smtpd_sender_login_maps (live SQL).
+hosts = <%= db.hosts %>
+user = <%= db.user %>
+<%_ if (db.password) { _%>
+password = <%= db.password %>
+<%_ } _%>
+dbname = <%= db.dbname %>
+query = SELECT login FROM mail_senders_v WHERE sender = '%s'

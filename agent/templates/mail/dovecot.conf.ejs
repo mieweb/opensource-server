@@ -1,0 +1,86 @@
+<%_ /* Dovecot 2.4 (new config syntax; Debian 13). Validated with
+      `doveconf -n` at apply time — a rejected config is rolled back. */ -%>
+# Managed by opensource-agent (mail service group) — do not edit.
+dovecot_config_version = 2.4.0
+dovecot_storage_version = 2.4.0
+
+protocols = imap lmtp
+
+# Virtual users: one Maildir per account under /var/vmail/<account uuid>,
+# owned by the vmail system user (created by the agent).
+mail_driver = maildir
+mail_path = %{userdb:home}/Maildir
+mail_uid = vmail
+mail_gid = vmail
+
+# TLS: same per-domain certs as nginx; fallback below, per-domain overrides
+# via local_name. Plaintext auth is only accepted over TLS.
+ssl = yes
+ssl_server_cert_file = <%= certs.fallbackCert %>
+ssl_server_key_file = <%= certs.fallbackKey %>
+auth_allow_cleartext = no
+<%_ certs.domains.forEach((d) => { _%>
+local_name <%= d.name %> {
+  ssl_server_cert_file = <%= d.cert %>
+  ssl_server_key_file = <%= d.key %>
+}
+<%_ }) _%>
+
+# Accounts live in the manager's database (mail_accounts_v view, read-only
+# mail_dovecot user). Hash scheme is {ARGON2ID} (p=1).
+sql_driver = <%= db.dovecotDriver %>
+<%= db.dovecotDriver %> <%= db.dovecotHost %> {
+<%_ if (db.dovecotParams.dbname) { _%>
+  dbname = <%= db.dovecotParams.dbname %>
+<%_ } _%>
+  user = <%= db.dovecotUser %>
+<%_ if (db.dovecotPassword) { _%>
+  password = <%= db.dovecotPassword %>
+<%_ } _%>
+}
+
+# Submission (protocol smtp, via Postfix SASL) requires can_send; IMAP stays
+# readable for accounts on domains that can no longer send.
+passdb sql {
+  query = SELECT address AS user, password FROM mail_accounts_v WHERE address = '%{user | lower}' AND (can_send OR '%{protocol}' != 'smtp')
+}
+userdb sql {
+  query = SELECT home, 'vmail' AS uid, 'vmail' AS gid, quota_bytes FROM mail_accounts_v WHERE address = '%{user | lower}'
+}
+
+# Cache hits keep per-message SASL cheap; "instant disable" is bounded by
+# this TTL.
+auth_cache_size = 1M
+auth_cache_ttl = 1 min
+auth_cache_negative_ttl = 1 min
+
+mail_plugins {
+  quota = yes
+}
+quota_name = User quota
+quota_storage_size = %{userdb:quota_bytes}B
+
+# Sockets for Postfix: SASL auth, LMTP delivery, and the quota-status
+# policy service (rejects unknown / over-quota recipients at RCPT).
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+service quota-status {
+  executable = quota-status -p postfix
+  unix_listener /var/spool/postfix/private/quota-status {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+}

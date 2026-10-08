@@ -1,0 +1,20 @@
+[Unit]
+Description=MIE opensource-server mail helper (List-Unsubscribe filter + suppression policy)
+Documentation=https://github.com/mieweb/opensource-server/issues/67
+After=network.target
+PartOf=postfix.service
+
+[Service]
+Type=simple
+User=opensource-mail
+Group=opensource-mail
+ExecStart=/usr/bin/node /opt/opensource-server/agent/dist/mail-helper.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

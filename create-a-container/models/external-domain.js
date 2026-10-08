@@ -75,6 +75,33 @@ module.exports = (sequelize) => {
         }
       },
       comment: "Address of the oauth2-proxy process for nginx auth_request, e.g. http://127.0.0.1:4180. nginx proxies /oauth2/* straight to it in a single hop; do not point this at a path-prefixed URL."
+    },
+    mailEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'Admin switch — mail for this domain is off until enabled AND DNS-verified'
+    },
+    mailDnsVerified: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'SPF/DKIM/DMARC check passed. mailEnabled && mailDnsVerified => domain can send'
+    },
+    mailMxVerified: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      comment: 'MX resolves to the mail IP. mailEnabled && mailMxVerified => domain can receive'
+    },
+    mailDnsCheckedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    mailDnsCheckResult: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: 'Per-record outcome of the last Check DNS run (see utils/mail-dns.js)'
     }
   }, {
     tableName: 'ExternalDomains',
@@ -85,6 +112,14 @@ module.exports = (sequelize) => {
     ExternalDomain.belongsTo(models.Site, {
       foreignKey: 'siteId',
       as: 'site'
+    });
+    ExternalDomain.hasMany(models.DkimKey, {
+      foreignKey: 'externalDomainId',
+      as: 'dkimKeys'
+    });
+    ExternalDomain.hasMany(models.MailAccount, {
+      foreignKey: 'externalDomainId',
+      as: 'mailAccounts'
     });
   };
 

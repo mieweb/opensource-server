@@ -91,6 +91,8 @@ router.use('/external-domains', require('./external-domains'));
 router.use('/groups', require('./groups'));
 router.use('/users', require('./users'));
 router.use('/apikeys', require('../../../resources/apikeys/router'));
+router.use('/mail-accounts', require('../../../resources/mailaccounts/router'));
+router.use('/mail', require('./mail'));
 router.use('/settings', require('./settings'));
 router.use('/jobs', require('./jobs'));
 router.use('/resource-requests', require('./resource-requests'));
