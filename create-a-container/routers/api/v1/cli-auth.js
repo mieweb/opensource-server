@@ -17,7 +17,7 @@
  *    consumes the one-time handoff (a replayed POST is rejected) and
  *    303-redirects to http://127.0.0.1:<port>/callback#code=…&state=…
  * 4. The CLI redeems the one-time code (POST /cli/token, 2-minute TTL) for an
- *    API key in its own request. No key exists until then, so a CLI that has
+ *    API key in its own request (repeatable within the TTL: same key). No key exists until then, so a CLI that has
  *    already given up never leaves a live, untracked key behind.
  *
  * Loopback safety: this route does NOT use `safeRedirectUrl`. Only a port is
@@ -172,8 +172,8 @@ router.get('/callback', asyncHandler(async (req, res) => {
   }
 
   // One-time handoff, bound to this browser session: the POST below consumes
-  // it before minting, so a double-click or retried request can't mint a
-  // second key the CLI would never receive (and so could never revoke).
+  // it before issuing a code, so a double-click or replayed POST can't issue a
+  // second code for the same login.
   req.session.cliHandoff = { state: handoff.state, port: handoff.port };
   await saveSession(req);
   const csrfToken = generateCsrfToken(req);
@@ -197,7 +197,9 @@ on <em>this</em> computer.</p>
 </form>`);
 }));
 
-// POST — mint a key for the session user and hand it to the loopback listener.
+// POST — issue a one-time code for the session user and redirect it to the
+// loopback listener; the key is minted only when the CLI redeems the code
+// (POST /auth/cli/token below).
 // csrfGuard (mounted above /auth) has already validated `_csrf` for this
 // session-cookie request. Bearer-only callers are rejected: the handoff exists
 // to turn a *browser session* into a key, not to let a key mint more keys.

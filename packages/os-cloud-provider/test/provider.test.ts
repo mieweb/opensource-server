@@ -437,6 +437,16 @@ describe('deploy', () => {
     assert.equal(fake.containers[0]!.id, c.id);
   });
 
+  test('a racing config change is detected on a freshly created container too', async () => {
+    setupShell = (sh) => {
+      sh.onLocked = () => {
+        fake.containers[0]!.environmentVars.GREETING = 'from the other deploy';
+      };
+    };
+    await assert.rejects(provider().deploy(harness().ctx), /Another deploy changed container .* configuration/);
+    assert.ok(!sessions.at(-1)!.shell.commands.some((cmd) => cmd.includes('tar')), 'nothing synced');
+  });
+
   test('a configuration changed by a racing deploy is detected under the deploy lock', async () => {
     const p = provider();
     await p.deploy(harness().ctx);

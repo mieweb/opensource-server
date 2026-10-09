@@ -509,6 +509,9 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   let carryEnv: Container | null = existing;
   let createdId: number | undefined;
   let adopted = false;
+  // The env this deploy last sent (create or update): checked again under the
+  // deploy lock before syncing.
+  let desiredEnv: EnvVar[] = [];
   // A lost create race hands us someone else's container, which goes through
   // the same settle/drift checks; bound the loop in case of repeated races.
   for (let round = 0; createdId === undefined; round += 1) {
@@ -536,7 +539,8 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
           collaborators: (prev.collaborators ?? []).filter((c) => c !== prev.owner),
         }
       : {};
-    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, envWithSecrets(carryEnv), http, keep, logger);
+    desiredEnv = envWithSecrets(carryEnv);
+    const created = await createOrAdopt(client, siteId, s, name, image, nvidia, desiredEnv, http, keep, logger);
     if ('adopted' in created) {
       // Someone else's create just won the race: the container behind this
       // host:port may be new too, so its host-key pin must be cleared.
@@ -552,18 +556,15 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const fresh = createdId !== undefined || adopted;
   const id = createdId ?? existing!.id!;
 
-  // The configuration this deploy converged to, checked again under the deploy lock.
-  let applied: { environmentVars: ReturnType<typeof envWithSecrets> } | undefined;
   if (existing) {
     const services = planServices(existing.services, http, extras);
-    const environmentVars = envWithSecrets(carryEnv);
+    const environmentVars = (desiredEnv = envWithSecrets(carryEnv));
     const body: UpdateBody = {
       services,
       environmentVars,
       entrypoint: existing.entrypoint ?? null,
       restart: true,
     };
-    applied = { environmentVars };
     let changed = !servicesUnchanged(existing.services, services) || !envUnchanged(existing.environmentVars, environmentVars);
     // `volumes` is absent on Managers that predate volumes (#421); warned about below.
     const dataVolume = existing.volumes?.find((v) => v.mountPath === DATA_VOLUME.mountPath);
@@ -644,9 +645,8 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       // deploy changed the configuration after ours: syncing this code under
       // someone else's env/services would report a deploy that isn't what ran.
       await syncWorktree(ctx.root, shell, logger, signal, async () => {
-        if (!applied) return;
         const now = await getContainer(client, siteId, id);
-        if (!now || !servicesUnchanged(now.services, planServices(now.services, http, extras)) || !envUnchanged(now.environmentVars, applied.environmentVars)) {
+        if (!now || !servicesUnchanged(now.services, planServices(now.services, http, extras)) || !envUnchanged(now.environmentVars, desiredEnv)) {
           throw new Error(
             `Another deploy changed container ${id}'s configuration while this one ran; deploy again to converge it`,
           );
