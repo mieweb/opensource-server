@@ -51,34 +51,7 @@ export const MANAGED_ENV = {
   s3SecretKey: 'MIEWEB_S3_SECRET_ACCESS_KEY',
   libsqlUrl: 'MIEWEB_LIBSQL_URL',
   valkeyUrl: 'MIEWEB_VALKEY_URL',
-  sshAllowUsers: 'MIEWEB_SSH_ALLOW_USERS',
 } as const;
-
-/**
- * Account names sshd matches literally (no patterns or separators). Must
- * match the cloud image's `mieweb-ssh-allow` filter.
- */
-const SSH_USER_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,254}$/;
-
-/**
- * Who may SSH into the converged container: its owner and collaborators, the
- * account deploying (an admin may deploy someone else's app) and the sync
- * login. The cloud image restricts sshd to exactly these accounts, because
- * the container holds app secrets and datastore files and every LDAP user
- * otherwise has SSH + passwordless sudo on every container.
- */
-export function sshAllowUsers(names: readonly (string | null | undefined)[]): string[] {
-  const present = names.filter((n): n is string => !!n);
-  // Never drop a name silently: the allow-list must be exactly who should
-  // have access, or the container could end up open (or locking out the owner).
-  const bad = present.filter((n) => !SSH_USER_RE.test(n));
-  if (bad.length > 0) {
-    throw new ConfigError(
-      `Can't restrict SSH to account name(s) ${bad.map((n) => JSON.stringify(n)).join(', ')}: only letters, digits, '.', '_' and '-' are supported`,
-    );
-  }
-  return [...new Set(present)].sort();
-}
 
 /** Names the Manager accepts for container env vars (models/container.js). */
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -150,8 +123,6 @@ export interface EnvInputs {
   settings: Pick<TargetSettings, 'port' | 'start'>;
   /** Current env map of the existing container (read shape is an object). */
   existing?: Record<string, string>;
-  /** Accounts allowed to SSH in (see {@link sshAllowUsers}). */
-  sshAllowUsers?: readonly string[];
   warn: (m: string) => void;
 }
 
@@ -191,7 +162,6 @@ export function buildEnv(inputs: EnvInputs): EnvVar[] {
     [MANAGED_ENV.s3SecretKey, minioPassword],
     [MANAGED_ENV.libsqlUrl, 'http://127.0.0.1:8080'],
     [MANAGED_ENV.valkeyUrl, 'redis://127.0.0.1:6379'],
-    [MANAGED_ENV.sshAllowUsers, inputs.sshAllowUsers?.length ? inputs.sshAllowUsers.join(' ') : undefined],
   ];
   for (const [k, v] of managed) {
     if (v === undefined) {
@@ -504,13 +474,6 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       env: deps.env,
       settings: s,
       existing: existing ? asEnvMap(existing.environmentVars) : undefined,
-      // A new container is owned by the deploying account.
-      sshAllowUsers: sshAllowUsers([
-        existing?.owner ?? account,
-        ...(existing?.collaborators ?? []),
-        account,
-        s.sshUser ?? account,
-      ]),
       warn: (m) => logger.warn(m),
     });
 

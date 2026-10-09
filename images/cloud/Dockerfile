@@ -72,16 +72,12 @@ RUN groupadd --system --gid 950 mieweb && \
 
 COPY --chmod=0755 mieweb-data-dir.sh /usr/local/bin/mieweb-data-dir
 COPY --chmod=0755 mieweb-app-start.sh /usr/local/bin/mieweb-app-start
-COPY --chmod=0755 mieweb-ssh-allow.sh /usr/local/bin/mieweb-ssh-allow
 COPY --chmod=0755 mieweb-env.sh /usr/local/bin/mieweb-env
-COPY minio.service libsqld.service valkey.service app.service mieweb-ssh-allow.service mieweb-env.service /etc/systemd/system/
+COPY minio.service libsqld.service valkey.service app.service mieweb-env.service /etc/systemd/system/
 # environment.service (from base) copies PID 1's environment, where the
 # Manager puts the container's env vars, into /etc/environment. The units read
 # that file, so enable it explicitly instead of relying on first-boot presets.
-# Both SSH activation paths require the allow-list gate (fail closed).
-COPY ssh-requires-mieweb-allow.conf /etc/systemd/system/ssh.service.d/50-mieweb-allow.conf
-COPY ssh-requires-mieweb-allow.conf /etc/systemd/system/ssh.socket.d/50-mieweb-allow.conf
-RUN systemctl enable environment.service mieweb-env.service mieweb-ssh-allow.service minio.service libsqld.service valkey.service app.service
+RUN systemctl enable environment.service mieweb-env.service minio.service libsqld.service valkey.service app.service
 
 # The persistent volume (#421) mounts here; the directory also exists in the
 # image so the units still work (without persistence) if no volume is attached.

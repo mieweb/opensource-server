@@ -79,14 +79,12 @@ describe('buildEnv', () => {
     const env = buildEnv({
       ...base,
       env: {},
-      manifest: { vars: { MIEWEB_APP_START: 'node evil.js', MIEWEB_SSH_ALLOW_USERS: 'mallory' } },
-      sshAllowUsers: [],
+      manifest: { vars: { MIEWEB_APP_START: 'node evil.js' } },
       warn: (m) => warnings.push(m),
     });
     const keys = env.map((e) => e.key);
     assert.ok(!keys.includes('MIEWEB_APP_START'));
-    assert.ok(!keys.includes('MIEWEB_SSH_ALLOW_USERS'));
-    assert.equal(warnings.length, 2);
+    assert.equal(warnings.length, 1);
   });
 
   test("the app's own AWS credentials and region are kept", () => {

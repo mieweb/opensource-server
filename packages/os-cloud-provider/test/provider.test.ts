@@ -523,21 +523,6 @@ describe('deploy', () => {
     await assert.rejects(provider().deploy(harness().ctx), /data volume on container \d+ is failed.*would not persist/);
   });
 
-  test('SSH is restricted to the owner, collaborators, deployer and sync login', async () => {
-    await provider().deploy(harness().ctx);
-    assert.equal(fake.containers[0]!.environmentVars.MIEWEB_SSH_ALLOW_USERS, 'alice');
-
-    const c = fake.containers[0] as unknown as { collaborators: string[] };
-    c.collaborators = ['carol'];
-    await provider({ MIEWEB_OS_SSH_USER: 'deploybot' }).deploy(harness().ctx);
-    assert.equal(fake.containers[0]!.environmentVars.MIEWEB_SSH_ALLOW_USERS, 'alice carol deploybot');
-    assert.equal(fake.requests.filter((r) => r.method === 'PUT').length, 1, 'collaborator change is applied');
-
-    // An account sshd can't match literally fails the deploy rather than being dropped.
-    c.collaborators = ['carol', 'bad name*'];
-    await assert.rejects(provider().deploy(harness().ctx), /Can't restrict SSH to account name\(s\) "bad name\*"/);
-  });
-
   test('a read-only /mnt/data fails the deploy', async () => {
     fake.seedContainer({ hostname: 'myapp', volumes: [{ id: 9, name: 'data', mountPath: '/mnt/data', mode: 'ro' }] });
     await assert.rejects(provider().deploy(harness().ctx), /attached read-only.*need to write/);
