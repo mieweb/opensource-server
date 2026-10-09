@@ -25,6 +25,7 @@ const {
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../../../utils/docker-registry');
 const { manageDnsRecords } = require('../../../utils/cloudflare-dns');
 const { deleteVirtualMachine, withNetbox } = require('../../../utils/netbox');
+const { volumePathOwner } = require('../../../utils/volumes');
 const {
   computeContainerStatus,
   computeContainerStatuses,
@@ -123,6 +124,8 @@ function serializeVolume(v) {
     status: v.status,
     statusMessage: v.statusMessage ?? null,
     appliedAt: v.appliedAt ?? null,
+    // Only the owner segment of the host path, not the path itself.
+    pathOwner: volumePathOwner(v),
   };
 }
 

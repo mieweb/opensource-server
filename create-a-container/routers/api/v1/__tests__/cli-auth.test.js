@@ -179,8 +179,13 @@ describe('/api/v1/auth/cli/callback', () => {
   });
 
   test('an oversized redemption body is rejected by the 4 KB limit', async () => {
-    const res = await redeem({ code: 'x'.repeat(8 * 1024), state: STATE });
-    expect(res.status).toBe(413);
+    const body = { code: 'x'.repeat(8 * 1024), state: STATE };
+    expect((await redeem(body)).status).toBe(413);
+    // Every spelling Express routes to the endpoint gets the same limit.
+    for (const path of ['/api/v1/auth/cli/token/', '/API/v1/auth/cli/Token']) {
+      const res = await request(app).post(path).set(...REMOTE).send(body);
+      expect(res.status).toBe(413);
+    }
   });
 
   test('concurrent redemptions of one code mint a single key', async () => {

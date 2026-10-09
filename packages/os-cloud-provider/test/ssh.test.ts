@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { timingSafeEqual } from 'node:crypto';
 import ssh2 from 'ssh2';
+import lockfile from 'proper-lockfile';
 import type { AuthContext, Connection } from 'ssh2';
 import { forgetHostKey, SshConnection } from '../src/ssh.ts';
 
@@ -181,6 +182,37 @@ describe('SshConnection', () => {
         }),
         (err: Error & { kind?: string }) => err.kind === 'hostkey' && /Could not save the SSH host key/.test(err.message),
       );
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('an abort while the new host key is being saved fails the connect', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    const knownHostsFile = join(home, 'kh-abort');
+    await writeFile(knownHostsFile, '');
+    // Another process holds the known_hosts lock, so pinning waits.
+    const release = await lockfile.lock(knownHostsFile, { realpath: false });
+    const abort = new AbortController();
+    try {
+      const connecting = SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile,
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: abort.signal,
+        logger: {
+          ...logger,
+          info: (m: string) => {
+            if (m.startsWith('Trusting')) {
+              abort.abort(new Error('cancelled'));
+              setTimeout(() => void release(), 100);
+            }
+          },
+        },
+      });
+      await assert.rejects(connecting, /cancelled/);
     } finally {
       await srv.close();
     }

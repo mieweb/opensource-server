@@ -33,6 +33,7 @@ export interface FakeContainer {
     mode: 'ro' | 'rw';
     status?: 'pending' | 'ready' | 'failed';
     statusMessage?: string | null;
+    pathOwner?: string | null;
   }[];
   status?: string;
   creationJobId?: number | null;
@@ -94,6 +95,8 @@ export class FakeManager {
   readonly codes = new Map<string, string>();
   redeemed = 0;
   private readonly mintedFor = new Map<string, FakeManager['nextKey']>();
+  /** Called when a redemption request arrives (e.g. to cancel the login then). */
+  onRedeem?: () => void;
   /** Drop the connection after minting this many redemptions. */
   dropRedeems = 0;
 
@@ -250,6 +253,7 @@ export class FakeManager {
       return;
     }
     if (path === '/auth/cli/token' && req.method === 'POST') {
+      this.onRedeem?.();
       // Like the real route: a code mints one key; repeating it returns that key.
       const state = this.codes.get(body?.code);
       if (!state || state !== body?.state) {

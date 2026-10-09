@@ -38,6 +38,8 @@ import { ttyPrompter } from './prompt.ts';
 
 /** How long a freshly minted key is reserved for the login that minted it (> the 5-min login timeout). */
 const PROVISIONAL_MS = 10 * 60 * 1000;
+/** Budget for redeeming the sign-in code, which ignores cancellation. */
+const REDEEM_TIMEOUT_MS = 30_000;
 
 function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: string, token: string | null): ManagerClient {
   return new ManagerClient({ instanceUrl, token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
@@ -232,7 +234,17 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     // Redeem the one-time code for a key in our own request: the Manager
     // only creates the key now, so a login that gave up earlier never left
     // one behind, and we always receive (and can track) the key that exists.
-    const redeemed = await clientFor(ctx, deps, instanceUrl, null).call(
+    // Independent of cancellation (bounded on its own): once the Manager may
+    // have minted the key, we must receive it to track or revoke it. A
+    // Ctrl-C is honored right after it's recorded, below.
+    const redeemClient = new ManagerClient({
+      instanceUrl,
+      token: null,
+      target: ctx.target,
+      signal: AbortSignal.timeout(REDEEM_TIMEOUT_MS),
+      fetch: deps.fetch,
+    });
+    const redeemed = await redeemClient.call(
       (api) => api.POST('/auth/cli/token', { body: { code: handoff.code, state } }),
       { auth: false },
     );
@@ -255,6 +267,13 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
         );
       }
       throw err;
+    }
+    if (ctx.signal.aborted) {
+      // Cancelled while redeeming: don't keep a key nobody asked to finish
+      // logging in with. If revoking fails, it stays queued for the next
+      // login/logout.
+      await revokeUrgently(instanceUrl, minted, deps);
+      ctx.signal.throwIfAborted();
     }
 
     let user: string;

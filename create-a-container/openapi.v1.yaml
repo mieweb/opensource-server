@@ -292,6 +292,14 @@ components:
             attaching the mount.
         statusMessage: { type: string, nullable: true, description: 'Agent error detail when status is failed' }
         appliedAt: { type: string, format: date-time, nullable: true }
+        pathOwner:
+          type: string
+          nullable: true
+          description: >-
+            The owner the volume's host directory is keyed to (null until
+            derived). It differs from the container's owner after an admin
+            transfer: recreating the container under its new owner would
+            attach a different, empty directory.
     VolumeAttach:
       type: object
       required: [name, mountPath, mode]

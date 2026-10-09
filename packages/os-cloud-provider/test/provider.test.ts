@@ -339,6 +339,20 @@ describe('deploy', () => {
     assert.ok(h.logs.some((l) => l.includes('Recreating')));
   });
 
+  test('a recreate that would orphan /mnt/data after an ownership transfer is refused', async () => {
+    fake.seedContainer({
+      hostname: 'myapp',
+      template: 'ghcr.io/mieweb/opensource-server/cloud:old',
+      volumes: [{ id: 1, name: 'data', mountPath: '/mnt/data', mode: 'rw', status: 'ready', pathOwner: 'bob' }],
+    });
+    const h = harness({ targetConfig: { siteId: 1, image: 'ghcr.io/mieweb/opensource-server/cloud:sha-new' } });
+    await assert.rejects(provider().deploy(h.ctx), /stored under its previous owner "bob".*empty \/mnt\/data/s);
+    assert.ok(!fake.requests.some((r) => r.method === 'DELETE'), 'not deleted');
+
+    // A redeploy that doesn't recreate is unaffected.
+    await provider().deploy(harness({ targetConfig: { siteId: 1, image: 'ghcr.io/mieweb/opensource-server/cloud:old' } }).ctx);
+  });
+
   test('a container whose create failed is recreated, not updated', async () => {
     fake.seedContainer({ hostname: 'myapp', containerId: null, status: 'failed' });
     const h = harness();
@@ -851,6 +865,16 @@ describe('login / logout', () => {
     );
     await assert.rejects(p.login!(harness({ argv: ['--instance', fake.url] }).ctx), /Timed out/);
     assert.equal(fake.redeemed, 0);
+  });
+
+  test('a Ctrl-C during redemption still receives the key, then revokes it', async () => {
+    const env = { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: join(dir, 'cancel.json') };
+    const p = provider(env, { login: { openBrowser: (u) => void browser(u) } });
+    const h = harness({ argv: ['--instance', fake.url] });
+    fake.onRedeem = () => h.abort.abort(new Error('cancelled'));
+    await assert.rejects(p.login!(h.ctx), /cancelled/);
+    assert.equal(fake.redeemed, 1);
+    assert.equal(fake.tokens.has('minted-key'), false, 'the minted key was revoked');
   });
 
   test('a redemption whose response is lost is retried and gets the same key', async () => {

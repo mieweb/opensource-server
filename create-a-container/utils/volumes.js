@@ -129,6 +129,21 @@ function containerVolumeHostPath(volumesRoot, siteId, owner, hostname, name) {
 }
 
 /**
+ * The owner a derived container-volume host path is keyed to (see
+ * containerVolumeHostPath), or null for builtin/unset/foreign paths. After an
+ * admin transfers a live container this still names the previous owner: a
+ * container recreated under the new owner would get a different (empty)
+ * directory.
+ * @param {{ hostPath?: string|null, builtin?: boolean }} v
+ * @returns {string|null}
+ */
+function volumePathOwner(v) {
+  if (!v || v.builtin || typeof v.hostPath !== 'string') return null;
+  const m = /\/site-\d+\/([^/]+)\/[^/]+\/[^/]+$/.exec(v.hostPath);
+  return m && SAFE_SEGMENT.test(m[1]) ? m[1] : null;
+}
+
+/**
  * Derive and persist any missing host paths on a set of Volume rows, and mark
  * volumes that don't need the site agent as `ready`. Idempotent and shared by
  * the create/reconfigure/reconcile jobs so the derivation lives in one place.
@@ -174,6 +189,7 @@ module.exports = {
   volumesStorageName,
   resolveVolumesRoot,
   containerVolumeHostPath,
+  volumePathOwner,
   deriveVolumeHostPaths,
   isAgentlessNodeType,
   QUICK_AND_DIRTY_NAME,

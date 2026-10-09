@@ -55,13 +55,17 @@ function isLocalhostRequest(req) {
 // request riding the victim's cookie gains nothing: their only credential is
 // in the body. (`mieweb login` redeems its one-time code here; the CLI has no
 // session or CSRF token.)
-const CSRF_EXEMPT_PATHS = new Set(['/api/v1/auth/cli/token']);
+// The CLI's sign-in code redemption: no session, and the one-time code in the
+// body is its only credential. Matched like Express matches routes
+// (case-insensitive, optional trailing slash). Its body is parsed only by the
+// route's own 4 KB parser (see app.js).
+const CLI_TOKEN_PATH = /^\/api\/v1\/auth\/cli\/token\/?$/i;
 
 function csrfGuard(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
     return next();
   }
-  if (req.method === 'POST' && CSRF_EXEMPT_PATHS.has((req.originalUrl || '').split('?')[0])) return next();
+  if (req.method === 'POST' && CLI_TOKEN_PATH.test((req.originalUrl || '').split('?')[0])) return next();
   // The manager's own agent checks in over localhost without credentials
   // during bootstrap (no site or API key exists yet), so it can carry neither
   // a Bearer token nor a CSRF token. The check-in and accounting routes apply
@@ -189,6 +193,7 @@ class ApiError extends Error {
 }
 
 module.exports = {
+  CLI_TOKEN_PATH,
   apiAuth,
   apiAdmin,
   localhostOrAdmin,

@@ -531,6 +531,18 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
     const drift = existing ? driftOf(existing, createFailed) : [];
     if (existing && drift.length > 0) {
+      // Volume directories are keyed to the owner they were created under; an
+      // admin transfer keeps the live container's directory, but a recreate
+      // derives a new one from the current owner and would start empty.
+      const dataOwner = existing.volumes?.find((v) => v.mountPath === DATA_VOLUME.mountPath)?.pathOwner;
+      if (dataOwner && existing.owner && dataOwner !== existing.owner) {
+        throw new ConfigError(
+          `Container ${existing.id} needs to be recreated (${drift.join(', ')}), but its ${DATA_VOLUME.mountPath} data is ` +
+            `stored under its previous owner "${dataOwner}" (it is now owned by "${existing.owner}"), so the new container ` +
+            `would start with an empty ${DATA_VOLUME.mountPath}. Move the data (or transfer the container back) first; ` +
+            'redeploys that only change code or settings are unaffected.',
+        );
+      }
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
       await deleteContainer(client, siteId, existing.id!, logger);
       existing = null;

@@ -8,6 +8,7 @@ const { resetDb, closeDb } = require('../../tests/helpers/db');
 const { Volume } = require('../../models');
 const volumeModule = require('../../models/volume');
 const {
+  volumePathOwner,
   resolveVolumesRoot,
   volumesStorageName,
   containerVolumeHostPath,
@@ -110,6 +111,18 @@ describe('containerVolumeHostPath', () => {
       );
     },
   );
+});
+
+describe('volumePathOwner', () => {
+  test('names the owner a derived host path is keyed to', () => {
+    const hostPath = containerVolumeHostPath('/mnt/pve/cephfs/volumes', 7, 'alice', 'web01', 'data');
+    expect(volumePathOwner({ hostPath })).toBe('alice');
+  });
+  test('null for underived, builtin and foreign paths', () => {
+    expect(volumePathOwner({ hostPath: null })).toBeNull();
+    expect(volumePathOwner({ hostPath: '/srv/volumes/site-7/alice/web01/data', builtin: true })).toBeNull();
+    expect(volumePathOwner({ hostPath: '/mnt/quick_and_dirty' })).toBeNull();
+  });
 });
 
 describe('Volume.isValidMountPath / canonicalizeMountPath', () => {

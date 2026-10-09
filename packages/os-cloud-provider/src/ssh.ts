@@ -318,13 +318,21 @@ export class SshConnection implements RemoteShell {
       client.on('error', fail);
       client.once('ready', () => {
         settled = true;
-        opts.signal.removeEventListener('abort', onAbort);
-        const done = (): void => resolve(new SshConnection(client));
+        // The abort listener stays until the connection is handed over: a
+        // first-seen key is still being pinned, and an abort meanwhile must
+        // fail the connect (onAbort ends the client and rejects; resolve and
+        // reject after that are no-ops).
+        const done = (): void => {
+          opts.signal.removeEventListener('abort', onAbort);
+          if (opts.signal.aborted) return onAbort();
+          resolve(new SshConnection(client));
+        };
         if (pinned) {
           logger.info(`Trusting SSH host key ${pinned.fp} for ${id}`);
           // Without a saved pin the next connection would trust any key, so
           // refuse to continue rather than silently dropping the guarantee.
           pinHostKey(opts.knownHostsFile, id, pinned.fp).then(done, (err: Error) => {
+            opts.signal.removeEventListener('abort', onAbort);
             client.end();
             reject(
               new SshError('hostkey', `Could not save the SSH host key to ${opts.knownHostsFile}: ${err.message}`, {

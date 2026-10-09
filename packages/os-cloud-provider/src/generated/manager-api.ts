@@ -1176,6 +1176,8 @@ export interface components {
             statusMessage?: string | null;
             /** Format: date-time */
             appliedAt?: string | null;
+            /** @description The owner the volume's host directory is keyed to (null until derived). It differs from the container's owner after an admin transfer: recreating the container under its new owner would attach a different, empty directory. */
+            pathOwner?: string | null;
         };
         /** @description A volume to attach. `hostPath` is NOT accepted from clients — it is derived server-side from the node storage's configured path. */
         VolumeAttach: {
