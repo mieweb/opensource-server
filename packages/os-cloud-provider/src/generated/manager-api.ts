@@ -2479,7 +2479,7 @@ export interface operations {
     delete_container: {
         parameters: {
             query?: {
-                /** @description Remove the record even if the node-side delete fails */
+                /** @description Remove the record even if the node-side delete fails (admins only; others get 403 when it would apply) */
                 force?: boolean;
             };
             header?: never;
