@@ -31,6 +31,7 @@ const {
   resolveVolumesRoot,
   deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
+const { mpConfigToDockerBinds, parseDockerTaskId } = require(path.join(__dirname, '..', 'utils', 'docker-api'));
 
 /**
  * Ensure this container's volume host paths are derived and their directories
@@ -144,13 +145,26 @@ async function main() {
     // actually unsets them on the existing container (vs. create, which must
     // preserve template-provided values).
     const lxcConfig = await container.buildLxcEnvConfig({ deleteMissing: true });
+
+    // Apply a config change. On Docker, env/entrypoint/bind changes recreate
+    // the container under a new ID: store it, or every later step (and the
+    // record) would point at a container that no longer exists.
+    const isDockerNode = node.nodeType === 'docker';
+    const applyConfig = async (config) => {
+      const result = await client.updateLxcConfig(node.name, container.containerId, config);
+      const newId = isDockerNode ? parseDockerTaskId(result) : null;
+      if (newId && newId !== String(container.containerId)) {
+        await container.update({ containerId: newId });
+        console.log(`Docker recreated the container; provider ID ${newId} stored in database`);
+      }
+    };
     
     if (Object.keys(lxcConfig).length > 0) {
       console.log('Applying LXC configuration...');
       // Log only which keys change: `env` carries every user env var
       // (including secrets), and job output is shown to users and in CI logs.
       console.log(`Config keys: ${Object.keys(lxcConfig).join(', ')}`);
-      await client.updateLxcConfig(node.name, container.containerId, lxcConfig);
+      await applyConfig(lxcConfig);
       console.log('Configuration applied');
     } else {
       console.log('No configuration changes to apply');
@@ -166,7 +180,7 @@ async function main() {
     if (Object.keys(resourceConfig).length > 0) {
       console.log('Applying resource configuration...');
       console.log('Resources:', JSON.stringify(resourceConfig, null, 2));
-      await client.updateLxcConfig(node.name, container.containerId, resourceConfig);
+      await applyConfig(resourceConfig);
       console.log('Resource configuration applied');
     }
 
@@ -175,18 +189,22 @@ async function main() {
     // is idempotent; attaching a new one requires a restart to take effect.
     let volumesChanged = false;
     const volumes = await ensureVolumesReady(client, node, container);
-    // Skip the mpN mount reconcile on Docker nodes: Docker binds are applied at
-    // create time and `lxcConfig()` does not expose `mpN`, so the diff below
-    // would always report "changed" and re-apply on every reconfigure. (Bind
-    // changes on Docker flow through the container-recreate path, not mpN.)
-    if (volumes.length > 0 && node.nodeType !== 'docker') {
+    // Docker has no mpN: compare the desired binds with the container's
+    // actual ones (applying mpN there recreates the container with them).
+    if (volumes.length > 0) {
       const mountConfig = Volume.buildMountConfig(volumes);
       const currentConfig = await client.lxcConfig(node.name, container.containerId);
-      volumesChanged = Object.entries(mountConfig).some(([k, val]) => currentConfig[k] !== val);
+      if (isDockerNode) {
+        const want = [...mpConfigToDockerBinds(mountConfig)].sort();
+        const have = [...(currentConfig.binds || [])].sort();
+        volumesChanged = want.length !== have.length || want.some((b, i) => b !== have[i]);
+      } else {
+        volumesChanged = Object.entries(mountConfig).some(([k, val]) => currentConfig[k] !== val);
+      }
       if (volumesChanged) {
         console.log('Applying volume mounts...');
         console.log('Volumes:', JSON.stringify(mountConfig, null, 2));
-        await client.updateLxcConfig(node.name, container.containerId, mountConfig);
+        await applyConfig(mountConfig);
         await Volume.update(
           { appliedAt: new Date() },
           { where: { containerId: container.id } },

@@ -33,6 +33,7 @@ const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, Re
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
+const { parseDockerTaskId } = require(path.join(__dirname, '..', 'utils', 'docker-api'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
 const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 const { withVmidRetry } = require(path.join(__dirname, '..', 'utils', 'vmid'));
@@ -260,15 +261,6 @@ async function setupContainerAcl(client, nodeName, vmid, username) {
   }
 }
 
-function parseDockerTaskId(taskId, expectedKind = null) {
-  if (typeof taskId !== 'string') return null;
-
-  const parts = taskId.split(':');
-  if (parts[0] !== 'docker' || parts.length < 3) return null;
-  if (expectedKind && parts[1] !== expectedKind) return null;
-
-  return parts.slice(2).join(':');
-}
 
 /**
  * Store the provider container ID (VMID / Docker ID) on the record. Called as

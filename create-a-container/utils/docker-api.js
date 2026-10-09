@@ -87,6 +87,21 @@ function task(kind, id = '') {
   return `docker:${kind}:${id}`;
 }
 
+/**
+ * The container ID in a task string from this API (`docker:<kind>:<id>`), or
+ * null. A recreate (env/entrypoint/bind changes) returns the *new* container's
+ * ID, which callers must store: the old one no longer exists.
+ */
+function parseDockerTaskId(taskId, expectedKind = null) {
+  if (typeof taskId !== 'string') return null;
+
+  const parts = taskId.split(':');
+  if (parts[0] !== 'docker' || parts.length < 3) return null;
+  if (expectedKind && parts[1] !== expectedKind) return null;
+
+  return parts.slice(2).join(':');
+}
+
 function isSystemContainer(options = {}) {
   const entrypoint = Array.isArray(options.entrypoint)
     ? options.entrypoint.join(' ')
@@ -383,6 +398,9 @@ class DockerApi {
         : null,
       rootfs: null,
       net0: `name=eth0,hwaddr=${network.MacAddress || ''},ip=${network.IPAddress || 'dhcp'},bridge=docker0`,
+      // Docker has no mpN: the current bind mounts, to compare with
+      // mpConfigToDockerBinds() of the desired mpN set.
+      binds: inspect.HostConfig?.Binds || [],
     };
   }
 
@@ -575,3 +593,4 @@ class DockerApi {
 module.exports = DockerApi;
 module.exports.isValidDockerHost = isValidDockerHost;
 module.exports.mpConfigToDockerBinds = mpConfigToDockerBinds;
+module.exports.parseDockerTaskId = parseDockerTaskId;

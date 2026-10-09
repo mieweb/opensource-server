@@ -14,8 +14,6 @@ The app is exposed through one HTTP service at `https://<name>.<domain>`; the si
 
 The provider owns the container's services: each deploy makes them match the HTTP service, SSH, and `targets.mieweb.services`. Services added in the web UI, or removed from `services`, are deleted on the next deploy.
 
-Because the container holds your app's secrets and datastore files, **SSH is limited to the container's owner, its collaborators, and the account deploying it** (plus `sshUser`, if set). Other site users can't log in, even though they can SSH into ordinary containers. Sharing changes take effect on the next deploy.
-
 ### What `deploy` does
 
 1. **Converge the container** through the Manager API. The first deploy creates it and waits for it to be provisioned. Later deploys change the container only when its configuration differs (services, environment variables, the data volume); otherwise this step makes no changes. If the image (or the GPU requirement) changes, the container is deleted and recreated. `/mnt/data` is kept across that recreate, so datastore contents survive.
@@ -55,8 +53,9 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
     "mieweb": {
       "provider": "@mieweb/os-cloud-provider",
       // The Manager site to deploy into. Optional: if omitted, deploy uses the
-      // only site you can see, or asks (in a terminal) and saves your choice
-      // here. MIEWEB_OS_SITE_ID overrides it.
+      // only site you can see, or asks (in a terminal) and tells you the value
+      // to set here (CLIs that support it save the choice for you).
+      // MIEWEB_OS_SITE_ID overrides it.
       "siteId": 1,
       "instanceUrl": "https://os.mieweb.org",   // optional (default)
       // Everything below is optional.
