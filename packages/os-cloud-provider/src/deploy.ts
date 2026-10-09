@@ -368,9 +368,49 @@ function getContainer(client: ManagerClient, siteId: number, id: number): Promis
   return client.call((api) => api.GET('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } } }));
 }
 
-async function deleteContainer(client: ManagerClient, siteId: number, id: number, logger: DeployContext['logger']): Promise<void> {
-  const res = await client.call((api) => api.DELETE('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } } }));
-  for (const w of res?.dnsWarnings ?? []) logger.warn(w);
+/** Env keys whose values are masked in relayed job output. */
+function secretKeysFor(env: ProviderEnv): Set<string> {
+  const keys = new Set<string>([MANAGED_ENV.minioPassword, MANAGED_ENV.s3SecretKey, 'AWS_SECRET_ACCESS_KEY']);
+  for (const k of Object.keys(env)) {
+    if (k.startsWith(SECRET_ENV_PREFIX) && k.length > SECRET_ENV_PREFIX.length) keys.add(k.slice(SECRET_ENV_PREFIX.length));
+  }
+  return keys;
+}
+
+/** The values of `keys` in a container's env (non-empty only). */
+function secretValues(c: Container | null | undefined, keys: ReadonlySet<string>): string[] {
+  const env = asEnvMap(c?.environmentVars);
+  return Object.entries(env)
+    .filter(([k, v]) => keys.has(k) && v)
+    .map(([, v]) => v);
+}
+
+/**
+ * Delete a container. The Manager refuses (409 job_in_progress) while another
+ * job is acting on it, e.g. a reconfigure: wait for that job, then retry.
+ */
+async function deleteContainer(
+  client: ManagerClient,
+  siteId: number,
+  id: number,
+  opts: { signal: AbortSignal; logger: DeployContext['logger']; intervalMs?: number; redact?: Iterable<string> },
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await client.call((api) => api.DELETE('/sites/{siteId}/containers/{id}', { params: { path: { siteId, id } } }));
+      for (const w of res?.dnsWarnings ?? []) opts.logger.warn(w);
+      return;
+    } catch (err) {
+      const jobId = err instanceof ManagerApiError && err.code === 'job_in_progress' ? Number(err.fields.jobId) : NaN;
+      if (!Number.isInteger(jobId) || attempt >= 5) throw err;
+      opts.logger.info(`Container ${id} has job ${jobId} in progress; waiting for it before deleting`);
+      try {
+        await waitForJob(client, jobId, opts);
+      } catch (jobErr) {
+        if (!(jobErr instanceof JobFailedError)) throw jobErr; // finished either way
+      }
+    }
+  }
 }
 
 /**
@@ -472,10 +512,12 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   // Values to mask in relayed job output (older Managers log the full LXC
   // config, whose `env` holds every variable). Filled as env sets are built.
   const secrets = new Set<string>();
-  const secretKeys = new Set<string>([MANAGED_ENV.minioPassword, MANAGED_ENV.s3SecretKey]);
-  for (const k of Object.keys(deps.env)) {
-    if (k.startsWith(SECRET_ENV_PREFIX) && k.length > SECRET_ENV_PREFIX.length) secretKeys.add(k.slice(SECRET_ENV_PREFIX.length));
-  }
+  const secretKeys = secretKeysFor(deps.env);
+  // An existing container's secrets too, before any of its jobs (an in-flight
+  // create we resume or adopt) is relayed.
+  const remember = (c: Container | null): void => {
+    for (const v of secretValues(c, secretKeys)) secrets.add(v);
+  };
   const envWithSecrets = (existing?: Container | null): EnvVar[] => {
     const env = envFor(existing);
     for (const e of env) if (e.key && secretKeys.has(e.key) && e.value) secrets.add(e.value);
@@ -495,6 +537,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
    * accepted. `createFailed` is set when the job finished with failure.
    */
   const settle = async (c: Container): Promise<{ c: Container | null; createFailed: boolean }> => {
+    remember(c);
     const outcome = await awaitCreateJob(client, c, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
     // Re-read whenever there's a create job: it may have finished (and stored
     // the VMID) between the list call and the job check.
@@ -544,7 +587,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
         );
       }
       logger.info(`Recreating container ${existing.id} (${drift.join(', ')}); ${DATA_VOLUME.mountPath} is retained`);
-      await deleteContainer(client, siteId, existing.id!, logger);
+      await deleteContainer(client, siteId, existing.id!, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
       existing = null;
     }
     if (existing) break;
@@ -931,7 +974,12 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   // could miss a VM the create job is still building (the Manager refuses with
   // 409 anyway). Wait for the job, then delete what it produced.
   if (existing) {
-    await awaitCreateJob(client, existing, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs });
+    await awaitCreateJob(client, existing, {
+      signal: ctx.signal,
+      logger: ctx.logger,
+      intervalMs: deps.pollIntervalMs,
+      redact: secretValues(existing, secretKeysFor(deps.env)),
+    });
     if (existing.creationJobId) existing = await findByHostname(client, siteId, name);
   }
   if (!existing) {
@@ -951,7 +999,12 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
         `data back; a deploy by "${existing.owner}" would start empty. Move the data first, or re-run with --force to destroy anyway.`,
     );
   }
-  await deleteContainer(client, siteId, existing.id!, ctx.logger);
+  await deleteContainer(client, siteId, existing.id!, {
+    signal: ctx.signal,
+    logger: ctx.logger,
+    intervalMs: deps.pollIntervalMs,
+    redact: secretValues(existing, secretKeysFor(deps.env)),
+  });
   ctx.logger.info(
     `Destroyed container "${name}" (${existing.id}).` +
       (dataVolume

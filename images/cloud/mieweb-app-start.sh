@@ -31,7 +31,7 @@ if [[ "${1:-}" == wait ]]; then
 fi
 
 APP_DIR=/opt/app/src
-DEPS_STAMP=/opt/app/.deps-stamp
+DEPS_STAMP=/opt/app/home/.deps-stamp
 export PORT="${PORT:-8787}"
 cd "$APP_DIR"
 

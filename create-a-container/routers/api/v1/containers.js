@@ -1100,6 +1100,28 @@ router.delete(
         );
       }
     }
+    // Same for any other job acting on it (a reconfigure from an update or an
+    // approved resource request): the runner executes jobs concurrently, so a
+    // delete now could race it (on Docker nodes a reconfigure even recreates
+    // the container). Jobs name their container as `--container-id=<id>`.
+    const { Op } = Sequelize;
+    const flag = `--container-id=${container.id}`;
+    const busy = await Job.findOne({
+      attributes: ['id'],
+      where: {
+        status: { [Op.in]: ['pending', 'running'] },
+        [Op.or]: [{ command: { [Op.like]: `% ${flag}` } }, { command: { [Op.like]: `% ${flag} %` } }],
+      },
+      order: [['id', 'ASC']],
+    });
+    if (busy) {
+      throw new ApiError(
+        409,
+        'job_in_progress',
+        `Container ${container.hostname} has a job in progress (job ${busy.id}); delete it once that job finishes`,
+        { jobId: String(busy.id) },
+      );
+    }
     const node = container.node;
     let dnsWarnings = [];
     const httpServices = (container.services || [])

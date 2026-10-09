@@ -169,6 +169,16 @@ export class FakeManager {
     return this.seedContainer({ hostname, creationJobId: job.id });
   }
 
+  /** Container id → a (reconfigure) job acting on it. */
+  readonly busyJobs = new Map<number, number>();
+
+  /** Start a job acting on `c` (e.g. a reconfigure from another deploy). */
+  seedBusyJob(c: FakeContainer): FakeJob {
+    const job = this.newJob();
+    this.busyJobs.set(c.id, job.id);
+    return job;
+  }
+
   private newJob(): FakeJob {
     const logs = ['starting', ...(this.extraJobLog ? [this.extraJobLog] : []), 'done'];
     const job: FakeJob = { id: this.nextId++, status: 'pending', polls: 0, logs };
@@ -390,6 +400,12 @@ export class FakeManager {
     if (!c || (c.owner !== who.user && !this.admins.has(who.user))) return fail(404, 'not_found');
     if (req.method === 'GET') return ok(this.serialize(c));
     if (req.method === 'DELETE') {
+      // Like the Manager: refused while another job acts on the container.
+      const busy = this.busyJobs.get(c.id);
+      const job = busy === undefined ? undefined : this.jobs.get(busy);
+      if (job && (job.status === 'pending' || job.status === 'running')) {
+        return fail(409, 'job_in_progress', `job ${job.id} in progress`, { jobId: String(job.id) });
+      }
       this.containers.splice(this.containers.indexOf(c), 1);
       return ok({ deleted: true, dnsWarnings: [] });
     }

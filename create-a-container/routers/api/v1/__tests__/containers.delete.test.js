@@ -107,6 +107,24 @@ describe('DELETE container: node-side failures', () => {
     expect(await Container.findByPk(c.id)).not.toBeNull();
   });
 
+  test('a container with a reconfigure job in progress is not deleted (409, names the job)', async () => {
+    const c = await provisioned('reconfiguring');
+    // Another container's job whose id merely starts with this one's must not count.
+    await Job.create({ command: `node bin/reconfigure-container.js --container-id=${c.id}9`, createdBy: user.uid, status: 'running' });
+    const job = await Job.create({
+      command: `node bin/reconfigure-container.js --container-id=${c.id} --memory=2048`,
+      createdBy: user.uid,
+      status: 'pending',
+    });
+    const res = await del(c, '?force=true', adminKey);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('job_in_progress');
+    expect(res.body.error.fields).toEqual({ jobId: String(job.id) });
+    expect(await Container.findByPk(c.id)).not.toBeNull();
+    await job.update({ status: 'success' });
+    expect((await del(c)).status).toBe(200);
+  });
+
   test('VM already gone → success', async () => {
     nodeDeleteFails({ stillListed: false });
     const c = await provisioned('already-gone');

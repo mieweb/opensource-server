@@ -62,9 +62,13 @@ COPY --from=libsqld /out-sqld /usr/local/bin/sqld
 # Fixed UID/GID: datastore files on the persistent /mnt/data volume are owned
 # by these numbers and outlive the image, so a rebuild must not renumber them.
 # (useradd fails the build if 950 is ever taken.)
+# /opt/app itself stays root-owned: the sync runs as root inside /opt/app/src,
+# so the app must not be able to rename that directory or swap in a symlink
+# (it owns src's contents and its own home, /opt/app/home, for caches).
 RUN groupadd --system --gid 950 mieweb && \
-    useradd --system --uid 950 --gid 950 --home-dir /opt/app --shell /usr/sbin/nologin mieweb && \
-    install -d -o mieweb -g mieweb /opt/app /opt/app/src
+    useradd --system --uid 950 --gid 950 --home-dir /opt/app/home --shell /usr/sbin/nologin mieweb && \
+    install -d -o root -g root -m 0755 /opt/app && \
+    install -d -o mieweb -g mieweb /opt/app/src /opt/app/home
 
 COPY --chmod=0755 mieweb-data-dir.sh /usr/local/bin/mieweb-data-dir
 COPY --chmod=0755 mieweb-app-start.sh /usr/local/bin/mieweb-app-start

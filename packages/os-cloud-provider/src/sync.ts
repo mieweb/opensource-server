@@ -315,7 +315,21 @@ export function listCommand(prune: { paths: readonly string[]; names: readonly s
   ])}`;
 }
 
+/** Exit code of REMOTE.checkRoot when the app could redirect the sync root. */
+const UNSAFE_ROOT = 66;
+
 export const REMOTE = {
+  /**
+   * The privileged commands below `cd` into / extract under REMOTE_APP_DIR
+   * as root. Refuse if the (unprivileged) app could have redirected it: the
+   * root must not be a symlink, and its parent must be root-owned and not
+   * writable by others (or the app could swap the root for a symlink to, say,
+   * /etc between commands). Images before this check let the app own
+   * /opt/app.
+   */
+  checkRoot:
+    `p=${quote([posix.dirname(REMOTE_APP_DIR)])}; ` +
+    `if [ -L ${quote([REMOTE_APP_DIR])} ] || [ "$(stat -c %u "$p")" != 0 ] || [ $(( 0$(stat -c %a "$p") & 022 )) -ne 0 ]; then exit ${UNSAFE_ROOT}; fi`,
   list: listCommand({ paths: [], names: [] }),
   extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
   remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
@@ -453,6 +467,15 @@ export async function syncWorktree(
 }
 
 async function syncLocked(root: string, shell: RemoteShell, logger: DeployLogger, signal: AbortSignal): Promise<SyncPlan> {
+  const check = await shell.exec(REMOTE.checkRoot, undefined, signal);
+  if (check.code === UNSAFE_ROOT) {
+    throw new Error(
+      `${REMOTE_APP_DIR} could be redirected by the app (its parent isn't root-owned, or it's a symlink), so the ` +
+        "privileged sync won't touch it. The container's image predates this protection: deploy with a current cloud image " +
+        '(the provider default), which recreates the container and keeps /mnt/data.',
+    );
+  }
+  if (check.code !== 0) throw new Error(`Remote root check failed (exit ${check.code}): ${check.stderr.trim()}`);
   const { files, rules, ignoredDirs, rootIgnore, dirs } = await scanLocal(root, signal);
   const list = listCommand({ paths: ignoredDirs, names: pruneNames(rootIgnore) });
   const listing = await run(shell, 'listing', list, signal);

@@ -229,6 +229,13 @@ describe('syncWorktree', () => {
     assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
   });
 
+  test('refuses to sync when the app could redirect the sync root (old image)', async () => {
+    const shell = new FakeShell(remote);
+    shell.unsafeRoot = true;
+    await assert.rejects(syncWorktree(local, shell, logger), /could be redirected by the app/);
+    assert.ok(!shell.commands.some((c) => c === REMOTE.extract || c.includes('mkdir')), 'no privileged command ran');
+  });
+
   test('the remote listing does not descend into ignored directories', async () => {
     await syncWorktree(local, new FakeShell(remote), logger);
     // Remote-only build output and installed deps, like the container has.
@@ -284,10 +291,11 @@ describe('syncWorktree', () => {
       if (cmd.includes(' find ')) ac.abort(new Error('user cancelled'));
     };
     await assert.rejects(syncWorktree(local, shell, logger, ac.signal), /user cancelled/);
-    // The lock, then the listing; nothing after.
-    assert.equal(shell.commands.length, 2);
+    // The lock, the root check, then the listing; nothing after.
+    assert.equal(shell.commands.length, 3);
     assert.match(shell.commands[0]!, /flock/);
-    assert.match(shell.commands[1]!, / find \. /);
+    assert.equal(shell.commands[1], REMOTE.checkRoot);
+    assert.match(shell.commands[2]!, / find \. /);
   });
 
   test('empty directories left by deletions are pruned', async () => {
@@ -335,7 +343,7 @@ describe('syncWorktree', () => {
   test('a failing remote command fails the sync with its stderr', async () => {
     const shell = new FakeShell(remote);
     shell.exec = async () => ({ code: 1, stdout: Buffer.alloc(0), stderr: 'sudo: a password is required' });
-    await assert.rejects(syncWorktree(local, shell, logger), /listing failed \(exit 1\): sudo: a password is required/);
+    await assert.rejects(syncWorktree(local, shell, logger), /root check failed \(exit 1\): sudo: a password is required/);
   });
 });
 

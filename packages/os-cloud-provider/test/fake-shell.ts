@@ -122,8 +122,12 @@ export class FakeShell implements RemoteShell {
       return ok();
     }
     if (command === REMOTE.logs) return ok(Buffer.from(this.recentLogs));
+    if (command === REMOTE.checkRoot) return { code: this.unsafeRoot ? 66 : 0, stdout: Buffer.alloc(0), stderr: '' };
     return { code: 127, stdout: Buffer.alloc(0), stderr: `unknown command: ${command}` };
   }
+
+  /** Emulate an image where the app could redirect the sync root. */
+  unsafeRoot = false;
 
   /** What the restart stream emits / exits with. */
   restartScript: { chunks: [string, 'stdout' | 'stderr'][]; code: number } = { chunks: [], code: 0 };

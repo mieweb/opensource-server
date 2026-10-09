@@ -16,7 +16,7 @@ Type=simple
 User=mieweb
 Group=mieweb
 WorkingDirectory=/opt/app/src
-Environment=HOME=/opt/app
+Environment=HOME=/opt/app/home
 # PORT, MIEWEB_APP_START and the datastore endpoints/credentials are set by
 # the deploy provider.
 EnvironmentFile=-/run/mieweb/env

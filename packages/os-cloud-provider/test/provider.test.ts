@@ -553,6 +553,17 @@ describe('deploy', () => {
     assert.ok(!h.logs.some((l) => l.includes('topsecret')));
   });
 
+  test("resuming another deploy's in-flight create masks the existing container's secrets", async () => {
+    fake.extraJobLog = 'Config: {"env":"MINIO_ROOT_PASSWORD=persisted-secret"}';
+    const c = fake.seedCreating('myapp');
+    c.environmentVars = { MINIO_ROOT_USER: 'mieweb', MINIO_ROOT_PASSWORD: 'persisted-secret' };
+    const h = harness();
+    await provider().deploy(h.ctx);
+    assert.ok(h.logs.some((l) => l.includes(`waiting for job ${c.creationJobId}`)));
+    assert.ok(h.logs.some((l) => l.includes('MINIO_ROOT_PASSWORD=***')));
+    assert.ok(!h.logs.some((l) => l.includes('persisted-secret')));
+  });
+
   test('a hostname owned by someone else is a clear error', async () => {
     fake.seedContainer({ hostname: 'myapp', owner: 'bob' });
     await assert.rejects(provider().deploy(harness().ctx), /Hostname "myapp" is already taken on site 1/);
@@ -763,6 +774,19 @@ describe('destroy', () => {
     await provider().destroy!(h.ctx);
     assert.equal(fake.containers.length, 0);
     assert.ok(h.logs.some((l) => l.includes('reattached when bob deploys "myapp"')));
+  });
+
+  test('destroy waits for a job acting on the container (masking its secrets), then deletes', async () => {
+    await provider().deploy(harness().ctx);
+    const c = fake.containers[0]!;
+    const pw = c.environmentVars.MINIO_ROOT_PASSWORD!;
+    fake.extraJobLog = `Config: {"env":"MINIO_ROOT_PASSWORD=${pw}"}`;
+    const job = fake.seedBusyJob(c);
+    const h = harness();
+    await provider().destroy!(h.ctx);
+    assert.equal(fake.containers.length, 0);
+    assert.ok(h.logs.some((l) => l.includes(`job ${job.id} in progress; waiting`)));
+    assert.ok(!h.logs.some((l) => l.includes(pw)), 'secret masked');
   });
 
   test('tail and destroy still work when a deploy-only setting is invalid', async () => {
