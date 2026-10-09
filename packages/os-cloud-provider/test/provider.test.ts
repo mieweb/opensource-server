@@ -743,6 +743,19 @@ describe('destroy', () => {
     assert.ok(h2.logs.some((l) => l.includes('nothing to destroy')));
   });
 
+  test('after an ownership transfer, destroy refuses unless --force, and names who gets the data back', async () => {
+    fake.seedContainer({
+      hostname: 'myapp',
+      volumes: [{ id: 1, name: 'data', mountPath: '/mnt/data', mode: 'rw', status: 'ready', pathOwner: 'bob' }],
+    });
+    await assert.rejects(provider().destroy!(harness().ctx), /stored under its previous owner "bob".*--force/s);
+    assert.equal(fake.containers.length, 1, 'not deleted');
+    const h = harness({ argv: ['--force'] });
+    await provider().destroy!(h.ctx);
+    assert.equal(fake.containers.length, 0);
+    assert.ok(h.logs.some((l) => l.includes('reattached when bob deploys "myapp"')));
+  });
+
   test('tail and destroy still work when a deploy-only setting is invalid', async () => {
     const p = provider();
     await p.deploy(harness().ctx);

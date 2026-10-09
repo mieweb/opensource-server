@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # app.service helper.
+#   wait     block until the datastores answer their health checks (ExecStartPre)
 #   prepare  install dependencies (only when package.json or the lockfile
 #            changed) and run the `build` script if present (ExecStartPre)
 #   run      start the app (ExecStart)
@@ -10,6 +11,24 @@
 #   MIEWEB_APP_START  start command (default: `<npm|pnpm|yarn> run start`); must listen on $PORT
 #   PORT              HTTP port the app listens on (default 8787)
 set -euo pipefail
+
+if [[ "${1:-}" == wait ]]; then
+  # systemd only orders the app after MinIO and sqld (Type=simple: "started"
+  # means spawned, not listening), so an app that opens its bindings at
+  # startup could race them. Valkey is Type=notify: already ready here.
+  deadline=$((SECONDS + ${MIEWEB_DATASTORE_TIMEOUT:-120}))
+  for check in minio=http://127.0.0.1:9000/minio/health/ready libsql=http://127.0.0.1:8080/health; do
+    name=${check%%=*} url=${check#*=}
+    until curl -fs -o /dev/null --max-time 2 "$url"; do
+      if ((SECONDS >= deadline)); then
+        echo "$name is not ready ($url); see: journalctl -u ${name/libsql/libsqld}.service" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+  done
+  exit 0
+fi
 
 APP_DIR=/opt/app/src
 DEPS_STAMP=/opt/app/.deps-stamp
@@ -66,7 +85,7 @@ case "${1:-}" in
     exec bash -c "$start"
     ;;
   *)
-    echo "usage: $0 prepare|run" >&2
+    echo "usage: $0 wait|prepare|run" >&2
     exit 2
     ;;
 esac

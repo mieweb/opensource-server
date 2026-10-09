@@ -925,12 +925,24 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);
     return;
   }
+  const dataVolume = (existing.volumes ?? []).find((v) => v.mountPath === DATA_VOLUME.mountPath);
+  // The data is retained under the owner its directory is keyed to, which
+  // after an admin transfer is the *previous* owner: the current owner's next
+  // deploy would start empty.
+  const dataOwner = dataVolume?.pathOwner ?? existing.owner;
+  const transferred = !!(dataVolume?.pathOwner && existing.owner && dataVolume.pathOwner !== existing.owner);
+  if (transferred && !ctx.argv.includes('--force')) {
+    throw new ConfigError(
+      `Container "${name}" was transferred to "${existing.owner}", but its ${DATA_VOLUME.mountPath} data is stored under ` +
+        `its previous owner "${dataOwner}". After destroying it, only a deploy of "${name}" by "${dataOwner}" would get that ` +
+        `data back; a deploy by "${existing.owner}" would start empty. Move the data first, or re-run with --force to destroy anyway.`,
+    );
+  }
   await deleteContainer(client, siteId, existing.id!, ctx.logger);
-  const retained = (existing.volumes ?? []).some((v) => v.mountPath === DATA_VOLUME.mountPath);
   ctx.logger.info(
     `Destroyed container "${name}" (${existing.id}).` +
-      (retained
-        ? ` Its ${DATA_VOLUME.mountPath} data is kept on the site's volume storage and is reattached when ${existing.owner ?? 'the same owner'} deploys "${name}" to this site again.`
+      (dataVolume
+        ? ` Its ${DATA_VOLUME.mountPath} data is kept on the site's volume storage and is reattached when ${dataOwner ?? 'the same owner'} deploys "${name}" to this site again.`
         : ''),
   );
 }
