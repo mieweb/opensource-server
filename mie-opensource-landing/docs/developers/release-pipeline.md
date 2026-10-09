@@ -114,6 +114,7 @@ The same release also publishes the [`mieweb deploy` provider](../users/mieweb-c
 - **Version** comes from the release tag (`v2026.10.3` → `2026.10.3`); the version in `packages/os-cloud-provider/package.json` is ignored.
 - **Dist-tag:** full releases publish as `latest`, prereleases as `next`.
 - **Checks:** the job fails if `@mieweb/deploy-contract` is a preview or git build, or isn't on npmjs. It skips the publish (without failing) if that version is already on npm, so re-running a release is safe. It type-checks and runs the provider's tests before publishing.
+- **Default image:** the published provider's default `image` is pinned to the cloud image of the same release (`cloud:<tag>`), and the job **waits for that image to exist in GHCR** before publishing. If the image build fails, nothing is published.
 - **Auth:** npm trusted publishing (OIDC) with provenance, configured on npmjs for `mieweb/opensource-server` / `release.yml`. No token is stored.
 
 The version/dist-tag/eligibility logic lives in `packages/os-cloud-provider/scripts/release-meta.mjs`; run `node scripts/release-meta.mjs <tag> [--prerelease]` there to see what a release would do.

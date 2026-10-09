@@ -80,6 +80,8 @@ jobs:
       contents: read
       # npm trusted publishing (OIDC) + provenance attestation.
       id-token: write
+      # Read the release's cloud image from GHCR (see the wait step below).
+      packages: read
     defaults:
       run:
         working-directory: packages/os-cloud-provider
@@ -119,6 +121,40 @@ jobs:
       - name: Set package version
         if: steps.meta.outputs.skip != 'true'
         run: npm pkg set version="${{ steps.meta.outputs.version }}"
+
+      # Each provider release deploys the cloud image built for the same
+      # release (build-images.yml tags it with the release tag), not a moving
+      # `latest` that could be missing or from another release.
+      - name: Pin the default image to this release
+        if: steps.meta.outputs.skip != 'true'
+        id: image
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: echo "ref=$(node scripts/set-default-image.mjs "$TAG")" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR (read)
+        if: steps.meta.outputs.skip != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Gate the publish on the image existing: build-images.yml builds it for
+      # the same release event, in parallel. If that build fails, nothing is
+      # published (the job times out here).
+      - name: Wait for the release's cloud image
+        if: steps.meta.outputs.skip != 'true'
+        timeout-minutes: 120
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          until docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; do
+            echo "Waiting for $IMAGE ..."
+            sleep 60
+          done
+          echo "Found $IMAGE"
+          echo "Default image: \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
 
       # pnpm pack runs prepack (builds dist/); npm publish does the upload via
       # trusted publishing (OIDC, configured on npmjs for this repo +

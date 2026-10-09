@@ -12,6 +12,11 @@ import { readCredential } from './credentials.ts';
 
 export const PROVIDER_NAME = 'opensource-server';
 export const DEFAULT_INSTANCE_URL = 'https://os.mieweb.org';
+/**
+ * Unreleased default. CI rewrites the tag when publishing: a release pins the
+ * cloud image built for that same release (`cloud:<release tag>`), a PR
+ * preview pins `cloud:pr-<N>` (scripts/set-default-image.mjs).
+ */
 export const DEFAULT_IMAGE = 'ghcr.io/mieweb/opensource-server/cloud:latest';
 export const DEFAULT_PORT = 8787;
 /** The one rw persistent volume the converged container's datastores live on (#421). */

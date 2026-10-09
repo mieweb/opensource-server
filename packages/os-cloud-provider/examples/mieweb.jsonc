@@ -19,8 +19,9 @@
       // saves the choice here.
       "siteId": 1,
       "instanceUrl": "https://os.mieweb.org",
-      // Optional; defaults shown.
-      "image": "ghcr.io/mieweb/opensource-server/cloud:latest",
+      // Optional. `image` defaults to the cloud image built for the same
+      // release as this provider version (ghcr.io/mieweb/opensource-server/cloud:<tag>).
+      "image": "ghcr.io/mieweb/opensource-server/cloud:main",
       "port": 8787,
       "authRequired": false,
 

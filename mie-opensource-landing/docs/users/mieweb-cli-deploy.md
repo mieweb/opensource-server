@@ -60,7 +60,7 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
       "siteId": 1,
       "instanceUrl": "https://os.mieweb.org",   // optional (default)
       // Everything below is optional.
-      "image": "ghcr.io/mieweb/opensource-server/cloud:latest", // e.g. a :<branch>/:sha-<sha> tag to test
+      "image": "ghcr.io/mieweb/opensource-server/cloud:main", // default: the cloud image of the same release as the provider; set a :<branch>/:sha-<sha> tag to test
       "port": 8787,                  // port the app listens on ($PORT)
       "domain": "os.mieweb.org",     // external domain (name or id); default: the site's first
       "externalHostname": "my-app",  // default: wrangler.jsonc `name`

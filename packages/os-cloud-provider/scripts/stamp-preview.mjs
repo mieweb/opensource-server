@@ -14,6 +14,7 @@
  */
 
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { setDefaultImageTag } from './set-default-image.mjs';
 
 const [pr, run] = process.argv.slice(2);
 if (!/^\d+$/.test(pr ?? '') || !/^\d+$/.test(run ?? '')) {
@@ -26,15 +27,7 @@ const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8'));
 pkg.version = `${pkg.version.replace(/-.*$/, '')}-pr${pr}.${run}`;
 writeFileSync(pkgUrl, `${JSON.stringify(pkg, null, 2)}\n`);
 
-// Rewrite the DEFAULT_IMAGE constant's tag, whatever its quoting/spacing.
-const cfgUrl = new URL('../src/config.ts', import.meta.url);
-const cfg = readFileSync(cfgUrl, 'utf8');
-const re = /(export const DEFAULT_IMAGE\s*=\s*(['"])ghcr\.io\/mieweb\/opensource-server\/cloud):[^'"]+\2/;
-if (!re.test(cfg)) {
-  console.error('::error::DEFAULT_IMAGE not found in src/config.ts');
-  process.exit(1);
-}
-writeFileSync(cfgUrl, cfg.replace(re, `$1:pr-${pr}$2`));
+setDefaultImageTag(`pr-${pr}`);
 
 const out = `version=${pkg.version}\n`;
 process.stdout.write(out);
