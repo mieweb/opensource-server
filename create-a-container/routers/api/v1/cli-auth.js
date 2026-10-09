@@ -101,7 +101,9 @@ function claimHandoff(key) {
  * accepted, so it can't turn the redirects below into another origin.
  */
 function basePrefix(req) {
-  const raw = (req.get('X-Forwarded-Prefix') || '').trim().replace(/\/+$/, '');
+  let raw = (req.get('X-Forwarded-Prefix') || '').trim();
+  if (raw.length > 256) return ''; // bounded input for the pattern below
+  while (raw.endsWith('/')) raw = raw.slice(0, -1); // no regex: linear on '////…'
   if (!raw) return '';
   if (!/^(\/[A-Za-z0-9._~-]+)+$/.test(raw) || raw.split('/').includes('..')) return '';
   return raw;

@@ -101,6 +101,16 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(loc.searchParams.get('redirect')).toBe(`/manager${BASE}?port=53682&state=${STATE}`);
   });
 
+  test('an oversized or slash-flooded X-Forwarded-Prefix is ignored quickly', async () => {
+    const started = Date.now();
+    for (const prefix of ['/a' + '/'.repeat(8_000) + 'b', '/'.repeat(300)]) {
+      const res = await request(app).get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', prefix);
+      expect(res.status).toBe(302);
+      expect(new URL(res.headers.location, 'http://manager.test').pathname).toBe('/login');
+    }
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
   test('the confirmation page keeps the base path in its form action and Cancel link', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', '/manager');
