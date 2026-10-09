@@ -71,6 +71,12 @@ router.get('/openapi.yaml', (_req, res) => {
 // (auth is handled inside the router: localhost or admin API key).
 router.use('/agents', require('./agents'));
 
+// CLI login code redemption — the `mieweb login` CLI exchanges the one-time
+// code from the browser handoff for an API key. It has no browser session, so
+// this sits before the CSRF guard; the 256-bit, single-use, 2-minute code is
+// the credential.
+router.use('/auth/cli', require('./cli-auth').tokenRouter);
+
 // CSRF guard before any state-changing route below
 router.use(csrfGuard);
 

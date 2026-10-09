@@ -4,7 +4,9 @@
  * `login` is a loopback handoff (issue #475 §3b/§4.3): listen on
  * 127.0.0.1:<random>, open the browser at the Manager's
  * `/api/v1/auth/cli/callback?port&state`, and wait for the Manager to redirect
- * back to `http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…`.
+ * back to `http://127.0.0.1:<port>/callback#code=…&state=…`. The CLI then
+ * redeems that one-time code (POST /api/v1/auth/cli/token) for an API key in
+ * its own request, so no key exists unless this process received it.
  * Browsers never send the fragment to a server, so `/callback` returns a small
  * page that POSTs it to `/token` on the same listener.
  */
@@ -14,6 +16,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { hostname as osHostname } from 'node:os';
 import type { AuthStatus, DeployContext, DeployLogger } from '@mieweb/deploy-contract';
 import open from 'open';
+import pRetry from 'p-retry';
 import { ManagerClient } from './client.ts';
 import {
   DEFAULT_INSTANCE_URL,
@@ -103,10 +106,9 @@ const CALLBACK_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8
 })();
 </script></body></html>`;
 
+/** What the browser hands the loopback: a one-time code to redeem for a key. */
 interface Handoff {
-  key: string;
-  id: string;
-  user: string;
+  code: string;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -163,19 +165,17 @@ export async function startLoopback(
       readBody(req).then(
         (body) => {
           const p = new URLSearchParams(body);
-          const key = p.get('key') ?? '';
-          const id = p.get('id') ?? '';
-          const user = p.get('user') ?? '';
+          const code = p.get('code') ?? '';
           if (!safeEqual(p.get('state') ?? '', state)) {
             send(400, 'text/plain', 'State mismatch — this sign-in was not started by this terminal. Re-run `mieweb login`.');
             return;
           }
-          if (!key || !id) {
-            send(400, 'text/plain', 'The Manager did not return an API key.');
+          if (!code) {
+            send(400, 'text/plain', 'The Manager did not return a sign-in code.');
             return;
           }
           send(200, 'text/plain', 'ok');
-          settle.resolve({ key, id, user });
+          settle.resolve({ code });
         },
         () => send(400, 'text/plain', 'Bad request'),
       );
@@ -229,23 +229,37 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     (hooks.openBrowser ?? defaultOpenBrowser)(authUrl);
 
     const handoff = await loop.result;
+    // Redeem the one-time code for a key in our own request: the Manager
+    // only creates the key now, so a login that gave up earlier never left
+    // one behind, and we always receive (and can track) the key that exists.
+    const redeemed = await clientFor(ctx, deps, instanceUrl, null).call(
+      (api) => api.POST('/auth/cli/token', { body: { code: handoff.code, state } }),
+      { auth: false },
+    );
+    if (!redeemed?.key || !redeemed.id) throw new Error('The Manager did not return an API key for the sign-in code');
     // Provisional for longer than a login can take: no other login/logout
     // revokes it before this one commits or abandons it.
-    const minted = { token: handoff.key, apiKeyId: handoff.id, provisionalUntil: Date.now() + PROVISIONAL_MS };
+    const minted = { token: redeemed.key, apiKeyId: redeemed.id, provisionalUntil: Date.now() + PROVISIONAL_MS };
 
-    // The key now exists on the Manager. Track it before anything else can
-    // fail: queued for revocation until it's stored as the login below.
+    // Track the key before anything else can fail: queued for revocation
+    // until it's stored as the login below.
     try {
       await addPendingRevocation(deps.env, instanceUrl, minted);
     } catch (err) {
-      // Can't even record it: revoke it right away rather than leak it.
-      await revoke(instanceUrl, minted, ctx, deps);
+      // Can't even record it: revoke it now, regardless of cancellation, and
+      // if that fails too, say exactly which key to delete.
+      if (!(await revokeUrgently(instanceUrl, minted, deps))) {
+        logger.error(
+          `Could not record or revoke the new API key ${minted.apiKeyId} on ${instanceUrl}. ` +
+            'Delete it under API Keys in the web UI.',
+        );
+      }
       throw err;
     }
 
     let user: string;
     try {
-      user = await sessionUser(clientFor(ctx, deps, instanceUrl, handoff.key));
+      user = await sessionUser(clientFor(ctx, deps, instanceUrl, redeemed.key));
     } catch (err) {
       await revokeAll(instanceUrl, ctx, deps, logger, [minted.apiKeyId]); // abandon our own key
       throw err;
@@ -253,8 +267,8 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
 
     // Store the new key and queue the one it replaces in one locked update.
     await replaceCredential(deps.env, instanceUrl, {
-      token: handoff.key,
-      apiKeyId: handoff.id,
+      token: redeemed.key,
+      apiKeyId: redeemed.id,
       user,
       savedAt: new Date().toISOString(),
     });
@@ -277,6 +291,33 @@ async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployCo
   } catch (err) {
     const status = (err as { status?: number }).status;
     return (err as Error).name === 'AuthError' || status === 404;
+  }
+}
+
+/**
+ * Revoke a key that couldn't be recorded anywhere: retried a few times and
+ * independent of the deploy's signal (an abort mustn't leave it live).
+ */
+async function revokeUrgently(instanceUrl: string, key: PendingRevocation, deps: ProviderDeps): Promise<boolean> {
+  const signal = AbortSignal.timeout(30_000);
+  const client = new ManagerClient({ instanceUrl, token: key.token, target: 'mieweb', signal, fetch: deps.fetch });
+  try {
+    await pRetry(
+      async () => {
+        try {
+          await client.call((api) => api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }));
+        } catch (err) {
+          const status = (err as { status?: number }).status;
+          // Gone already / no longer valid: nothing left to revoke.
+          if ((err as Error).name === 'AuthError' || status === 404) return;
+          throw err;
+        }
+      },
+      { retries: 3, minTimeout: 500, signal },
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

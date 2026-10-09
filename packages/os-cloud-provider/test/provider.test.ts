@@ -803,6 +803,29 @@ describe('login / logout', () => {
     assert.equal(fake.tokens.has('in-flight'), false, 'expired reservation → revoked');
   });
 
+  test('a login that gives up before the browser hands over the code mints no key', async () => {
+    const p = provider(
+      { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: join(dir, 'gaveup.json') },
+      { login: { timeoutMs: 200, openBrowser: () => {} } },
+    );
+    await assert.rejects(p.login!(harness({ argv: ['--instance', fake.url] }).ctx), /Timed out/);
+    assert.equal(fake.redeemed, 0);
+  });
+
+  test('if the credential cache cannot be written, the new key is revoked (or named for manual deletion)', async () => {
+    await writeFile(join(dir, 'not-a-dir'), '');
+    const env = { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: join(dir, 'not-a-dir', 'os.json') };
+    const p = provider(env, { login: { openBrowser: (u) => void browser(u) } });
+    await assert.rejects(p.login!(harness({ argv: ['--instance', fake.url] }).ctx));
+    assert.equal(fake.tokens.has('minted-key'), false, 'revoked right away');
+
+    fake.failRevokes = true;
+    fake.nextKey = { key: 'minted-key-9', id: 'key-9', user: 'alice' };
+    const h = harness({ argv: ['--instance', fake.url] });
+    await assert.rejects(p.login!(h.ctx));
+    assert.ok(h.logs.some((l) => l.startsWith('error:') && l.includes('key-9') && l.includes('API Keys in the web UI')));
+  });
+
   test('a key minted by a login that then fails is revoked, not leaked', async () => {
     const creds = join(dir, 'leak-creds.json');
     fake.failSessionFor = 'minted-key';

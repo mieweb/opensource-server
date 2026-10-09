@@ -654,12 +654,13 @@ paths:
     post:
       operationId: cli_login_mint
       tags: [Auth]
-      summary: CLI loopback login — mint an API key and hand it to the loopback listener
+      summary: CLI loopback login — hand the loopback listener a one-time code
       description: >-
         Requires a browser session and a CSRF token (`_csrf`). Bearer-only
-        requests are rejected. Mints an API key for the session user and
-        303-redirects to `http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…`.
-        The key is in the URL fragment, so it never appears in a request line.
+        requests are rejected. Consumes the page's one-time handoff and
+        303-redirects to `http://127.0.0.1:<port>/callback#code=…&state=…`
+        (fragment, so it never appears in a request line). No key exists until
+        the CLI redeems the code with `cli_login_token`.
       # Browser session only: Bearer-only requests are rejected.
       security:
         - SessionCookie: []
@@ -675,10 +676,46 @@ paths:
                 state: { type: string }
                 client: { type: string }
       responses:
-        '303': { description: Redirect to the loopback listener with the key in the fragment }
+        '303': { description: Redirect to the loopback listener with a one-time code in the fragment }
         '400': { description: HTML error page for invalid parameters }
         '401': { description: No browser session }
         '403': { description: Missing/invalid CSRF token }
+  /auth/cli/token:
+    post:
+      operationId: cli_login_token
+      tags: [Auth]
+      summary: CLI loopback login — redeem the one-time code for an API key
+      description: >-
+        Called by the CLI itself (no session or CSRF token). The code from the
+        browser handoff is single-use, bound to its `state`, and valid for 2
+        minutes; the API key is minted for the user who authorized it.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code: { type: string }
+                state: { type: string }
+      responses:
+        '200':
+          description: The new API key (plaintext, returned once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [key, id, user]
+                    properties:
+                      key: { type: string }
+                      id: { type: string }
+                      user: { type: string }
+        '400': { description: 'Invalid, expired or already-used code (code: invalid_code)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/logout:
     post:
       operationId: logout

@@ -51,10 +51,17 @@ function isLocalhostRequest(req) {
 // cannot be used by an attacker to bypass CSRF on a cookie-authenticated
 // session. Verifying the Bearer is left to apiAuth; the goal here is only
 // to deny the bypass to attackers who can't actually authenticate.
+// State-changing endpoints that never use the session, so a cross-site
+// request riding the victim's cookie gains nothing: their only credential is
+// in the body. (`mieweb login` redeems its one-time code here; the CLI has no
+// session or CSRF token.)
+const CSRF_EXEMPT_PATHS = new Set(['/api/v1/auth/cli/token']);
+
 function csrfGuard(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
     return next();
   }
+  if (req.method === 'POST' && CSRF_EXEMPT_PATHS.has((req.originalUrl || '').split('?')[0])) return next();
   // The manager's own agent checks in over localhost without credentials
   // during bootstrap (no site or API key exists yet), so it can carry neither
   // a Bearer token nor a CSRF token. The check-in and accounting routes apply

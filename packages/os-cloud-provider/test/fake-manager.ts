@@ -88,6 +88,9 @@ export class FakeManager {
   jobGate?: Promise<void>;
   /** Handoff params the fake CLI-auth route will embed. */
   nextKey = { key: 'minted-key', id: 'key-2', user: 'alice' };
+  /** One-time CLI sign-in codes → their state; and how many were redeemed. */
+  readonly codes = new Map<string, string>();
+  redeemed = 0;
 
   private nextId = 100;
   private nextVmid = 1000;
@@ -233,11 +236,21 @@ export class FakeManager {
       const port = Number(url.searchParams.get('port'));
       if (!Number.isInteger(port) || port < 1 || port > 65535) return fail(400, 'bad_port');
       const state = url.searchParams.get('state')!;
-      const frag = new URLSearchParams({ ...this.nextKey, state });
-      this.tokens.set(this.nextKey.key, { user: this.nextKey.user, keyId: this.nextKey.id });
+      // Like the real route: a one-time code, no key until it's redeemed.
+      const code = `code-${this.nextId++}`;
+      this.codes.set(code, state);
+      const frag = new URLSearchParams({ code, state });
       res.writeHead(303, { Location: `http://127.0.0.1:${port}/callback#${frag}` });
       res.end();
       return;
+    }
+    if (path === '/auth/cli/token' && req.method === 'POST') {
+      const state = this.codes.get(body?.code);
+      this.codes.delete(body?.code);
+      if (!state || state !== body?.state) return fail(400, 'invalid_code');
+      this.redeemed += 1;
+      this.tokens.set(this.nextKey.key, { user: this.nextKey.user, keyId: this.nextKey.id });
+      return ok({ ...this.nextKey });
     }
 
     const auth = req.headers.authorization ?? '';

@@ -14,24 +14,54 @@
  *    handoff in the session. A GET never mints a key, so a link or <img>
  *    can't create keys silently.
  * 3. The confirmation form POSTs back here (session + CSRF protected). The route
- *    consumes the one-time handoff (a replayed POST is rejected), mints an API
- *    key for the session user and 303-redirects to
- *    http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…
+ *    consumes the one-time handoff (a replayed POST is rejected) and
+ *    303-redirects to http://127.0.0.1:<port>/callback#code=…&state=…
+ * 4. The CLI redeems the one-time code (POST /cli/token, 2-minute TTL) for an
+ *    API key in its own request. No key exists until then, so a CLI that has
+ *    already given up never leaves a live, untracked key behind.
  *
  * Loopback safety: this route does NOT use `safeRedirectUrl`. Only a port is
  * accepted from the client; the redirect host is hard-coded to 127.0.0.1. The
- * CLI-generated `state` nonce is echoed back so the CLI can reject a handoff
- * it didn't start. The key travels in the URL *fragment*, so browsers never
- * send it in a request line, Referer header, or proxy log.
+ * CLI-generated `state` nonce is echoed back (and bound to the code) so the
+ * CLI can reject a handoff it didn't start. The code travels in the URL
+ * *fragment*, so browsers never send it in a request line, Referer header, or
+ * proxy log.
  */
 
+const crypto = require('crypto');
 const express = require('express');
 const escapeHtml = require('escape-html');
 const { isOidcEnabled } = require('../../../utils/oidc');
-const { generateCsrfToken, asyncHandler } = require('../../../middlewares/api');
+const { generateCsrfToken, asyncHandler, ok, ApiError } = require('../../../middlewares/api');
 const apiKeys = require('../../../resources/apikeys/service');
 
 const router = express.Router();
+
+// --- one-time authorization codes --------------------------------------------
+// Kept in memory (the Manager is a single Node process), hashed, for
+// CODE_TTL_MS. A code is consumed by its first redemption attempt.
+const CODE_TTL_MS = 2 * 60 * 1000;
+const codes = new Map();
+const hashCode = (code) => crypto.createHash('sha256').update(code).digest('hex');
+
+function issueCode({ user, client, state }) {
+  const now = Date.now();
+  for (const [k, v] of codes) if (v.expires <= now) codes.delete(k);
+  const code = crypto.randomBytes(32).toString('base64url');
+  codes.set(hashCode(code), { user, client, state, expires: now + CODE_TTL_MS });
+  return code;
+}
+
+/** Take (and consume) a code; null if unknown, expired or for another state. */
+function redeemCode(code, state) {
+  if (typeof code !== 'string' || typeof state !== 'string') return null;
+  const key = hashCode(code);
+  const entry = codes.get(key);
+  if (!entry) return null;
+  codes.delete(key);
+  if (entry.expires <= Date.now() || entry.state !== state) return null;
+  return entry;
+}
 
 // Handoffs claimed by an in-flight POST, keyed by session + state. The claim
 // is taken synchronously (no await in between), so two concurrent POSTs of
@@ -183,19 +213,32 @@ router.post('/callback', asyncHandler(async (req, res) => {
   delete req.session.cliHandoff;
   await saveSession(req);
 
-  const description = `${handoff.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
-  const { key, plainKey } = await apiKeys.createKey(req.session.user, { description });
-
-  const fragment = new URLSearchParams({
-    key: plainKey,
-    id: key.id,
-    user: req.session.user,
-    state: handoff.state,
-  });
+  // Hand the CLI a short-lived, one-time authorization code, not a key: the
+  // key is only minted when the CLI redeems the code (POST /cli/token), so a
+  // CLI that already gave up (timed out, Ctrl-C) never leaves a live key
+  // behind; its code just expires.
+  const code = issueCode({ user: req.session.user, client: handoff.client, state: handoff.state });
+  const fragment = new URLSearchParams({ code, state: handoff.state });
   res.set('Cache-Control', 'no-store');
   res.set('Referrer-Policy', 'no-referrer');
   return res.redirect(303, `http://127.0.0.1:${handoff.port}/callback#${fragment.toString()}`);
 }));
 
+// POST /api/v1/auth/cli/token { code, state } → { key, id, user }
+// Redeemed by the CLI itself (no browser session, so this router is mounted
+// before the CSRF guard). The key is created in the CLI's own request, so the
+// CLI always receives (and tracks) any key that exists.
+const tokenRouter = express.Router();
+tokenRouter.post('/token', express.json({ limit: '4kb' }), asyncHandler(async (req, res) => {
+  const { code, state } = req.body || {};
+  const entry = redeemCode(code, state);
+  if (!entry) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
+  const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
+  const { key, plainKey } = await apiKeys.createKey(entry.user, { description });
+  res.set('Cache-Control', 'no-store');
+  return ok(res, { key: plainKey, id: key.id, user: entry.user });
+}));
+
 module.exports = router;
+module.exports.tokenRouter = tokenRouter;
 module.exports.parseHandoff = parseHandoff;

@@ -154,10 +154,30 @@ export interface paths {
         get: operations["cli_login_authorize"];
         put?: never;
         /**
-         * CLI loopback login — mint an API key and hand it to the loopback listener
-         * @description Requires a browser session and a CSRF token (`_csrf`). Bearer-only requests are rejected. Mints an API key for the session user and 303-redirects to `http://127.0.0.1:<port>/callback#key=…&id=…&user=…&state=…`. The key is in the URL fragment, so it never appears in a request line.
+         * CLI loopback login — hand the loopback listener a one-time code
+         * @description Requires a browser session and a CSRF token (`_csrf`). Bearer-only requests are rejected. Consumes the page's one-time handoff and 303-redirects to `http://127.0.0.1:<port>/callback#code=…&state=…` (fragment, so it never appears in a request line). No key exists until the CLI redeems the code with `cli_login_token`.
          */
         post: operations["cli_login_mint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/cli/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * CLI loopback login — redeem the one-time code for an API key
+         * @description Called by the CLI itself (no session or CSRF token). The code from the browser handoff is single-use, bound to its `state`, and valid for 2 minutes; the API key is minted for the user who authorized it.
+         */
+        post: operations["cli_login_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1698,7 +1718,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Redirect to the loopback listener with the key in the fragment */
+            /** @description Redirect to the loopback listener with a one-time code in the fragment */
             303: {
                 headers: {
                     [name: string]: unknown;
@@ -1725,6 +1745,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    cli_login_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    state: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The new API key (plaintext, returned once) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            key: string;
+                            id: string;
+                            user: string;
+                        };
+                    };
+                };
+            };
+            /** @description Invalid, expired or already-used code (code: invalid_code) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

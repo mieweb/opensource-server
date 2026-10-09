@@ -134,14 +134,20 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(res.status).toBe(403);
   });
 
-  test('POST with session + CSRF mints a working key and redirects to the loopback fragment', async () => {
-    const agent = await loggedInAgent(app, 'alice');
-    const form = await agent.get(`${BASE}?port=53682&state=${STATE}&client=cli`).set(...REMOTE);
-    const res = await agent
+  async function authorize(agent, state = STATE) {
+    const form = await agent.get(`${BASE}?port=53682&state=${state}&client=cli`).set(...REMOTE);
+    return agent
       .post(BASE)
       .set(...REMOTE)
       .type('form')
-      .send({ _csrf: csrfFrom(form.text), port: '53682', state: STATE, client: 'cli' });
+      .send({ _csrf: csrfFrom(form.text), port: '53682', state, client: 'cli' });
+  }
+  const redeem = (body) => request(app).post('/api/v1/auth/cli/token').set(...REMOTE).send(body);
+
+  test('POST hands the loopback a one-time code (no key yet); the CLI redeems it for a working key', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
+    const res = await authorize(agent);
     expect(res.status).toBe(303);
     const loc = new URL(res.headers.location);
     expect(loc.origin).toBe('http://127.0.0.1:53682');
@@ -149,17 +155,46 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(loc.search).toBe('');
     const frag = new URLSearchParams(loc.hash.slice(1));
     expect(frag.get('state')).toBe(STATE);
-    expect(frag.get('user')).toBe('alice');
-    const key = frag.get('key');
-    expect(key).toBeTruthy();
+    expect(frag.get('key')).toBeNull();
+    const code = frag.get('code');
+    expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
 
-    const row = await ApiKey.findByPk(frag.get('id'));
+    // Redeemed by the CLI: no session, no CSRF token.
+    const tok = await redeem({ code, state: STATE });
+    expect(tok.status).toBe(200);
+    expect(tok.body.data.user).toBe('alice');
+    const row = await ApiKey.findByPk(tok.body.data.id);
     expect(row.uidNumber).toBe(alice.uidNumber);
     expect(row.description).toMatch(/^cli \(CLI login/);
-
-    const session = await request(app).get('/api/v1/session').set(...bearer(key));
-    expect(session.status).toBe(200);
+    const session = await request(app).get('/api/v1/session').set(...bearer(tok.body.data.key));
     expect(session.body.data.user).toBe('alice');
+
+    // One-time.
+    const again = await redeem({ code, state: STATE });
+    expect(again.status).toBe(400);
+    expect(again.body.error.code).toBe('invalid_code');
+  });
+
+  test('a code is bound to its state, and a wrong state burns it', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
+    expect((await redeem({ code, state: 'some-other-state-0123456' })).status).toBe(400);
+    expect((await redeem({ code, state: STATE })).status).toBe(400);
+  });
+
+  test('an unredeemed code expires (a CLI that gave up leaves no key)', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
+    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now + 3 * 60 * 1000);
+    try {
+      expect((await redeem({ code, state: STATE })).status).toBe(400);
+    } finally {
+      jest.restoreAllMocks();
+    }
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
   });
 
   test('the handoff is one-time: a replayed POST mints no second key', async () => {
@@ -172,7 +207,7 @@ describe('/api/v1/auth/cli/callback', () => {
     const replay = await agent.post(BASE).set(...REMOTE).type('form').send(body);
     expect(replay.status).toBe(400);
     expect(replay.text).toMatch(/already completed or has expired/);
-    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
   });
 
   test('two concurrent POSTs of the same handoff mint only one key', async () => {
@@ -186,7 +221,7 @@ describe('/api/v1/auth/cli/callback', () => {
       agent.post(BASE).set(...REMOTE).type('form').send(body),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual([303, 400]);
-    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
   });
 
   test('a POST without a matching confirmation page (other state/port) is rejected', async () => {
