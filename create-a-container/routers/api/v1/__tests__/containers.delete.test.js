@@ -125,6 +125,38 @@ describe('DELETE container: node-side failures', () => {
     expect((await del(c)).status).toBe(200);
   });
 
+  test('an update that arrives while a delete is in flight waits for it and enqueues nothing', async () => {
+    const c = await provisioned('racing');
+    let releaseDelete;
+    const gate = new Promise((r) => {
+      releaseDelete = r;
+    });
+    let deleting;
+    const started = new Promise((r) => {
+      deleting = r;
+    });
+    jest.spyOn(DummyApi.prototype, 'lxcConfig').mockResolvedValue({});
+    jest.spyOn(DummyApi.prototype, 'deleteContainer').mockImplementation(async () => {
+      deleting();
+      await gate; // the VM is being deleted node-side
+      return {};
+    });
+    const deletion = del(c).then((r) => r);
+    await started;
+    const update = request(app)
+      .put(`/api/v1/sites/${site.id}/containers/${c.id}`)
+      .set(...bearer(key))
+      .send({ restart: true })
+      .then((r) => r);
+    await new Promise((r) => setTimeout(r, 200));
+    releaseDelete();
+    const [d, u] = await Promise.all([deletion, update]);
+    expect(d.status).toBe(200);
+    expect(u.status).toBe(404);
+    const jobs = await Job.findAll({ where: { command: `node bin/reconfigure-container.js --container-id=${c.id}` } });
+    expect(jobs).toHaveLength(0);
+  });
+
   test('VM already gone → success', async () => {
     nodeDeleteFails({ stillListed: false });
     const c = await provisioned('already-gone');

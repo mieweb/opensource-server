@@ -309,11 +309,20 @@ export function listCommand(prune: { paths: readonly string[]; names: readonly s
     conds.length === 0
       ? []
       : ['(', ...conds.flatMap((c, i) => (i === 0 ? c : ['-o', ...c])), ')', '-type', 'd', '-prune', '-printf', LISTING_FORMAT, '-o'];
-  return `${quote(['sudo', 'mkdir', '-p', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
-    'sudo', 'find', '.', '-mindepth', '1', ...pruneExpr,
+  return `${quote(['sudo', 'install', '-d', '-o', OWNER, '-g', OWNER, '-m', '0755', REMOTE_APP_DIR])} && ${quote(['cd', REMOTE_APP_DIR])} && ${quote([
+    ...AS_OWNER, 'find', '.', '-mindepth', '1', ...pruneExpr,
     '(', '-type', 'f', '-o', '-type', 'l', '-o', '-type', 'd', ')', '-printf', LISTING_FORMAT,
   ])}`;
 }
+
+/**
+ * Everything under REMOTE_APP_DIR is the app account's, and the app keeps
+ * running (as that account) during a sync, so it could swap any directory in
+ * the tree for a symlink between the listing and a change. The tree is
+ * therefore read and changed *as that account*, never as root: a planted
+ * symlink can then only reach what the app could already touch.
+ */
+const AS_OWNER = ['sudo', '-u', OWNER, '--'];
 
 /** Exit code of REMOTE.checkRoot when the app could redirect the sync root. */
 const UNSAFE_ROOT = 66;
@@ -331,12 +340,14 @@ export const REMOTE = {
     `p=${quote([posix.dirname(REMOTE_APP_DIR)])}; ` +
     `if [ -L ${quote([REMOTE_APP_DIR])} ] || [ "$(stat -c %u "$p")" != 0 ] || [ $(( 0$(stat -c %a "$p") & 022 )) -ne 0 ]; then exit ${UNSAFE_ROOT}; fi`,
   list: listCommand({ paths: [], names: [] }),
-  extract: quote(['sudo', 'tar', '-x', '-f', '-', '-C', REMOTE_APP_DIR]),
-  remove: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -f --`,
-  removeTrees: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rm -rf --`,
+  // --preserve-permissions: as a non-root user tar would otherwise apply the
+  // umask (dropping e.g. the executable bit).
+  extract: quote([...AS_OWNER, 'tar', '-x', '--preserve-permissions', '-f', '-', '-C', REMOTE_APP_DIR]),
+  remove: `${quote(['cd', REMOTE_APP_DIR])} && ${quote([...AS_OWNER, 'xargs', '-0', '-r', 'rm', '-f', '--'])}`,
+  removeTrees: `${quote(['cd', REMOTE_APP_DIR])} && ${quote([...AS_OWNER, 'xargs', '-0', '-r', 'rm', '-rf', '--'])}`,
   // Only empty directories go (a directory still holding ignored content,
   // like node_modules, stays). The caller passes them deepest first.
-  rmdirs: `${quote(['cd', REMOTE_APP_DIR])} && sudo xargs -0 -r rmdir --ignore-fail-on-non-empty --`,
+  rmdirs: `${quote(['cd', REMOTE_APP_DIR])} && ${quote([...AS_OWNER, 'xargs', '-0', '-r', 'rmdir', '--ignore-fail-on-non-empty', '--'])}`,
   /**
    * Follow the journal (live install/build output) while restarting; exit
    * non-zero if the restart fails (ExecStartPre install/build failed) or the

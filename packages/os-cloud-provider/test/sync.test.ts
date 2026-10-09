@@ -229,6 +229,17 @@ describe('syncWorktree', () => {
     assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
   });
 
+  test('the tree is read and changed as the app account, never as root', () => {
+    // The running app owns the tree and can swap a directory for a symlink at
+    // any time; as root, rm/tar/find would follow it out of /opt/app/src.
+    for (const cmd of [REMOTE.extract, REMOTE.remove, REMOTE.removeTrees, REMOTE.rmdirs, REMOTE.list]) {
+      const privileged = cmd.split('&&').map((c) => c.trim()).filter((c) => c.startsWith('sudo '));
+      for (const c of privileged) {
+        assert.ok(c.startsWith('sudo -u mieweb -- ') || c.startsWith('sudo install -d '), c);
+      }
+    }
+  });
+
   test('refuses to sync when the app could redirect the sync root (old image)', async () => {
     const shell = new FakeShell(remote);
     shell.unsafeRoot = true;

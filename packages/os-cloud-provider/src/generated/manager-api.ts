@@ -2505,7 +2505,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description forbidden — only the owner/admin may delete (collaborators can view but not manage) */
+            /** @description forbidden — only the owner/admin may delete (collaborators can view but not manage); or force=true from a non-admin when the VM may still be running */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2515,7 +2515,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description DB/Proxmox hostname mismatch (code: hostname_mismatch), or the container is still being created (code: create_in_progress) — delete aborted */
+            /** @description Delete aborted, nothing changed: DB/Proxmox hostname mismatch (code: hostname_mismatch); the container is still being created (code: create_in_progress); or another job is acting on it, e.g. a reconfigure (code: job_in_progress, with `fields.jobId`). The last two are retryable once that job finishes (poll `/jobs/{id}`). */
             409: {
                 headers: {
                     [name: string]: unknown;

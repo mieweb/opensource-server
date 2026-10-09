@@ -1091,9 +1091,16 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { data: { type: object, properties: { deleted: { type: boolean }, dnsWarnings: { type: array, items: { type: string } } } } } }
-        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage); or force=true from a non-admin when the VM may still be running', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: 'DB/Proxmox hostname mismatch (code: hostname_mismatch), or the container is still being created (code: create_in_progress) — delete aborted', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409':
+          description: >-
+            Delete aborted, nothing changed: DB/Proxmox hostname mismatch
+            (code: hostname_mismatch); the container is still being created
+            (code: create_in_progress); or another job is acting on it, e.g. a
+            reconfigure (code: job_in_progress, with `fields.jobId`). The last
+            two are retryable once that job finishes (poll `/jobs/{id}`).
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
         '502': { description: 'Node-side delete failed and the VM still exists or could not be checked (code: node_delete_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
