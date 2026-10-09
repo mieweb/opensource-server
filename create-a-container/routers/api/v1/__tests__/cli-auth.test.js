@@ -11,7 +11,7 @@ const request = require('supertest');
 const { buildApp, bearer } = require('../../../../tests/helpers/app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
 const { ApiKey } = require('../../../../models');
-const { parseHandoff } = require('../cli-auth');
+const { parseHandoff, heldCodes } = require('../cli-auth');
 
 const REMOTE = ['X-Forwarded-For', '203.0.113.7'];
 const STATE = 'abcdefghijklmnop0123456789';
@@ -217,6 +217,29 @@ describe('/api/v1/auth/cli/callback', () => {
       jest.restoreAllMocks();
     }
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
+  });
+
+  test('a redeemed code (and the key it holds for retries) is dropped when it expires', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const timers = [];
+    const real = global.setTimeout;
+    const spy = jest.spyOn(global, 'setTimeout').mockImplementation((fn, ms, ...rest) => {
+      const t = real(() => {}, 0);
+      if (ms === 2 * 60 * 1000) timers.push(fn);
+      return t;
+    });
+    let code;
+    try {
+      code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await redeem({ code, state: STATE })).status).toBe(200);
+    const held = heldCodes();
+    expect(timers).toHaveLength(1);
+    timers[0](); // the code's TTL elapses
+    expect(heldCodes()).toBe(held - 1);
+    expect((await redeem({ code, state: STATE })).status).toBe(400);
   });
 
   test('the handoff is one-time: a replayed POST mints no second key', async () => {

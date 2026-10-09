@@ -383,7 +383,7 @@ async function main() {
     if (isDocker) {
       // Docker image: pull from OCI registry, then create container
       const parsed = parseDockerRef(container.template);
-      console.log(`Docker image: ${parsed.registry}/${parsed.namespace}/${parsed.image}:${parsed.tag}`);
+      console.log(`Docker image: ${container.template}`);
       
       const templateStorage = await resolveStorage(client, node.name, node.imageStorage || 'local', 'vztmpl');
       const rootfsStorage = await resolveStorage(client, node.name, node.volumeStorage || 'local-lvm', 'rootdir');

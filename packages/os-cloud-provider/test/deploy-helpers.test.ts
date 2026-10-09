@@ -11,7 +11,12 @@ describe('normalizeImageRef (mirrors the Manager)', () => {
     ['bitnami/redis', 'docker.io/bitnami/redis:latest'],
     ['ghcr.io/mieweb/opensource-server/cloud', 'ghcr.io/mieweb/opensource-server/cloud:latest'],
     ['ghcr.io/mieweb/opensource-server/cloud:sha-abc', 'ghcr.io/mieweb/opensource-server/cloud:sha-abc'],
-    ['localhost:5000/app', 'localhost:5000/library/app:latest'],
+    // A registry-qualified ref keeps its path: `library/` is Docker Hub only.
+    ['localhost:5000/app', 'localhost:5000/app:latest'],
+    ['localhost/app:1', 'localhost/app:1'],
+    ['registry.example.com/team/app:2', 'registry.example.com/team/app:2'],
+    ['docker.io/nginx', 'docker.io/library/nginx:latest'],
+    ['a/b/c', 'docker.io/a/b/c:latest'],
   ];
   for (const [input, want] of cases) {
     test(input, () => assert.equal(normalizeImageRef(input), want));

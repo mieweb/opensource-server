@@ -48,10 +48,14 @@ const codes = new Map();
 const hashCode = (code) => crypto.createHash('sha256').update(code).digest('hex');
 
 function issueCode({ user, client, state }) {
-  const now = Date.now();
-  for (const [k, v] of codes) if (v.expires <= now) codes.delete(k);
   const code = crypto.randomBytes(32).toString('base64url');
-  codes.set(hashCode(code), { user, client, state, expires: now + CODE_TTL_MS });
+  const key = hashCode(code);
+  // Each entry is dropped when it expires: once redeemed it holds the
+  // plaintext key (for retries), which must not outlive the code. unref: the
+  // timer alone doesn't keep the process up.
+  const timer = setTimeout(() => codes.delete(key), CODE_TTL_MS);
+  timer.unref?.();
+  codes.set(key, { user, client, state, expires: Date.now() + CODE_TTL_MS, timer });
   return code;
 }
 
@@ -66,6 +70,7 @@ function redeemCode(code, state, mint) {
   const entry = codes.get(key);
   if (!entry) return null;
   if (entry.expires <= Date.now() || entry.state !== state) {
+    clearTimeout(entry.timer);
     codes.delete(key);
     return null;
   }
@@ -259,3 +264,5 @@ tokenRouter.post('/token', express.json({ limit: '4kb' }), asyncHandler(async (r
 module.exports = router;
 module.exports.tokenRouter = tokenRouter;
 module.exports.parseHandoff = parseHandoff;
+/** Test hook: how many codes (and minted keys) are held in memory. */
+module.exports.heldCodes = () => codes.size;

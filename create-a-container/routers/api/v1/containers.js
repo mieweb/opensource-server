@@ -141,26 +141,17 @@ function normalizeDockerRef(ref) {
       imagePart = ref.substring(0, lastColon);
     }
   }
+  // Like Docker: the first component is a registry host when it has a dot or
+  // a port, or is `localhost`; otherwise the ref is on Docker Hub, where (only)
+  // single-component names live under `library/`. A registry-qualified ref
+  // keeps its path as is (`localhost:5000/app` is not `.../library/app`).
   const parts = imagePart.split('/');
-  let host = 'docker.io';
-  let org = 'library';
-  let image;
-  if (parts.length === 1) {
-    image = parts[0];
-  } else if (parts.length === 2) {
-    if (parts[0].includes('.') || parts[0].includes(':')) {
-      host = parts[0];
-      image = parts[1];
-    } else {
-      org = parts[0];
-      image = parts[1];
-    }
-  } else {
-    host = parts[0];
-    image = parts[parts.length - 1];
-    org = parts.slice(1, -1).join('/');
-  }
-  return `${host}/${org}/${image}:${tag}`;
+  const first = parts[0];
+  const hasHost = parts.length > 1 && (first.includes('.') || first.includes(':') || first === 'localhost');
+  if (hasHost && !(first === 'docker.io' && parts.length === 2)) return `${imagePart}:${tag}`;
+  if (hasHost) parts.shift(); // docker.io/nginx is docker.io/library/nginx
+  const path = parts.length === 1 ? `library/${parts[0]}` : parts.join('/');
+  return `docker.io/${path}:${tag}`;
 }
 
 /**
@@ -435,7 +426,7 @@ router.get(
     const normalized = normalizeDockerRef(image.trim());
     const parsed = parseDockerRef(normalized);
     try {
-      const config = await getImageConfig(parsed.registry, `${parsed.namespace}/${parsed.image}`, parsed.tag);
+      const config = await getImageConfig(parsed.registry, parsed.namespace ? `${parsed.namespace}/${parsed.image}` : parsed.image, parsed.tag);
       return ok(res, extractImageMetadata(config));
     } catch (err) {
       if (err.message.includes('HTTP 404')) {
@@ -1251,4 +1242,5 @@ module.exports = router;
 // Exported for unit tests (containers.serialize.test.js).
 module.exports.serializeContainer = serializeContainer;
 module.exports.serializeVolume = serializeVolume;
+module.exports.normalizeDockerRef = normalizeDockerRef;
 module.exports.normalizeVolumeAttach = normalizeVolumeAttach;
