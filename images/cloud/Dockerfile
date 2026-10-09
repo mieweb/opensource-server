@@ -25,7 +25,8 @@ FROM golang:1.24-trixie AS minio
 ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
 RUN git clone --depth 1 --branch "$MINIO_RELEASE" https://github.com/minio/minio.git /src
 WORKDIR /src
-RUN CGO_ENABLED=0 go build -tags kqueue -trimpath \
+RUN mkdir -p /out && \
+    CGO_ENABLED=0 go build -tags kqueue -trimpath \
       -ldflags "$(go run buildscripts/gen-ldflags.go)" \
       -o /out/minio . && \
     /out/minio --version

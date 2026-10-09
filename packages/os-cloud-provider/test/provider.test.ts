@@ -237,6 +237,19 @@ describe('deploy', () => {
     assert.equal(fake.requests.length, 0);
   });
 
+  test('after a create, a typed key passphrase does not stop the auth retries', async () => {
+    let attempts = 0;
+    const connectSsh: ProviderOptions['connectSsh'] = async (_t, o) => {
+      attempts += 1;
+      await o.prompt("Enter passphrase for key '/home/a/.ssh/id_ed25519': ", true);
+      if (attempts < 3) throw new SshError('auth', 'SSH authentication as alice failed.');
+      return new FakeShell(remoteDir);
+    };
+    const p = provider({}, { connectSsh, prompt: async () => 'secret', sshTimeoutMs: 5000 });
+    await p.deploy(harness().ctx);
+    assert.equal(attempts, 3, 'kept retrying until the booting container accepted the key');
+  });
+
   test('after a create, auth failures are retried only until the user has typed a password', async () => {
     let attempts = 0;
     let prompts = 0;

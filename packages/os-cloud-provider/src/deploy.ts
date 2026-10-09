@@ -675,12 +675,17 @@ export async function openShell(
   const budgetMs = deps.sshTimeoutMs ?? 60_000;
   const deadline = Date.now() + budgetMs;
   // Ask for a password/passphrase at most once across attempts. Once the
-  // user has typed one, an auth failure is theirs to fix, not a startup race.
+  // user has typed a *password*, an auth failure is theirs to fix, not a
+  // startup race. A key passphrase doesn't count: a passphrase-protected key
+  // can still be rejected while the fresh container's LDAP keys aren't served.
   const answers = new Map<string, string | null>();
+  let passwordTyped = false;
   const basePrompt = deps.prompt ?? ttyPrompter;
   const prompt: Prompter = async (q, hidden) => {
     if (!answers.has(q)) answers.set(q, await basePrompt(q, hidden));
-    return answers.get(q)!;
+    const answer = answers.get(q)!;
+    if (answer !== null && /password/i.test(q) && !/passphrase/i.test(q)) passwordTyped = true;
+    return answer;
   };
 
   logger.info(`Connecting to ${user}@${host}:${port}`);
@@ -702,7 +707,7 @@ export async function openShell(
         signal,
         shouldRetry: ({ error }) => {
           const kind = error instanceof SshError ? error.kind : 'network';
-          const retry = kind === 'network' || (kind === 'auth' && opts.fresh === true && answers.size === 0);
+          const retry = kind === 'network' || (kind === 'auth' && opts.fresh === true && !passwordTyped);
           if (retry) logger.info(`SSH not ready yet (${error.message.split('. ')[0]}); retrying…`);
           return retry;
         },
