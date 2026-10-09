@@ -52,26 +52,32 @@ jobs:
       # setup-node points @mieweb at GitHub Packages for the publish below;
       # dependencies (incl. @mieweb/deploy-contract) come from npmjs.
       - run: pnpm install --frozen-lockfile --config.@mieweb:registry=https://registry.npmjs.org/
+      # This push's cloud image, by its immutable tag: build-images.yml tags
+      # it sha-<short GITHUB_SHA> (both workflows see the same PR merge SHA).
+      # The mutable pr-<PR> tag isn't used: it moves with later pushes, and a
+      # slower, older image build could move it back after this publishes.
+      - name: Resolve this push's cloud image tag
+        id: image
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       # Version + default image for this PR's preview; run locally the same way:
-      #   node scripts/stamp-preview.mjs <pr> <run> [<attempt>]
+      #   node scripts/stamp-preview.mjs <pr> <run> [<attempt>] [<image-tag>]
       - name: Stamp preview version and default image
         id: stamp
-        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}" "${{ github.run_attempt }}"
-      # The stamped default image (cloud:pr-<PR>) is pushed by build-images.yml
-      # for this same push, in parallel. Wait for that build's own tag
-      # (sha-<short GITHUB_SHA>; both workflows see the same PR merge SHA), not
-      # just pr-<PR>, which may still be an older push's image. If that build
-      # fails, nothing is published (the step times out).
+        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}" "${{ github.run_attempt }}" "${{ steps.image.outputs.tag }}"
       - name: Log in to GHCR (read)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # build-images.yml pushes that image for this same push, in parallel. If
+      # that build fails, nothing is published (the step times out).
       - name: Wait for this push's cloud image
         timeout-minutes: 90
+        env:
+          TAG: ${{ steps.image.outputs.tag }}
         run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY}/cloud:sha-${GITHUB_SHA::7}"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}/cloud:${TAG}"
           until docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; do
             echo "Waiting for $IMAGE ..."
             sleep 30

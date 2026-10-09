@@ -742,6 +742,17 @@ describe('destroy', () => {
     await p.destroy!(h2.ctx);
     assert.ok(h2.logs.some((l) => l.includes('nothing to destroy')));
   });
+
+  test('tail and destroy still work when a deploy-only setting is invalid', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    // e.g. a typo'd port, a retired option and an unsupported service.
+    const broken = { siteId: 1, port: 70000, source: 'git', services: [{ type: 'srv', internalPort: 1 }] };
+    await assert.rejects(p.deploy(harness({ targetConfig: broken }).ctx), /ConfigError|TCP port|source/);
+    await p.tail!(harness({ targetConfig: broken, argv: ['--no-follow'] }).ctx);
+    await p.destroy!(harness({ targetConfig: broken }).ctx);
+    assert.equal(fake.containers.length, 0);
+  });
 });
 
 describe('whoami', () => {

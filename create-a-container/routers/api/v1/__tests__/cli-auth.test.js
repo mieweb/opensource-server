@@ -111,6 +111,15 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(Date.now() - started).toBeLessThan(5000);
   });
 
+  test("the confirmation page's CSP lets the form's redirect reach the loopback port (and nothing else)", async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);
+    const csp = res.headers['content-security-policy'];
+    const formAction = csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('form-action'));
+    expect(formAction).toBe("form-action 'self' http://127.0.0.1:53682");
+    expect(csp).toContain("default-src 'none'");
+  });
+
   test('the confirmation page keeps the base path in its form action and Cancel link', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', '/manager');

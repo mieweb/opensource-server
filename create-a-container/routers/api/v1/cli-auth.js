@@ -132,11 +132,20 @@ function parseHandoff(src) {
   return { port, state, client: rawClient };
 }
 
-function page(res, status, title, body) {
+/**
+ * @param {string} [formTarget] - Extra origin the page's form may lead to.
+ *   Chromium/WebKit apply `form-action` to the redirects that follow a form
+ *   submission too, so the confirmation page must allow the loopback origin
+ *   its POST is redirected to.
+ */
+function page(res, status, title, body, formTarget) {
   res
     .status(status)
     .set('Cache-Control', 'no-store')
-    .set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
+    .set(
+      'Content-Security-Policy',
+      `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${formTarget ? ` ${formTarget}` : ''}`,
+    )
     .set('X-Frame-Options', 'DENY')
     .type('html')
     .send(`<!doctype html>
@@ -189,8 +198,8 @@ router.get('/callback', asyncHandler(async (req, res) => {
 <h1>Authorize command-line access</h1>
 <p>Signed in as <strong>${escapeHtml(req.session.user)}</strong>.</p>
 <p>A command-line client (<code>${escapeHtml(label)}</code>) is asking for an API key for your
-account. The key will be sent to a program listening on <code>127.0.0.1:${handoff.port}</code>
-on <em>this</em> computer.</p>
+account. A one-time sign-in code will be sent to a program listening on
+<code>127.0.0.1:${handoff.port}</code> on <em>this</em> computer, which exchanges it for the key.</p>
 <p>Only continue if you just ran <code>mieweb login</code>.</p>
 <form method="post" action="${escapeHtml(`${basePrefix(req)}${req.baseUrl}/callback`)}">
   <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}">
@@ -201,7 +210,7 @@ on <em>this</em> computer.</p>
     <button class="primary" type="submit">Authorize</button>
     <a class="btn" href="${escapeHtml(`${basePrefix(req)}/`)}">Cancel</a>
   </div>
-</form>`);
+</form>`, `http://127.0.0.1:${handoff.port}`);
 }));
 
 // POST — issue a one-time code for the session user and redirect it to the

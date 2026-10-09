@@ -27,8 +27,10 @@ import {
   appName,
   ConfigError,
   DATA_VOLUME,
+  resolveAccessSettings,
   resolveTargetSettings,
   resolveToken,
+  type AccessSettings,
   type ExtraService,
   type TargetSettings,
 } from './config.ts';
@@ -695,7 +697,7 @@ export async function openShell(
   ctx: DeployContext,
   deps: ProviderDeps,
   client: ManagerClient,
-  s: TargetSettings,
+  s: AccessSettings,
   container: Container,
   opts: { fresh?: boolean } = {},
 ): Promise<RemoteShell> {
@@ -806,7 +808,7 @@ export function journalCommand(o: TailOptions): string {
 export async function tail(ctx: DeployContext, deps: ProviderDeps): Promise<void> {
   const opts = parseTailArgs(ctx.argv);
   const name = appName(ctx.manifest);
-  const s = resolveTargetSettings(ctx, deps.env);
+  const s = resolveAccessSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   const found = await findByHostname(client, siteId, name);
@@ -908,7 +910,7 @@ async function createOrAdopt(
 
 export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<void> {
   const name = appName(ctx.manifest);
-  const s = resolveTargetSettings(ctx, deps.env);
+  const s = resolveAccessSettings(ctx, deps.env);
   const client = await clientFor(ctx, deps, s.instanceUrl);
   const siteId = await resolveSiteId(s.siteId, client, deps, ctx);
   let existing = await findByHostname(client, siteId, name);

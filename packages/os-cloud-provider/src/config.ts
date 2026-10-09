@@ -156,15 +156,35 @@ export function appName(manifest: Readonly<Record<string, unknown>>): string {
   return name;
 }
 
-/** Validate `targets.mieweb` for deploy/destroy. */
+/** What `tail` and `destroy` need: where the app's container is and how to reach it. */
+export type AccessSettings = Pick<TargetSettings, 'instanceUrl' | 'siteId' | 'sshUser' | 'sshHost'>;
+
+/**
+ * Only the settings that locate and reach an existing container. `tail` and
+ * `destroy` use this, so a deploy-only setting that's invalid (a bad port, an
+ * unsupported service, a retired option) doesn't stop you reading logs or
+ * deleting the app.
+ */
+export function resolveAccessSettings(ctx: DeployContext, env: ProviderEnv): AccessSettings {
+  const tc = ctx.targetConfig;
+  const target = `targets.${ctx.target}`;
+  // MIEWEB_OS_SITE_ID → targets.mieweb.siteId → (deploy time) the only site, or a prompt.
+  const rawSite = str(env.MIEWEB_OS_SITE_ID) ?? (tc.siteId === null || tc.siteId === '' ? undefined : tc.siteId);
+  const siteId = rawSite === undefined ? undefined : posInt(rawSite, str(env.MIEWEB_OS_SITE_ID) ? 'MIEWEB_OS_SITE_ID' : `${target}.siteId`);
+  return {
+    instanceUrl: resolveInstanceUrl(env, tc),
+    siteId,
+    sshUser: str(env.MIEWEB_OS_SSH_USER) ?? str(tc.sshUser),
+    sshHost: str(tc.sshHost),
+  };
+}
+
+/** Validate all of `targets.mieweb` for deploy. */
 export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): TargetSettings {
   const tc = ctx.targetConfig;
   const name = appName(ctx.manifest);
   const target = `targets.${ctx.target}`;
-
-  // MIEWEB_OS_SITE_ID → targets.mieweb.siteId → (deploy time) the only site, or a prompt.
-  const rawSite = str(env.MIEWEB_OS_SITE_ID) ?? (tc.siteId === null || tc.siteId === '' ? undefined : tc.siteId);
-  const siteId = rawSite === undefined ? undefined : posInt(rawSite, str(env.MIEWEB_OS_SITE_ID) ? 'MIEWEB_OS_SITE_ID' : `${target}.siteId`);
+  const access = resolveAccessSettings(ctx, env);
 
   const externalHostname = str(tc.externalHostname) ?? name;
   if (!DNS_LABEL.test(externalHostname)) {
@@ -211,8 +231,7 @@ export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): Tar
   }
 
   return {
-    instanceUrl: resolveInstanceUrl(env, tc),
-    siteId,
+    ...access,
     image: str(tc.image) ?? DEFAULT_IMAGE,
     port: tc.port === undefined ? DEFAULT_PORT : port(tc.port, `${target}.port`),
     externalHostname,
@@ -221,8 +240,6 @@ export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): Tar
     nvidia: tc.nvidia as boolean | undefined,
     services,
     sync: tc.sync !== false,
-    sshUser: str(env.MIEWEB_OS_SSH_USER) ?? str(tc.sshUser),
-    sshHost: str(tc.sshHost),
     start: str(tc.start),
   };
 }
