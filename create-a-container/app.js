@@ -60,8 +60,13 @@ function buildApp({
     app.use('/mcp', createMcpProxy(mcpServerUrl));
   }
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // The unauthenticated CLI code redemption parses its own body with a 4 KB
+  // limit (routers/api/v1/cli-auth.js); a parser here would consume the
+  // stream first and bypass it.
+  const unlessCliToken = (mw) => (req, res, next) =>
+    (req.path === '/api/v1/auth/cli/token' ? next() : mw(req, res, next));
+  app.use(unlessCliToken(express.json()));
+  app.use(unlessCliToken(express.urlencoded({ extended: true })));
 
   // Configure session store
   const sessionStore = new SequelizeStore({

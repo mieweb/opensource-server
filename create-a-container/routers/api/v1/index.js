@@ -21,6 +21,12 @@ const router = express.Router();
 // OpenAPI spec (loaded once at import time)
 const openapiSpec = YAML.load(path.join(__dirname, '..', '..', '..', 'openapi.v1.yaml'));
 
+// CLI login code redemption — the `mieweb login` CLI exchanges the one-time
+// code from the browser handoff for an API key. It has no browser session, so
+// this sits before the CSRF guard (the 256-bit, single-use, 2-minute code is
+// the credential), and before the 1 MB body parser so its own 4 KB limit applies.
+router.use('/auth/cli', require('./cli-auth').tokenRouter);
+
 router.use(cookieParser());
 router.use(express.json({ limit: '1mb' }));
 router.use(express.urlencoded({ extended: true }));
@@ -70,12 +76,6 @@ router.get('/openapi.yaml', (_req, res) => {
 // agent posts from localhost with neither a session cookie nor a Bearer token
 // (auth is handled inside the router: localhost or admin API key).
 router.use('/agents', require('./agents'));
-
-// CLI login code redemption — the `mieweb login` CLI exchanges the one-time
-// code from the browser handoff for an API key. It has no browser session, so
-// this sits before the CSRF guard; the 256-bit, single-use, 2-minute code is
-// the credential.
-router.use('/auth/cli', require('./cli-auth').tokenRouter);
 
 // CSRF guard before any state-changing route below
 router.use(csrfGuard);

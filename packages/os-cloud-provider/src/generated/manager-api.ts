@@ -1764,7 +1764,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The new API key (plaintext, returned once) */
+            /** @description The API key minted for this code (plaintext). Repeating the request with the same code and state within its TTL returns this same key, so retry after a lost response; no other request ever returns it. */
             200: {
                 headers: {
                     [name: string]: unknown;

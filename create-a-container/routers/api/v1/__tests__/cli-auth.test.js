@@ -178,6 +178,11 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
   });
 
+  test('an oversized redemption body is rejected by the 4 KB limit', async () => {
+    const res = await redeem({ code: 'x'.repeat(8 * 1024), state: STATE });
+    expect(res.status).toBe(413);
+  });
+
   test('concurrent redemptions of one code mint a single key', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
