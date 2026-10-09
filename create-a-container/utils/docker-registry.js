@@ -193,11 +193,19 @@ function isDockerImage(template) {
 
 /**
  * Parse a normalized Docker image reference into components
- * Format: host/org/image:tag
+ * Format: host/[org/]image:tag or host/[org/]image@digest
  * @param {string} ref - The normalized Docker reference
- * @returns {object} Parsed components: { registry, namespace, image, tag }
+ * @returns {object} Parsed components: { registry, namespace, image, tag } —
+ *   `tag` is the manifest reference: the tag, or the digest when pinned
  */
 function parseDockerRef(ref) {
+  // A digest-pinned ref (`host/repo@sha256:…`) is fetched by its digest: it's
+  // returned as `tag`, the manifest reference (registries accept either).
+  const at = ref.indexOf('@');
+  if (at !== -1) {
+    const { registry, namespace, image } = parseDockerRef(ref.slice(0, at));
+    return { registry, namespace, image, tag: ref.slice(at + 1) };
+  }
   // The tag follows the last colon after the last slash (a registry host may
   // carry a port: `localhost:5000/app:1`).
   const lastColon = ref.lastIndexOf(':');

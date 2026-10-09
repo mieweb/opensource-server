@@ -91,6 +91,13 @@ export const SECRET_ENV_PREFIX = 'MIEWEB_OS_SECRET_';
  */
 export function normalizeImageRef(ref: string): string {
   if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) return ref;
+  // A digest pins the image (`name[:tag]@sha256:…`): it is the reference, so
+  // it's kept as is and any tag dropped, rather than mistaken for a tag.
+  const at = ref.indexOf('@');
+  if (at !== -1) {
+    const name = normalizeImageRef(ref.slice(0, at));
+    return `${name.slice(0, name.lastIndexOf(':'))}${ref.slice(at)}`;
+  }
   let tag = 'latest';
   let imagePart = ref;
   const lastColon = ref.lastIndexOf(':');

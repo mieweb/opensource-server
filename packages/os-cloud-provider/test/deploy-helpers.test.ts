@@ -17,6 +17,10 @@ describe('normalizeImageRef (mirrors the Manager)', () => {
     ['registry.example.com/team/app:2', 'registry.example.com/team/app:2'],
     ['docker.io/nginx', 'docker.io/library/nginx:latest'],
     ['a/b/c', 'docker.io/a/b/c:latest'],
+    // Digest-pinned: the digest is the reference (a tag next to it is dropped).
+    ['ghcr.io/org/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'ghcr.io/org/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+    ['nginx:1.27@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'docker.io/library/nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+    ['localhost:5000/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'localhost:5000/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
   ];
   for (const [input, want] of cases) {
     test(input, () => assert.equal(normalizeImageRef(input), want));
