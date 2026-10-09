@@ -25,9 +25,12 @@ const {
 const { parseDockerRef, getImageConfig, extractImageMetadata } = require('../../../utils/docker-registry');
 const { manageDnsRecords } = require('../../../utils/cloudflare-dns');
 const { deleteVirtualMachine, withNetbox } = require('../../../utils/netbox');
+const { volumePathOwner } = require('../../../utils/volumes');
+const { withContainerLock } = require('../../../utils/container-lock');
 const {
   computeContainerStatus,
   computeContainerStatuses,
+  findInSnapshot,
   STATUS,
 } = require('../../../utils/container-status');
 const { apiAuth, asyncHandler, ok, created, ApiError } = require('../../../middlewares/api');
@@ -122,11 +125,20 @@ function serializeVolume(v) {
     status: v.status,
     statusMessage: v.statusMessage ?? null,
     appliedAt: v.appliedAt ?? null,
+    // Only the owner segment of the host path, not the path itself.
+    pathOwner: volumePathOwner(v),
   };
 }
 
 function normalizeDockerRef(ref) {
   if (ref.startsWith('http://') || ref.startsWith('https://') || ref.startsWith('git@')) return ref;
+  // A digest pins the image (`name[:tag]@sha256:…`): it is the reference, so
+  // it's kept as is and any tag dropped, rather than mistaken for a tag.
+  const at = ref.indexOf('@');
+  if (at !== -1) {
+    const name = normalizeDockerRef(ref.slice(0, at));
+    return `${name.slice(0, name.lastIndexOf(':'))}${ref.slice(at)}`;
+  }
   let tag = 'latest';
   let imagePart = ref;
   const lastColon = ref.lastIndexOf(':');
@@ -137,26 +149,17 @@ function normalizeDockerRef(ref) {
       imagePart = ref.substring(0, lastColon);
     }
   }
+  // Like Docker: the first component is a registry host when it has a dot or
+  // a port, or is `localhost`; otherwise the ref is on Docker Hub, where (only)
+  // single-component names live under `library/`. A registry-qualified ref
+  // keeps its path as is (`localhost:5000/app` is not `.../library/app`).
   const parts = imagePart.split('/');
-  let host = 'docker.io';
-  let org = 'library';
-  let image;
-  if (parts.length === 1) {
-    image = parts[0];
-  } else if (parts.length === 2) {
-    if (parts[0].includes('.') || parts[0].includes(':')) {
-      host = parts[0];
-      image = parts[1];
-    } else {
-      org = parts[0];
-      image = parts[1];
-    }
-  } else {
-    host = parts[0];
-    image = parts[parts.length - 1];
-    org = parts.slice(1, -1).join('/');
-  }
-  return `${host}/${org}/${image}:${tag}`;
+  const first = parts[0];
+  const hasHost = parts.length > 1 && (first.includes('.') || first.includes(':') || first === 'localhost');
+  if (hasHost && !(first === 'docker.io' && parts.length === 2)) return `${imagePart}:${tag}`;
+  if (hasHost) parts.shift(); // docker.io/nginx is docker.io/library/nginx
+  const path = parts.length === 1 ? `library/${parts[0]}` : parts.join('/');
+  return `docker.io/${path}:${tag}`;
 }
 
 /**
@@ -431,7 +434,7 @@ router.get(
     const normalized = normalizeDockerRef(image.trim());
     const parsed = parseDockerRef(normalized);
     try {
-      const config = await getImageConfig(parsed.registry, `${parsed.namespace}/${parsed.image}`, parsed.tag);
+      const config = await getImageConfig(parsed.registry, parsed.namespace ? `${parsed.namespace}/${parsed.image}` : parsed.image, parsed.tag);
       return ok(res, extractImageMetadata(config));
     } catch (err) {
       if (err.message.includes('HTTP 404')) {
@@ -447,7 +450,14 @@ router.get(
   '/new',
   asyncHandler(async (req, res) => {
     const site = await loadSite(req.params.siteId);
-    const externalDomains = await site.getSortedExternalDomains();
+    // Any container creator (not just admins) can call this, so return only
+    // the public fields. Full ExternalDomain rows include the Cloudflare
+    // DNS-challenge credentials (cloudflareApiEmail/cloudflareApiKey).
+    const externalDomains = (await site.getSortedExternalDomains()).map((d) => ({
+      id: d.id,
+      name: d.name,
+      siteId: d.siteId ?? null,
+    }));
     const nvidiaAvailable =
       (await Node.count({ where: { siteId: site.id, nvidiaAvailable: true } })) > 0;
     return ok(res, { siteId: site.id, externalDomains, nvidiaAvailable });
@@ -858,161 +868,168 @@ router.put(
 
     let restartJob = null;
     const dnsWarnings = [];
-    await sequelize.transaction(async (t) => {
-      if (envChanged || entrypointChanged || ownerChanged) {
-        await container.update(
-          {
-            ...(envChanged || entrypointChanged ? { environmentVars: envVarsJson, entrypoint: newEntrypoint } : {}),
-            ...(ownerChanged ? { username: newOwnerUsername } : {}),
-          },
-          { transaction: t },
-        );
+    // Under the container's lock, so a concurrent DELETE can't remove the VM
+    // between its busy-job check and here (utils/container-lock).
+    await withContainerLock(container.id, async () => {
+      if (!(await Container.findByPk(container.id, { attributes: ['id'] }))) {
+        throw new ApiError(404, 'not_found', 'Container not found');
       }
-      if (ownerChanged) {
-        // The new owner no longer needs a sharing grant on their own container.
-        await ContainerCollaborator.destroy({
-          where: { containerId: container.id, username: newOwnerUsername },
-          transaction: t,
-        });
-        // Resource requests are keyed by (site, hostname, owner); move them so
-        // approved resources keep following the container.
-        await ResourceRequest.update(
-          { username: newOwnerUsername },
-          {
-            where: {
-              siteId: site.id,
-              hostname: container.hostname,
-              username: previousOwner,
-              status: { [Sequelize.Op.in]: ['pending', 'approved'] },
+      await sequelize.transaction(async (t) => {
+        if (envChanged || entrypointChanged || ownerChanged) {
+          await container.update(
+            {
+              ...(envChanged || entrypointChanged ? { environmentVars: envVarsJson, entrypoint: newEntrypoint } : {}),
+              ...(ownerChanged ? { username: newOwnerUsername } : {}),
             },
-            transaction: t,
-          },
-        );
-      }
-      if (needsReconfigureJob) {
-        restartJob = await Job.create(
-          {
-            command: `node bin/reconfigure-container.js --container-id=${container.id}`,
-            createdBy: req.session.user,
-            status: 'pending',
-          },
-          { transaction: t },
-        );
-      }
-
-      if (services && typeof services === 'object') {
-        const deletedHttp = [];
-        for (const key in services) {
-          const { id, deleted } = services[key];
-          if ((deleted === true || deleted === 'true') && id) {
-            const svc = await Service.findByPk(parseInt(id, 10), {
-              include: [
-                {
-                  model: HTTPService,
-                  as: 'httpService',
-                  include: [{ model: ExternalDomain, as: 'externalDomain' }],
-                },
-              ],
-              transaction: t,
-            });
-            if (svc?.httpService?.externalDomain) {
-              deletedHttp.push({
-                externalHostname: svc.httpService.externalHostname,
-                ExternalDomain: svc.httpService.externalDomain,
-              });
-            }
-            await Service.destroy({
-              where: { id: parseInt(id, 10), containerId: container.id },
-              transaction: t,
-            });
-          }
-        }
-        for (const key in services) {
-          const { id, deleted, authRequired } = services[key];
-          if (deleted === true || deleted === 'true' || !id) continue;
-          const svc = await Service.findByPk(parseInt(id, 10), {
-            include: [{ model: HTTPService, as: 'httpService' }],
-            transaction: t,
-          });
-          if (svc?.httpService) {
-            const next = authRequired === true || authRequired === 'true';
-            if (svc.httpService.authRequired !== next) {
-              await svc.httpService.update({ authRequired: next }, { transaction: t });
-            }
-          }
-        }
-        const newHttp = [];
-        for (const key in services) {
-          const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } =
-            services[key];
-          if (deleted === true || deleted === 'true' || id || !type || !internalPort) continue;
-          const serviceType =
-            type === 'srv' ? 'dns' : type === 'http' || type === 'https' ? 'http' : 'transport';
-          const protocol = serviceType === 'transport' ? type : null;
-          const createdService = await Service.create(
-            { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
             { transaction: t },
           );
-          if (serviceType === 'http') {
-            await HTTPService.create(
-              {
-                serviceId: createdService.id,
-                externalHostname,
-                externalDomainId,
-                backendProtocol: type === 'https' ? 'https' : 'http',
-                authRequired: authRequired === true || authRequired === 'true',
+        }
+        if (ownerChanged) {
+          // The new owner no longer needs a sharing grant on their own container.
+          await ContainerCollaborator.destroy({
+            where: { containerId: container.id, username: newOwnerUsername },
+            transaction: t,
+          });
+          // Resource requests are keyed by (site, hostname, owner); move them so
+          // approved resources keep following the container.
+          await ResourceRequest.update(
+            { username: newOwnerUsername },
+            {
+              where: {
+                siteId: site.id,
+                hostname: container.hostname,
+                username: previousOwner,
+                status: { [Sequelize.Op.in]: ['pending', 'approved'] },
               },
+              transaction: t,
+            },
+          );
+        }
+        if (needsReconfigureJob) {
+          restartJob = await Job.create(
+            {
+              command: `node bin/reconfigure-container.js --container-id=${container.id}`,
+              createdBy: req.session.user,
+              status: 'pending',
+            },
+            { transaction: t },
+          );
+        }
+
+        if (services && typeof services === 'object') {
+          const deletedHttp = [];
+          for (const key in services) {
+            const { id, deleted } = services[key];
+            if ((deleted === true || deleted === 'true') && id) {
+              const svc = await Service.findByPk(parseInt(id, 10), {
+                include: [
+                  {
+                    model: HTTPService,
+                    as: 'httpService',
+                    include: [{ model: ExternalDomain, as: 'externalDomain' }],
+                  },
+                ],
+                transaction: t,
+              });
+              if (svc?.httpService?.externalDomain) {
+                deletedHttp.push({
+                  externalHostname: svc.httpService.externalHostname,
+                  ExternalDomain: svc.httpService.externalDomain,
+                });
+              }
+              await Service.destroy({
+                where: { id: parseInt(id, 10), containerId: container.id },
+                transaction: t,
+              });
+            }
+          }
+          for (const key in services) {
+            const { id, deleted, authRequired } = services[key];
+            if (deleted === true || deleted === 'true' || !id) continue;
+            const svc = await Service.findByPk(parseInt(id, 10), {
+              include: [{ model: HTTPService, as: 'httpService' }],
+              transaction: t,
+            });
+            if (svc?.httpService) {
+              const next = authRequired === true || authRequired === 'true';
+              if (svc.httpService.authRequired !== next) {
+                await svc.httpService.update({ authRequired: next }, { transaction: t });
+              }
+            }
+          }
+          const newHttp = [];
+          for (const key in services) {
+            const { id, deleted, type, internalPort, externalHostname, externalDomainId, dnsName, authRequired } =
+              services[key];
+            if (deleted === true || deleted === 'true' || id || !type || !internalPort) continue;
+            const serviceType =
+              type === 'srv' ? 'dns' : type === 'http' || type === 'https' ? 'http' : 'transport';
+            const protocol = serviceType === 'transport' ? type : null;
+            const createdService = await Service.create(
+              { containerId: container.id, type: serviceType, internalPort: parseInt(internalPort, 10) },
               { transaction: t },
             );
-            const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
-            if (domain) newHttp.push({ externalHostname, ExternalDomain: domain });
-          } else if (serviceType === 'dns') {
-            await DnsService.create(
-              { serviceId: createdService.id, recordType: 'SRV', dnsName },
-              { transaction: t },
-            );
-          } else {
-            const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565);
-            await TransportService.create(
-              { serviceId: createdService.id, protocol, externalPort },
-              { transaction: t },
-            );
+            if (serviceType === 'http') {
+              await HTTPService.create(
+                {
+                  serviceId: createdService.id,
+                  externalHostname,
+                  externalDomainId,
+                  backendProtocol: type === 'https' ? 'https' : 'http',
+                  authRequired: authRequired === true || authRequired === 'true',
+                },
+                { transaction: t },
+              );
+              const domain = await ExternalDomain.findByPk(parseInt(externalDomainId, 10), { transaction: t });
+              if (domain) newHttp.push({ externalHostname, ExternalDomain: domain });
+            } else if (serviceType === 'dns') {
+              await DnsService.create(
+                { serviceId: createdService.id, recordType: 'SRV', dnsName },
+                { transaction: t },
+              );
+            } else {
+              const externalPort = await TransportService.nextAvailablePortInRange(protocol, 2000, 65565);
+              await TransportService.create(
+                { serviceId: createdService.id, protocol, externalPort },
+                { transaction: t },
+              );
+            }
+          }
+          if (deletedHttp.length > 0) {
+            dnsWarnings.push(...(await manageDnsRecords(deletedHttp, site, 'delete')));
+          }
+          if (newHttp.length > 0) {
+            dnsWarnings.push(...(await manageDnsRecords(newHttp, site, 'create')));
           }
         }
-        if (deletedHttp.length > 0) {
-          dnsWarnings.push(...(await manageDnsRecords(deletedHttp, site, 'delete')));
-        }
-        if (newHttp.length > 0) {
-          dnsWarnings.push(...(await manageDnsRecords(newHttp, site, 'create')));
-        }
-      }
 
-      // Volume attach/detach. New volumes are persisted `pending` (hostPath
-      // derived, directory created, and mpN set on the next reconcile); detach
-      // removes the row (retain-on-delete of the host directory is a node-side
-      // concern — the row going away just stops future mounts). Built-in
-      // volumes can't be detached through this path.
-      if (volumeDetachIds.length > 0) {
-        await Volume.destroy({
-          where: { id: volumeDetachIds, containerId: container.id, builtin: false },
-          transaction: t,
-        });
-      }
-      if (volumeAttaches.length > 0) {
-        await Volume.bulkCreate(
-          volumeAttaches.map((v) => ({
-            containerId: container.id,
-            name: v.name,
-            hostPath: null,
-            mountPath: v.mountPath,
-            mode: v.mode,
-            scope: 'container',
-            builtin: false,
-            status: 'pending',
-          })),
-          { transaction: t },
-        );
-      }
+        // Volume attach/detach. New volumes are persisted `pending` (hostPath
+        // derived, directory created, and mpN set on the next reconcile); detach
+        // removes the row (retain-on-delete of the host directory is a node-side
+        // concern — the row going away just stops future mounts). Built-in
+        // volumes can't be detached through this path.
+        if (volumeDetachIds.length > 0) {
+          await Volume.destroy({
+            where: { id: volumeDetachIds, containerId: container.id, builtin: false },
+            transaction: t,
+          });
+        }
+        if (volumeAttaches.length > 0) {
+          await Volume.bulkCreate(
+            volumeAttaches.map((v) => ({
+              containerId: container.id,
+              name: v.name,
+              hostPath: null,
+              mountPath: v.mountPath,
+              mode: v.mode,
+              scope: 'container',
+              builtin: false,
+              status: 'pending',
+            })),
+            { transaction: t },
+          );
+        }
+      });
     });
 
     // Keep the Proxmox tag in sync with the owner — create-container.js tags
@@ -1055,6 +1072,137 @@ router.put(
 );
 
 // DELETE /containers/:id
+/**
+ * The body of DELETE /:id, run under the container's lock: refuse while a job
+ * acts on it, delete the VM node-side, then the row.
+ */
+async function deleteContainerLocked(req, res, site, container) {
+  // Never delete while the create job is still pending/running: the job may
+  // still be creating, cloning or configuring the VM (it records the VMID
+  // as soon as the create is accepted, before the VM is fully there), so a
+  // delete now could miss it node-side and leave an orphan. Refuse until it
+  // finishes, VMID or not.
+  if (container.creationJobId) {
+    const job = await Job.findByPk(container.creationJobId, { attributes: ['status'] });
+    if (job && (job.status === 'pending' || job.status === 'running')) {
+      throw new ApiError(
+        409,
+        'create_in_progress',
+        `Container ${container.hostname} is still being created (job ${container.creationJobId}); delete it once that job finishes`,
+      );
+    }
+  }
+  // Same for any other job acting on it (a reconfigure from an update or an
+  // approved resource request): the runner executes jobs concurrently, so a
+  // delete now could race it (on Docker nodes a reconfigure even recreates
+  // the container). Jobs name their container as `--container-id=<id>`.
+  const { Op } = Sequelize;
+  const flag = `--container-id=${container.id}`;
+  const busy = await Job.findOne({
+    attributes: ['id'],
+    where: {
+      status: { [Op.in]: ['pending', 'running'] },
+      [Op.or]: [{ command: { [Op.like]: `% ${flag}` } }, { command: { [Op.like]: `% ${flag} %` } }],
+    },
+    order: [['id', 'ASC']],
+  });
+  if (busy) {
+    throw new ApiError(
+      409,
+      'job_in_progress',
+      `Container ${container.hostname} has a job in progress (job ${busy.id}); delete it once that job finishes`,
+      { jobId: String(busy.id) },
+    );
+  }
+  const node = container.node;
+  let dnsWarnings = [];
+  const httpServices = (container.services || [])
+    .filter((s) => s.httpService?.externalDomain)
+    .map((s) => ({
+      externalHostname: s.httpService.externalHostname,
+      ExternalDomain: s.httpService.externalDomain,
+    }));
+  // Delete the backing VM through the node's API. The NodeApi abstraction
+  // (`node.api()`) hides the provider; a dummy node simply no-ops here. We
+  // only attempt this when the container was actually provisioned (has a
+  // VMID/containerId).
+  //
+  // The database row is only removed once the VM is verifiably gone: if the
+  // node-side delete fails and the VM still exists (or the node can't be
+  // asked), respond 502 so callers don't believe a running VM was deleted.
+  // `?force=true` removes the record regardless (e.g. the node is gone for
+  // good). Admins only: for an owner it would turn a still-running VM into
+  // an unmanaged one.
+  const force = req.query.force === 'true' || req.query.force === '1';
+  if (container.containerId) {
+    let api = null;
+    try {
+      api = await node.api();
+      const config = await api.lxcConfig(node.name, container.containerId);
+      if (config.hostname && config.hostname !== container.hostname) {
+        throw new ApiError(
+          409,
+          'hostname_mismatch',
+          `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`,
+        );
+      }
+      const result = await api.deleteContainer(node.name, container.containerId, true, true);
+      // Proxmox deletes asynchronously and returns a task id; wait for it so
+      // a failed delete isn't reported as success.
+      const upid = result?.data;
+      if (typeof upid === 'string' && upid.startsWith('UPID:')) await api.waitForTask(node.name, upid);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      let gone = false;
+      if (api) {
+        try {
+          gone = !findInSnapshot(await api.clusterResources('lxc'), container.containerId);
+        } catch {
+          gone = false; // can't verify
+        }
+      }
+      if (!gone && force && !req.session?.isAdmin) {
+        throw new ApiError(
+          403,
+          'forbidden',
+          `Could not delete the VM on node ${node.name}: ${err.message}. Only an administrator can remove the record of a VM that may still be running.`,
+        );
+      }
+      if (!gone && !force) {
+        throw new ApiError(
+          502,
+          'node_delete_failed',
+          `Could not delete the VM on node ${node.name}: ${err.message}. ` +
+            (req.session?.isAdmin
+              ? 'Retry, or pass force=true to remove the record anyway.'
+              : 'Retry, or ask an administrator to remove it.'),
+        );
+      }
+      console.log(`Node-side deletion ${gone ? 'found the VM already gone' : 'failed (forced)'}: ${err.message}`);
+    }
+  }
+  // Only now that the VM is gone (or deletion was forced) drop its DNS
+  // records: doing it earlier would take a still-running container offline
+  // whenever the node-side delete fails and we return 502.
+  if (httpServices.length > 0) {
+    dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
+  }
+  // Sharing grants are removed by the database via the containerId foreign
+  // key's ON DELETE CASCADE. Volume rows cascade too, but their host
+  // directories are RETAINED on the node — the agent only ever creates
+  // directories, never removes them, so a later create on the same hostname
+  // reattaches the existing data (issue #421 (g)). Reclamation of orphaned
+  // directories is out of scope (no automatic GC).
+  await container.destroy();
+
+  // Remove the VM from NetBox if the integration is configured
+  await withNetbox(Setting, (baseUrl, token) =>
+    deleteVirtualMachine(baseUrl, token, container.hostname),
+  );
+
+  return ok(res, { deleted: true, dnsWarnings });
+}
+
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
@@ -1076,52 +1224,8 @@ router.delete(
         ],
       },
     );
-    const node = container.node;
-    let dnsWarnings = [];
-    const httpServices = (container.services || [])
-      .filter((s) => s.httpService?.externalDomain)
-      .map((s) => ({
-        externalHostname: s.httpService.externalHostname,
-        ExternalDomain: s.httpService.externalDomain,
-      }));
-    if (httpServices.length > 0) {
-      dnsWarnings = await manageDnsRecords(httpServices, site, 'delete');
-    }
-    // Delete the backing VM through the node's API. The NodeApi abstraction
-    // (`node.api()`) hides the provider; a dummy node simply no-ops here. We
-    // only attempt this when the container was actually provisioned (has a
-    // VMID/containerId).
-    if (container.containerId) {
-      try {
-        const api = await node.api();
-        const config = await api.lxcConfig(node.name, container.containerId);
-        if (config.hostname && config.hostname !== container.hostname) {
-          throw new ApiError(
-            409,
-            'hostname_mismatch',
-            `Hostname mismatch (DB: ${container.hostname} vs Proxmox: ${config.hostname}). Delete aborted.`,
-          );
-        }
-        await api.deleteContainer(node.name, container.containerId, true, true);
-      } catch (err) {
-        if (err instanceof ApiError) throw err;
-        console.log(`Node-side deletion skipped or failed: ${err.message}`);
-      }
-    }
-    // Sharing grants are removed by the database via the containerId foreign
-    // key's ON DELETE CASCADE. Volume rows cascade too, but their host
-    // directories are RETAINED on the node — the agent only ever creates
-    // directories, never removes them, so a later create on the same hostname
-    // reattaches the existing data (issue #421 (g)). Reclamation of orphaned
-    // directories is out of scope (no automatic GC).
-    await container.destroy();
-
-    // Remove the VM from NetBox if the integration is configured
-    await withNetbox(Setting, (baseUrl, token) =>
-      deleteVirtualMachine(baseUrl, token, container.hostname),
-    );
-
-    return ok(res, { deleted: true, dnsWarnings });
+    // Serialized with job enqueues for this container (utils/container-lock).
+    return withContainerLock(container.id, () => deleteContainerLocked(req, res, site, container));
   }),
 );
 
@@ -1195,4 +1299,5 @@ module.exports = router;
 // Exported for unit tests (containers.serialize.test.js).
 module.exports.serializeContainer = serializeContainer;
 module.exports.serializeVolume = serializeVolume;
+module.exports.normalizeDockerRef = normalizeDockerRef;
 module.exports.normalizeVolumeAttach = normalizeVolumeAttach;

@@ -28,6 +28,7 @@ nav = [
       ] },
       { "VS Code Setup" = "users/vscode-setup.md" },
       { "MCP Server" = "users/mcp-server.md" },
+      { "Deploying with the mieweb CLI" = "users/mieweb-cli-deploy.md" },
     ] },
     { "Admins" = [
       { "Overview" = "admins/index.md" },

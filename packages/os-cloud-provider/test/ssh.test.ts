@@ -1,0 +1,349 @@
+/**
+ * SshConnection against an in-process ssh2 server: auth fallbacks, host-key
+ * pinning, and exec with stdin.
+ */
+
+import { strict as assert } from 'node:assert';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer as createTcpServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, describe, test } from 'node:test';
+import { timingSafeEqual } from 'node:crypto';
+import ssh2 from 'ssh2';
+import lockfile from 'proper-lockfile';
+import type { AuthContext, Connection } from 'ssh2';
+import { forgetHostKey, SshConnection } from '../src/ssh.ts';
+
+const { Server, utils } = ssh2;
+const logger = { info() {}, warn() {}, error() {} };
+
+interface ServerHandle {
+  port: number;
+  close: () => Promise<void>;
+  authAttempts: string[];
+}
+
+function startServer(opts: { password?: string; publicKey?: Buffer; hostKey: string }): Promise<ServerHandle> {
+  const authAttempts: string[] = [];
+  const allowed = opts.publicKey ? utils.parseKey(opts.publicKey) : null;
+  const server = new Server({ hostKeys: [opts.hostKey] }, (client: Connection) => {
+    client.on('authentication', (ctx: AuthContext) => {
+      authAttempts.push(ctx.method);
+      if (ctx.method === 'password' && opts.password && ctx.password === opts.password) return ctx.accept();
+      if (ctx.method === 'publickey' && allowed && !(allowed instanceof Error)) {
+        const same =
+          ctx.key.algo === allowed.type && timingSafeEqual(ctx.key.data, allowed.getPublicSSH());
+        if (same && (!ctx.signature || allowed.verify(ctx.blob!, ctx.signature, ctx.hashAlgo))) return ctx.accept();
+      }
+      ctx.reject(['password', 'publickey']);
+    });
+    client.on('ready', () => {
+      client.on('session', (accept) => {
+        const session = accept();
+        session.on('exec', (acceptExec, _reject, info) => {
+          const stream = acceptExec();
+          const chunks: Buffer[] = [];
+          stream.on('data', (d: Buffer) => chunks.push(d));
+          stream.on('end', () => {
+            if (info.command === 'follow') {
+              // The client may close the channel at any time (abort), even
+              // before this first write.
+              if (!stream.writable) return;
+              stream.write('a\n');
+              stream.stderr.write('e\n');
+              const t = setInterval(() => {
+                if (stream.writable) stream.write('tick\n');
+                else clearInterval(t);
+              }, 10);
+              stream.on('close', () => clearInterval(t));
+              return;
+            }
+            if (info.command === 'fail') {
+              stream.stderr.write('boom');
+              stream.exit(3);
+            } else {
+              stream.write(`${info.command}:${Buffer.concat(chunks).toString()}`);
+              stream.exit(0);
+            }
+            stream.end();
+          });
+        });
+      });
+    });
+    client.on('error', () => {});
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({
+        port: (server.address() as { port: number }).port,
+        authAttempts,
+        close: () => new Promise((r) => server.close(() => r())),
+      });
+    });
+  });
+}
+
+let home: string;
+const hostKeyA = utils.generateKeyPairSync('ed25519').private;
+const hostKeyB = utils.generateKeyPairSync('ed25519').private;
+const userKey = utils.generateKeyPairSync('ed25519');
+
+before(async () => {
+  home = await mkdtemp(join(tmpdir(), 'os-ssh-'));
+});
+after(async () => {
+  await rm(home, { recursive: true, force: true });
+});
+
+const signal = (): AbortSignal => AbortSignal.timeout(20_000);
+
+describe('SshConnection', () => {
+  test('password fallback via prompt (asked once), exec with stdin, host key pinned', async () => {
+    const srv = await startServer({ password: 's3cret', hostKey: hostKeyA });
+    const knownHostsFile = join(home, 'kh1');
+    const prompts: string[] = [];
+    const env = { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' };
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env,
+        knownHostsFile,
+        interactive: true,
+        prompt: async (q) => {
+          prompts.push(q);
+          return 's3cret';
+        },
+        signal: signal(),
+        logger,
+      });
+      const res = await conn.exec('echo', Buffer.from('hello'));
+      assert.equal(res.code, 0);
+      assert.equal(res.stdout.toString(), 'echo:hello');
+      const bad = await conn.exec('fail');
+      assert.deepEqual([bad.code, bad.stderr], [3, 'boom']);
+      conn.close();
+      assert.deepEqual(prompts, [`alice@127.0.0.1:${srv.port}'s password: `]);
+      assert.match(await readFile(knownHostsFile, 'utf8'), new RegExp(`^\\[127\\.0\\.0\\.1\\]:${srv.port} SHA256:\\S+\\n$`));
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('uses ~/.ssh keys without prompting; non-interactive password auth is skipped', async () => {
+    const keyHome = join(home, 'withkey');
+    await mkdir(join(keyHome, '.ssh'), { recursive: true });
+    await writeFile(join(keyHome, '.ssh', 'id_ed25519'), userKey.private);
+    const srv = await startServer({ publicKey: Buffer.from(userKey.public), hostKey: hostKeyA });
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: keyHome, SSH_AUTH_SOCK: '' },
+        knownHostsFile: join(home, 'kh2'),
+        interactive: false,
+        prompt: async () => assert.fail('must not prompt'),
+        signal: signal(),
+        logger,
+      });
+      conn.close();
+      assert.ok(srv.authAttempts.includes('publickey'));
+
+      await assert.rejects(
+        SshConnection.connect({
+          target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+          env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+          knownHostsFile: join(home, 'kh2'),
+          interactive: false,
+          signal: signal(),
+          logger,
+        }),
+        /SSH authentication as alice@127\.0\.0\.1:\d+ failed/,
+      );
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('the connection fails if the new host key cannot be saved', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    // Its parent is a regular file, so the file can't be created.
+    await writeFile(join(home, 'not-a-dir'), '');
+    const knownHostsFile = join(home, 'not-a-dir', 'known_hosts');
+    try {
+      await assert.rejects(
+        SshConnection.connect({
+          target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+          env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+          knownHostsFile,
+          interactive: true,
+          prompt: async () => 'pw',
+          signal: signal(),
+          logger,
+        }),
+        (err: Error & { kind?: string }) => err.kind === 'hostkey' && /Could not save the SSH host key/.test(err.message),
+      );
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('an abort while the new host key is being saved fails the connect', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    const knownHostsFile = join(home, 'kh-abort');
+    await writeFile(knownHostsFile, '');
+    // Another process holds the known_hosts lock, so pinning waits.
+    const release = await lockfile.lock(knownHostsFile, { realpath: false });
+    const abort = new AbortController();
+    try {
+      const connecting = SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile,
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: abort.signal,
+        logger: {
+          ...logger,
+          info: (m: string) => {
+            if (m.startsWith('Trusting')) {
+              abort.abort(new Error('cancelled'));
+              setTimeout(() => void release(), 100);
+            }
+          },
+        },
+      });
+      await assert.rejects(connecting, /cancelled/);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('a changed host key is rejected until the pin is forgotten', async () => {
+    const knownHostsFile = join(home, 'kh3');
+    const opts = (port: number) => ({
+      target: { host: '127.0.0.1', port, user: 'alice' },
+      env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+      knownHostsFile,
+      interactive: true,
+      prompt: async () => 'pw',
+      signal: signal(),
+      logger,
+    });
+    const a = await startServer({ password: 'pw', hostKey: hostKeyA });
+    const port = a.port;
+    (await SshConnection.connect(opts(port))).close();
+    await a.close();
+
+    const b = await new Promise<ServerHandle>((resolve) => {
+      const tryListen = async (): Promise<void> => {
+        // Reuse the same port so the pin applies.
+        const srv = new Server({ hostKeys: [hostKeyB] }, (c: Connection) => {
+          c.on('authentication', (ctx: AuthContext) => (ctx.method === 'password' ? ctx.accept() : ctx.reject(['password'])));
+          c.on('error', () => {});
+        });
+        srv.listen(port, '127.0.0.1', () =>
+          resolve({ port, authAttempts: [], close: () => new Promise((r) => srv.close(() => r())) }),
+        );
+      };
+      void tryListen();
+    });
+    try {
+      await assert.rejects(SshConnection.connect(opts(port)), /host key for \[127\.0\.0\.1\]:\d+ changed/);
+      await forgetHostKey(knownHostsFile, '127.0.0.1', port);
+      (await SshConnection.connect(opts(port))).close();
+    } finally {
+      await b.close();
+    }
+  });
+
+  test('a connection dropped mid-handshake rejects (with kind network) instead of crashing', async () => {
+    // Send a banner, then reset: ssh2 emits more than one 'error' for this.
+    const tcp = createTcpServer((sock) => {
+      sock.write('SSH-2.0-OpenSSH_9.9\r\n');
+      setTimeout(() => sock.resetAndDestroy(), 20);
+    });
+    await new Promise<void>((r) => tcp.listen(0, '127.0.0.1', () => r()));
+    const port = (tcp.address() as { port: number }).port;
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        await assert.rejects(
+          SshConnection.connect({
+            target: { host: '127.0.0.1', port, user: 'alice' },
+            env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+            knownHostsFile: join(home, 'kh-drop'),
+            interactive: false,
+            signal: signal(),
+            logger,
+          }),
+          (err: Error & { kind?: string }) => err.kind === 'network',
+        );
+      }
+      // Give any late duplicate 'error' events a chance to fire (and crash).
+      await new Promise((r) => setTimeout(r, 200));
+    } finally {
+      await new Promise<void>((r) => tcp.close(() => r()));
+    }
+  });
+
+  test('an abort while the channel is still opening stops stream and exec', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile: join(home, 'kh-race'),
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: signal(),
+        logger,
+      });
+      const within = <T>(p: Promise<T>): Promise<T> =>
+        Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('still running after abort')), 3000))]);
+
+      // `follow` never ends on its own (like tail -f).
+      const a1 = new AbortController();
+      const streaming = conn.stream('follow', () => {}, a1.signal);
+      a1.abort(); // before the channel-open callback runs
+      assert.equal(await within(streaming), -1);
+
+      const a2 = new AbortController();
+      const executing = conn.exec('follow', undefined, a2.signal);
+      a2.abort(new Error('user cancelled'));
+      await assert.rejects(within(executing), /user cancelled/);
+      conn.close();
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test('stream delivers output and stops on abort', async () => {
+    const srv = await startServer({ password: 'pw', hostKey: hostKeyA });
+    try {
+      const conn = await SshConnection.connect({
+        target: { host: '127.0.0.1', port: srv.port, user: 'alice' },
+        env: { HOME: join(home, 'nokeys'), SSH_AUTH_SOCK: '' },
+        knownHostsFile: join(home, 'kh4'),
+        interactive: true,
+        prompt: async () => 'pw',
+        signal: signal(),
+        logger,
+      });
+      const ac = new AbortController();
+      const seen: string[] = [];
+      const code = await conn.stream(
+        'follow',
+        (d, w) => {
+          seen.push(`${w}:${d.toString()}`);
+          if (seen.filter((x) => x.includes('tick')).length >= 2) ac.abort();
+        },
+        ac.signal,
+      );
+      conn.close();
+      assert.equal(code, -1);
+      assert.ok(seen.includes('stdout:a\n'));
+      assert.ok(seen.includes('stderr:e\n'));
+    } finally {
+      await srv.close();
+    }
+  });
+});

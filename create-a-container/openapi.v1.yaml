@@ -292,6 +292,14 @@ components:
             attaching the mount.
         statusMessage: { type: string, nullable: true, description: 'Agent error detail when status is failed' }
         appliedAt: { type: string, format: date-time, nullable: true }
+        pathOwner:
+          type: string
+          nullable: true
+          description: >-
+            The owner the volume's host directory is keyed to (null until
+            derived). It differs from the container's owner after an admin
+            transfer: recreating the container under its new owner would
+            attach a different, empty directory.
     VolumeAttach:
       type: object
       required: [name, mountPath, mode]
@@ -632,6 +640,95 @@ paths:
       responses:
         '302': { description: 'Redirect to the post-login destination on success, or /login?oidc_error=<code> on failure' }
         '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/cli/callback:
+    get:
+      operationId: cli_login_authorize
+      tags: [Auth]
+      summary: CLI loopback login — browser confirmation page
+      description: >-
+        Browser-facing (HTML), used by `mieweb login`. Without a session, it
+        redirects through the normal sign-in (OIDC or /login) and comes back
+        here. With a session, it renders a confirmation form that POSTs back to
+        this path. A GET never mints a key.
+      security: []
+      parameters:
+        - { in: query, name: port, required: true, schema: { type: integer, minimum: 1024, maximum: 65535 }, description: Loopback port the CLI listens on (host is always 127.0.0.1) }
+        - { in: query, name: state, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{16,128}$' }, description: CLI-generated one-time nonce, echoed back }
+        - { in: query, name: client, schema: { type: string, pattern: '^[A-Za-z0-9._@-]{1,64}$' }, description: Label recorded in the minted key's description }
+      responses:
+        '200': { description: HTML confirmation page }
+        '302': { description: Redirect to sign-in when there is no session }
+        '400': { description: HTML error page for invalid parameters }
+    post:
+      operationId: cli_login_mint
+      tags: [Auth]
+      summary: CLI loopback login — hand the loopback listener a one-time code
+      description: >-
+        Requires a browser session and a CSRF token (`_csrf`). Bearer-only
+        requests are rejected. Consumes the page's one-time handoff and
+        303-redirects to `http://127.0.0.1:<port>/callback#code=…&state=…`
+        (fragment, so it never appears in a request line). No key exists until
+        the CLI redeems the code with `cli_login_token`.
+      # Browser session only: Bearer-only requests are rejected.
+      security:
+        - SessionCookie: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [_csrf, port, state]
+              properties:
+                _csrf: { type: string }
+                port: { type: integer }
+                state: { type: string }
+                client: { type: string }
+      responses:
+        '303': { description: Redirect to the loopback listener with a one-time code in the fragment }
+        '400': { description: HTML error page for invalid parameters }
+        '401': { description: No browser session }
+        '403': { description: Missing/invalid CSRF token }
+  /auth/cli/token:
+    post:
+      operationId: cli_login_token
+      tags: [Auth]
+      summary: CLI loopback login — redeem the one-time code for an API key
+      description: >-
+        Called by the CLI itself (no session or CSRF token). The code from the
+        browser handoff mints one API key, for the user who authorized it.
+        It is bound to its `state` (a wrong state invalidates it) and valid
+        for 2 minutes, during which repeating the request returns the same
+        key, so a client whose response was lost can safely retry.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code: { type: string }
+                state: { type: string }
+      responses:
+        '200':
+          description: >-
+            The API key minted for this code (plaintext). Repeating the request
+            with the same code and state within its TTL returns this same key,
+            so retry after a lost response; no other request ever returns it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [key, id, user]
+                    properties:
+                      key: { type: string }
+                      id: { type: string }
+                      user: { type: string }
+        '400': { description: 'Invalid, expired or already-used code (code: invalid_code)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/logout:
     post:
       operationId: logout
@@ -893,7 +990,7 @@ paths:
           description: Bootstrap payload
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: object, properties: { siteId: { type: integer }, externalDomains: { type: array, items: { type: object } }, nvidiaAvailable: { type: boolean } } } } }
+              schema: { type: object, properties: { data: { type: object, required: [siteId, externalDomains, nvidiaAvailable], properties: { siteId: { type: integer }, externalDomains: { type: array, description: 'Usable domains; the site''s own default domains first', items: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string }, siteId: { type: integer, nullable: true } } } }, nvidiaAvailable: { type: boolean } } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:
@@ -982,15 +1079,29 @@ paths:
     delete:
       operationId: delete_container
       tags: [Containers]
+      description: >-
+        Deletes the VM on its node, then the record. The record is kept and 502
+        returned if the node-side delete fails and the VM still exists (or the
+        node can't be checked), unless `force=true`.
+      parameters:
+        - { in: query, name: force, schema: { type: boolean }, description: 'Remove the record even if the node-side delete fails (admins only; others get 403 when it would apply)' }
       responses:
         '200':
           description: Deleted, with DNS cleanup warnings
           content:
             application/json:
               schema: { type: object, properties: { data: { type: object, properties: { deleted: { type: boolean }, dnsWarnings: { type: array, items: { type: string } } } } } }
-        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { description: 'forbidden — only the owner/admin may delete (collaborators can view but not manage); or force=true from a non-admin when the VM may still be running', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: 'DB/Proxmox hostname mismatch — delete aborted (code: hostname_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409':
+          description: >-
+            Delete aborted, nothing changed: DB/Proxmox hostname mismatch
+            (code: hostname_mismatch); the container is still being created
+            (code: create_in_progress); or another job is acting on it, e.g. a
+            reconfigure (code: job_in_progress, with `fields.jobId`). The last
+            two are retryable once that job finishes (poll `/jobs/{id}`).
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        '502': { description: 'Node-side delete failed and the VM still exists or could not be checked (code: node_delete_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/{id}/collaborators:
     parameters:
       - { in: path, name: siteId, required: true, schema: { type: integer } }

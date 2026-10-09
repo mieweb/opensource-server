@@ -33,6 +33,7 @@ const { Container, Node, Site, Service, HTTPService, ExternalDomain, Setting, Re
 // Load utilities
 const { parseArgs } = require(path.join(__dirname, '..', 'utils', 'cli'));
 const { isDockerImage, parseDockerRef, getImageDigest } = require(path.join(__dirname, '..', 'utils', 'docker-registry'));
+const { parseDockerTaskId } = require(path.join(__dirname, '..', 'utils', 'docker-api'));
 const { manageDnsRecords } = require(path.join(__dirname, '..', 'utils', 'cloudflare-dns'));
 const { createVirtualMachine, withNetbox } = require(path.join(__dirname, '..', 'utils', 'netbox'));
 const { withVmidRetry } = require(path.join(__dirname, '..', 'utils', 'vmid'));
@@ -260,14 +261,15 @@ async function setupContainerAcl(client, nodeName, vmid, username) {
   }
 }
 
-function parseDockerTaskId(taskId, expectedKind = null) {
-  if (typeof taskId !== 'string') return null;
 
-  const parts = taskId.split(':');
-  if (parts[0] !== 'docker' || parts.length < 3) return null;
-  if (expectedKind && parts[1] !== expectedKind) return null;
-
-  return parts.slice(2).join(':');
+/**
+ * Store the provider container ID (VMID / Docker ID) on the record. Called as
+ * soon as the create/clone is accepted and whenever Docker returns a new ID,
+ * so a failure later in the job never leaves a VM the record doesn't point to.
+ */
+async function recordProviderId(container, vmid) {
+  await container.update({ containerId: String(vmid) });
+  console.log(`Container provider ID ${vmid} stored in database`);
 }
 
 /**
@@ -373,7 +375,7 @@ async function main() {
     if (isDocker) {
       // Docker image: pull from OCI registry, then create container
       const parsed = parseDockerRef(container.template);
-      console.log(`Docker image: ${parsed.registry}/${parsed.namespace}/${parsed.image}:${parsed.tag}`);
+      console.log(`Docker image: ${container.template}`);
       
       const templateStorage = await resolveStorage(client, node.name, node.imageStorage || 'local', 'vztmpl');
       const rootfsStorage = await resolveStorage(client, node.name, node.volumeStorage || 'local-lvm', 'rootdir');
@@ -450,6 +452,10 @@ async function main() {
         vmid = dockerContainerId;
         console.log(`Docker container ID: ${vmid}`);
       }
+      // The create was accepted: from here on a VM may exist. Record its ID
+      // before waiting on (or configuring) it, so any failure below leaves a
+      // record the Manager can delete node-side instead of an orphaned VM.
+      await recordProviderId(container, vmid);
       
       // Wait for create to complete
       await client.waitForTask(node.name, createUpid);
@@ -486,6 +492,8 @@ async function main() {
         ({ vmid, result: cloneUpid } = await withVmidRetry(vmid, (id) => client.cloneLxc(node.name, templateVmid, id, cloneOptions)));
       }
       console.log(`Clone task started: ${cloneUpid}`);
+      // As above: record the ID as soon as the clone is accepted.
+      await recordProviderId(container, vmid);
       
       // Wait for clone to complete
       await client.waitForTask(node.name, cloneUpid);
@@ -529,6 +537,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(updateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after reconfigure: ${vmid}`);
       }
       console.log('Environment/entrypoint configuration applied');
@@ -556,6 +565,7 @@ async function main() {
       const updatedDockerContainerId = isDockerNode ? parseDockerTaskId(nvidiaUpdateTask) : null;
       if (updatedDockerContainerId) {
         vmid = updatedDockerContainerId;
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after NVIDIA update: ${vmid}`);
       }
       console.log('NVIDIA hookscript attached');
@@ -564,10 +574,6 @@ async function main() {
     // Setup ACL for container owner
     await setupContainerAcl(client, node.name, vmid, container.username);
     
-    // Store the provider container ID now that creation succeeded.
-    await container.update({ containerId: String(vmid) });
-    console.log(`Container provider ID ${vmid} stored in database`);
-
     // Attach the volume bind mounts. Their host directories were already
     // provisioned by the site agent before the container was created (see
     // prepareVolumes above), so setting mpN cannot 400 on a missing directory.
@@ -578,7 +584,7 @@ async function main() {
       const mountedDockerId = isDockerNode ? parseDockerTaskId(mountTask) : null;
       if (mountedDockerId) {
         vmid = mountedDockerId;
-        await container.update({ containerId: String(vmid) });
+        await recordProviderId(container, vmid);
         console.log(`Docker container ID after volume attach: ${vmid}`);
       }
       // Mark all volumes applied now that the mounts are set.

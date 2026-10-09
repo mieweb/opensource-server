@@ -1,0 +1,105 @@
+name: os-cloud-provider preview package
+
+# On every push to a same-repo pull request that touches the provider, publish
+# @mieweb/os-cloud-provider to the GitHub Packages npm registry as
+# `<version>-pr<PR>.<run>.<attempt>` under dist-tag `pr<PR>`, for cross-repo testing
+# (e.g. @mieweb/cli in mieweb/cloud).
+#
+# Consumers install it by its tarball URL (printed in the job summary) plus a
+# GitHub Packages token, NOT a scope-wide `@mieweb:registry=` override: that
+# would route every @mieweb/* lookup, including @mieweb/deploy-contract (only
+# on npmjs), to GitHub Packages and fail.
+#
+#   .npmrc:        //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+#   package.json:  "@mieweb/os-cloud-provider": "<tarball URL>"
+
+on:
+  pull_request:
+    paths:
+      - 'packages/os-cloud-provider/**'
+      - '.github/workflows/os-cloud-provider-preview.yml'
+
+concurrency:
+  group: os-cloud-provider-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    # GITHUB_TOKEN is read-only on fork PRs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/os-cloud-provider
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: packages/os-cloud-provider/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
+          registry-url: https://npm.pkg.github.com
+          scope: '@mieweb'
+      # setup-node points @mieweb at GitHub Packages for the publish below;
+      # dependencies (incl. @mieweb/deploy-contract) come from npmjs.
+      - run: pnpm install --frozen-lockfile --config.@mieweb:registry=https://registry.npmjs.org/
+      # This push's cloud image, by its immutable tag: build-images.yml tags
+      # it sha-<short GITHUB_SHA> (both workflows see the same PR merge SHA).
+      # The mutable pr-<PR> tag isn't used: it moves with later pushes, and a
+      # slower, older image build could move it back after this publishes.
+      - name: Resolve this push's cloud image tag
+        id: image
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # Version + default image for this PR's preview; run locally the same way:
+      #   node scripts/stamp-preview.mjs <pr> <run> [<attempt>] [<image-tag>]
+      - name: Stamp preview version and default image
+        id: stamp
+        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}" "${{ github.run_attempt }}" "${{ steps.image.outputs.tag }}"
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # build-images.yml pushes that image for this same push, in parallel. If
+      # that build fails, nothing is published (the step times out).
+      - name: Wait for this push's cloud image
+        timeout-minutes: 90
+        env:
+          TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}/cloud:${TAG}"
+          until docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; do
+            echo "Waiting for $IMAGE ..."
+            sleep 30
+          done
+          echo "Found $IMAGE"
+      # prepack builds dist/.
+      - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Summarize how to install this preview
+        env:
+          VERSION: ${{ steps.stamp.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tarball=$(npm view "@mieweb/os-cloud-provider@$VERSION" dist.tarball --registry https://npm.pkg.github.com)
+          {
+            echo "Published \`@mieweb/os-cloud-provider@$VERSION\` to npm.pkg.github.com."
+            echo
+            echo "Install it by tarball URL (keeps @mieweb/deploy-contract on npmjs), with a GitHub Packages token in .npmrc:"
+            echo
+            echo '```'
+            echo "//npm.pkg.github.com/:_authToken=\${GITHUB_TOKEN}"
+            echo "\"@mieweb/os-cloud-provider\": \"$tarball\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

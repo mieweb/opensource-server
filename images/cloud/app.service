@@ -1,0 +1,36 @@
+[Unit]
+Description=Deployed @mieweb/cloud app
+# Required, not just wanted: if the environment export or a datastore fails to
+# start, starting/restarting the app fails too, so deploy reports it instead of
+# a "healthy" app without its storage. (A datastore crashing later and being
+# restarted by its own Restart= doesn't take the app down.)
+Requires=mieweb-env.service minio.service libsqld.service valkey.service
+Wants=network-online.target
+After=network-online.target environment.service mieweb-env.service minio.service libsqld.service valkey.service
+# Nothing to run until the first `mieweb deploy` has synced the code (the
+# provider restarts this unit after every sync).
+ConditionPathExists=/opt/app/src/package.json
+
+[Service]
+Type=simple
+User=mieweb
+Group=mieweb
+WorkingDirectory=/opt/app/src
+Environment=HOME=/opt/app/home
+# PORT, MIEWEB_APP_START and the datastore endpoints/credentials are set by
+# the deploy provider.
+EnvironmentFile=-/run/mieweb/env
+# The datastores must be serving before the app starts (After= only orders
+# their spawn). Install + build run as ExecStartPre so `systemctl restart`
+# (which deploy runs) blocks until they finish and fails if they fail. The app
+# itself is the main process.
+ExecStartPre=/usr/local/bin/mieweb-app-start wait
+ExecStartPre=/usr/local/bin/mieweb-app-start prepare
+ExecStart=/usr/local/bin/mieweb-app-start run
+# npm install / build can be slow on a cold cache.
+TimeoutStartSec=30min
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

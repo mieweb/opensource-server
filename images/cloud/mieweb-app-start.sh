@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# app.service helper.
+#   wait     block until the datastores answer their health checks (ExecStartPre)
+#   prepare  install dependencies (only when package.json or the lockfile
+#            changed) and run the `build` script if present (ExecStartPre)
+#   run      start the app (ExecStart)
+#
+# `mieweb deploy` copies the app's worktree into /opt/app/src over SSH and then
+# restarts this unit, waiting for `prepare` to finish. Environment (set by the
+# deploy provider):
+#   MIEWEB_APP_START  start command (default: `<npm|pnpm|yarn> run start`); must listen on $PORT
+#   PORT              HTTP port the app listens on (default 8787)
+set -euo pipefail
+
+if [[ "${1:-}" == wait ]]; then
+  # systemd only orders the app after MinIO and sqld (Type=simple: "started"
+  # means spawned, not listening), so an app that opens its bindings at
+  # startup could race them. Valkey is Type=notify: already ready here.
+  deadline=$((SECONDS + ${MIEWEB_DATASTORE_TIMEOUT:-120}))
+  for check in minio=http://127.0.0.1:9000/minio/health/ready libsql=http://127.0.0.1:8080/health; do
+    name=${check%%=*} url=${check#*=}
+    until curl -fs -o /dev/null --max-time 2 "$url"; do
+      if ((SECONDS >= deadline)); then
+        echo "$name is not ready ($url); see: journalctl -u ${name/libsql/libsqld}.service" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+  done
+  exit 0
+fi
+
+APP_DIR=/opt/app/src
+DEPS_STAMP=/opt/app/home/.deps-stamp
+export PORT="${PORT:-8787}"
+cd "$APP_DIR"
+
+if [[ -f pnpm-lock.yaml ]]; then
+  install=(corepack pnpm install --frozen-lockfile); run=(corepack pnpm run)
+elif [[ -f yarn.lock ]]; then
+  # Yarn Classic (1.x) spells it --frozen-lockfile; Berry (2+) --immutable.
+  if [[ "$(corepack yarn --version)" == 1.* ]]; then
+    install=(corepack yarn install --frozen-lockfile)
+  else
+    install=(corepack yarn install --immutable)
+  fi
+  run=(corepack yarn run)
+elif [[ -f package-lock.json ]]; then
+  install=(npm ci); run=(npm run)
+else
+  # No lockfile in the app: don't create one here. deploy would delete it on
+  # the next sync (it isn't in the worktree), changing the dependency stamp
+  # and forcing a full reinstall on every deploy.
+  install=(npm install --no-package-lock); run=(npm run)
+fi
+
+case "${1:-}" in
+  prepare)
+    # (Missing lockfiles are expected; don't let `cat` fail the script.)
+    deps="$({ cat package.json pnpm-lock.yaml yarn.lock package-lock.json 2>/dev/null || true; } | sha256sum | cut -d' ' -f1)"
+    # Reinstall when the manifest/lockfile changed, or node_modules went
+    # missing for an app that has dependencies (npm creates none otherwise).
+    has_deps=''
+    for field in dependencies devDependencies optionalDependencies; do
+      [[ "$(npm pkg get "$field")" != "{}" ]] && has_deps=1
+    done
+    # Yarn Plug'n'Play installs .pnp.cjs instead of node_modules.
+    installed=$([[ -d node_modules || -f .pnp.cjs ]] && echo 1 || true)
+    if [[ "$(cat "$DEPS_STAMP" 2>/dev/null || true)" != "$deps" || ( -n "$has_deps" && -z "$installed" ) ]]; then
+      echo "Installing dependencies: ${install[*]}"
+      rm -f "$DEPS_STAMP"
+      "${install[@]}"
+      echo "$deps" >"$DEPS_STAMP"
+    fi
+    if [[ "$(npm pkg get scripts.build)" != "{}" ]]; then
+      echo "Building: ${run[*]} build"
+      "${run[@]}" build
+    fi
+    ;;
+  run)
+    # Start through the app's own package manager by default: Yarn Plug'n'Play
+    # apps only resolve their dependencies under `yarn`, not `npm start`.
+    start=${MIEWEB_APP_START:-"${run[*]} start"}
+    echo "Starting app on port $PORT: $start"
+    exec bash -c "$start"
+    ;;
+  *)
+    echo "usage: $0 wait|prepare|run" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,18 @@
+[Unit]
+Description=MinIO object storage (R2 binding backend)
+After=network.target environment.service mieweb-env.service
+
+[Service]
+Type=simple
+User=mieweb
+Group=mieweb
+# MINIO_ROOT_USER / MINIO_ROOT_PASSWORD are set by the deploy provider.
+EnvironmentFile=-/run/mieweb/env
+ExecStartPre=+/usr/local/bin/mieweb-data-dir minio
+ExecStart=/usr/local/bin/minio server --quiet --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 /mnt/data/minio
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

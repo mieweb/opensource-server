@@ -47,7 +47,8 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'Services',
         key: 'id'
-      }
+      },
+      onDelete: 'CASCADE'
     },
     protocol: {
       type: DataTypes.ENUM('tcp', 'udp'),

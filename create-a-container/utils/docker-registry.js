@@ -193,20 +193,33 @@ function isDockerImage(template) {
 
 /**
  * Parse a normalized Docker image reference into components
- * Format: host/org/image:tag
+ * Format: host/[org/]image:tag or host/[org/]image@digest
  * @param {string} ref - The normalized Docker reference
- * @returns {object} Parsed components: { registry, namespace, image, tag }
+ * @returns {object} Parsed components: { registry, namespace, image, tag } —
+ *   `tag` is the manifest reference: the tag, or the digest when pinned
  */
 function parseDockerRef(ref) {
-  // Split off tag
-  const [imagePart, tag] = ref.split(':');
+  // A digest-pinned ref (`host/repo@sha256:…`) is fetched by its digest: it's
+  // returned as `tag`, the manifest reference (registries accept either).
+  const at = ref.indexOf('@');
+  if (at !== -1) {
+    const { registry, namespace, image } = parseDockerRef(ref.slice(0, at));
+    return { registry, namespace, image, tag: ref.slice(at + 1) };
+  }
+  // The tag follows the last colon after the last slash (a registry host may
+  // carry a port: `localhost:5000/app:1`).
+  const lastColon = ref.lastIndexOf(':');
+  const hasTag = lastColon > ref.lastIndexOf('/');
+  const imagePart = hasTag ? ref.slice(0, lastColon) : ref;
+  const tag = hasTag ? ref.slice(lastColon + 1) : 'latest';
   const parts = imagePart.split('/');
-  
-  // Format is always host/org/image after normalization
+
+  // Normalized refs are host/[namespace/]image (namespace may be empty for a
+  // registry-root repository).
   const registry = parts[0];
   const image = parts[parts.length - 1];
   const namespace = parts.slice(1, -1).join('/');
-  
+
   return { registry, namespace, image, tag };
 }
 
