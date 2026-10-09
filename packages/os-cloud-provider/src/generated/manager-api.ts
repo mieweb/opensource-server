@@ -175,7 +175,7 @@ export interface paths {
         put?: never;
         /**
          * CLI loopback login — redeem the one-time code for an API key
-         * @description Called by the CLI itself (no session or CSRF token). The code from the browser handoff is single-use, bound to its `state`, and valid for 2 minutes; the API key is minted for the user who authorized it.
+         * @description Called by the CLI itself (no session or CSRF token). The code from the browser handoff mints one API key, for the user who authorized it. It is bound to its `state` (a wrong state invalidates it) and valid for 2 minutes, during which repeating the request returns the same key, so a client whose response was lost can safely retry.
          */
         post: operations["cli_login_token"];
         delete?: never;

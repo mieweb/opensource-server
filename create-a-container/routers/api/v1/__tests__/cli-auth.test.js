@@ -170,10 +170,22 @@ describe('/api/v1/auth/cli/callback', () => {
     const session = await request(app).get('/api/v1/session').set(...bearer(tok.body.data.key));
     expect(session.body.data.user).toBe('alice');
 
-    // One-time.
+    // Idempotent: a retry (e.g. after a lost response) gets the same key, and
+    // still only one key exists.
     const again = await redeem({ code, state: STATE });
-    expect(again.status).toBe(400);
-    expect(again.body.error.code).toBe('invalid_code');
+    expect(again.status).toBe(200);
+    expect(again.body.data).toEqual(tok.body.data);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
+  });
+
+  test('concurrent redemptions of one code mint a single key', async () => {
+    const agent = await loggedInAgent(app, 'alice');
+    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
+    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
+    const [a, b] = await Promise.all([redeem({ code, state: STATE }), redeem({ code, state: STATE })]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(a.body.data.id).toBe(b.body.data.id);
+    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
   });
 
   test('a code is bound to its state, and a wrong state burns it', async () => {

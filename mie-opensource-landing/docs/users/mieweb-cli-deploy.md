@@ -93,7 +93,7 @@ or log in interactively:
 mieweb login --target mieweb [--instance https://os.mieweb.org]
 ```
 
-`login` opens your browser to the Manager. After you sign in and confirm, the Manager creates an API key and hands it back to the CLI through a one-time listener on `127.0.0.1`. The key is stored in `~/.mieweb/os.json` (mode `0600`), keyed by instance, so you can stay logged in to several instances at once. `mieweb logout --target mieweb` revokes the key and removes it from that file. `mieweb whoami --target mieweb` shows who you are signed in as.
+`login` opens your browser to the Manager. After you sign in and confirm, the browser passes a short-lived, single-use sign-in code to a temporary listener the CLI runs on `127.0.0.1`. The CLI then exchanges that code directly with the Manager for an API key; the key itself never passes through the browser. A code that isn't redeemed within two minutes expires without creating a key. The key is stored in `~/.mieweb/os.json` (mode `0600`), keyed by instance, so you can stay logged in to several instances at once. `mieweb logout --target mieweb` revokes the key and removes it from that file. `mieweb whoami --target mieweb` shows who you are signed in as.
 
 `MIEWEB_OS_TOKEN` always takes precedence over the stored login.
 

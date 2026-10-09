@@ -437,10 +437,15 @@ export async function syncWorktree(
   shell: RemoteShell,
   logger: DeployLogger,
   signal: AbortSignal = new AbortController().signal,
+  /** Runs once the lock is held, before anything is synced (may throw to abort). */
+  underLock?: () => Promise<void>,
 ): Promise<SyncPlan> {
   // Two deploys to the same app must not interleave listing, upload, delete
   // and restart (the result would mix both worktrees).
-  return withDeployLock(shell, signal, () => syncLocked(root, shell, logger, signal));
+  return withDeployLock(shell, signal, async () => {
+    await underLock?.();
+    return syncLocked(root, shell, logger, signal);
+  });
 }
 
 async function syncLocked(root: string, shell: RemoteShell, logger: DeployLogger, signal: AbortSignal): Promise<SyncPlan> {

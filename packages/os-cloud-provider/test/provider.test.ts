@@ -419,6 +419,37 @@ describe('deploy', () => {
     assert.equal(fake.containers.length, 1);
   });
 
+  test('a create that finishes between the listing and the job check is re-read, not recreated', async () => {
+    const c = fake.seedCreating('myapp');
+    // The first listing is taken while the create is running (no VMID); the
+    // job then finishes before deploy checks it, so deploy never waits.
+    let lists = 0;
+    fake.onList = (row) => {
+      if (++lists > 1) return undefined;
+      const job = fake.jobs.get(c.creationJobId!)!;
+      job.status = 'success';
+      job.onSuccess?.();
+      return { ...row, containerId: null, status: 'creating' };
+    };
+    await provider().deploy(harness().ctx);
+    assert.ok(!fake.requests.some((r) => r.method === 'DELETE'), 'not deleted and recreated');
+    assert.equal(fake.containers.length, 1);
+    assert.equal(fake.containers[0]!.id, c.id);
+  });
+
+  test('a configuration changed by a racing deploy is detected under the deploy lock', async () => {
+    const p = provider();
+    await p.deploy(harness().ctx);
+    setupShell = (sh) => {
+      sh.onLocked = () => {
+        fake.containers[0]!.environmentVars.GREETING = 'from the other deploy';
+      };
+    };
+    const h = harness({ manifest: { name: 'myapp', vars: { GREETING: 'hello' } } });
+    await assert.rejects(p.deploy(h.ctx), /Another deploy changed container .* configuration/);
+    assert.ok(!sessions.at(-1)!.shell.commands.some((cmd) => cmd.includes('tar')), 'nothing synced');
+  });
+
   test('a container whose create job failed is recreated even though it has a VMID', async () => {
     const old = fake.seedFailedCreate('myapp');
     const h = harness();
@@ -810,6 +841,16 @@ describe('login / logout', () => {
     );
     await assert.rejects(p.login!(harness({ argv: ['--instance', fake.url] }).ctx), /Timed out/);
     assert.equal(fake.redeemed, 0);
+  });
+
+  test('a redemption whose response is lost is retried and gets the same key', async () => {
+    fake.dropRedeems = 1;
+    const env = { MIEWEB_OS_TOKEN: '', MIEWEB_OS_CREDENTIALS: join(dir, 'lost.json') };
+    const p = provider(env, { login: { openBrowser: (u) => void browser(u) } });
+    await p.login!(harness({ argv: ['--instance', fake.url] }).ctx);
+    assert.equal(fake.redeemed, 1, 'one key minted');
+    const stored = JSON.parse(await readFile(join(dir, 'lost.json'), 'utf8'));
+    assert.equal(stored.instances[fake.url].token, 'minted-key');
   });
 
   test('if the credential cache cannot be written, the new key is revoked (or named for manual deletion)', async () => {

@@ -56,6 +56,8 @@ export class FakeManager {
   readonly tokens = new Map<string, { user: string; keyId: string }>();
   readonly containers: FakeContainer[] = [];
   readonly jobs = new Map<number, FakeJob>();
+  /** Rewrites a container in list responses (e.g. to serve a stale snapshot). */
+  onList?: (c: ReturnType<FakeManager['serialize']>) => ReturnType<FakeManager['serialize']> | undefined;
   readonly requests: RequestLog[] = [];
   readonly domains = [{ id: 7, name: 'apps.example.test', siteId: 1 }];
   readonly siteId = 1;
@@ -91,6 +93,9 @@ export class FakeManager {
   /** One-time CLI sign-in codes → their state; and how many were redeemed. */
   readonly codes = new Map<string, string>();
   redeemed = 0;
+  private readonly mintedFor = new Map<string, FakeManager['nextKey']>();
+  /** Drop the connection after minting this many redemptions. */
+  dropRedeems = 0;
 
   private nextId = 100;
   private nextVmid = 1000;
@@ -168,7 +173,7 @@ export class FakeManager {
     return job;
   }
 
-  private serialize(c: FakeContainer) {
+  serialize(c: FakeContainer) {
     const { volumes, ...rest } = c;
     return {
       ...rest,
@@ -245,12 +250,25 @@ export class FakeManager {
       return;
     }
     if (path === '/auth/cli/token' && req.method === 'POST') {
+      // Like the real route: a code mints one key; repeating it returns that key.
       const state = this.codes.get(body?.code);
-      this.codes.delete(body?.code);
-      if (!state || state !== body?.state) return fail(400, 'invalid_code');
-      this.redeemed += 1;
-      this.tokens.set(this.nextKey.key, { user: this.nextKey.user, keyId: this.nextKey.id });
-      return ok({ ...this.nextKey });
+      if (!state || state !== body?.state) {
+        this.codes.delete(body?.code);
+        return fail(400, 'invalid_code');
+      }
+      let minted = this.mintedFor.get(body.code);
+      if (!minted) {
+        this.redeemed += 1;
+        minted = { ...this.nextKey };
+        this.mintedFor.set(body.code, minted);
+        this.tokens.set(minted.key, { user: minted.user, keyId: minted.id });
+      }
+      if (this.dropRedeems > 0) {
+        this.dropRedeems -= 1;
+        req.socket.destroy(); // the key exists, but the response is lost
+        return;
+      }
+      return ok({ ...minted });
     }
 
     const auth = req.headers.authorization ?? '';
@@ -314,7 +332,7 @@ export class FakeManager {
       return ok(
         this.containers
           .filter((c) => (c.owner === who.user || this.admins.has(who.user)) && (!hostname || c.hostname === hostname))
-          .map((c) => this.serialize(c)),
+          .map((c) => this.onList?.(this.serialize(c)) ?? this.serialize(c)),
       );
     }
     if (!sub && req.method === 'POST') {

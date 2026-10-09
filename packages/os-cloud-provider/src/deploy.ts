@@ -487,7 +487,9 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
    */
   const settle = async (c: Container): Promise<{ c: Container | null; createFailed: boolean }> => {
     const outcome = await awaitCreateJob(client, c, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
-    const reread = outcome.waited ? await findByHostname(client, siteId, name) : c;
+    // Re-read whenever there's a create job: it may have finished (and stored
+    // the VMID) between the list call and the job check.
+    const reread = c.creationJobId ? await findByHostname(client, siteId, name) : c;
     return { c: reread, createFailed: outcome.failed };
   };
   const driftOf = (c: Container, createFailed: boolean): string[] => {
@@ -550,6 +552,8 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
   const fresh = createdId !== undefined || adopted;
   const id = createdId ?? existing!.id!;
 
+  // The configuration this deploy converged to, checked again under the deploy lock.
+  let applied: { environmentVars: ReturnType<typeof envWithSecrets> } | undefined;
   if (existing) {
     const services = planServices(existing.services, http, extras);
     const environmentVars = envWithSecrets(carryEnv);
@@ -559,6 +563,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       entrypoint: existing.entrypoint ?? null,
       restart: true,
     };
+    applied = { environmentVars };
     let changed = !servicesUnchanged(existing.services, services) || !envUnchanged(existing.environmentVars, environmentVars);
     // `volumes` is absent on Managers that predate volumes (#421); warned about below.
     const dataVolume = existing.volumes?.find((v) => v.mountPath === DATA_VOLUME.mountPath);
@@ -634,7 +639,19 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     }
     const shell = await openShell(ctx, deps, client, s, final, { fresh });
     try {
-      await syncWorktree(ctx.root, shell, logger, signal);
+      // The lock lives in the container, so it can't span the Manager update
+      // (whose restart drops it). Instead, once it's held, make sure no other
+      // deploy changed the configuration after ours: syncing this code under
+      // someone else's env/services would report a deploy that isn't what ran.
+      await syncWorktree(ctx.root, shell, logger, signal, async () => {
+        if (!applied) return;
+        const now = await getContainer(client, siteId, id);
+        if (!now || !servicesUnchanged(now.services, planServices(now.services, http, extras)) || !envUnchanged(now.environmentVars, applied.environmentVars)) {
+          throw new Error(
+            `Another deploy changed container ${id}'s configuration while this one ran; deploy again to converge it`,
+          );
+        }
+      });
     } finally {
       shell.close();
     }
@@ -880,8 +897,8 @@ export async function destroy(ctx: DeployContext, deps: ProviderDeps): Promise<v
   // could miss a VM the create job is still building (the Manager refuses with
   // 409 anyway). Wait for the job, then delete what it produced.
   if (existing) {
-    const outcome = await awaitCreateJob(client, existing, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs });
-    if (outcome.waited) existing = await findByHostname(client, siteId, name);
+    await awaitCreateJob(client, existing, { signal: ctx.signal, logger: ctx.logger, intervalMs: deps.pollIntervalMs });
+    if (existing.creationJobId) existing = await findByHostname(client, siteId, name);
   }
   if (!existing) {
     ctx.logger.info(`No container "${name}" on site ${siteId}; nothing to destroy`);

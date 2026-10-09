@@ -39,7 +39,10 @@ const router = express.Router();
 
 // --- one-time authorization codes --------------------------------------------
 // Kept in memory (the Manager is a single Node process), hashed, for
-// CODE_TTL_MS. A code is consumed by its first redemption attempt.
+// CODE_TTL_MS. A code mints at most one key: redeeming it again (with the same
+// state, before it expires) returns that same key, so a CLI whose response was
+// lost can safely retry instead of leaving a key it never received. A wrong
+// state burns the code.
 const CODE_TTL_MS = 2 * 60 * 1000;
 const codes = new Map();
 const hashCode = (code) => crypto.createHash('sha256').update(code).digest('hex');
@@ -52,15 +55,25 @@ function issueCode({ user, client, state }) {
   return code;
 }
 
-/** Take (and consume) a code; null if unknown, expired or for another state. */
-function redeemCode(code, state) {
+/**
+ * Redeem a code for its key, minting it on the first call (concurrent and
+ * repeated calls share it). Null if the code is unknown, expired, or presented
+ * with another state (which also burns it).
+ */
+function redeemCode(code, state, mint) {
   if (typeof code !== 'string' || typeof state !== 'string') return null;
   const key = hashCode(code);
   const entry = codes.get(key);
   if (!entry) return null;
-  codes.delete(key);
-  if (entry.expires <= Date.now() || entry.state !== state) return null;
-  return entry;
+  if (entry.expires <= Date.now() || entry.state !== state) {
+    codes.delete(key);
+    return null;
+  }
+  entry.minted ??= mint(entry).catch((err) => {
+    entry.minted = undefined; // let a retry try again
+    throw err;
+  });
+  return entry.minted;
 }
 
 // Handoffs claimed by an in-flight POST, keyed by session + state. The claim
@@ -231,12 +244,14 @@ router.post('/callback', asyncHandler(async (req, res) => {
 const tokenRouter = express.Router();
 tokenRouter.post('/token', express.json({ limit: '4kb' }), asyncHandler(async (req, res) => {
   const { code, state } = req.body || {};
-  const entry = redeemCode(code, state);
-  if (!entry) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
-  const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
-  const { key, plainKey } = await apiKeys.createKey(entry.user, { description });
+  const minted = redeemCode(code, state, async (entry) => {
+    const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
+    const { key, plainKey } = await apiKeys.createKey(entry.user, { description });
+    return { key: plainKey, id: key.id, user: entry.user };
+  });
+  if (!minted) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
   res.set('Cache-Control', 'no-store');
-  return ok(res, { key: plainKey, id: key.id, user: entry.user });
+  return ok(res, await minted);
 }));
 
 module.exports = router;

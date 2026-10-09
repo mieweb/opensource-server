@@ -57,12 +57,15 @@ export class ManagerClient {
     this.api = createClient<paths>({
       baseUrl: `${opts.instanceUrl}/api/v1`,
       headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : {},
-      // GETs are idempotent: retry them on network-level failures (a dropped
-      // keep-alive socket mid job-poll shouldn't fail a deploy). Writes are
-      // never retried.
+      // Idempotent requests are retried on network-level failures (a dropped
+      // keep-alive socket mid job-poll shouldn't fail a deploy): GETs, and the
+      // sign-in code redemption (the Manager returns the same key for a
+      // repeated code, so a lost response doesn't leave an unseen key).
+      // Other writes are never retried.
       fetch: (req: Request) => {
         const once = (): Promise<Response> => base(req.clone(), { signal, redirect: 'manual' });
-        return req.method === 'GET' ? pRetry(once, { retries: 3, minTimeout: 500, signal }) : once();
+        const idempotent = req.method === 'GET' || new URL(req.url).pathname.endsWith('/auth/cli/token');
+        return idempotent ? pRetry(once, { retries: 3, minTimeout: 500, signal }) : once();
       },
     });
   }

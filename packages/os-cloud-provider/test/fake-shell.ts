@@ -148,6 +148,9 @@ export class FakeShell implements RemoteShell {
     return new Promise((resolve) => signal.addEventListener('abort', () => resolve(-1), { once: true }));
   }
 
+  /** Called once the deploy lock is taken (e.g. to simulate a racing deploy). */
+  onLocked?: () => void;
+
   /** Deploy locks held per remote directory (shared by all fake shells). */
   static readonly locks = new Set<string>();
 
@@ -158,6 +161,7 @@ export class FakeShell implements RemoteShell {
     if (FakeShell.locks.has(this.dir)) throw Object.assign(new Error('lock busy'), { code: 75 });
     FakeShell.locks.add(this.dir);
     void ready;
+    this.onLocked?.();
     return { release: () => FakeShell.locks.delete(this.dir) };
   }
 
