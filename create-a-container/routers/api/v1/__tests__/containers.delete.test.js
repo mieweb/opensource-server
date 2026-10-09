@@ -23,11 +23,13 @@ describe('DELETE container: node-side failures', () => {
   let site;
   let node;
   let user;
+  let adminKey;
 
   beforeAll(async () => {
     await resetDb();
     app = buildApp();
-    await createUser({ uid: 'firstadmin' });
+    const admin = await createUser({ uid: 'firstadmin' }); // first user: auto-promoted to admin
+    ({ plainKey: adminKey } = await createApiKey(admin));
     user = await createUser({ uid: 'owner' });
     ({ plainKey: key } = await createApiKey(user));
     site = await Site.create({ name: 's', internalDomain: 'ex.test' });
@@ -49,8 +51,8 @@ describe('DELETE container: node-side failures', () => {
     vmid = nextVmid++;
     return Container.create({ hostname, username: user.uid, nodeId: node.id, siteId: site.id, containerId: String(vmid) });
   }
-  const del = (c, query = '') =>
-    request(app).delete(`/api/v1/sites/${site.id}/containers/${c.id}${query}`).set(...bearer(key));
+  const del = (c, query = '', as = key) =>
+    request(app).delete(`/api/v1/sites/${site.id}/containers/${c.id}${query}`).set(...bearer(as));
 
   function nodeDeleteFails({ stillListed }) {
     jest.spyOn(DummyApi.prototype, 'lxcConfig').mockResolvedValue({});
@@ -113,11 +115,21 @@ describe('DELETE container: node-side failures', () => {
     expect(await Container.findByPk(c.id)).toBeNull();
   });
 
-  test('force=true removes the record regardless, and only then cleans up DNS', async () => {
+  test('an owner cannot force-remove the record of a VM that may still be running', async () => {
+    nodeDeleteFails({ stillListed: true });
+    const c = await provisioned('owner-forced');
+    const res = await del(c, '?force=true');
+    expect(res.status).toBe(403);
+    expect(res.body.error.message).toMatch(/Only an administrator/);
+    expect(await Container.findByPk(c.id)).not.toBeNull();
+    expect(manageDnsRecords).not.toHaveBeenCalled();
+  });
+
+  test('force=true (admin) removes the record regardless, and only then cleans up DNS', async () => {
     nodeDeleteFails({ stillListed: true });
     const c = await provisioned('forced');
     await withHttpService(c);
-    const res = await del(c, '?force=true');
+    const res = await del(c, '?force=true', adminKey);
     expect(res.status).toBe(200);
     expect(manageDnsRecords).toHaveBeenCalledWith(expect.any(Array), expect.anything(), 'delete');
     expect(await Container.findByPk(c.id)).toBeNull();

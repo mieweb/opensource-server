@@ -555,7 +555,16 @@ describe('deploy', () => {
 
   test('a hostname owned by someone else is a clear error', async () => {
     fake.seedContainer({ hostname: 'myapp', owner: 'bob' });
-    await assert.rejects(provider().deploy(harness().ctx), /already taken on site 1/);
+    await assert.rejects(provider().deploy(harness().ctx), /Hostname "myapp" is already taken on site 1/);
+  });
+
+  test('a taken public hostname is reported as such, not as the container hostname', async () => {
+    // Another app already serves https://www.<domain>.
+    await provider().deploy(harness({ manifest: { name: 'other' }, targetConfig: { siteId: 1, externalHostname: 'www' } }).ctx);
+    await assert.rejects(
+      provider().deploy(harness({ targetConfig: { siteId: 1, externalHostname: 'www' } }).ctx),
+      (err: Error) => /public hostname "www" is already used/.test(err.message) && !/Hostname "myapp"/.test(err.message),
+    );
   });
 
   test('dropped connections while polling are retried', async () => {

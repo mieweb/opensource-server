@@ -232,7 +232,8 @@ export class FakeManager {
       res.end(JSON.stringify(payload));
     };
     const ok = (data: unknown, status = 200): void => send(status, { data });
-    const fail = (status: number, code: string, message = code): void => send(status, { error: { code, message } });
+    const fail = (status: number, code: string, message = code, fields?: Record<string, string>): void =>
+      send(status, { error: { code, message, ...(fields ? { fields } : {}) } });
 
     if (req.method === 'GET' && path === '/health') return ok({ status: 'ok', oidcEnabled: false });
 
@@ -341,7 +342,25 @@ export class FakeManager {
     }
     if (!sub && req.method === 'POST') {
       this.beforeCreate?.(body.hostname);
-      if (this.containers.some((c) => c.hostname === body.hostname)) return fail(409, 'conflict', 'hostname taken');
+      // Like the Manager's SequelizeUniqueConstraintError mapping: the colliding columns in `fields`.
+      if (this.containers.some((c) => c.hostname === body.hostname)) {
+        return fail(409, 'conflict', 'Resource already exists', { siteId: 'siteId already exists', hostname: 'hostname already exists' });
+      }
+      const httpName = Object.values(body.services ?? {}).find((x: any) => x.type === 'http') as any;
+      const usedHttp = this.containers.some((c) =>
+        c.services.some(
+          (x) =>
+            x.type === 'http' &&
+            x.httpService?.externalHostname === httpName?.externalHostname &&
+            x.httpService?.externalDomainId === httpName?.externalDomainId,
+        ),
+      );
+      if (httpName && usedHttp) {
+        return fail(409, 'conflict', 'Resource already exists', {
+          externalHostname: 'externalHostname already exists',
+          externalDomainId: 'externalDomainId already exists',
+        });
+      }
       const c: FakeContainer = {
         id: this.nextId++,
         hostname: body.hostname,

@@ -1117,7 +1117,8 @@ router.delete(
     // node-side delete fails and the VM still exists (or the node can't be
     // asked), respond 502 so callers don't believe a running VM was deleted.
     // `?force=true` removes the record regardless (e.g. the node is gone for
-    // good).
+    // good). Admins only: for an owner it would turn a still-running VM into
+    // an unmanaged one.
     const force = req.query.force === 'true' || req.query.force === '1';
     if (container.containerId) {
       let api = null;
@@ -1146,11 +1147,21 @@ router.delete(
             gone = false; // can't verify
           }
         }
+        if (!gone && force && !req.session?.isAdmin) {
+          throw new ApiError(
+            403,
+            'forbidden',
+            `Could not delete the VM on node ${node.name}: ${err.message}. Only an administrator can remove the record of a VM that may still be running.`,
+          );
+        }
         if (!gone && !force) {
           throw new ApiError(
             502,
             'node_delete_failed',
-            `Could not delete the VM on node ${node.name}: ${err.message}. Retry, or pass force=true to remove the record anyway.`,
+            `Could not delete the VM on node ${node.name}: ${err.message}. ` +
+              (req.session?.isAdmin
+                ? 'Retry, or pass force=true to remove the record anyway.'
+                : 'Retry, or ask an administrator to remove it.'),
           );
         }
         console.log(`Node-side deletion ${gone ? 'found the VM already gone' : 'failed (forced)'}: ${err.message}`);

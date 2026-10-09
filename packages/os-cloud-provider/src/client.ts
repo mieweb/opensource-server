@@ -19,11 +19,14 @@ import type { paths } from './generated/manager-api.ts';
 export class ManagerApiError extends Error {
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  /** Per-field details from the error envelope (e.g. which columns of a 409 `conflict` collided). */
+  readonly fields: Readonly<Record<string, string>>;
+  constructor(status: number, code: string, message: string, fields: Record<string, string> = {}) {
     super(message);
     this.name = 'ManagerApiError';
     this.status = status;
     this.code = code;
+    this.fields = fields;
   }
 }
 
@@ -99,11 +102,15 @@ export class ManagerClient {
     const where = `${new URL(response.url || this.instanceUrl).pathname}`;
     if (response.status === 401 || response.status === 403) throw this.authError();
     if (!response.ok) {
-      const body = result.error as { error?: { code?: string; message?: string } } | string | undefined;
+      const body = result.error as
+        | { error?: { code?: string; message?: string; fields?: Record<string, string> } }
+        | string
+        | undefined;
       const e = typeof body === 'object' ? body?.error : undefined;
       const code = e?.code ?? `http_${response.status}`;
       const message = e?.message ?? (typeof body === 'string' && body ? body.slice(0, 200) : response.statusText);
-      throw new ManagerApiError(response.status, code, `${where} failed (${response.status} ${code}): ${message}`);
+      const fields = e?.fields && typeof e.fields === 'object' ? e.fields : {};
+      throw new ManagerApiError(response.status, code, `${where} failed (${response.status} ${code}): ${message}`, fields);
     }
     return (result.data as { data?: unknown } | undefined)?.data as Envelope<NonNullable<R['data']>>;
   }

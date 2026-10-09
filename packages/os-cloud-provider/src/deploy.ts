@@ -895,13 +895,26 @@ async function createOrAdopt(
     return { created };
   } catch (err) {
     if (!(err instanceof ManagerApiError) || err.status !== 409 || err.code !== 'conflict') throw err;
+    // A 409 `conflict` is any unique constraint in the create: the container
+    // hostname (adoptable when it's ours), or e.g. the public HTTP hostname.
     const adopted = await findByHostname(client, siteId, name);
     if (!adopted) {
-      throw new Error(
-        `Hostname "${name}" is already taken on site ${siteId} by a container you cannot manage; ` +
-          'rename the app (wrangler.jsonc `name`) or ask its owner to delete it.',
-        { cause: err },
-      );
+      const cols = Object.keys(err.fields);
+      if (cols.includes('externalHostname')) {
+        throw new ConfigError(
+          `The public hostname "${s.externalHostname}" is already used by another container on that domain; ` +
+            `set targets.mieweb.externalHostname (or domain) to something free.`,
+        );
+      }
+      if (cols.length === 0 || cols.includes('hostname')) {
+        throw new Error(
+          `Hostname "${name}" ${cols.length ? 'is' : 'may be'} already taken on site ${siteId} by a container you cannot manage; ` +
+            'rename the app (wrangler.jsonc `name`) or ask its owner to delete it.' +
+            (cols.length ? '' : ` (Manager: ${err.message})`),
+          { cause: err },
+        );
+      }
+      throw new Error(`Creating container "${name}" conflicts with an existing ${cols.join(', ')}: ${err.message}`, { cause: err });
     }
     logger.info(`Container "${name}" was created concurrently; updating it instead`);
     return { adopted };

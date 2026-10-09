@@ -1084,7 +1084,7 @@ paths:
         returned if the node-side delete fails and the VM still exists (or the
         node can't be checked), unless `force=true`.
       parameters:
-        - { in: query, name: force, schema: { type: boolean }, description: 'Remove the record even if the node-side delete fails' }
+        - { in: query, name: force, schema: { type: boolean }, description: 'Remove the record even if the node-side delete fails (admins only; others get 403 when it would apply)' }
       responses:
         '200':
           description: Deleted, with DNS cleanup warnings
