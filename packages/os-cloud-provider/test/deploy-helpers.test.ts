@@ -141,10 +141,8 @@ describe('planServices', () => {
     const plan = planServices(current, http, [
       { type: 'tcp', internalPort: 22 },
       { type: 'udp', internalPort: 53 },
-      { type: 'srv', internalPort: 5060, dnsName: '_sip._udp' },
     ]);
     assert.deepEqual(plan['extra-1'], { type: 'udp', internalPort: 53 });
-    assert.deepEqual(plan['extra-2'], { type: 'srv', internalPort: 5060, dnsName: '_sip._udp' });
     assert.equal(plan['extra-0'], undefined, 'ssh kept (id 2)');
     assert.equal(plan['del-2'], undefined);
     assert.deepEqual(Object.keys(plan).filter((k) => k.startsWith('del-')).sort(), ['del-3', 'del-4', 'del-5']);

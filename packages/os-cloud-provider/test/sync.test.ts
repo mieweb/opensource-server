@@ -213,6 +213,22 @@ describe('syncWorktree', () => {
     assert.deepEqual(settled.rmdirs, ['keepme']); // only the kept non-empty one is retried
   });
 
+  test('a remote file replaced by an empty local directory (or one inside it) syncs', async () => {
+    await put(local, 'cache', 'was a file');
+    await put(local, 'logs', 'also a file');
+    await syncWorktree(local, new FakeShell(remote), logger);
+    await rm(join(local, 'cache'));
+    await rm(join(local, 'logs'));
+    await mkdir(join(local, 'cache')); // the file becomes an empty dir
+    await mkdir(join(local, 'logs/app'), { recursive: true }); // ...or the parent of one
+    const plan = await syncWorktree(local, new FakeShell(remote), logger);
+    assert.deepEqual(plan.conflicts, ['cache', 'logs']);
+    assert.deepEqual(plan.remove, [], 'not also removed after the extract');
+    assert.ok((await lstat(join(remote, 'cache'))).isDirectory());
+    assert.ok((await lstat(join(remote, 'logs/app'))).isDirectory());
+    assert.deepEqual(await syncWorktree(local, new FakeShell(remote), logger), { upload: [], remove: [], conflicts: [], mkdirs: [], rmdirs: [] });
+  });
+
   test('the remote listing does not descend into ignored directories', async () => {
     await syncWorktree(local, new FakeShell(remote), logger);
     // Remote-only build output and installed deps, like the container has.

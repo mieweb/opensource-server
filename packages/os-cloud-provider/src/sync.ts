@@ -199,6 +199,15 @@ export function planSync(
       if (ra && ra.type !== 'dir') conflicts.add(a);
     }
   }
+  // A local directory (or its parent) where the remote has a file/symlink is a
+  // conflict too. Collected before anything consults `removedWith`, so such a
+  // path isn't also scheduled as a post-extract file removal.
+  for (const d of localDirs) {
+    for (const p of [d, ...ancestors(d)]) {
+      const r = remote.get(p);
+      if (r && r.type !== 'dir') conflicts.add(p);
+    }
+  }
   // Anything under a conflicting path is removed with it.
   const removedWith = (p: string): boolean => [...conflicts].some((c) => p === c || p.startsWith(`${c}/`));
   for (const f of local.values()) {
@@ -217,11 +226,6 @@ export function planSync(
     .filter(([p, r]) => r.type !== 'dir' && !local.has(p) && !rules.ignores(p) && !removedWith(p))
     .map(([p]) => p)
     .sort();
-  // A local directory where the remote has a file/symlink is a conflict too.
-  for (const d of localDirs) {
-    const r = remote.get(d);
-    if (r && r.type !== 'dir') conflicts.add(d);
-  }
   const mkdirs = [...localDirs].filter((d) => remote.get(d)?.type !== 'dir' || removedWith(d)).sort();
   const rmdirs = [...remote]
     .filter(([p, r]) => r.type === 'dir' && !localDirs.has(p) && !rules.ignores(p, true) && !removedWith(p))

@@ -286,12 +286,11 @@ export function planServices(
       (svc) =>
         !matched.has(svc.id!) &&
         svc.internalPort === want.internalPort &&
-        (want.type === 'srv'
-          ? svc.type === 'dns' && svc.dnsService?.dnsName === want.dnsName
-          : svc.type === 'transport' && svc.transportService?.protocol === want.type),
+        svc.type === 'transport' &&
+        svc.transportService?.protocol === want.type,
     );
     if (hit) matched.add(hit.id!);
-    else plan[`extra-${i}`] = { type: want.type, internalPort: want.internalPort, ...(want.dnsName ? { dnsName: want.dnsName } : {}) };
+    else plan[`extra-${i}`] = { type: want.type, internalPort: want.internalPort };
   });
   for (const svc of others) {
     if (!matched.has(svc.id!)) {

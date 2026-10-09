@@ -69,7 +69,7 @@ Point the `mieweb` target at it in `mieweb.jsonc`:
       "sshUser": "alice",            // default: your Manager username
       "sshHost": "203.0.113.10",     // default: the container's published SSH host
       "sync": true,                  // false: converge the container only, don't copy code
-      "services": [{ "type": "udp", "internalPort": 5060 }] // extra tcp/udp/srv services (SSH is always added)
+      "services": [{ "type": "udp", "internalPort": 5060 }] // extra tcp/udp services (SSH is always added)
     }
   }
 }

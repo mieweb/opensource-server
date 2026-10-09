@@ -57,6 +57,26 @@ jobs:
       - name: Stamp preview version and default image
         id: stamp
         run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}" "${{ github.run_attempt }}"
+      # The stamped default image (cloud:pr-<PR>) is pushed by build-images.yml
+      # for this same push, in parallel. Wait for that build's own tag
+      # (sha-<short GITHUB_SHA>; both workflows see the same PR merge SHA), not
+      # just pr-<PR>, which may still be an older push's image. If that build
+      # fails, nothing is published (the step times out).
+      - name: Log in to GHCR (read)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Wait for this push's cloud image
+        timeout-minutes: 90
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}/cloud:sha-${GITHUB_SHA::7}"
+          until docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; do
+            echo "Waiting for $IMAGE ..."
+            sleep 30
+          done
+          echo "Found $IMAGE"
       # prepack builds dist/.
       - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
         env:

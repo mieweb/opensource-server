@@ -99,9 +99,8 @@ export async function resolveToken(env: ProviderEnv, instanceUrl: string): Promi
 
 /** Extra non-HTTP service declared in `targets.mieweb.services`. */
 export interface ExtraService {
-  type: 'tcp' | 'udp' | 'srv';
+  type: 'tcp' | 'udp';
   internalPort: number;
-  dnsName?: string;
 }
 
 /** The parts of `targets.mieweb` deploy/destroy use. All non-secret. */
@@ -199,16 +198,15 @@ export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): Tar
     if (!Array.isArray(tc.services)) throw new ConfigError(`${target}.services must be an array`);
     for (const [i, raw] of tc.services.entries()) {
       const s = (raw ?? {}) as Record<string, unknown>;
-      if (s.type !== 'tcp' && s.type !== 'udp' && s.type !== 'srv') {
-        throw new ConfigError(`${target}.services[${i}].type must be tcp, udp or srv (the HTTP service is implicit)`);
-      }
-      const svc: ExtraService = { type: s.type, internalPort: port(s.internalPort, `${target}.services[${i}].internalPort`) };
       if (s.type === 'srv') {
-        const dnsName = str(s.dnsName);
-        if (!dnsName) throw new ConfigError(`${target}.services[${i}].dnsName is required for srv services`);
-        svc.dnsName = dnsName;
+        // The Manager stores SRV services, but its agent doesn't publish them
+        // yet: accepting one would report a DNS record that never exists.
+        throw new ConfigError(`${target}.services[${i}]: srv services aren't supported yet (the Manager doesn't publish SRV records)`);
       }
-      services.push(svc);
+      if (s.type !== 'tcp' && s.type !== 'udp') {
+        throw new ConfigError(`${target}.services[${i}].type must be tcp or udp (the HTTP service is implicit)`);
+      }
+      services.push({ type: s.type, internalPort: port(s.internalPort, `${target}.services[${i}].internalPort`) });
     }
   }
 

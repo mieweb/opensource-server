@@ -90,7 +90,7 @@ describe('resolveTargetSettings', () => {
           externalHostname: 'www-app',
           domain: 'apps.example.test',
           authRequired: true,
-          services: [{ type: 'tcp', internalPort: 22 }, { type: 'srv', internalPort: 5060, dnsName: '_sip._udp' }],
+          services: [{ type: 'tcp', internalPort: 22 }, { type: 'udp', internalPort: 5060 }],
         },
       ),
       { MIEWEB_OS_URL: 'http://localhost:3000' },
@@ -108,8 +108,8 @@ describe('resolveTargetSettings', () => {
   test('rejects bad service/port config', () => {
     const base = { siteId: 1 };
     assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, port: 70000 }), {}), /TCP port/);
-    assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'http', internalPort: 1 }] }), {}), /tcp, udp or srv/);
-    assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'srv', internalPort: 1 }] }), {}), /dnsName/);
+    assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'http', internalPort: 1 }] }), {}), /tcp or udp/);
+    assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'srv', internalPort: 1, dnsName: '_sip._udp' }] }), {}), /srv services aren't supported yet/);
     assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, authRequired: 'yes' }), {}), /boolean/);
   });
 });
