@@ -74,6 +74,21 @@ describe('buildEnv', () => {
     assert.deepEqual(warnings, ['Env var PORT is managed by the provider; ignoring the app\'s value']);
   });
 
+  test('a managed key the provider leaves unset is still not the app\'s to set', () => {
+    const warnings: string[] = [];
+    const env = buildEnv({
+      ...base,
+      env: {},
+      manifest: { vars: { MIEWEB_APP_START: 'node evil.js', MIEWEB_SSH_ALLOW_USERS: 'mallory' } },
+      sshAllowUsers: [],
+      warn: (m) => warnings.push(m),
+    });
+    const keys = env.map((e) => e.key);
+    assert.ok(!keys.includes('MIEWEB_APP_START'));
+    assert.ok(!keys.includes('MIEWEB_SSH_ALLOW_USERS'));
+    assert.equal(warnings.length, 2);
+  });
+
   test("the app's own AWS credentials and region are kept", () => {
     const env = buildEnv({
       ...base,

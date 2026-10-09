@@ -599,6 +599,16 @@ describe('deploy', () => {
     assert.equal(sessions.length, 2);
   });
 
+  test('a Manager without volume support: a recreate is refused (it would lose /mnt/data)', async () => {
+    fake.noVolumes = true;
+    const p = provider();
+    await p.deploy(harness().ctx);
+    const h = harness({ targetConfig: { siteId: 1, image: 'ghcr.io/mieweb/opensource-server/cloud:sha-new' } });
+    await assert.rejects(p.deploy(h.ctx), /does not support persistent volumes.*would be lost/s);
+    assert.ok(!fake.requests.some((r) => r.method === 'DELETE'), 'not deleted');
+    assert.equal(fake.containers.length, 1);
+  });
+
   test('a failed job fails the deploy with its output', async () => {
     fake.jobOutcome = 'failure';
     await assert.rejects(provider().deploy(harness().ctx), /job \d+ ended with status "failure":\nstarting\ndone/);

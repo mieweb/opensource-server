@@ -194,7 +194,12 @@ export function buildEnv(inputs: EnvInputs): EnvVar[] {
     [MANAGED_ENV.sshAllowUsers, inputs.sshAllowUsers?.length ? inputs.sshAllowUsers.join(' ') : undefined],
   ];
   for (const [k, v] of managed) {
-    if (v === undefined) continue;
+    if (v === undefined) {
+      // Provider-owned even when unset (e.g. no `start`: the image picks the
+      // package manager's default), so the app can't set it either.
+      if (out.delete(k)) inputs.warn(`Env var ${k} is managed by the provider; ignoring the app's value`);
+      continue;
+    }
     if (out.has(k) && out.get(k) !== v) inputs.warn(`Env var ${k} is managed by the provider; ignoring the app's value`);
     out.set(k, v);
   }
@@ -573,6 +578,16 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
       if (existing) carryEnv = existing;
     }
     const drift = existing ? driftOf(existing, createFailed) : [];
+    if (existing && drift.length > 0 && existing.containerId && existing.volumes === undefined) {
+      // A Manager without volumes (#421): /mnt/data is the container's own
+      // disk, so deleting it would destroy the datastores. (A container that
+      // was never provisioned has no data to lose.)
+      throw new ConfigError(
+        `Container ${existing.id} needs to be recreated (${drift.join(', ')}), but this Manager does not support ` +
+          `persistent volumes, so its ${DATA_VOLUME.mountPath} (MinIO, libSQL and Valkey data) would be lost. ` +
+          'Upgrade the Manager, or delete the container yourself (`mieweb destroy`) if the data is disposable.',
+      );
+    }
     if (existing && drift.length > 0) {
       // Volume directories are keyed to the owner they were created under; an
       // admin transfer keeps the live container's directory, but a recreate
