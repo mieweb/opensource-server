@@ -198,10 +198,20 @@ export function buildEnv(inputs: EnvInputs): EnvVar[] {
     if (out.has(k) && out.get(k) !== v) inputs.warn(`Env var ${k} is managed by the provider; ignoring the app's value`);
     out.set(k, v);
   }
+  // S3 clients (incl. @mieweb/cloud-adapters' s3 driver without explicit
+  // keys) use the AWS default credential chain: point it at the local MinIO,
+  // unless the app brings its own AWS credentials.
+  if (!out.has('AWS_ACCESS_KEY_ID') && !out.has('AWS_SECRET_ACCESS_KEY')) {
+    out.set('AWS_ACCESS_KEY_ID', minioUser);
+    out.set('AWS_SECRET_ACCESS_KEY', minioPassword);
+  }
+  if (!out.has('AWS_REGION')) out.set('AWS_REGION', 'us-east-1');
   // The Manager silently drops names it can't use, and the container's
   // /etc/environment is one `KEY=value` per line, so a multi-line value would
   // arrive truncated. Fail instead of deploying something different.
-  const badNames = [...out.keys()].filter((k) => !ENV_NAME_RE.test(k));
+  // `__proto__` matches the pattern but the Manager stores env through plain
+  // objects, where assigning it creates no property: it would vanish.
+  const badNames = [...out.keys()].filter((k) => !ENV_NAME_RE.test(k) || k === '__proto__');
   if (badNames.length > 0) {
     throw new ConfigError(
       `Unsupported environment variable name(s): ${badNames.map((k) => JSON.stringify(k)).join(', ')} ` +

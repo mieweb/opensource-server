@@ -106,8 +106,9 @@ The container's environment is replaced on every deploy with:
 | `wrangler.jsonc` `vars` | as declared (non-string values are JSON-encoded) |
 | `MIEWEB_OS_SECRET_<NAME>` in the deploying shell | `<NAME>` (for secrets, e.g. `MIEWEB_OS_SECRET_API_KEY` → `API_KEY`) |
 | Provider-managed | `PORT`, `MIEWEB_TARGET`, `MIEWEB_APP_START`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MIEWEB_S3_ENDPOINT`, `MIEWEB_S3_ACCESS_KEY_ID`, `MIEWEB_S3_SECRET_ACCESS_KEY`, `MIEWEB_LIBSQL_URL`, `MIEWEB_VALKEY_URL`, `MIEWEB_SSH_ALLOW_USERS` |
+| Provider defaults (only if the app doesn't set them) | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (the MinIO credentials, so S3 clients using the default credential chain, such as the `s3` binding driver, reach the local MinIO) and `AWS_REGION` (`us-east-1`) |
 
-Values reach the app exactly as given, including quotes, backslashes, `$` and JSON. Names must be letters, digits and `_` (not starting with a digit), and values can't contain line breaks; base64-encode multi-line secrets such as PEM keys. `deploy` fails rather than silently dropping anything.
+Values reach the app exactly as given, including quotes, backslashes, `$` and JSON. Names must be letters, digits and `_` (not starting with a digit, and not `__proto__`), and values can't contain line breaks; base64-encode multi-line secrets such as PEM keys. `deploy` fails rather than silently dropping anything.
 
 The MinIO password is generated on the first deploy and reused after that. Variables added to the container through the web UI are removed on the next deploy.
 

@@ -55,16 +55,36 @@ describe('buildEnv', () => {
     assert.equal(map[''], undefined);
     assert.equal(map.PORT, '8787');
     assert.equal(map.MIEWEB_S3_SECRET_ACCESS_KEY, map.MINIO_ROOT_PASSWORD);
+    // S3 clients on the AWS default credential chain reach the local MinIO.
+    assert.equal(map.AWS_ACCESS_KEY_ID, map.MINIO_ROOT_USER);
+    assert.equal(map.AWS_SECRET_ACCESS_KEY, map.MINIO_ROOT_PASSWORD);
+    assert.equal(map.AWS_REGION, 'us-east-1');
     assert.ok(map.MINIO_ROOT_PASSWORD!.length >= 24);
     assert.equal(map.MIEWEB_LIBSQL_URL, 'http://127.0.0.1:8080');
     assert.equal(map.MIEWEB_APP_START, undefined);
     assert.deepEqual(warnings, ['Env var PORT is managed by the provider; ignoring the app\'s value']);
   });
 
+  test("the app's own AWS credentials and region are kept", () => {
+    const env = buildEnv({
+      ...base,
+      manifest: { vars: { AWS_REGION: 'eu-west-1' } },
+      env: { MIEWEB_OS_SECRET_AWS_ACCESS_KEY_ID: 'AKIA', MIEWEB_OS_SECRET_AWS_SECRET_ACCESS_KEY: 'sk' },
+      warn: () => {},
+    });
+    const map = Object.fromEntries(env.map((e) => [e.key, e.value]));
+    assert.equal(map.AWS_ACCESS_KEY_ID, 'AKIA');
+    assert.equal(map.AWS_SECRET_ACCESS_KEY, 'sk');
+    assert.equal(map.AWS_REGION, 'eu-west-1');
+  });
+
   test('rejects names the Manager would drop and values with line breaks', () => {
     const run = (env: Record<string, string>, vars: Record<string, unknown> = {}) =>
       buildEnv({ ...base, manifest: { vars }, env, warn: () => {} });
     assert.throws(() => run({}, { 'BAD-NAME': 'x', '1ST': 'y' }), /Unsupported environment variable name\(s\): "BAD-NAME", "1ST"/);
+    // A JSON manifest can carry an own `__proto__` key; the Manager would drop it.
+    assert.throws(() => run({}, JSON.parse('{"__proto__": "x"}')), /Unsupported environment variable name\(s\): "__proto__"/);
+    assert.throws(() => run({ MIEWEB_OS_SECRET___proto__: 'x' }), /"__proto__"/);
     assert.throws(() => run({ 'MIEWEB_OS_SECRET_also.bad': 'x' }), /"also\.bad"/);
     assert.throws(() => run({ MIEWEB_OS_SECRET_PEM: '-----BEGIN KEY-----\nabc\n-----END KEY-----' }), /PEM contain line breaks.*base64/);
     assert.doesNotThrow(() => run({ MIEWEB_OS_SECRET_OK_1: 'fine' }, { _ALSO_OK: 'x' }));

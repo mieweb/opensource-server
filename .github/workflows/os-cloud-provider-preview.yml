@@ -2,7 +2,7 @@ name: os-cloud-provider preview package
 
 # On every push to a same-repo pull request that touches the provider, publish
 # @mieweb/os-cloud-provider to the GitHub Packages npm registry as
-# `<version>-pr<PR>.<run>` under dist-tag `pr<PR>`, for cross-repo testing
+# `<version>-pr<PR>.<run>.<attempt>` under dist-tag `pr<PR>`, for cross-repo testing
 # (e.g. @mieweb/cli in mieweb/cloud).
 #
 # Consumers install it by its tarball URL (printed in the job summary) plus a
@@ -53,10 +53,10 @@ jobs:
       # dependencies (incl. @mieweb/deploy-contract) come from npmjs.
       - run: pnpm install --frozen-lockfile --config.@mieweb:registry=https://registry.npmjs.org/
       # Version + default image for this PR's preview; run locally the same way:
-      #   node scripts/stamp-preview.mjs <pr> <run>
+      #   node scripts/stamp-preview.mjs <pr> <run> [<attempt>]
       - name: Stamp preview version and default image
         id: stamp
-        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}"
+        run: node scripts/stamp-preview.mjs "${{ github.event.pull_request.number }}" "${{ github.run_number }}" "${{ github.run_attempt }}"
       # prepack builds dist/.
       - run: pnpm publish --no-git-checks --tag pr${{ github.event.pull_request.number }}
         env:
