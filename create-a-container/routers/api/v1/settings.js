@@ -125,7 +125,10 @@ router.put(
       return Number.isNaN(n) || n < 1 ? '' : String(n);
     };
     await Setting.set('mail_hostname', (mailHostname || '').trim());
-    await Setting.set('mail_unsubscribe_base_url', (mailUnsubscribeBaseUrl || '').trim().replace(/\/+$/, ''));
+    // Strip trailing slashes without regex (CodeQL js/polynomial-redos).
+    let unsubscribeBase = (mailUnsubscribeBaseUrl || '').trim();
+    while (unsubscribeBase.endsWith('/')) unsubscribeBase = unsubscribeBase.slice(0, -1);
+    await Setting.set('mail_unsubscribe_base_url', unsubscribeBase);
     await Setting.set('mail_relayhost', (mailRelayhost || '').trim());
     await Setting.set('mail_relayhost_username', (mailRelayhostUsername || '').trim());
     await Setting.set('mail_relayhost_password', mailRelayhostPassword || '');

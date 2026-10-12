@@ -1387,9 +1387,11 @@ paths:
           description: >-
             Config snapshot (`{ data: { site, nginx } }`) with `ETag` header.
             When the agent reports `mail`, `data.mailStatus` is one of
-            holder|conflict|unsupported|missing_packages, and only the claim
-            holder additionally receives `data.mail` (DKIM keys, receiving
-            domains, relayhost, limits, DB connection, unsubscribe keys).
+            holder|conflict|unsupported|missing_packages|insecure_transport
+            (remote holders only receive the secret-bearing `data.mail`
+            section over TLS), and only the claim holder additionally
+            receives `data.mail` (DKIM keys, receiving domains, relayhost,
+            limits, DB connection, unsubscribe keys).
         '304': { description: Config unchanged since If-None-Match }
         '403': { description: 'Agent pinned to a different API key (code: agent_key_mismatch)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { description: 'Missing siteId/hostname (code: validation_failed)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
@@ -1677,6 +1679,17 @@ paths:
       summary: Disable mail for a domain (admin) — DKIM keys and config are kept
       responses:
         '200': { description: Disabled }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /external-domains/{id}/mail/dkim:
+    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+    get:
+      operationId: export_domain_dkim_key
+      tags: [Mail]
+      summary: Export the active DKIM key pair for a self-managed MTA (admin; audited in the logs)
+      responses:
+        '200':
+          description: '`{ domain, selector, privateKey, publicKey }`'
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 

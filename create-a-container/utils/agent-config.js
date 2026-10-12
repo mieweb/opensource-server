@@ -143,6 +143,17 @@ async function buildAgentConfig(siteId) {
   // the agent only owns user volume directories.
   const volumes = await buildSiteVolumes(site);
 
+  // Host serving the public one-click unsubscribe endpoint (/u/<token>).
+  // The nginx template keeps /u/ outside auth_request on this host so
+  // oauth2-proxy can never block RFC 8058 POSTs from mail clients.
+  let unsubscribeHost = null;
+  try {
+    const baseUrl = await Setting.get('mail_unsubscribe_base_url');
+    if (baseUrl) unsubscribeHost = new URL(baseUrl).hostname;
+  } catch {
+    /* unset or malformed — no bypass location rendered */
+  }
+
   return {
     site: {
       id: site.id,
@@ -168,6 +179,7 @@ async function buildAgentConfig(siteId) {
       httpServices,
       streamServices,
       externalDomains: externalDomains.map((d) => ({ name: d.name })),
+      unsubscribeHost,
     },
   };
 }

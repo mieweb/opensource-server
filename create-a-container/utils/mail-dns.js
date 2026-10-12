@@ -193,10 +193,20 @@ async function checkMailDns({ domain, mailIp, mailHostname, spfInclude, dkimKey,
     result.warnings.push('No active DKIM key for this domain.');
   }
 
-  // DMARC
+  // DMARC — receivers treat multiple records as a permerror and ignore
+  // records without a valid p= tag, so both fail the gate.
   const dmarcTxt = await resolveTxtSafe(r, `_dmarc.${domain}`);
-  const dmarcRecord = dmarcTxt.find((t) => /^v=DMARC1(\s*;|$)/i.test(t)) || null;
-  result.dmarc = { pass: !!dmarcRecord, record: dmarcRecord };
+  const dmarcRecords = dmarcTxt.filter((t) => /^v=DMARC1\s*;/i.test(t.trim()) || /^v=DMARC1$/i.test(t.trim()));
+  const dmarcRecord = dmarcRecords.length === 1 ? dmarcRecords[0] : null;
+  const dmarcPolicyOk = !!dmarcRecord && /(?:^|;)\s*p\s*=\s*(none|quarantine|reject)\s*(?:;|$)/i.test(dmarcRecord);
+  result.dmarc = {
+    pass: dmarcPolicyOk,
+    record: dmarcRecord ?? dmarcRecords[0] ?? null,
+    recordCount: dmarcRecords.length,
+  };
+  if (dmarcRecords.length > 1) {
+    result.warnings.push(`Multiple DMARC records published for _dmarc.${domain} — receivers treat this as an error.`);
+  }
 
   // MX → must resolve to the mail IP (receive gate)
   let mxPass = false;

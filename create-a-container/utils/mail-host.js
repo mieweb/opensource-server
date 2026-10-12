@@ -22,12 +22,14 @@ async function getMailHostAgent() {
 }
 
 /**
- * The IP mail is sent from: externalIp of the mail host's site, or of the
- * mail_self_managed_site_id site when no agent holds the claim.
+ * The IP mail is sent from: externalIp of the mail host's site. The
+ * mail_self_managed_site_id fallback applies ONLY when no agent holds the
+ * claim — otherwise DNS checks could verify against an IP unrelated to
+ * where mail actually runs.
  */
 async function getMailIp() {
   const holder = await getMailHostAgent();
-  if (holder?.site?.externalIp) return holder.site.externalIp;
+  if (holder) return holder.site?.externalIp || null;
   const selfManagedSiteId = parseInt(await Setting.get('mail_self_managed_site_id'), 10);
   if (Number.isInteger(selfManagedSiteId)) {
     const site = await Site.findByPk(selfManagedSiteId, { attributes: ['externalIp'] });
@@ -57,6 +59,9 @@ async function processMailClaim(agent, { wantsMail, missingBinaries }) {
     return { status: 'unsupported' };
   }
   if (Array.isArray(missingBinaries) && missingBinaries.length > 0) {
+    // A holder that lost its packages must also lose the claim — otherwise
+    // every other agent stays in `conflict` while nothing serves mail.
+    if (agent.mailHostSince) await agent.update({ mailHostSince: null });
     return { status: 'missing_packages', missing: missingBinaries };
   }
   return sequelize.transaction(async (transaction) => {

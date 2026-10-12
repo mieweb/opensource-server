@@ -1,13 +1,14 @@
 const { z } = require('zod');
 
-// Conservative RFC 5321 dot-atom subset; stored lowercase.
+// Conservative RFC 5321 dot-atom subset; stored lowercase. Alphanumeric
+// runs joined by single separators — rejects consecutive dots like "a..b".
 const localPart = z
   .string()
   .trim()
   .toLowerCase()
   .min(1)
   .max(64)
-  .regex(/^[a-z0-9](?:[a-z0-9._+-]*[a-z0-9])?$/, 'invalid local part');
+  .regex(/^[a-z0-9]+(?:[._+-][a-z0-9]+)*$/, 'invalid local part');
 
 const createMailAccount = z.object({
   externalDomainId: z.coerce.number().int().positive(),

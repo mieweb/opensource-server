@@ -101,9 +101,16 @@ router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
   const config = await buildAgentConfig(parsedSiteId);
   if (mailClaim && mailClaim.status !== 'disabled') {
     config.mailStatus = mailClaim.status;
-    // Only the claim holder receives the mail section (DKIM private keys etc.).
+    // Only the claim holder receives the mail section (DKIM private keys,
+    // unsubscribe AES keys, relay credentials) — and never over plaintext:
+    // remote check-ins must arrive on TLS (req.secure honors X-Forwarded-Proto
+    // via trust proxy) or the secrets would cross the network readable.
     if (mailClaim.status === 'holder') {
-      config.mail = await buildMailSnapshot(dbConfig);
+      if (isLocalhostRequest(req) || req.secure) {
+        config.mail = await buildMailSnapshot(dbConfig);
+      } else {
+        config.mailStatus = 'insecure_transport';
+      }
     }
   }
   // Manual conditional-request handling: Express's built-in ETag/fresh logic

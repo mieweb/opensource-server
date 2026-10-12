@@ -5,7 +5,7 @@
  */
 
 const express = require('express');
-const { ExternalDomain, Site, DkimKey, MailAccount, Setting } = require('../../../models');
+const { ExternalDomain, Site, DkimKey, MailAccount, Setting, sequelize } = require('../../../models');
 const { apiAuth, apiAdmin, asyncHandler, ok, created, noContent, ApiError } =
   require('../../../middlewares/api');
 const { generateDkimKeyPair } = require('../../../utils/dkim');
@@ -62,19 +62,23 @@ router.post(
   asyncHandler(async (req, res) => {
     const { name, acmeEmail, acmeDirectoryUrl, cloudflareApiEmail, cloudflareApiKey, siteId, authServer } =
       req.body || {};
-    const d = await ExternalDomain.create({
-      name,
-      acmeEmail: acmeEmail || null,
-      acmeDirectoryUrl: acmeDirectoryUrl || null,
-      cloudflareApiEmail: cloudflareApiEmail || null,
-      cloudflareApiKey: cloudflareApiKey || null,
-      siteId: siteId || null,
-      authServer: authServer || null,
-    });
     // Every domain gets a DKIM key at create so the DNS records can be
     // published before mail is ever enabled (existing domains were
-    // backfilled by migration 20261008000007).
-    await DkimKey.create({ externalDomainId: d.id, ...generateDkimKeyPair() });
+    // backfilled by migration 20261008000007). One transaction — a failed
+    // key insert must not leave a keyless domain behind.
+    const d = await sequelize.transaction(async (transaction) => {
+      const domain = await ExternalDomain.create({
+        name,
+        acmeEmail: acmeEmail || null,
+        acmeDirectoryUrl: acmeDirectoryUrl || null,
+        cloudflareApiEmail: cloudflareApiEmail || null,
+        cloudflareApiKey: cloudflareApiKey || null,
+        siteId: siteId || null,
+        authServer: authServer || null,
+      }, { transaction });
+      await DkimKey.create({ externalDomainId: domain.id, ...generateDkimKeyPair() }, { transaction });
+      return domain;
+    });
     return created(res, serialize(d));
   }),
 );
@@ -215,6 +219,27 @@ router.post(
     // because the SQL views gate on mailEnabled.
     await d.update({ mailEnabled: false });
     return ok(res, serialize(d));
+  }),
+);
+
+// Self-managed MTA export: the active DKIM private key. Deliberately noisy
+// in the logs — private-key reads should be rare, intentional events.
+router.get(
+  '/:id/mail/dkim',
+  asyncHandler(async (req, res) => {
+    const d = await loadDomain(req.params.id);
+    const key = await DkimKey.findOne({
+      where: { externalDomainId: d.id, status: 'active' },
+      order: [['createdAt', 'DESC']],
+    });
+    if (!key) throw new ApiError(404, 'not_found', 'No active DKIM key for this domain');
+    console.warn(`AUDIT: DKIM private key for ${d.name} exported by admin ${req.session.user}`);
+    return ok(res, {
+      domain: d.name,
+      selector: key.selector,
+      privateKey: key.privateKey,
+      publicKey: key.publicKey,
+    });
   }),
 );
 

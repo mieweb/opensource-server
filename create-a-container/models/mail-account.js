@@ -44,8 +44,9 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(64),
       allowNull: false,
       validate: {
-        // Conservative RFC 5321 dot-atom subset, stored lowercase.
-        is: /^[a-z0-9](?:[a-z0-9._+-]*[a-z0-9])?$/,
+        // Conservative RFC 5321 dot-atom subset, stored lowercase — single
+        // separators only (no consecutive dots), matching the API validator.
+        is: /^[a-z0-9]+(?:[._+-][a-z0-9]+)*$/,
       },
       comment: 'Lowercase local part — address is <localPart>@<domain.name>',
     },

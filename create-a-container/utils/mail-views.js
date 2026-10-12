@@ -1,7 +1,7 @@
 /**
  * Per-dialect SQL for the mail views — the stable contract Dovecot and
- * Postfix read live (see docs: the views are consumed by `mail_dovecot` and
- * `mail_postfix` DB users created by bin/setup-mail-db-roles.sh):
+ * Postfix read live (consumed by the read-only `mail_dovecot` and
+ * `mail_postfix` DB roles created by migration 20261012000000):
  *
  *   mail_accounts_v     address, password ({ARGON2ID}-prefixed PHC hash),
  *                       home, quota_bytes, can_send, can_receive
@@ -11,14 +11,17 @@
  *                       smtpd_sender_login_maps; opensource-mail-helper uses
  *                       account_id + unsubscribe_headers to mint
  *                       List-Unsubscribe tokens)
+ *   mail_recipients_v   recipient — deliverable addresses on can-receive
+ *                       domains (Postfix virtual_mailbox_maps: unknown
+ *                       recipients rejected at RCPT, no backscatter)
  *   mail_suppressions_v sender, recipient
- *                       (submission policy service — reject at RCPT)
+ *                       (submission milter — reject at RCPT)
  *
  * SQLite cannot host the mail stack, but the views are still created there so
  * the schema stays identical across dialects for tests.
  */
 
-const VIEW_NAMES = ['mail_accounts_v', 'mail_senders_v', 'mail_suppressions_v'];
+const VIEW_NAMES = ['mail_accounts_v', 'mail_senders_v', 'mail_recipients_v', 'mail_suppressions_v'];
 
 /**
  * Build the CREATE VIEW statements for a dialect.
@@ -56,6 +59,10 @@ function createViewsSql(dialect) {
       `ma.${q('id')} AS account_id, ` +
       `ma.${q('unsubscribeHeaders')} AS unsubscribe_headers ` +
       `${joins} WHERE ma.${q('enabled')} AND ${canSend}`,
+
+    `CREATE VIEW mail_recipients_v AS ` +
+      `SELECT ${address} AS recipient ` +
+      `${joins} WHERE ma.${q('enabled')} AND ${canReceive}`,
 
     `CREATE VIEW mail_suppressions_v AS ` +
       `SELECT ${address} AS sender, ms.${q('recipient')} AS recipient ` +
