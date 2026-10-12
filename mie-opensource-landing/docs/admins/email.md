@@ -29,22 +29,23 @@ Settings → Mail service:
 
 **B. Another agent host.**
 
-1. Install the suggested packages: `apt install postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim` (use the `-mysql` variants on MySQL/MariaDB).
+1. Install the suggested packages: `apt install opensource-mail-helper postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim` (use the `-mysql` variants on MySQL/MariaDB).
 2. Install the per-domain certs under `/etc/ssl` (same layout as nginx).
-3. Set the **Mail DB host** setting, and put `MAIL_POSTFIX_DB_PASSWORD` / `MAIL_DOVECOT_DB_PASSWORD` (from `/etc/default/container-creator` on the manager, created by `bin/setup-mail-db-roles.sh`) in the agent's `/etc/environment`.
-4. Remove `mail` from the manager's `AGENT_SERVICES`, add it on the new host (see [Deploying Agents](deploying-agents.md)). It takes the claim.
-5. `rsync /var/vmail` from the old host.
-6. Repoint the port forwards (25, 143, 465, 587, 993) and re-run Check DNS on each domain — the mail IP follows the host's site automatically.
+3. Set the **Mail DB host** setting, give the `mail_postfix`/`mail_dovecot` roles passwords (`ALTER ROLE mail_postfix WITH PASSWORD '...'`), and put `MAIL_POSTFIX_DB_PASSWORD` / `MAIL_DOVECOT_DB_PASSWORD` in the agent's `/etc/environment`.
+4. Make sure the agent checks in over HTTPS — the manager refuses to send the mail snapshot (DKIM keys, relay credentials) over plaintext (`insecure_transport`).
+5. Remove `mail` from the manager's `AGENT_SERVICES`, add it on the new host (see [Deploying Agents](deploying-agents.md)). It takes the claim.
+6. `rsync /var/vmail` from the old host.
+7. Repoint the port forwards (25, 143, 465, 587, 993) and re-run Check DNS on each domain — the mail IP follows the host's site automatically.
 
 **C. Self-managed MTA (no agent runs `mail`).**
 
 1. Set **Self-managed site id** to the site whose `externalIp` sends mail.
-2. Point Dovecot at `mail_accounts_v` and Postfix at `mail_senders_v`, with Dovecot's `quota-status` guarding RCPT. The views are a documented, stable contract — see [Database Schema](../developers/database-schema.md#mail-views).
-3. Export DKIM keys per domain (`GET /api/v1/external-domains/{id}/mail/dkim` is logged) and use the agent templates under `agent/templates/mail/` as a reference. Run `opensource-mail-helper` yourself for unsubscribe headers, or skip them.
+2. Point Dovecot at `mail_accounts_v` and Postfix at `mail_senders_v` + `mail_recipients_v`, with Dovecot's `quota-status` guarding RCPT. The views are a documented, stable contract — see [Database Schema](../developers/database-schema.md#mail-views).
+3. Export DKIM keys per domain (`GET /api/v1/external-domains/{id}/mail/dkim` — admin-only, audited in the manager log) and use the agent templates under `agent/templates/mail/` as a reference. Run the `opensource-mail-helper` milter yourself for suppressions + unsubscribe headers (it only needs the DB views and the unsubscribe keys in its `config.local.json`), or skip them.
 
 ## DB Roles
 
-`create-a-container/bin/setup-mail-db-roles.sh` creates the read-only `mail_dovecot` and `mail_postfix` users and grants SELECT on the views. It runs automatically on the manager (first boot + package upgrades); run it with `--print-sql` for a DBA, `--rotate` to regenerate the passwords in `/etc/default/container-creator`.
+Migration `20261012000000` creates the read-only `mail_dovecot` and `mail_postfix` roles and grants SELECT on the views (the manager grants its app user `CREATEROLE` at first boot; elsewhere the migration logs the SQL for a DBA). Local mail hosts authenticate over the socket (Postgres peer via `pg_ident`); remote hosts need operator-set passwords (`ALTER ROLE … WITH PASSWORD`).
 
 ## Backups
 

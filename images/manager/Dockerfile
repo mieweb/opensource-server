@@ -51,7 +51,7 @@ COPY images/manager/container-creator-init.service /etc/systemd/system/container
 # enable the init service.
 RUN --mount=from=builder,source=/dist,target=/dist \
     apt-get update && \
-    apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-mcp_*.deb /dist/opensource-server_*.deb && \
+    apt-get install -y /dist/opensource-docs_*.deb /dist/opensource-mcp_*.deb /dist/opensource-server_*.deb /dist/opensource-mail-helper_*.deb && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     systemctl enable container-creator-init.service

@@ -23,5 +23,6 @@
 --deb-suggests dovecot-pgsql
 --deb-suggests dovecot-mysql
 --deb-suggests opendkim
+--deb-suggests opensource-mail-helper
 --deb-no-default-config-files
 --after-install contrib/postinstall.sh

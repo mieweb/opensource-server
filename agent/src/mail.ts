@@ -1,12 +1,19 @@
 /**
  * The `mail` service group (issue #67): Postfix + Dovecot + OpenDKIM +
- * opensource-mail-helper, rendered from the holder-only `mail` section of
- * the config snapshot.
+ * opensource-mail-helper (a milter, shipped as its own component under
+ * /opt/opensource-server/mail-helper), rendered from the holder-only `mail`
+ * section of the config snapshot.
  *
  * Lifecycle: while this agent holds the mail-host claim, the units are
  * enabled and started after each apply; when the group is turned off or the
  * claim is lost, they are stopped and disabled — configs and /var/vmail stay
- * in place.
+ * in place. System users (vmail, opensource-mail) come from the
+ * opensource-mail-helper package's maintainer scripts; the agent only
+ * manages directories and files.
+ *
+ * Agent-managed mail state (DKIM keys, OpenDKIM tables) lives under
+ * $STATE_DIRECTORY/mail, not /etc. Postfix/Dovecot/OpenDKIM daemon configs
+ * remain in /etc where their packages expect them.
  */
 
 import fs from 'fs';
@@ -15,20 +22,23 @@ import { execFileSync } from 'child_process';
 import {
   enableAndStartServices,
   stopAndDisableServices,
+  getServiceState,
   reloadOrRestartService,
   restartService,
 } from './system';
 import { renderTemplate, type ManagedService } from './apply';
 import { log } from './log';
+import type { AgentConfig } from './config';
 import type { MailConfig, SiteConfig } from './types';
 
 export const MAIL_UNITS = ['opendkim', 'dovecot', 'postfix', 'opensource-mail-helper'];
 
-/** Localhost plumbing between Postfix, the helper, and OpenDKIM. */
-export const HELPER_PORTS = { filterPort: 10025, reinjectPort: 10026, policyPort: 10027 };
-export const OPENDKIM_PORT = 8891;
-
-export const HELPER_CONFIG_FILE = '/etc/opensource-server/mail-helper.json';
+// Paths are env-overridable for development stacks; defaults match the
+// packages. Both milter sockets live inside the Postfix chroot so the
+// chrooted smtpd can reach them without inet ports.
+const HELPER_DIR = process.env.MAIL_HELPER_DIR || '/opt/opensource-server/mail-helper';
+const HELPER_SOCKET_DIR = process.env.MAIL_HELPER_SOCKET_DIR || '/var/spool/postfix/mail-helper';
+const OPENDKIM_SOCKET_DIR = process.env.OPENDKIM_SOCKET_DIR || '/var/spool/postfix/opendkim';
 
 const VMAIL_DIR = '/var/vmail';
 const GC_STATE_FILE = path.join(VMAIL_DIR, '.gc-state.json');
@@ -45,6 +55,11 @@ function fileExists(file: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** The helper is a separate package; report it like a missing binary. */
+export function missingMailHelper(): boolean {
+  return !fileExists(path.join(HELPER_DIR, 'src', 'index.js'));
 }
 
 // --- render context ---------------------------------------------------------
@@ -81,9 +96,14 @@ function fallbackChain(mail: MailConfig): { fallbackCert: string; fallbackKey: s
   };
 }
 
+/** Agent-managed OpenDKIM material under the agent's state directory. */
+function mailStateDir(agent: AgentConfig): string {
+  return path.join(agent.stateDir, 'mail');
+}
+
 /** Everything the mail templates need, derived from the snapshot + local
  * environment (cert presence, DB passwords from /etc/environment). */
-export function buildMailContext(mail: MailConfig, env: NodeJS.ProcessEnv = process.env) {
+export function buildMailContext(mail: MailConfig, agent: AgentConfig, env: NodeJS.ProcessEnv = process.env) {
   const mysql = mail.db.dialect === 'mysql' || mail.db.dialect === 'mariadb';
   const host = mail.db.host;
   // Postfix map syntax: TCP "host:port", or a unix socket path for local
@@ -93,8 +113,11 @@ export function buildMailContext(mail: MailConfig, env: NodeJS.ProcessEnv = proc
     : (mysql ? 'unix:/var/run/mysqld/mysqld.sock' : 'unix:/var/run/postgresql');
   return {
     mail,
-    helper: HELPER_PORTS,
-    opendkimPort: OPENDKIM_PORT,
+    stateDir: mailStateDir(agent),
+    // Milter endpoints as the chrooted smtpd resolves them (queue-dir relative).
+    helperMilter: `unix:${path.posix.relative('/var/spool/postfix', path.posix.join(HELPER_SOCKET_DIR, 'milter.sock'))}`,
+    opendkimMilter: `unix:${path.posix.relative('/var/spool/postfix', path.posix.join(OPENDKIM_SOCKET_DIR, 'opendkim.sock'))}`,
+    opendkimSocket: `local:${path.posix.join(OPENDKIM_SOCKET_DIR, 'opendkim.sock')}`,
     certs: { ...fallbackChain(mail), domains: domainCerts(mail) },
     db: {
       prefix: mysql ? 'mysql' : 'pgsql',
@@ -111,13 +134,13 @@ export function buildMailContext(mail: MailConfig, env: NodeJS.ProcessEnv = proc
   };
 }
 
-/** opensource-mail-helper daemon config (JSON, root:opensource-mail 0640). */
-export function buildHelperConfig(mail: MailConfig, env: NodeJS.ProcessEnv = process.env): string {
-  const context = buildMailContext(mail, env);
+/** Overlay for the helper's committed config.json (see mail-helper/). */
+export function buildHelperLocalConfig(mail: MailConfig, env: NodeJS.ProcessEnv = process.env): string {
+  const mysql = mail.db.dialect === 'mysql' || mail.db.dialect === 'mariadb';
   return `${JSON.stringify({
-    listen: HELPER_PORTS,
+    socket: path.posix.join(HELPER_SOCKET_DIR, 'milter.sock'),
     db: {
-      dialect: context.db.prefix === 'mysql' ? 'mysql' : 'postgres',
+      dialect: mysql ? 'mysql' : 'postgres',
       host: mail.db.host,
       port: mail.db.port,
       database: mail.db.database,
@@ -139,19 +162,19 @@ export const mailServices: ManagedService[] = [
   {
     unit: 'opendkim',
     group: 'mail',
-    async render(config) {
+    async render(config, agent) {
       const mail = mailOf(config);
       if (!mail) return null;
-      const context = buildMailContext(mail);
+      const context = buildMailContext(mail, agent);
       const files = [
         { dest: '/etc/opendkim.conf', content: await renderTemplate('mail/opendkim.conf.ejs', context) },
-        { dest: '/etc/opendkim/keytable', content: await renderTemplate('mail/opendkim-keytable.ejs', context) },
-        { dest: '/etc/opendkim/signingtable', content: await renderTemplate('mail/opendkim-signingtable.ejs', context) },
+        { dest: path.join(context.stateDir, 'opendkim-keytable'), content: await renderTemplate('mail/opendkim-keytable.ejs', context) },
+        { dest: path.join(context.stateDir, 'opendkim-signingtable'), content: await renderTemplate('mail/opendkim-signingtable.ejs', context) },
       ];
       // Private keys never serialized anywhere else on this host.
       for (const k of mail.dkim) {
         files.push({
-          dest: `/etc/dkimkeys/${k.domain}.private`,
+          dest: path.join(context.stateDir, 'dkim', `${k.domain}.private`),
           content: k.privateKey,
           mode: 0o600,
           owner: 'opendkim:opendkim',
@@ -167,10 +190,10 @@ export const mailServices: ManagedService[] = [
   {
     unit: 'dovecot',
     group: 'mail',
-    async render(config) {
+    async render(config, agent) {
       const mail = mailOf(config);
       if (!mail) return null;
-      const context = buildMailContext(mail);
+      const context = buildMailContext(mail, agent);
       return [{
         dest: '/etc/dovecot/dovecot.conf',
         content: await renderTemplate('mail/dovecot.conf.ejs', context),
@@ -195,16 +218,17 @@ export const mailServices: ManagedService[] = [
     // Debian's postfix.service is a wrapper; the real daemon state lives on
     // the postfix@- instance.
     statusUnit: 'postfix@-',
-    async render(config) {
+    async render(config, agent) {
       const mail = mailOf(config);
       if (!mail) return null;
-      const context = buildMailContext(mail);
+      const context = buildMailContext(mail, agent);
       const files = [
         { dest: '/etc/postfix/main.cf', content: await renderTemplate('mail/postfix-main.cf.ejs', context) },
         { dest: '/etc/postfix/master.cf', content: await renderTemplate('mail/postfix-master.cf.ejs', context) },
         { dest: '/etc/postfix/vdomains', content: await renderTemplate('mail/postfix-vdomains.ejs', context) },
         { dest: '/etc/postfix/sni_map', content: await renderTemplate('mail/postfix-sni-map.ejs', context), mode: 0o600 },
         { dest: '/etc/postfix/sql/senders.cf', content: await renderTemplate('mail/postfix-sql-senders.cf.ejs', context), mode: 0o600 },
+        { dest: '/etc/postfix/sql/mailboxes.cf', content: await renderTemplate('mail/postfix-sql-mailboxes.cf.ejs', context), mode: 0o600 },
       ];
       if (mail.relayhost?.username) {
         files.push({
@@ -228,9 +252,11 @@ export const mailServices: ManagedService[] = [
     async render(config) {
       const mail = mailOf(config);
       if (!mail) return null;
+      // The committed config.json ships defaults; the agent only writes the
+      // environment-specific overlay (same split in dev and production).
       return [{
-        dest: HELPER_CONFIG_FILE,
-        content: buildHelperConfig(mail),
+        dest: path.join(HELPER_DIR, 'config.local.json'),
+        content: buildHelperLocalConfig(mail),
         mode: 0o640,
         owner: 'root:opensource-mail',
       }];
@@ -243,25 +269,35 @@ export const mailServices: ManagedService[] = [
 
 // --- lifecycle ---------------------------------------------------------------
 
-/** Create the system users/dirs the mail stack needs. Idempotent; runs only
- * when this agent holds the claim. */
-export function ensureMailProvisioned(): void {
-  const ensureUser = (name: string, opts: string[]) => {
-    try {
-      sh(['id', '-u', name]);
-    } catch {
-      sh(['useradd', '--system', ...opts, name]);
-    }
-  };
-  // Mailbox owner (Dovecot mail_uid/mail_gid).
-  ensureUser('vmail', ['--home-dir', VMAIL_DIR, '--create-home', '--shell', '/usr/sbin/nologin']);
-  // The helper daemon's unprivileged user (reads its config via group).
-  ensureUser('opensource-mail', ['--no-create-home', '--shell', '/usr/sbin/nologin']);
+/** Create the directories the mail stack needs. Idempotent; runs only when
+ * this agent holds the claim. System users come from package maintainer
+ * scripts (opensource-mail-helper postinst creates vmail + opensource-mail). */
+export function ensureMailProvisioned(agent: AgentConfig): void {
   fs.mkdirSync(VMAIL_DIR, { recursive: true });
   sh(['chown', 'vmail:vmail', VMAIL_DIR]);
   sh(['chmod', '0750', VMAIL_DIR]);
-  fs.mkdirSync('/etc/dkimkeys', { recursive: true });
-  fs.mkdirSync('/etc/opensource-server', { recursive: true });
+
+  // Agent-managed DKIM material under $STATE_DIRECTORY/mail.
+  const stateDir = mailStateDir(agent);
+  fs.mkdirSync(path.join(stateDir, 'dkim'), { recursive: true });
+  sh(['chown', 'root:opendkim', stateDir, path.join(stateDir, 'dkim')]);
+  sh(['chmod', '0750', stateDir, path.join(stateDir, 'dkim')]);
+
+  // Milter socket dirs inside the Postfix chroot. The chrooted smtpd
+  // connects as user postfix: setgid keeps sockets group-owned, and postfix
+  // joins the opendkim group for OpenDKIM's socket (the standard Debian
+  // recipe).
+  fs.mkdirSync(HELPER_SOCKET_DIR, { recursive: true });
+  sh(['chown', 'opensource-mail:postfix', HELPER_SOCKET_DIR]);
+  sh(['chmod', '2750', HELPER_SOCKET_DIR]);
+  fs.mkdirSync(OPENDKIM_SOCKET_DIR, { recursive: true });
+  sh(['chown', 'opendkim:postfix', OPENDKIM_SOCKET_DIR]);
+  sh(['chmod', '2750', OPENDKIM_SOCKET_DIR]);
+  try {
+    sh(['usermod', '-a', '-G', 'opendkim', 'postfix']);
+  } catch {
+    /* already a member, or opendkim not installed yet */
+  }
 }
 
 /** Enable+start the mail units while holding the claim; stop+disable them
@@ -275,6 +311,17 @@ export async function syncMailUnits(config: SiteConfig): Promise<void> {
     log.info(`mail: not the mail host (${config.mailStatus}); ensuring units are stopped`);
   }
   await stopAndDisableServices(MAIL_UNITS);
+}
+
+/** Stop the stack when the `mail` group itself is disabled — but only when
+ * something is actually running, so plain nginx/dnsmasq agents don't issue
+ * no-op unit operations every 30 seconds. */
+export async function stopMailUnitsIfRunning(): Promise<void> {
+  const states = await Promise.all(MAIL_UNITS.map((unit) => getServiceState(unit)));
+  if (states.some((state) => state === 'active' || state === 'activating')) {
+    log.info('mail: service group disabled but units are running; stopping them');
+    await stopAndDisableServices(MAIL_UNITS);
+  }
 }
 
 /** Remove Maildirs of deleted accounts after a retention window. A dir is

@@ -2,7 +2,9 @@
 Syslog                  yes
 UMask                   007
 Mode                    s
-Socket                  inet:<%= opendkimPort %>@127.0.0.1
+# Unix socket inside the Postfix chroot (no inet port); postfix is a member
+# of the opendkim group to connect.
+Socket                  <%= opendkimSocket %>
 UserID                  opendkim
 PidFile                 /run/opendkim/opendkim.pid
 
@@ -11,6 +13,7 @@ Canonicalization        relaxed/simple
 # both signs them when present and prevents later injection.
 OversignHeaders         From,List-Unsubscribe,List-Unsubscribe-Post
 
-KeyTable                /etc/opendkim/keytable
-SigningTable            refile:/etc/opendkim/signingtable
+# Tables and keys are agent-managed state under $STATE_DIRECTORY/mail.
+KeyTable                <%= stateDir %>/opendkim-keytable
+SigningTable            refile:<%= stateDir %>/opendkim-signingtable
 InternalHosts           127.0.0.0/8

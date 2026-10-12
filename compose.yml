@@ -42,6 +42,7 @@ services:
       - |
         npm -C create-a-container ci --no-audit --no-fund
         make -C agent build
+        make -C mail-helper build
 
   # Watches the React client and rebuilds the production bundle on change. The
   # Manager LXC inside Proxmox serves create-a-container/client/dist statically

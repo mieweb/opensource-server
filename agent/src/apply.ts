@@ -142,6 +142,22 @@ function writeFileAtomic(dest: string, content: string, mode?: number, owner?: s
   fs.renameSync(tmp, dest);
 }
 
+/** Re-apply desired mode/owner to files whose content already matches. */
+function reconcileAttributes(svc: ManagedService, files: { dest: string; mode?: number; owner?: string }[]): void {
+  for (const f of files) {
+    try {
+      if (f.mode !== undefined && (fs.statSync(f.dest).mode & 0o7777) !== f.mode) {
+        fs.chmodSync(f.dest, f.mode);
+        log.info(`${svc.unit}: fixed mode on ${f.dest}`);
+      }
+      // chown is idempotent and cheap; names are resolved by chown itself.
+      if (f.owner) run(['chown', f.owner, f.dest]);
+    } catch (err) {
+      log.warn(`${svc.unit}: could not reconcile attributes on ${f.dest}: ${(err as Error).message}`);
+    }
+  }
+}
+
 export async function applyService(
   svc: ManagedService,
   config: SiteConfig,
@@ -157,6 +173,10 @@ export async function applyService(
   const current = new Map(files.map((f) => [f.dest, readIfExists(f.dest)]));
   const changed = files.filter((f) => current.get(f.dest) !== f.content).map((f) => f.dest);
   if (changed.length === 0) {
+    // Contents match, but desired mode/owner must still be reconciled — a
+    // DKIM key or helper config accidentally left world-readable would
+    // otherwise stay exposed forever.
+    reconcileAttributes(svc, files);
     log.debug(`${svc.unit}: config unchanged, nothing to do`);
     return 'success';
   }
@@ -176,6 +196,16 @@ export async function applyService(
     for (const [dest, prev] of current) {
       if (prev === null) fs.rmSync(dest, { force: true });
       else writeFileAtomic(dest, prev, modeByDest.get(dest), ownerByDest.get(dest));
+    }
+    // Post-write commands may have produced sidecar artifacts from the new
+    // sources (e.g. postmap compiling sni_map.db) — regenerate them from the
+    // restored files so no stale compiled state survives the rollback.
+    for (const cmd of svc.postWrite ?? []) {
+      try {
+        run(cmd);
+      } catch (err) {
+        log.error(`${svc.unit}: post-write command failed during rollback (\`${cmd.join(' ')}\`): ${(err as Error).message}`);
+      }
     }
     log.debug(`${svc.unit}: rolled back to previous config`);
   };

@@ -294,9 +294,10 @@ The dialect-aware views created by migration `20261008000006` (SQL built in `cre
 |------|---------|----------|
 | `mail_accounts_v` | `address`, `password` (`{ARGON2ID}`-prefixed), `home`, `quota_bytes`, `can_send`, `can_receive` — enabled accounts only | Dovecot passdb/userdb (`mail_dovecot` role) |
 | `mail_senders_v` | `sender`, `login`, `account_id`, `unsubscribe_headers` — can-send accounts | Postfix `smtpd_sender_login_maps` + opensource-mail-helper (`mail_postfix` role) |
-| `mail_suppressions_v` | `sender`, `recipient` | Submission policy service (`mail_postfix` role) |
+| `mail_recipients_v` | `recipient` — deliverable addresses on can-receive domains | Postfix `virtual_mailbox_maps` (unknown recipients rejected at RCPT) |
+| `mail_suppressions_v` | `sender`, `recipient` | opensource-mail-helper milter — reject at RCPT (`mail_postfix` role) |
 
-`bin/setup-mail-db-roles.sh` creates the two read-only roles and grants; the views migration also grants best-effort so either ordering converges.
+Migration `20261012000000` creates the two read-only roles and grants; the views migration also grants best-effort so either ordering converges.
 
 ## User Management Models
 

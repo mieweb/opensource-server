@@ -104,14 +104,14 @@ Services are organized in groups enabled via `AGENT_SERVICES`. The check-in repo
 |-------|---------|-------|------|--------|
 | nginx | nginx | `/etc/nginx/nginx.conf` | `nginx -t` | `systemctl reload-or-restart nginx` |
 | dnsmasq | dnsmasq | `/etc/dnsmasq.conf`, `/var/lib/dnsmasq/{dhcp-hosts,hosts,dhcp-opts,servers}` | `dnsmasq --test` | restart when `/etc/dnsmasq.conf` changed, otherwise SIGHUP |
-| mail | opendkim | `/etc/opendkim.conf`, `/etc/opendkim/{keytable,signingtable}`, `/etc/dkimkeys/*.private` | `opendkim -n` | restart |
+| mail | opendkim | `/etc/opendkim.conf`, `$STATE_DIRECTORY/mail/{opendkim-keytable,opendkim-signingtable,dkim/*.private}` | `opendkim -n` | restart |
 | mail | dovecot | `/etc/dovecot/dovecot.conf` | `doveconf -n` | reload + `doveadm auth cache flush` |
-| mail | postfix (status: `postfix@-`) | `/etc/postfix/{main.cf,master.cf,vdomains,sni_map,sql/senders.cf}` | `postfix check` (after `postmap -F` postWrite) | reload-or-restart |
-| mail | opensource-mail-helper | `/etc/opensource-server/mail-helper.json` | — | restart |
+| mail | postfix (status: `postfix@-`) | `/etc/postfix/{main.cf,master.cf,vdomains,sni_map,sql/senders.cf,sql/mailboxes.cf}` | `postfix check` (after `postmap -F` postWrite) | reload-or-restart |
+| mail | opensource-mail-helper | `/opt/opensource-server/mail-helper/config.local.json` | — | restart |
 
-The mail group renders only on the agent holding the mail-host claim (the `mail` section of the snapshot). Taking the claim creates the `vmail`/`opensource-mail` users and enables + starts the units; losing it (or removing `mail` from `AGENT_SERVICES`) stops and disables them, leaving configs and `/var/vmail` in place. Maildirs of deleted accounts are garbage-collected after 30 days.
+The mail group renders only on the agent holding the mail-host claim (the `mail` section of the snapshot). The helper is its own component/package ([mail-helper/](https://github.com/mieweb/opensource-server/tree/main/mail-helper)) — a Postfix milter on a unix socket inside the Postfix chroot, ordered before OpenDKIM so the DKIM signature covers the List-Unsubscribe headers it injects. Taking the claim provisions directories (system users come from the helper package) and enables + starts the units; losing it — or removing `mail` from `AGENT_SERVICES` — stops and disables them, leaving configs and `/var/vmail` in place. Maildirs of deleted accounts are garbage-collected after 30 days.
 
-Apply flow per service: render templates, skip if nothing changed, stage new files, run post-write commands, run the test command, roll back on failure, then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
+Apply flow per service: render templates, reconcile file mode/owner even when contents are unchanged, stage new files, run post-write commands, run the test command, roll back on failure (re-running post-write commands against the restored sources), then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
 
 To add a managed service, add a `ManagedService` entry in [`agent/src/apply.ts`](https://github.com/mieweb/opensource-server/blob/main/agent/src/apply.ts) (or `agent/src/mail.ts` for the mail group) plus its template(s) under `agent/templates/`, and extend the config snapshot in `create-a-container/utils/agent-config.js`.
 

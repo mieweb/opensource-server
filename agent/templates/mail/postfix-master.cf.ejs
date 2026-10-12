@@ -1,12 +1,15 @@
 # Managed by opensource-agent (mail service group) — do not edit.
 #
+# Submission policy (restrictions, milters) is defined as named parameters
+# in main.cf and referenced here, keeping master.cf overrides single-valued.
+#
 # service   type  private unpriv  chroot  wakeup  maxproc command + args
 smtp        inet  n       -       y       -       -       smtpd
 
 # Submission (STARTTLS on 587, implicit TLS on 465): AUTH only after TLS,
-# sender must match the SASL login, suppressions are enforced at RCPT by the
-# opensource-mail-helper policy service, and everything accepted goes through
-# the mailhelper content filter for List-Unsubscribe headers.
+# sender must match the SASL login, and the pre-queue milters (mail-helper,
+# then OpenDKIM) enforce suppressions at RCPT and sign with the injected
+# List-Unsubscribe headers covered.
 submission  inet  n       -       y       -       -       smtpd
   -o syslog_name=postfix/submission
   -o smtpd_tls_security_level=encrypt
@@ -15,9 +18,9 @@ submission  inet  n       -       y       -       -       smtpd
   -o smtpd_sasl_type=dovecot
   -o smtpd_sasl_path=private/auth
   -o smtpd_sender_restrictions=reject_sender_login_mismatch
-  -o { smtpd_relay_restrictions = permit_sasl_authenticated, reject }
-  -o { smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:<%= helper.policyPort %>, permit_sasl_authenticated, reject }
-  -o content_filter=mailhelper:[127.0.0.1]:<%= helper.filterPort %>
+  -o smtpd_relay_restrictions=$submission_recipient_restrictions
+  -o smtpd_recipient_restrictions=$submission_recipient_restrictions
+  -o smtpd_milters=$submission_milters
 smtps       inet  n       -       y       -       -       smtpd
   -o syslog_name=postfix/smtps
   -o smtpd_tls_wrappermode=yes
@@ -25,28 +28,9 @@ smtps       inet  n       -       y       -       -       smtpd
   -o smtpd_sasl_type=dovecot
   -o smtpd_sasl_path=private/auth
   -o smtpd_sender_restrictions=reject_sender_login_mismatch
-  -o { smtpd_relay_restrictions = permit_sasl_authenticated, reject }
-  -o { smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:<%= helper.policyPort %>, permit_sasl_authenticated, reject }
-  -o content_filter=mailhelper:[127.0.0.1]:<%= helper.filterPort %>
-
-# Transport to the opensource-mail-helper content filter.
-mailhelper  unix  -       -       y       -       -       smtp
-  -o syslog_name=postfix/mailhelper
-  -o smtp_send_xforward_command=yes
-  -o disable_dns_lookups=yes
-  -o smtp_tls_security_level=none
-
-# Reinjection listener: the OpenDKIM milter runs HERE (not on 587/465) so the
-# signature covers the headers the helper added.
-127.0.0.1:<%= helper.reinjectPort %> inet n - y - - smtpd
-  -o syslog_name=postfix/reinject
-  -o smtpd_milters=inet:127.0.0.1:<%= opendkimPort %>
-  -o content_filter=
-  -o mynetworks=127.0.0.0/8
-  -o { smtpd_relay_restrictions = permit_mynetworks, reject }
-  -o { smtpd_recipient_restrictions = permit_mynetworks, reject }
-  -o smtpd_tls_security_level=none
-  -o smtpd_authorized_xforward_hosts=127.0.0.0/8
+  -o smtpd_relay_restrictions=$submission_recipient_restrictions
+  -o smtpd_recipient_restrictions=$submission_recipient_restrictions
+  -o smtpd_milters=$submission_milters
 
 pickup      unix  n       -       y       60      1       pickup
 cleanup     unix  n       -       y       -       0       cleanup
