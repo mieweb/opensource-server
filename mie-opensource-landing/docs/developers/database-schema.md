@@ -138,6 +138,7 @@ erDiagram
         int id PK
         string name
         string associatedResource
+        int containerId "nullable; the container a create/reconfigure job acts on"
         enum status "pending,running,success,failure,cancelled"
     }
 
