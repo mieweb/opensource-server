@@ -50,6 +50,12 @@ export function normalizeInstanceUrl(raw: string): string {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     throw new ConfigError(`Instance URL must be http(s): ${JSON.stringify(raw)}`);
   }
+  // API keys and app secrets travel to the Manager: plain HTTP only for a
+  // local development Manager.
+  const loopback = url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname.startsWith('127.');
+  if (url.protocol === 'http:' && !loopback) {
+    throw new ConfigError(`Instance URL must use https (http is only allowed for localhost): ${JSON.stringify(raw)}`);
+  }
   if (url.username || url.password) {
     throw new ConfigError('Instance URL must not contain credentials');
   }

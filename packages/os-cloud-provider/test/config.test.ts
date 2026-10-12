@@ -34,17 +34,22 @@ describe('normalizeInstanceUrl', () => {
     assert.throws(() => normalizeInstanceUrl('https://u:p@x'), ConfigError);
     assert.throws(() => normalizeInstanceUrl('not a url'), ConfigError);
   });
+  test('plain http only for a loopback Manager', () => {
+    assert.throws(() => normalizeInstanceUrl('http://os.example.test'), /must use https/);
+    assert.equal(normalizeInstanceUrl('http://127.0.0.1:3000'), 'http://127.0.0.1:3000');
+    assert.equal(normalizeInstanceUrl('http://[::1]:3000'), 'http://[::1]:3000');
+  });
 });
 
 test('instance URL precedence: env → targetConfig → default', () => {
-  assert.equal(resolveInstanceUrl({ MIEWEB_OS_URL: 'http://a.test' }, { instanceUrl: 'http://b.test' }), 'http://a.test');
-  assert.equal(resolveInstanceUrl({}, { instanceUrl: 'http://b.test' }), 'http://b.test');
+  assert.equal(resolveInstanceUrl({ MIEWEB_OS_URL: 'https://a.test' }, { instanceUrl: 'https://b.test' }), 'https://a.test');
+  assert.equal(resolveInstanceUrl({}, { instanceUrl: 'https://b.test' }), 'https://b.test');
   assert.equal(resolveInstanceUrl({}, {}), 'https://os.mieweb.org');
 });
 
 test('instanceFromArgv', () => {
-  assert.equal(instanceFromArgv(['--instance', 'http://a.test']), 'http://a.test');
-  assert.equal(instanceFromArgv(['-x', '--instance=http://b.test']), 'http://b.test');
+  assert.equal(instanceFromArgv(['--instance', 'https://a.test']), 'https://a.test');
+  assert.equal(instanceFromArgv(['-x', '--instance=https://b.test']), 'https://b.test');
   assert.equal(instanceFromArgv([]), undefined);
   for (const bad of [['--instance'], ['--instance='], ['--instance', ''], ['--instance', '--other']]) {
     assert.throws(() => instanceFromArgv(bad), /--instance needs a Manager URL/, JSON.stringify(bad));
