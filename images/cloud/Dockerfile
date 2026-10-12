@@ -70,7 +70,6 @@ RUN groupadd --system --gid 950 mieweb && \
     install -d -o root -g root -m 0755 /opt/app && \
     install -d -o mieweb -g mieweb /opt/app/src /opt/app/home
 
-COPY --chmod=0755 mieweb-data-dir.sh /usr/local/bin/mieweb-data-dir
 COPY --chmod=0755 mieweb-app-start.sh /usr/local/bin/mieweb-app-start
 COPY --chmod=0755 mieweb-env.sh /usr/local/bin/mieweb-env
 COPY minio.service libsqld.service valkey.service app.service mieweb-env.service /etc/systemd/system/

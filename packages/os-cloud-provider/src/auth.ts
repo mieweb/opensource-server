@@ -192,14 +192,15 @@ export async function startLoopback(
   });
   const port = (server.address() as { port: number }).port;
 
-  const timer = setTimeout(() => settle.reject(new Error('Timed out waiting for the browser sign-in')), timeoutMs);
-  const onAbort = (): void => settle.reject(signal.reason);
-  signal.addEventListener('abort', onAbort, { once: true });
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const stop = AbortSignal.any([signal, timeout]);
+  const onAbort = (): void =>
+    settle.reject(timeout.aborted && !signal.aborted ? new Error('Timed out waiting for the browser sign-in') : signal.reason);
+  stop.addEventListener('abort', onAbort, { once: true });
   // An abort during listen() already fired; AbortSignal doesn't replay it.
-  if (signal.aborted) onAbort();
+  if (stop.aborted) onAbort();
   const close = (): void => {
-    clearTimeout(timer);
-    signal.removeEventListener('abort', onAbort);
+    stop.removeEventListener('abort', onAbort);
     server.closeAllConnections();
     server.close();
   };
@@ -300,17 +301,19 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
   }
 }
 
-/** Revoke one key. True when it is gone (revoked now, already deleted, or already invalid). */
-async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployContext, deps: ProviderDeps): Promise<boolean> {
+/** Delete one API key; resolves when it is gone (now, or already deleted/invalid). */
+async function deleteKey(client: ManagerClient, key: PendingRevocation): Promise<void> {
   try {
-    await clientFor(ctx, deps, instanceUrl, key.token).call((api) =>
-      api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }),
-    );
-    return true;
+    await client.call((api) => api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }));
   } catch (err) {
-    const status = (err as { status?: number }).status;
-    return (err as Error).name === 'AuthError' || status === 404;
+    const gone = (err as Error).name === 'AuthError' || (err as { status?: number }).status === 404;
+    if (!gone) throw err;
   }
+}
+
+/** Revoke one key. True when it is gone. */
+async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployContext, deps: ProviderDeps): Promise<boolean> {
+  return deleteKey(clientFor(ctx, deps, instanceUrl, key.token), key).then(() => true, () => false);
 }
 
 /**
@@ -320,24 +323,7 @@ async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployCo
 async function revokeUrgently(instanceUrl: string, key: PendingRevocation, deps: ProviderDeps): Promise<boolean> {
   const signal = AbortSignal.timeout(30_000);
   const client = new ManagerClient({ instanceUrl, token: key.token, target: 'mieweb', signal, fetch: deps.fetch });
-  try {
-    await pRetry(
-      async () => {
-        try {
-          await client.call((api) => api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }));
-        } catch (err) {
-          const status = (err as { status?: number }).status;
-          // Gone already / no longer valid: nothing left to revoke.
-          if ((err as Error).name === 'AuthError' || status === 404) return;
-          throw err;
-        }
-      },
-      { retries: 3, minTimeout: 500, signal },
-    );
-    return true;
-  } catch {
-    return false;
-  }
+  return pRetry(() => deleteKey(client, key), { retries: 3, minTimeout: 500, signal }).then(() => true, () => false);
 }
 
 /**

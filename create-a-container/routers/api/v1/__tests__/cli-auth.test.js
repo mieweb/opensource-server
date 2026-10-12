@@ -90,27 +90,6 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(back).toBe(`${BASE}?port=53682&state=${STATE}&client=cli`);
   });
 
-  test('a proxy base path (X-Forwarded-Prefix) is kept in the sign-in and return URLs', async () => {
-    const res = await request(app)
-      .get(`${BASE}?port=53682&state=${STATE}`)
-      .set(...REMOTE)
-      .set('X-Forwarded-Prefix', '/manager/');
-    expect(res.status).toBe(302);
-    const loc = new URL(res.headers.location, 'http://manager.test');
-    expect(loc.pathname).toBe('/manager/login');
-    expect(loc.searchParams.get('redirect')).toBe(`/manager${BASE}?port=53682&state=${STATE}`);
-  });
-
-  test('an oversized or slash-flooded X-Forwarded-Prefix is ignored quickly', async () => {
-    const started = Date.now();
-    for (const prefix of ['/a' + '/'.repeat(8_000) + 'b', '/'.repeat(300)]) {
-      const res = await request(app).get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', prefix);
-      expect(res.status).toBe(302);
-      expect(new URL(res.headers.location, 'http://manager.test').pathname).toBe('/login');
-    }
-    expect(Date.now() - started).toBeLessThan(5000);
-  });
-
   test("the confirmation page's CSP lets the form's redirect reach the loopback port (and nothing else)", async () => {
     const agent = await loggedInAgent(app, 'alice');
     const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);
@@ -118,18 +97,6 @@ describe('/api/v1/auth/cli/callback', () => {
     const formAction = csp.split(';').map((d) => d.trim()).find((d) => d.startsWith('form-action'));
     expect(formAction).toBe("form-action 'self' http://127.0.0.1:53682");
     expect(csp).toContain("default-src 'none'");
-  });
-
-  test('the confirmation page keeps the base path in its form action and Cancel link', async () => {
-    const agent = await loggedInAgent(app, 'alice');
-    const res = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', '/manager');
-    expect(res.text).toContain(`action="/manager${BASE}"`);
-    expect(res.text).toContain('href="/manager/">Cancel');
-  });
-
-  test.each(['//evil.example', 'https://evil.example', '/a/../b', '/a b'])('an unsafe X-Forwarded-Prefix %j is ignored', async (prefix) => {
-    const res = await request(app).get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE).set('X-Forwarded-Prefix', prefix);
-    expect(new URL(res.headers.location, 'http://manager.test').pathname).toBe('/login');
   });
 
   test('authenticated GET shows a confirmation form and mints nothing', async () => {
@@ -228,8 +195,8 @@ describe('/api/v1/auth/cli/callback', () => {
     const agent = await loggedInAgent(app, 'alice');
     const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
     const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
-    const now = Date.now();
-    jest.spyOn(Date, 'now').mockReturnValue(now + 3 * 60 * 1000);
+    const now = performance.now();
+    jest.spyOn(performance, 'now').mockReturnValue(now + 3 * 60 * 1000);
     try {
       expect((await redeem({ code, state: STATE })).status).toBe(400);
     } finally {
@@ -240,25 +207,17 @@ describe('/api/v1/auth/cli/callback', () => {
 
   test('a redeemed code (and the key it holds for retries) is dropped when it expires', async () => {
     const agent = await loggedInAgent(app, 'alice');
-    const timers = [];
-    const real = global.setTimeout;
-    const spy = jest.spyOn(global, 'setTimeout').mockImplementation((fn, ms, ...rest) => {
-      const t = real(() => {}, 0);
-      if (ms === 2 * 60 * 1000) timers.push(fn);
-      return t;
-    });
-    let code;
-    try {
-      code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
-    } finally {
-      spy.mockRestore();
-    }
+    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
     expect((await redeem({ code, state: STATE })).status).toBe(200);
     const held = heldCodes();
-    expect(timers).toHaveLength(1);
-    timers[0](); // the code's TTL elapses
-    expect(heldCodes()).toBe(held - 1);
-    expect((await redeem({ code, state: STATE })).status).toBe(400);
+    const now = performance.now();
+    jest.spyOn(performance, 'now').mockReturnValue(now + 3 * 60 * 1000);
+    try {
+      expect((await redeem({ code, state: STATE })).status).toBe(400);
+      expect(heldCodes()).toBe(held - 1);
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   test('the handoff is one-time: a replayed POST mints no second key', async () => {

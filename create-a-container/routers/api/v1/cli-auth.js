@@ -31,8 +31,9 @@
 const crypto = require('crypto');
 const express = require('express');
 const escapeHtml = require('escape-html');
+const { LRUCache } = require('lru-cache');
 const { isOidcEnabled } = require('../../../utils/oidc');
-const { generateCsrfToken, asyncHandler, ok, ApiError } = require('../../../middlewares/api');
+const { generateCsrfToken, asyncHandler, ok, ApiError, jsonErrorHandler } = require('../../../middlewares/api');
 const apiKeys = require('../../../resources/apikeys/service');
 
 const router = express.Router();
@@ -44,18 +45,14 @@ const router = express.Router();
 // lost can safely retry instead of leaving a key it never received. A wrong
 // state burns the code.
 const CODE_TTL_MS = 2 * 60 * 1000;
-const codes = new Map();
+// Autopurged at expiry: once redeemed, an entry holds the plaintext key (for
+// retries), which must not outlive the code.
+const codes = new LRUCache({ max: 10_000, ttl: CODE_TTL_MS, ttlAutopurge: true });
 const hashCode = (code) => crypto.createHash('sha256').update(code).digest('hex');
 
 function issueCode({ user, client, state }) {
   const code = crypto.randomBytes(32).toString('base64url');
-  const key = hashCode(code);
-  // Each entry is dropped when it expires: once redeemed it holds the
-  // plaintext key (for retries), which must not outlive the code. unref: the
-  // timer alone doesn't keep the process up.
-  const timer = setTimeout(() => codes.delete(key), CODE_TTL_MS);
-  timer.unref?.();
-  codes.set(key, { user, client, state, expires: Date.now() + CODE_TTL_MS, timer });
+  codes.set(hashCode(code), { user, client, state });
   return code;
 }
 
@@ -67,10 +64,9 @@ function issueCode({ user, client, state }) {
 function redeemCode(code, state, mint) {
   if (typeof code !== 'string' || typeof state !== 'string') return null;
   const key = hashCode(code);
-  const entry = codes.get(key);
+  const entry = codes.get(key); // undefined once expired
   if (!entry) return null;
-  if (entry.expires <= Date.now() || entry.state !== state) {
-    clearTimeout(entry.timer);
+  if (entry.state !== state) {
     codes.delete(key);
     return null;
   }
@@ -85,28 +81,11 @@ function redeemCode(code, state, mint) {
 // is taken synchronously (no await in between), so two concurrent POSTs of
 // the same form can't both read the session's handoff before either save
 // lands and both mint a key. (The Manager is a single Node process.)
-const claims = new Map();
-const CLAIM_TTL_MS = 10 * 60 * 1000;
+const claims = new LRUCache({ max: 10_000, ttl: 10 * 60 * 1000, ttlAutopurge: true });
 function claimHandoff(key) {
-  const now = Date.now();
-  for (const [k, at] of claims) if (now - at > CLAIM_TTL_MS) claims.delete(k);
   if (claims.has(key)) return false;
-  claims.set(key, now);
+  claims.set(key, true);
   return true;
-}
-
-/**
- * Path prefix the Manager is served under behind a reverse proxy (e.g.
- * `https://host/manager`), from `X-Forwarded-Prefix`. Only a plain path is
- * accepted, so it can't turn the redirects below into another origin.
- */
-function basePrefix(req) {
-  let raw = (req.get('X-Forwarded-Prefix') || '').trim();
-  if (raw.length > 256) return ''; // bounded input for the pattern below
-  while (raw.endsWith('/')) raw = raw.slice(0, -1); // no regex: linear on '////…'
-  if (!raw) return '';
-  if (!/^(\/[A-Za-z0-9._~-]+)+$/.test(raw) || raw.split('/').includes('..')) return '';
-  return raw;
 }
 
 function saveSession(req) {
@@ -179,11 +158,10 @@ router.get('/callback', asyncHandler(async (req, res) => {
     // query string is dropped.
     const params = new URLSearchParams({ port: String(handoff.port), state: handoff.state });
     if (handoff.client) params.set('client', handoff.client);
-    const prefix = basePrefix(req);
-    const self = `${prefix}${req.baseUrl}/callback?${params.toString()}`;
+    const self = `${req.baseUrl}/callback?${params.toString()}`;
     const target = isOidcEnabled()
-      ? `${prefix}/api/v1/auth/oidc/login?redirect=${encodeURIComponent(self)}`
-      : `${prefix}/login?redirect=${encodeURIComponent(self)}`;
+      ? `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(self)}`
+      : `/login?redirect=${encodeURIComponent(self)}`;
     return res.redirect(302, target);
   }
 
@@ -201,14 +179,14 @@ router.get('/callback', asyncHandler(async (req, res) => {
 account. A one-time sign-in code will be sent to a program listening on
 <code>127.0.0.1:${handoff.port}</code> on <em>this</em> computer, which exchanges it for the key.</p>
 <p>Only continue if you just ran <code>mieweb login</code>.</p>
-<form method="post" action="${escapeHtml(`${basePrefix(req)}${req.baseUrl}/callback`)}">
+<form method="post" action="${escapeHtml(`${req.baseUrl}/callback`)}">
   <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}">
   <input type="hidden" name="port" value="${handoff.port}">
   <input type="hidden" name="state" value="${escapeHtml(handoff.state)}">
   ${handoff.client ? `<input type="hidden" name="client" value="${escapeHtml(handoff.client)}">` : ''}
   <div class="actions">
     <button class="primary" type="submit">Authorize</button>
-    <a class="btn" href="${escapeHtml(`${basePrefix(req)}/`)}">Cancel</a>
+    <a class="btn" href="/">Cancel</a>
   </div>
 </form>`, `http://127.0.0.1:${handoff.port}`);
 }));
@@ -259,8 +237,7 @@ router.post('/callback', asyncHandler(async (req, res) => {
 // Redeemed by the CLI itself (no browser session, so this router is mounted
 // before the CSRF guard). The key is created in the CLI's own request, so the
 // CLI always receives (and tracks) any key that exists.
-const tokenRouter = express.Router();
-tokenRouter.post('/token', express.json({ limit: '4kb' }), asyncHandler(async (req, res) => {
+const tokenRoute = [express.json({ limit: '4kb' }), asyncHandler(async (req, res) => {
   const { code, state } = req.body || {};
   const minted = redeemCode(code, state, async (entry) => {
     const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
@@ -270,10 +247,10 @@ tokenRouter.post('/token', express.json({ limit: '4kb' }), asyncHandler(async (r
   if (!minted) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
   res.set('Cache-Control', 'no-store');
   return ok(res, await minted);
-}));
+}), jsonErrorHandler];
 
 module.exports = router;
-module.exports.tokenRouter = tokenRouter;
+module.exports.tokenRoute = tokenRoute;
 module.exports.parseHandoff = parseHandoff;
 /** Test hook: how many codes (and minted keys) are held in memory. */
 module.exports.heldCodes = () => codes.size;

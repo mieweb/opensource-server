@@ -30,6 +30,7 @@ import ignore, { type Ignore } from 'ignore';
 import { quote } from 'shell-quote';
 import tarStream from 'tar-stream';
 import type { RemoteShell } from './ssh.ts';
+import { StringDecoder } from 'node:string_decoder';
 
 export const REMOTE_APP_DIR = '/opt/app/src';
 const OWNER = 'mieweb';
@@ -395,14 +396,17 @@ function human(n: number): string {
  */
 export function lineSplitter(onLine: (line: string, stream: 'stdout' | 'stderr') => void) {
   const pending = { stdout: '', stderr: '' };
+  // A multi-byte character can be split across chunks.
+  const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
   return {
     push: (chunk: Buffer, stream: 'stdout' | 'stderr'): void => {
-      const lines = (pending[stream] + chunk.toString('utf8')).split('\n');
+      const lines = (pending[stream] + decoders[stream].write(chunk)).split('\n');
       pending[stream] = lines.pop() ?? '';
       for (const l of lines) onLine(l, stream);
     },
     flush: (): void => {
       for (const stream of ['stdout', 'stderr'] as const) {
+        pending[stream] += decoders[stream].end();
         if (pending[stream]) onLine(pending[stream], stream);
         pending[stream] = '';
       }

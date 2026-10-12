@@ -11,7 +11,6 @@ const { spawn } = require('child_process');
 const path = require('path');
 const db = require('./models');
 const { runMigrations } = require('./utils/migrate');
-const { jobContainerId } = require('./utils/job-target');
 
 const POLL_INTERVAL_MS = parseInt(process.env.JOB_RUNNER_POLL_MS || '2000', 10);
 const WORKDIR = process.env.JOB_RUNNER_CWD || process.cwd();
@@ -29,23 +28,24 @@ const activeChildren = new Map();
 async function claimPendingJob() {
   const sequelize = db.sequelize;
   return await sequelize.transaction(async (t) => {
-    const running = await db.Job.findAll({
-      where: { status: 'running' },
-      attributes: ['command'],
+    const { Op } = db.Sequelize;
+    const busy = await db.Job.findAll({
+      where: { status: 'running', containerId: { [Op.ne]: null } },
+      attributes: ['containerId'],
       transaction: t,
     });
-    const busy = new Set(running.map((j) => jobContainerId(j.command)).filter((id) => id !== null));
-    const pending = await db.Job.findAll({
-      where: { status: 'pending' },
+    // Oldest first, so a free container's first pending job is its oldest.
+    const job = await db.Job.findOne({
+      where: {
+        status: 'pending',
+        // (An empty NOT IN would match nothing, so only filter when needed.)
+        ...(busy.length > 0 && {
+          [Op.or]: [{ containerId: null }, { containerId: { [Op.notIn]: busy.map((j) => j.containerId) } }],
+        }),
+      },
       order: [['createdAt', 'ASC'], ['id', 'ASC']],
       lock: db.Sequelize.Transaction.LOCK.UPDATE,
       transaction: t,
-    });
-    // Oldest first, so the first pending job for a free container is also
-    // that container's oldest.
-    const job = pending.find((j) => {
-      const id = jobContainerId(j.command);
-      return id === null || !busy.has(id);
     });
 
     if (!job) return null;

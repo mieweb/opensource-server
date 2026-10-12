@@ -120,9 +120,7 @@ export async function replaceCredential(env: ProviderEnv, instanceUrl: string, c
   await mutate(env, (data) => {
     const previous = data.instances[instanceUrl];
     if (previous && previous.apiKeyId !== cred.apiKeyId) queue(data, instanceUrl, previous);
-    const rest = (data.pendingRevocations[instanceUrl] ?? []).filter((p) => p.apiKeyId !== cred.apiKeyId);
-    if (rest.length > 0) data.pendingRevocations[instanceUrl] = rest;
-    else delete data.pendingRevocations[instanceUrl];
+    dequeue(data, instanceUrl, [cred.apiKeyId]);
     data.instances[instanceUrl] = cred;
     return true;
   });
@@ -149,12 +147,14 @@ export async function readPendingRevocations(env: ProviderEnv, instanceUrl: stri
 /** Drop keys from the queue once the Manager confirmed they're revoked. */
 export async function removePendingRevocations(env: ProviderEnv, instanceUrl: string, apiKeyIds: readonly string[]): Promise<void> {
   if (apiKeyIds.length === 0) return;
-  await mutate(env, (data) => {
-    const list = data.pendingRevocations[instanceUrl] ?? [];
-    const rest = list.filter((p) => !apiKeyIds.includes(p.apiKeyId));
-    if (rest.length === list.length) return false;
-    if (rest.length > 0) data.pendingRevocations[instanceUrl] = rest;
-    else delete data.pendingRevocations[instanceUrl];
-    return true;
-  });
+  await mutate(env, (data) => dequeue(data, instanceUrl, apiKeyIds));
+}
+
+/** Take keys off the instance's revocation queue. True if any were queued. */
+function dequeue(data: CredentialFile, instanceUrl: string, apiKeyIds: readonly string[]): boolean {
+  const list = data.pendingRevocations[instanceUrl] ?? [];
+  const rest = list.filter((p) => !apiKeyIds.includes(p.apiKeyId));
+  if (rest.length > 0) data.pendingRevocations[instanceUrl] = rest;
+  else delete data.pendingRevocations[instanceUrl];
+  return rest.length !== list.length;
 }

@@ -60,16 +60,13 @@ function buildApp({
     app.use('/mcp', createMcpProxy(mcpServerUrl));
   }
 
-  // The unauthenticated CLI code redemption parses its own body with a 4 KB
-  // limit (routers/api/v1/cli-auth.js); a parser here would consume the
-  // stream first and bypass it.
-  // Matched the way Express routes match (case-insensitive, optional
-  // trailing slash), so no spelling of the path reaches the big parsers.
-  const { CLI_TOKEN_PATH } = require('./middlewares/api');
-  const unlessCliToken = (mw) => (req, res, next) =>
-    (CLI_TOKEN_PATH.test(req.path) ? next() : mw(req, res, next));
-  app.use(unlessCliToken(express.json()));
-  app.use(unlessCliToken(express.urlencoded({ extended: true })));
+  // `mieweb login` redeems its one-time code here. Registered before the body
+  // parsers (it has its own 4 KB one) and the session/CSRF middleware: the
+  // CLI has no session, and the code in the body is its only credential.
+  app.post('/api/v1/auth/cli/token', require('./routers/api/v1/cli-auth').tokenRoute);
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Configure session store
   const sessionStore = new SequelizeStore({

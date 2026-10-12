@@ -11,6 +11,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(2000),
       allowNull: false
     },
+    // The container this job acts on (create/reconfigure), if any.
+    containerId: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     createdBy: {
       type: DataTypes.STRING,
       allowNull: true

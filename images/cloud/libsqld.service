@@ -7,8 +7,13 @@ Type=simple
 User=mieweb
 Group=mieweb
 EnvironmentFile=-/run/mieweb/env
-ExecStartPre=+/usr/local/bin/mieweb-data-dir libsql
+# /mnt/data (the #421 volume) is root-owned; give the service its own dir.
+ExecStartPre=+/usr/bin/install -d -m 0750 -o mieweb -g mieweb /mnt/data/libsql
 ExecStart=/usr/local/bin/sqld --no-welcome --db-path /mnt/data/libsql/data.sqld --http-listen-addr 127.0.0.1:8080
+# Only "started" once it answers its health check, so units ordered after it
+# (app.service) don't race its listener.
+ExecStartPost=/usr/bin/curl -fs -o /dev/null --retry 120 --retry-delay 1 --retry-all-errors --max-time 2 http://127.0.0.1:8080/health
+TimeoutStartSec=150
 Restart=always
 RestartSec=2
 

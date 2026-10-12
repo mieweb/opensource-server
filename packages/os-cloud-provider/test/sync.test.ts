@@ -3,7 +3,7 @@ import { chmod, lstat, lutimes, mkdir, mkdtemp, readFile, readlink, rm, symlink,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { IgnoreRules, planSync, pruneNames, REMOTE, scanLocal, syncWorktree } from '../src/sync.ts';
+import { IgnoreRules, lineSplitter, planSync, pruneNames, REMOTE, scanLocal, syncWorktree } from '../src/sync.ts';
 import { FakeShell } from './fake-shell.ts';
 
 const logger = { info() {}, warn() {}, error() {} };
@@ -374,4 +374,16 @@ test('planSync diff', () => {
   const plan = planSync(localFiles, remoteFiles, rules);
   assert.deepEqual(plan.upload.map((f) => f.path), ['b']);
   assert.deepEqual(plan.remove, ['c']);
+});
+
+test('lineSplitter: whole lines per stream, multi-byte characters split across chunks intact', () => {
+  const out: string[] = [];
+  const s = lineSplitter((line, stream) => out.push(`${stream}:${line}`));
+  const bytes = Buffer.from('héllo ✓\nlast');
+  s.push(bytes.subarray(0, 2), 'stdout'); // splits the 'é'
+  s.push(bytes.subarray(2, 8), 'stdout'); // splits the '✓'
+  s.push(Buffer.from('err\n'), 'stderr');
+  s.push(bytes.subarray(8), 'stdout');
+  s.flush();
+  assert.deepEqual(out, ['stderr:err', 'stdout:héllo ✓', 'stdout:last']);
 });

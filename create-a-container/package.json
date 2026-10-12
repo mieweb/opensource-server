@@ -29,6 +29,7 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "express-session-sequelize": "^2.3.0",
+    "lru-cache": "^11.5.3",
     "morgan": "^1.12.1",
     "nodemailer": "^10.0.9",
     "openid-client": "^5.7.1",

@@ -714,6 +714,7 @@ router.post(
       const job = await Job.create(
         {
           command: `node bin/create-container.js --container-id=${container.id}`,
+          containerId: container.id,
           createdBy: req.session.user,
           status: 'pending',
         },
@@ -909,6 +910,7 @@ router.put(
           restartJob = await Job.create(
             {
               command: `node bin/reconfigure-container.js --container-id=${container.id}`,
+              containerId: container.id,
               createdBy: req.session.user,
               status: 'pending',
             },
@@ -1095,15 +1097,10 @@ async function deleteContainerLocked(req, res, site, container) {
   // Same for any other job acting on it (a reconfigure from an update or an
   // approved resource request): the runner executes jobs concurrently, so a
   // delete now could race it (on Docker nodes a reconfigure even recreates
-  // the container). Jobs name their container as `--container-id=<id>`.
-  const { Op } = Sequelize;
-  const flag = `--container-id=${container.id}`;
+  // the container).
   const busy = await Job.findOne({
     attributes: ['id'],
-    where: {
-      status: { [Op.in]: ['pending', 'running'] },
-      [Op.or]: [{ command: { [Op.like]: `% ${flag}` } }, { command: { [Op.like]: `% ${flag} %` } }],
-    },
+    where: { containerId: container.id, status: ['pending', 'running'] },
     order: [['id', 'ASC']],
   });
   if (busy) {

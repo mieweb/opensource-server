@@ -109,10 +109,11 @@ describe('DELETE container: node-side failures', () => {
 
   test('a container with a reconfigure job in progress is not deleted (409, names the job)', async () => {
     const c = await provisioned('reconfiguring');
-    // Another container's job whose id merely starts with this one's must not count.
-    await Job.create({ command: `node bin/reconfigure-container.js --container-id=${c.id}9`, createdBy: user.uid, status: 'running' });
+    // Another container's job must not count.
+    await Job.create({ command: 'x', containerId: c.id + 1000, createdBy: user.uid, status: 'running' });
     const job = await Job.create({
       command: `node bin/reconfigure-container.js --container-id=${c.id} --memory=2048`,
+      containerId: c.id,
       createdBy: user.uid,
       status: 'pending',
     });

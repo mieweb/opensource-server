@@ -495,10 +495,6 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     waitForJob(client, jobId, { signal, logger, intervalMs: deps.pollIntervalMs, redact: secrets });
 
   /**
-   * Let an in-flight create (a concurrent or interrupted deploy) finish, then
-   * re-read the container. Null if it no longer exists.
-   */
-  /**
    * Let the container's create job finish if it's still pending/running (a
    * concurrent or interrupted deploy), then re-read it. A VMID doesn't prove
    * the create finished: the job records it as soon as the create is
@@ -680,7 +676,7 @@ export async function deploy(ctx: DeployContext, deps: ProviderDeps): Promise<De
     if (!final.sshPort || !(s.sshHost ?? final.sshHost)) {
       throw new Error(`Container ${id} has no published SSH port/host; cannot sync code (set targets.${ctx.target}.sync to false to skip)`);
     }
-    const shell = await openShell(ctx, deps, client, s, final, { fresh });
+    const shell = await openShell(ctx, deps, client, s, final, { fresh, account });
     try {
       // The lock lives in the container, so it can't span the Manager update
       // (whose restart drops it). Instead, once it's held, make sure no other
@@ -720,13 +716,13 @@ export async function openShell(
   client: ManagerClient,
   s: AccessSettings,
   container: Container,
-  opts: { fresh?: boolean } = {},
+  opts: { fresh?: boolean; account?: string } = {},
 ): Promise<RemoteShell> {
   const { logger, signal } = ctx;
   const port = container.sshPort;
   const host = s.sshHost ?? container.sshHost ?? undefined;
   if (!port || !host) throw new Error(`Container ${container.id} has no published SSH port/host`);
-  const user = s.sshUser ?? (await client.call((api) => api.GET('/session')))?.user ?? '';
+  const user = s.sshUser ?? opts.account ?? (await client.call((api) => api.GET('/session')))?.user ?? '';
   const target: SshTarget = { host, port, user };
   const knownHostsFile = knownHostsPath(deps.env);
   if (opts.fresh) await forgetHostKey(knownHostsFile, host, port);

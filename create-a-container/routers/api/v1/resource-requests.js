@@ -239,6 +239,7 @@ async function applyResourceToExistingContainers(siteId, hostname, username, res
       if (!(await Container.findByPk(container.id, { attributes: ['id'] }))) return;
       await Job.create({
         command: `node bin/reconfigure-container.js --container-id=${container.id} --${resourceType}=${value}`,
+        containerId: container.id,
         createdBy: 'system',
         status: 'pending',
       });
