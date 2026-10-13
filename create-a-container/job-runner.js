@@ -19,31 +19,12 @@ let shuttingDown = false;
 // Map of jobId -> child process for active/running jobs
 const activeChildren = new Map();
 
-/**
- * Claim the oldest pending job that may start now. Jobs for different
- * containers run concurrently, but a container's jobs run one at a time, in
- * order: two reconfigures (or a create and a reconfigure) of one container
- * would otherwise stop/start it, or on Docker recreate it, concurrently.
- */
 async function claimPendingJob() {
   const sequelize = db.sequelize;
   return await sequelize.transaction(async (t) => {
-    const { Op } = db.Sequelize;
-    const busy = await db.Job.findAll({
-      where: { status: 'running', containerId: { [Op.ne]: null } },
-      attributes: ['containerId'],
-      transaction: t,
-    });
-    // Oldest first, so a free container's first pending job is its oldest.
     const job = await db.Job.findOne({
-      where: {
-        status: 'pending',
-        // (An empty NOT IN would match nothing, so only filter when needed.)
-        ...(busy.length > 0 && {
-          [Op.or]: [{ containerId: null }, { containerId: { [Op.notIn]: busy.map((j) => j.containerId) } }],
-        }),
-      },
-      order: [['createdAt', 'ASC'], ['id', 'ASC']],
+      where: { status: 'pending' },
+      order: [['createdAt', 'ASC']],
       lock: db.Sequelize.Transaction.LOCK.UPDATE,
       transaction: t,
     });
@@ -171,6 +152,8 @@ async function loop() {
   }
 }
 
+process.on('SIGINT', () => { shutdownAndCancelJobs('SIGINT').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
+process.on('SIGTERM', () => { shutdownAndCancelJobs('SIGTERM').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
 
 async function start() {
   console.log('JobRunner starting, working dir:', WORKDIR);
@@ -180,10 +163,4 @@ async function start() {
   loop();
 }
 
-if (require.main === module) {
-  process.on('SIGINT', () => { shutdownAndCancelJobs('SIGINT').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
-  process.on('SIGTERM', () => { shutdownAndCancelJobs('SIGTERM').catch(err => { console.error('Shutdown error:', err); process.exit(1); }); });
-  start().catch(err => { console.error('JobRunner failed to start:', err); process.exit(1); });
-}
-
-module.exports = { claimPendingJob };
+start().catch(err => { console.error('JobRunner failed to start:', err); process.exit(1); });

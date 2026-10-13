@@ -33,7 +33,6 @@ export interface FakeContainer {
     mode: 'ro' | 'rw';
     status?: 'pending' | 'ready' | 'failed';
     statusMessage?: string | null;
-    pathOwner?: string | null;
   }[];
   status?: string;
   creationJobId?: number | null;
@@ -57,8 +56,6 @@ export class FakeManager {
   readonly tokens = new Map<string, { user: string; keyId: string }>();
   readonly containers: FakeContainer[] = [];
   readonly jobs = new Map<number, FakeJob>();
-  /** Rewrites a container in list responses (e.g. to serve a stale snapshot). */
-  onList?: (c: ReturnType<FakeManager['serialize']>) => ReturnType<FakeManager['serialize']> | undefined;
   readonly requests: RequestLog[] = [];
   readonly domains = [{ id: 7, name: 'apps.example.test', siteId: 1 }];
   readonly siteId = 1;
@@ -71,8 +68,6 @@ export class FakeManager {
   volumeOutcome: 'ready' | 'failed' = 'ready';
   /** Users treated as Manager admins (see and manage every container). */
   readonly admins = new Set<string>();
-  /** Answer GET /jobs/:id with a 500 for this job id (Manager trouble). */
-  failJobPolls?: number;
   /** Answer GET /session with a 500 for this token. */
   failSessionFor?: string;
   /** Answer DELETE /apikeys/:id with a 500 (Manager trouble). */
@@ -94,11 +89,6 @@ export class FakeManager {
   /** One-time CLI sign-in codes → their state; and how many were redeemed. */
   readonly codes = new Map<string, string>();
   redeemed = 0;
-  private readonly mintedFor = new Map<string, FakeManager['nextKey']>();
-  /** Called when a redemption request arrives (e.g. to cancel the login then). */
-  onRedeem?: () => void;
-  /** Drop the connection after minting this many redemptions. */
-  dropRedeems = 0;
 
   private nextId = 100;
   private nextVmid = 1000;
@@ -142,41 +132,6 @@ export class FakeManager {
     };
     this.containers.push(full);
     return full;
-  }
-
-  /** A container another deploy is still creating: no VMID until its job succeeds. */
-  seedCreating(hostname: string, opts: { withVmid?: boolean } = {}): FakeContainer {
-    const job = this.newJob();
-    // The real create job records the VMID as soon as the create is accepted.
-    const c = this.seedContainer({
-      hostname,
-      containerId: opts.withVmid ? String(this.nextVmid++) : null,
-      status: opts.withVmid ? undefined : 'creating',
-      creationJobId: job.id,
-    });
-    const vmid = String(this.nextVmid++);
-    job.onSuccess = () => {
-      c.containerId ??= vmid;
-      c.status = undefined;
-    };
-    return c;
-  }
-
-  /** A container whose create job already finished with failure (it may have a VMID). */
-  seedFailedCreate(hostname: string): FakeContainer {
-    const job = this.newJob();
-    job.status = 'failure';
-    return this.seedContainer({ hostname, creationJobId: job.id });
-  }
-
-  /** Container id → a (reconfigure) job acting on it. */
-  readonly busyJobs = new Map<number, number>();
-
-  /** Start a job acting on `c` (e.g. a reconfigure from another deploy). */
-  seedBusyJob(c: FakeContainer): FakeJob {
-    const job = this.newJob();
-    this.busyJobs.set(c.id, job.id);
-    return job;
   }
 
   private newJob(): FakeJob {
@@ -242,8 +197,7 @@ export class FakeManager {
       res.end(JSON.stringify(payload));
     };
     const ok = (data: unknown, status = 200): void => send(status, { data });
-    const fail = (status: number, code: string, message = code, fields?: Record<string, string>): void =>
-      send(status, { error: { code, message, ...(fields ? { fields } : {}) } });
+    const fail = (status: number, code: string, message = code): void => send(status, { error: { code, message } });
 
     if (req.method === 'GET' && path === '/health') return ok({ status: 'ok', oidcEnabled: false });
 
@@ -264,26 +218,13 @@ export class FakeManager {
       return;
     }
     if (path === '/auth/cli/token' && req.method === 'POST') {
-      this.onRedeem?.();
-      // Like the real route: a code mints one key; repeating it returns that key.
+      // Like the real route: a single-use code, bound to its state.
       const state = this.codes.get(body?.code);
-      if (!state || state !== body?.state) {
-        this.codes.delete(body?.code);
-        return fail(400, 'invalid_code');
-      }
-      let minted = this.mintedFor.get(body.code);
-      if (!minted) {
-        this.redeemed += 1;
-        minted = { ...this.nextKey };
-        this.mintedFor.set(body.code, minted);
-        this.tokens.set(minted.key, { user: minted.user, keyId: minted.id });
-      }
-      if (this.dropRedeems > 0) {
-        this.dropRedeems -= 1;
-        req.socket.destroy(); // the key exists, but the response is lost
-        return;
-      }
-      return ok({ ...minted });
+      this.codes.delete(body?.code);
+      if (!state || state !== body?.state) return fail(400, 'invalid_code');
+      this.redeemed += 1;
+      this.tokens.set(this.nextKey.key, { user: this.nextKey.user, keyId: this.nextKey.id });
+      return ok({ ...this.nextKey });
     }
 
     const auth = req.headers.authorization ?? '';
@@ -306,9 +247,6 @@ export class FakeManager {
     }
 
     m = /^\/jobs\/(\d+)(\/status)?$/.exec(path);
-    if (m && req.method === 'GET' && !m[2] && Number(m[1]) === this.failJobPolls) {
-      return fail(500, 'internal_error', 'database unavailable');
-    }
     if (m && req.method === 'GET' && !m[2] && this.dropJobPolls > 0) {
       this.dropJobPolls -= 1;
       req.socket.destroy();
@@ -347,29 +285,13 @@ export class FakeManager {
       return ok(
         this.containers
           .filter((c) => (c.owner === who.user || this.admins.has(who.user)) && (!hostname || c.hostname === hostname))
-          .map((c) => this.onList?.(this.serialize(c)) ?? this.serialize(c)),
+          .map((c) => this.serialize(c)),
       );
     }
     if (!sub && req.method === 'POST') {
       this.beforeCreate?.(body.hostname);
-      // Like the Manager's SequelizeUniqueConstraintError mapping: the colliding columns in `fields`.
       if (this.containers.some((c) => c.hostname === body.hostname)) {
-        return fail(409, 'conflict', 'Resource already exists', { siteId: 'siteId already exists', hostname: 'hostname already exists' });
-      }
-      const httpName = Object.values(body.services ?? {}).find((x: any) => x.type === 'http') as any;
-      const usedHttp = this.containers.some((c) =>
-        c.services.some(
-          (x) =>
-            x.type === 'http' &&
-            x.httpService?.externalHostname === httpName?.externalHostname &&
-            x.httpService?.externalDomainId === httpName?.externalDomainId,
-        ),
-      );
-      if (httpName && usedHttp) {
-        return fail(409, 'conflict', 'Resource already exists', {
-          externalHostname: 'externalHostname already exists',
-          externalDomainId: 'externalDomainId already exists',
-        });
+        return fail(409, 'conflict', 'Resource already exists');
       }
       const c: FakeContainer = {
         id: this.nextId++,
@@ -400,12 +322,6 @@ export class FakeManager {
     if (!c || (c.owner !== who.user && !this.admins.has(who.user))) return fail(404, 'not_found');
     if (req.method === 'GET') return ok(this.serialize(c));
     if (req.method === 'DELETE') {
-      // Like the Manager: refused while another job acts on the container.
-      const busy = this.busyJobs.get(c.id);
-      const job = busy === undefined ? undefined : this.jobs.get(busy);
-      if (job && (job.status === 'pending' || job.status === 'running')) {
-        return fail(409, 'job_in_progress', `job ${job.id} in progress`, { jobId: String(job.id) });
-      }
       this.containers.splice(this.containers.indexOf(c), 1);
       return ok({ deleted: true, dnsWarnings: [] });
     }

@@ -11,7 +11,7 @@ const request = require('supertest');
 const { buildApp, bearer } = require('../../../../tests/helpers/app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
 const { ApiKey } = require('../../../../models');
-const { parseHandoff, heldCodes } = require('../cli-auth');
+const { parseHandoff } = require('../cli-auth');
 
 const REMOTE = ['X-Forwarded-For', '203.0.113.7'];
 const STATE = 'abcdefghijklmnop0123456789';
@@ -156,32 +156,14 @@ describe('/api/v1/auth/cli/callback', () => {
     const session = await request(app).get('/api/v1/session').set(...bearer(tok.body.data.key));
     expect(session.body.data.user).toBe('alice');
 
-    // Idempotent: a retry (e.g. after a lost response) gets the same key, and
-    // still only one key exists.
-    const again = await redeem({ code, state: STATE });
-    expect(again.status).toBe(200);
-    expect(again.body.data).toEqual(tok.body.data);
+    // Single use.
+    expect((await redeem({ code, state: STATE })).status).toBe(400);
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
   });
 
   test('an oversized redemption body is rejected by the 4 KB limit', async () => {
     const body = { code: 'x'.repeat(8 * 1024), state: STATE };
     expect((await redeem(body)).status).toBe(413);
-    // Every spelling Express routes to the endpoint gets the same limit.
-    for (const path of ['/api/v1/auth/cli/token/', '/API/v1/auth/cli/Token']) {
-      const res = await request(app).post(path).set(...REMOTE).send(body);
-      expect(res.status).toBe(413);
-    }
-  });
-
-  test('concurrent redemptions of one code mint a single key', async () => {
-    const agent = await loggedInAgent(app, 'alice');
-    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
-    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
-    const [a, b] = await Promise.all([redeem({ code, state: STATE }), redeem({ code, state: STATE })]);
-    expect([a.status, b.status]).toEqual([200, 200]);
-    expect(a.body.data.id).toBe(b.body.data.id);
-    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before + 1);
   });
 
   test('a code is bound to its state, and a wrong state burns it', async () => {
@@ -205,21 +187,6 @@ describe('/api/v1/auth/cli/callback', () => {
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
   });
 
-  test('a redeemed code (and the key it holds for retries) is dropped when it expires', async () => {
-    const agent = await loggedInAgent(app, 'alice');
-    const code = new URLSearchParams(new URL((await authorize(agent)).headers.location).hash.slice(1)).get('code');
-    expect((await redeem({ code, state: STATE })).status).toBe(200);
-    const held = heldCodes();
-    const now = performance.now();
-    jest.spyOn(performance, 'now').mockReturnValue(now + 3 * 60 * 1000);
-    try {
-      expect((await redeem({ code, state: STATE })).status).toBe(400);
-      expect(heldCodes()).toBe(held - 1);
-    } finally {
-      jest.restoreAllMocks();
-    }
-  });
-
   test('the handoff is one-time: a replayed POST mints no second key', async () => {
     const agent = await loggedInAgent(app, 'alice');
     const form = await agent.get(`${BASE}?port=53682&state=${STATE}`).set(...REMOTE);
@@ -230,20 +197,6 @@ describe('/api/v1/auth/cli/callback', () => {
     const replay = await agent.post(BASE).set(...REMOTE).type('form').send(body);
     expect(replay.status).toBe(400);
     expect(replay.text).toMatch(/already completed or has expired/);
-    expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
-  });
-
-  test('two concurrent POSTs of the same handoff mint only one key', async () => {
-    const agent = await loggedInAgent(app, 'alice');
-    const state = 'concurrentstate0123456789';
-    const form = await agent.get(`${BASE}?port=53682&state=${state}`).set(...REMOTE);
-    const body = { _csrf: csrfFrom(form.text), port: '53682', state };
-    const before = await ApiKey.count({ where: { uidNumber: alice.uidNumber } });
-    const results = await Promise.all([
-      agent.post(BASE).set(...REMOTE).type('form').send(body),
-      agent.post(BASE).set(...REMOTE).type('form').send(body),
-    ]);
-    expect(results.map((r) => r.status).sort()).toEqual([303, 400]);
     expect(await ApiKey.count({ where: { uidNumber: alice.uidNumber } })).toBe(before);
   });
 

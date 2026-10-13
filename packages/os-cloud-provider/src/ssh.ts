@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import type { DeployLogger, ProviderEnv } from '@mieweb/deploy-contract';
 import ssh2 from 'ssh2';
 import type { AnyAuthMethod, AuthenticationType, ClientChannel, ConnectConfig, Prompt } from 'ssh2';
-import { updateLockedFile } from './locked-file.ts';
+import { updateFile } from './json-file.ts';
 import { ttyPrompter, type Prompter } from './prompt.ts';
 
 const { Client, utils } = ssh2;
@@ -62,13 +62,6 @@ export interface RemoteShell {
    * closed).
    */
   stream(command: string, onData: (chunk: Buffer, stream: 'stdout' | 'stderr') => void, signal: AbortSignal): Promise<number>;
-  /**
-   * Run `command` and keep its channel open until `release()`; resolves once
-   * stdout contains `ready`. If the command exits first, rejects with its
-   * exit code and stderr. Used to hold a remote lock (e.g. `flock ... cat`):
-   * closing the channel, or losing the connection, ends it.
-   */
-  hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }>;
   close(): void;
 }
 
@@ -105,30 +98,14 @@ function readKnownHosts(file: string): Map<string, string> {
   return parseKnownHosts(existsSync(file) ? readFileSync(file, 'utf8') : null);
 }
 
-/**
- * Pin `fp` for `id`, merged into the file's current contents under a lock (so
- * parallel deploys don't overwrite each other's pins). Throws if another
- * process pinned a different key for `id` in the meantime.
- */
+/** Pin `fp` for `id`. */
 export async function pinHostKey(file: string, id: string, fp: string): Promise<void> {
-  let conflict: string | undefined;
-  await updateLockedFile(file, (text) => {
-    const map = parseKnownHosts(text);
-    const existing = map.get(id);
-    if (existing === fp) return null;
-    if (existing) {
-      conflict = existing;
-      return null;
-    }
-    map.set(id, fp);
-    return serializeKnownHosts(map);
-  });
-  if (conflict) throw new Error(`a different key (${conflict}) was pinned for ${id} concurrently`);
+  await updateFile(file, (text) => serializeKnownHosts(parseKnownHosts(text).set(id, fp)));
 }
 
 /** Drop the pinned key for host:port (the container behind it was replaced). */
 export async function forgetHostKey(file: string, host: string, port: number): Promise<void> {
-  await updateLockedFile(file, (text) => {
+  await updateFile(file, (text) => {
     const map = parseKnownHosts(text);
     return map.delete(hostKeyId(host, port)) ? serializeKnownHosts(map) : null;
   });
@@ -318,21 +295,13 @@ export class SshConnection implements RemoteShell {
       client.on('error', fail);
       client.once('ready', () => {
         settled = true;
-        // The abort listener stays until the connection is handed over: a
-        // first-seen key is still being pinned, and an abort meanwhile must
-        // fail the connect (onAbort ends the client and rejects; resolve and
-        // reject after that are no-ops).
-        const done = (): void => {
-          opts.signal.removeEventListener('abort', onAbort);
-          if (opts.signal.aborted) return onAbort();
-          resolve(new SshConnection(client));
-        };
+        opts.signal.removeEventListener('abort', onAbort);
+        const done = (): void => resolve(new SshConnection(client));
         if (pinned) {
           logger.info(`Trusting SSH host key ${pinned.fp} for ${id}`);
           // Without a saved pin the next connection would trust any key, so
           // refuse to continue rather than silently dropping the guarantee.
           pinHostKey(opts.knownHostsFile, id, pinned.fp).then(done, (err: Error) => {
-            opts.signal.removeEventListener('abort', onAbort);
             client.end();
             reject(
               new SshError('hostkey', `Could not save the SSH host key to ${opts.knownHostsFile}: ${err.message}`, {
@@ -455,57 +424,6 @@ export class SshConnection implements RemoteShell {
           return;
         }
         stream.end();
-      });
-    });
-  }
-
-  hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }> {
-    return new Promise((resolve, reject) => {
-      if (signal.aborted) {
-        reject(signal.reason);
-        return;
-      }
-      this.client.exec(command, (err: Error | undefined, stream: ClientChannel) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        let out = '';
-        let stderr = '';
-        let code: number | null = null;
-        let held = false;
-        const release = (): void => {
-          stream.end(); // EOF: the held command (e.g. `cat`) exits, releasing the lock
-          stream.close();
-        };
-        const onAbort = (): void => {
-          release();
-          if (!held) reject(signal.reason);
-        };
-        signal.addEventListener('abort', onAbort, { once: true });
-        stream.on('data', (d: Buffer) => {
-          if (held) return;
-          out += d.toString('utf8');
-          if (out.includes(ready)) {
-            held = true;
-            signal.removeEventListener('abort', onAbort);
-            resolve({ release });
-          }
-        });
-        stream.stderr.on('data', (d: Buffer) => {
-          stderr = (stderr + d.toString('utf8')).slice(-4096);
-        });
-        stream.on('exit', (c: number | null) => {
-          code = c;
-        });
-        stream.on('close', () => {
-          signal.removeEventListener('abort', onAbort);
-          if (!held) reject(Object.assign(new Error(stderr.trim() || `exited with code ${code}`), { code }));
-        });
-        stream.on('error', (e: Error) => {
-          if (!held) reject(e);
-        });
-        if (signal.aborted) onAbort();
       });
     });
   }

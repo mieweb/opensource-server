@@ -16,7 +16,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { hostname as osHostname } from 'node:os';
 import type { AuthStatus, DeployContext, DeployLogger } from '@mieweb/deploy-contract';
 import open from 'open';
-import pRetry from 'p-retry';
 import { ManagerClient } from './client.ts';
 import {
   DEFAULT_INSTANCE_URL,
@@ -25,21 +24,9 @@ import {
   resolveInstanceUrl,
   resolveToken,
 } from './config.ts';
-import {
-  addPendingRevocation,
-  readPendingRevocations,
-  removeCredential,
-  removePendingRevocations,
-  replaceCredential,
-  type PendingRevocation,
-} from './credentials.ts';
+import { writeCredential, type StoredCredential } from './credentials.ts';
 import type { ProviderDeps } from './deploy.ts';
 import { ttyPrompter } from './prompt.ts';
-
-/** How long a freshly minted key is reserved for the login that minted it (> the 5-min login timeout). */
-const PROVISIONAL_MS = 10 * 60 * 1000;
-/** Budget for redeeming the sign-in code, which ignores cancellation. */
-const REDEEM_TIMEOUT_MS = 30_000;
 
 function clientFor(ctx: DeployContext, deps: ProviderDeps, instanceUrl: string, token: string | null): ManagerClient {
   return new ManagerClient({ instanceUrl, token, target: ctx.target, signal: ctx.signal, fetch: deps.fetch });
@@ -232,123 +219,42 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
     (hooks.openBrowser ?? defaultOpenBrowser)(authUrl);
 
     const handoff = await loop.result;
-    // Redeem the one-time code for a key in our own request: the Manager
-    // only creates the key now, so a login that gave up earlier never left
-    // one behind, and we always receive (and can track) the key that exists.
-    // Independent of cancellation (bounded on its own): once the Manager may
-    // have minted the key, we must receive it to track or revoke it. A
-    // Ctrl-C is honored right after it's recorded, below.
-    const redeemClient = new ManagerClient({
-      instanceUrl,
-      token: null,
-      target: ctx.target,
-      signal: AbortSignal.timeout(REDEEM_TIMEOUT_MS),
-      fetch: deps.fetch,
-    });
-    const redeemed = await redeemClient.call(
+    // Redeem the one-time code for a key in our own request: the Manager only
+    // creates the key now, so a login that gave up earlier leaves none behind.
+    const client = clientFor(ctx, deps, instanceUrl, null);
+    const redeemed = await client.call(
       (api) => api.POST('/auth/cli/token', { body: { code: handoff.code, state } }),
       { auth: false },
     );
     if (!redeemed?.key || !redeemed.id) throw new Error('The Manager did not return an API key for the sign-in code');
-    // Provisional for longer than a login can take: no other login/logout
-    // revokes it before this one commits or abandons it.
-    const minted = { token: redeemed.key, apiKeyId: redeemed.id, provisionalUntil: Date.now() + PROVISIONAL_MS };
-
-    // Track the key before anything else can fail: queued for revocation
-    // until it's stored as the login below.
-    try {
-      await addPendingRevocation(deps.env, instanceUrl, minted);
-    } catch (err) {
-      // Can't even record it: revoke it now, regardless of cancellation, and
-      // if that fails too, say exactly which key to delete.
-      if (!(await revokeUrgently(instanceUrl, minted, deps))) {
-        logger.error(
-          `Could not record or revoke the new API key ${minted.apiKeyId} on ${instanceUrl}. ` +
-            'Delete it under API Keys in the web UI.',
-        );
-      }
-      throw err;
-    }
-    if (ctx.signal.aborted) {
-      // Cancelled while redeeming: don't keep a key nobody asked to finish
-      // logging in with. If revoking fails, it stays queued for the next
-      // login/logout.
-      await revokeUrgently(instanceUrl, minted, deps);
-      ctx.signal.throwIfAborted();
-    }
-
-    let user: string;
-    try {
-      user = await sessionUser(clientFor(ctx, deps, instanceUrl, redeemed.key));
-    } catch (err) {
-      await revokeAll(instanceUrl, ctx, deps, logger, [minted.apiKeyId]); // abandon our own key
-      throw err;
-    }
-
-    // Store the new key and queue the one it replaces in one locked update.
-    await replaceCredential(deps.env, instanceUrl, {
-      token: redeemed.key,
-      apiKeyId: redeemed.id,
-      user,
-      savedAt: new Date().toISOString(),
-    });
-    // Revoke the replaced key (plus any earlier failures), so repeated logins
-    // don't pile up keys. It's queued, so a crash here can't lose track of it.
-    await revokeAll(instanceUrl, ctx, deps, logger);
-    logger.info(`Logged in to ${instanceUrl} as ${user}`);
+    const cred: StoredCredential = { token: redeemed.key, apiKeyId: redeemed.id, savedAt: new Date().toISOString() };
+    cred.user = await sessionUser(clientFor(ctx, deps, instanceUrl, cred.token));
+    // Revoke the key this login replaces, so repeated logins don't pile up keys.
+    const previous = await writeCredential(deps.env, instanceUrl, cred);
+    if (previous && previous.apiKeyId !== cred.apiKeyId) await revoke(instanceUrl, previous, ctx, deps, logger);
+    logger.info(`Logged in to ${instanceUrl} as ${cred.user}`);
   } finally {
     loop.close();
   }
 }
 
-/** Delete one API key; resolves when it is gone (now, or already deleted/invalid). */
-async function deleteKey(client: ManagerClient, key: PendingRevocation): Promise<void> {
-  try {
-    await client.call((api) => api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }));
-  } catch (err) {
-    const gone = (err as Error).name === 'AuthError' || (err as { status?: number }).status === 404;
-    if (!gone) throw err;
-  }
-}
-
-/** Revoke one key. True when it is gone. */
-async function revoke(instanceUrl: string, key: PendingRevocation, ctx: DeployContext, deps: ProviderDeps): Promise<boolean> {
-  return deleteKey(clientFor(ctx, deps, instanceUrl, key.token), key).then(() => true, () => false);
-}
-
-/**
- * Revoke a key that couldn't be recorded anywhere: retried a few times and
- * independent of the deploy's signal (an abort mustn't leave it live).
- */
-async function revokeUrgently(instanceUrl: string, key: PendingRevocation, deps: ProviderDeps): Promise<boolean> {
-  const signal = AbortSignal.timeout(30_000);
-  const client = new ManagerClient({ instanceUrl, token: key.token, target: 'mieweb', signal, fetch: deps.fetch });
-  return pRetry(() => deleteKey(client, key), { retries: 3, minTimeout: 500, signal }).then(() => true, () => false);
-}
-
-/**
- * Revoke every queued key. Keys that still can't be revoked (Manager
- * unreachable, 5xx) stay queued, with their token, for the next
- * login/logout to retry, so no live key is ever forgotten. Only confirmed
- * revocations are removed, so a concurrent login's queued key is untouched.
- */
-async function revokeAll(
+/** Revoke a key (best effort: warns if the Manager can't be reached). */
+async function revoke(
   instanceUrl: string,
+  key: StoredCredential,
   ctx: DeployContext,
   deps: ProviderDeps,
   logger: DeployLogger,
-  /** Provisional keys this caller owns and is abandoning. */
-  own: readonly string[] = [],
 ): Promise<void> {
-  const done: string[] = [];
-  const now = Date.now();
-  for (const key of await readPendingRevocations(deps.env, instanceUrl)) {
-    // Another login's key it hasn't committed or abandoned yet: not ours to revoke.
-    if ((key.provisionalUntil ?? 0) > now && !own.includes(key.apiKeyId)) continue;
-    if (await revoke(instanceUrl, key, ctx, deps)) done.push(key.apiKeyId);
-    else logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; it will be retried on the next login or logout`);
+  try {
+    await clientFor(ctx, deps, instanceUrl, key.token).call((api) =>
+      api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }),
+    );
+  } catch (err) {
+    // Already deleted, or no longer valid: nothing left to revoke.
+    if ((err as Error).name === 'AuthError' || (err as { status?: number }).status === 404) return;
+    logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; delete it under API Keys in the web UI`);
   }
-  await removePendingRevocations(deps.env, instanceUrl, done);
 }
 
 export async function logout(ctx: DeployContext, deps: ProviderDeps): Promise<void> {
@@ -358,9 +264,7 @@ export async function logout(ctx: DeployContext, deps: ProviderDeps): Promise<vo
   if (deps.env.MIEWEB_OS_TOKEN?.trim()) {
     logger.warn('MIEWEB_OS_TOKEN is set in the environment; logout cannot clear it. Unset it to fully log out.');
   }
-  // Log out locally either way; the key stays queued (with its token) until
-  // the Manager confirms it's revoked. Earlier failures are retried too.
-  const wasLoggedIn = await removeCredential(deps.env, instanceUrl);
-  await revokeAll(instanceUrl, ctx, deps, logger);
-  logger.info(wasLoggedIn ? `Logged out of ${instanceUrl}` : `Not logged in to ${instanceUrl}`);
+  const previous = await writeCredential(deps.env, instanceUrl, null);
+  if (previous) await revoke(instanceUrl, previous, ctx, deps, logger);
+  logger.info(previous ? `Logged out of ${instanceUrl}` : `Not logged in to ${instanceUrl}`);
 }

@@ -19,14 +19,11 @@ import type { paths } from './generated/manager-api.ts';
 export class ManagerApiError extends Error {
   readonly status: number;
   readonly code: string;
-  /** Per-field details from the error envelope (e.g. which columns of a 409 `conflict` collided). */
-  readonly fields: Readonly<Record<string, string>>;
-  constructor(status: number, code: string, message: string, fields: Record<string, string> = {}) {
+  constructor(status: number, code: string, message: string) {
     super(message);
     this.name = 'ManagerApiError';
     this.status = status;
     this.code = code;
-    this.fields = fields;
   }
 }
 
@@ -60,15 +57,12 @@ export class ManagerClient {
     this.api = createClient<paths>({
       baseUrl: `${opts.instanceUrl}/api/v1`,
       headers: opts.token ? { Authorization: `Bearer ${opts.token}` } : {},
-      // Idempotent requests are retried on network-level failures (a dropped
-      // keep-alive socket mid job-poll shouldn't fail a deploy): GETs, and the
-      // sign-in code redemption (the Manager returns the same key for a
-      // repeated code, so a lost response doesn't leave an unseen key).
-      // Other writes are never retried.
+      // GETs are idempotent: retry them on network-level failures (a dropped
+      // keep-alive socket mid job-poll shouldn't fail a deploy). Writes are
+      // never retried.
       fetch: (req: Request) => {
         const once = (): Promise<Response> => base(req.clone(), { signal, redirect: 'manual' });
-        const idempotent = req.method === 'GET' || new URL(req.url).pathname.endsWith('/auth/cli/token');
-        return idempotent ? pRetry(once, { retries: 3, minTimeout: 500, signal }) : once();
+        return req.method === 'GET' ? pRetry(once, { retries: 3, minTimeout: 500, signal }) : once();
       },
     });
   }
@@ -102,15 +96,11 @@ export class ManagerClient {
     const where = `${new URL(response.url || this.instanceUrl).pathname}`;
     if (response.status === 401 || response.status === 403) throw this.authError();
     if (!response.ok) {
-      const body = result.error as
-        | { error?: { code?: string; message?: string; fields?: Record<string, string> } }
-        | string
-        | undefined;
+      const body = result.error as { error?: { code?: string; message?: string } } | string | undefined;
       const e = typeof body === 'object' ? body?.error : undefined;
       const code = e?.code ?? `http_${response.status}`;
       const message = e?.message ?? (typeof body === 'string' && body ? body.slice(0, 200) : response.statusText);
-      const fields = e?.fields && typeof e.fields === 'object' ? e.fields : {};
-      throw new ManagerApiError(response.status, code, `${where} failed (${response.status} ${code}): ${message}`, fields);
+      throw new ManagerApiError(response.status, code, `${where} failed (${response.status} ${code}): ${message}`);
     }
     return (result.data as { data?: unknown } | undefined)?.data as Envelope<NonNullable<R['data']>>;
   }

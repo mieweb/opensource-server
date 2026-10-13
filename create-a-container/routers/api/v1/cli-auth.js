@@ -17,7 +17,7 @@
  *    consumes the one-time handoff (a replayed POST is rejected) and
  *    303-redirects to http://127.0.0.1:<port>/callback#code=…&state=…
  * 4. The CLI redeems the one-time code (POST /cli/token, 2-minute TTL) for an
- *    API key in its own request (repeatable within the TTL: same key). No key exists until then, so a CLI that has
+ *    API key in its own request. No key exists until then, so a CLI that has
  *    already given up never leaves a live, untracked key behind.
  *
  * Loopback safety: this route does NOT use `safeRedirectUrl`. Only a port is
@@ -39,15 +39,9 @@ const apiKeys = require('../../../resources/apikeys/service');
 const router = express.Router();
 
 // --- one-time authorization codes --------------------------------------------
-// Kept in memory (the Manager is a single Node process), hashed, for
-// CODE_TTL_MS. A code mints at most one key: redeeming it again (with the same
-// state, before it expires) returns that same key, so a CLI whose response was
-// lost can safely retry instead of leaving a key it never received. A wrong
-// state burns the code.
-const CODE_TTL_MS = 2 * 60 * 1000;
-// Autopurged at expiry: once redeemed, an entry holds the plaintext key (for
-// retries), which must not outlive the code.
-const codes = new LRUCache({ max: 10_000, ttl: CODE_TTL_MS, ttlAutopurge: true });
+// In memory (the Manager is a single Node process), hashed, single use, and
+// dropped after two minutes.
+const codes = new LRUCache({ max: 10_000, ttl: 2 * 60 * 1000, ttlAutopurge: true });
 const hashCode = (code) => crypto.createHash('sha256').update(code).digest('hex');
 
 function issueCode({ user, client, state }) {
@@ -56,36 +50,13 @@ function issueCode({ user, client, state }) {
   return code;
 }
 
-/**
- * Redeem a code for its key, minting it on the first call (concurrent and
- * repeated calls share it). Null if the code is unknown, expired, or presented
- * with another state (which also burns it).
- */
-function redeemCode(code, state, mint) {
+/** Take a code (single use); null if unknown, expired or for another state. */
+function redeemCode(code, state) {
   if (typeof code !== 'string' || typeof state !== 'string') return null;
   const key = hashCode(code);
-  const entry = codes.get(key); // undefined once expired
-  if (!entry) return null;
-  if (entry.state !== state) {
-    codes.delete(key);
-    return null;
-  }
-  entry.minted ??= mint(entry).catch((err) => {
-    entry.minted = undefined; // let a retry try again
-    throw err;
-  });
-  return entry.minted;
-}
-
-// Handoffs claimed by an in-flight POST, keyed by session + state. The claim
-// is taken synchronously (no await in between), so two concurrent POSTs of
-// the same form can't both read the session's handoff before either save
-// lands and both mint a key. (The Manager is a single Node process.)
-const claims = new LRUCache({ max: 10_000, ttl: 10 * 60 * 1000, ttlAutopurge: true });
-function claimHandoff(key) {
-  if (claims.has(key)) return false;
-  claims.set(key, true);
-  return true;
+  const entry = codes.get(key);
+  codes.delete(key);
+  return entry && entry.state === state ? entry : null;
 }
 
 function saveSession(req) {
@@ -214,8 +185,7 @@ router.post('/callback', asyncHandler(async (req, res) => {
   if (
     !pending ||
     pending.state !== handoff.state ||
-    pending.port !== handoff.port ||
-    !claimHandoff(`${req.sessionID}:${handoff.state}`)
+    pending.port !== handoff.port
   ) {
     return errorPage(res, 'This sign-in was already completed or has expired.');
   }
@@ -239,18 +209,14 @@ router.post('/callback', asyncHandler(async (req, res) => {
 // CLI always receives (and tracks) any key that exists.
 const tokenRoute = [express.json({ limit: '4kb' }), asyncHandler(async (req, res) => {
   const { code, state } = req.body || {};
-  const minted = redeemCode(code, state, async (entry) => {
-    const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
-    const { key, plainKey } = await apiKeys.createKey(entry.user, { description });
-    return { key: plainKey, id: key.id, user: entry.user };
-  });
-  if (!minted) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
+  const entry = redeemCode(code, state);
+  if (!entry) throw new ApiError(400, 'invalid_code', 'This sign-in code is invalid, expired or already used; run `mieweb login` again');
+  const description = `${entry.client || 'mieweb-cli'} (CLI login ${new Date().toISOString().slice(0, 10)})`;
+  const { key, plainKey } = await apiKeys.createKey(entry.user, { description });
   res.set('Cache-Control', 'no-store');
-  return ok(res, await minted);
+  return ok(res, { key: plainKey, id: key.id, user: entry.user });
 }), jsonErrorHandler];
 
 module.exports = router;
 module.exports.tokenRoute = tokenRoute;
 module.exports.parseHandoff = parseHandoff;
-/** Test hook: how many codes (and minted keys) are held in memory. */
-module.exports.heldCodes = () => codes.size;

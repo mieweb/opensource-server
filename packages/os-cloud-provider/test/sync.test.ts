@@ -240,13 +240,6 @@ describe('syncWorktree', () => {
     }
   });
 
-  test('refuses to sync when the app could redirect the sync root (old image)', async () => {
-    const shell = new FakeShell(remote);
-    shell.unsafeRoot = true;
-    await assert.rejects(syncWorktree(local, shell, logger), /could be redirected by the app/);
-    assert.ok(!shell.commands.some((c) => c === REMOTE.extract || c.includes('mkdir')), 'no privileged command ran');
-  });
-
   test('the remote listing does not descend into ignored directories', async () => {
     await syncWorktree(local, new FakeShell(remote), logger);
     // Remote-only build output and installed deps, like the container has.
@@ -266,35 +259,6 @@ describe('syncWorktree', () => {
     assert.deepEqual(pruneNames('node_modules/\n!keep\n'), []);
   });
 
-  test('concurrent deploys to the same container are serialized by the deploy lock', async () => {
-    const a = new FakeShell(remote);
-    const b = new FakeShell(remote);
-    let releaseFirst!: () => void;
-    const gate = new Promise<void>((r) => (releaseFirst = r));
-    // Hold deploy A inside its critical section (at the listing).
-    const origExec = a.exec.bind(a);
-    a.exec = async (cmd, stdin, sig) => {
-      if (cmd.includes(' find ')) await gate;
-      return origExec(cmd, stdin, sig);
-    };
-    const first = syncWorktree(local, a, logger);
-    await new Promise((r) => setTimeout(r, 20));
-    await assert.rejects(syncWorktree(local, b, logger), /Another deploy to this container is in progress/);
-    assert.ok(!b.commands.some((c) => c.includes(' find ')), 'B touched nothing');
-    releaseFirst();
-    await first;
-    // Released (also on failure): the next deploy proceeds.
-    await syncWorktree(local, new FakeShell(remote), logger);
-    assert.equal(FakeShell.locks.size, 0);
-  });
-
-  test('the deploy lock is released when the sync fails', async () => {
-    const shell = new FakeShell(remote);
-    shell.restartScript = { chunks: [], code: 1 };
-    await assert.rejects(syncWorktree(local, shell, logger));
-    assert.equal(FakeShell.locks.size, 0);
-  });
-
   test('cancellation stops the sync before it uploads or deletes', async () => {
     const ac = new AbortController();
     const shell = new FakeShell(remote);
@@ -302,11 +266,9 @@ describe('syncWorktree', () => {
       if (cmd.includes(' find ')) ac.abort(new Error('user cancelled'));
     };
     await assert.rejects(syncWorktree(local, shell, logger, ac.signal), /user cancelled/);
-    // The lock, the root check, then the listing; nothing after.
-    assert.equal(shell.commands.length, 3);
-    assert.match(shell.commands[0]!, /flock/);
-    assert.equal(shell.commands[1], REMOTE.checkRoot);
-    assert.match(shell.commands[2]!, / find \. /);
+    // Only the listing; nothing after.
+    assert.equal(shell.commands.length, 1);
+    assert.match(shell.commands[0]!, / find \. /);
   });
 
   test('empty directories left by deletions are pruned', async () => {
@@ -354,7 +316,7 @@ describe('syncWorktree', () => {
   test('a failing remote command fails the sync with its stderr', async () => {
     const shell = new FakeShell(remote);
     shell.exec = async () => ({ code: 1, stdout: Buffer.alloc(0), stderr: 'sudo: a password is required' });
-    await assert.rejects(syncWorktree(local, shell, logger), /root check failed \(exit 1\): sudo: a password is required/);
+    await assert.rejects(syncWorktree(local, shell, logger), /listing failed \(exit 1\): sudo: a password is required/);
   });
 });
 

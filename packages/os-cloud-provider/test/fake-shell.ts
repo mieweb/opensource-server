@@ -122,12 +122,8 @@ export class FakeShell implements RemoteShell {
       return ok();
     }
     if (command === REMOTE.logs) return ok(Buffer.from(this.recentLogs));
-    if (command === REMOTE.checkRoot) return { code: this.unsafeRoot ? 66 : 0, stdout: Buffer.alloc(0), stderr: '' };
     return { code: 127, stdout: Buffer.alloc(0), stderr: `unknown command: ${command}` };
   }
-
-  /** Emulate an image where the app could redirect the sync root. */
-  unsafeRoot = false;
 
   /** What the restart stream emits / exits with. */
   restartScript: { chunks: [string, 'stdout' | 'stderr'][]; code: number } = { chunks: [], code: 0 };
@@ -150,23 +146,6 @@ export class FakeShell implements RemoteShell {
     for (const [c, w] of this.streamScript.chunks) onData(Buffer.from(c), w);
     if (!this.streamScript.hang) return this.streamScript.code;
     return new Promise((resolve) => signal.addEventListener('abort', () => resolve(-1), { once: true }));
-  }
-
-  /** Called once the deploy lock is taken (e.g. to simulate a racing deploy). */
-  onLocked?: () => void;
-
-  /** Deploy locks held per remote directory (shared by all fake shells). */
-  static readonly locks = new Set<string>();
-
-  async hold(command: string, ready: string, signal: AbortSignal): Promise<{ release(): void }> {
-    this.commands.push(command);
-    signal.throwIfAborted();
-    if (!command.includes('flock')) throw new Error(`unexpected hold: ${command}`);
-    if (FakeShell.locks.has(this.dir)) throw Object.assign(new Error('lock busy'), { code: 75 });
-    FakeShell.locks.add(this.dir);
-    void ready;
-    this.onLocked?.();
-    return { release: () => FakeShell.locks.delete(this.dir) };
   }
 
   close(): void {
