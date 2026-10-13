@@ -227,8 +227,12 @@ export async function login(ctx: DeployContext, deps: ProviderDeps, hooks: Login
       { auth: false },
     );
     if (!redeemed?.key || !redeemed.id) throw new Error('The Manager did not return an API key for the sign-in code');
-    const cred: StoredCredential = { token: redeemed.key, apiKeyId: redeemed.id, savedAt: new Date().toISOString() };
-    cred.user = await sessionUser(clientFor(ctx, deps, instanceUrl, cred.token));
+    const cred: StoredCredential = {
+      token: redeemed.key,
+      apiKeyId: redeemed.id,
+      user: redeemed.user,
+      savedAt: new Date().toISOString(),
+    };
     // Revoke the key this login replaces, so repeated logins don't pile up keys.
     const previous = await writeCredential(deps.env, instanceUrl, cred);
     if (previous && previous.apiKeyId !== cred.apiKeyId) await revoke(instanceUrl, previous, ctx, deps, logger);
