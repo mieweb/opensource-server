@@ -63,16 +63,23 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
 
 /** Post-apply mail housekeeping: unit enable/start (holder) or stop/disable
  * (claim lost / group off), then mailbox GC. Runs even when the `mail` group
- * is NOT enabled — removing `mail` from AGENT_SERVICES must still stop an
- * already-running mail stack. Failures are logged, not fatal — the next
- * timer run retries. */
-async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig): Promise<void> {
+ * is NOT enabled — removing `mail` from AGENT_SERVICES must still stop a
+ * mail stack this agent started (and ONLY one it started: state.mailManaged
+ * guards against touching a host's own unrelated postfix/dovecot).
+ * Failures are logged, not fatal — the next timer run retries. */
+async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig, state: State): Promise<void> {
   try {
     if (cfg.services.includes('mail')) {
-      await syncMailUnits(config);
+      const mailManaged = await syncMailUnits(config, state.mailManaged);
+      if (mailManaged !== state.mailManaged) {
+        state.mailManaged = mailManaged;
+        state.save();
+      }
       if (config.mail) gcMailboxes(config.mail);
-    } else {
+    } else if (state.mailManaged) {
       await stopMailUnitsIfRunning();
+      state.mailManaged = false;
+      state.save();
     }
   } catch (err) {
     log.error(`mail: unit lifecycle sync failed: ${(err as Error).message}`);
@@ -115,7 +122,7 @@ async function main(): Promise<void> {
     for (const svc of enabledServices(cfg)) {
       state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
     }
-    await syncMailLifecycle(cfg, result.config);
+    await syncMailLifecycle(cfg, result.config, state);
 
     // Ensure volume directories exist from the new snapshot; stash results in
     // persistent state so they are reported on the next check-in and survive a

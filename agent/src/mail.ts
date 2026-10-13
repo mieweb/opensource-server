@@ -301,21 +301,26 @@ export function ensureMailProvisioned(agent: AgentConfig): void {
 }
 
 /** Enable+start the mail units while holding the claim; stop+disable them
- * otherwise (configs and /var/vmail are left in place). */
-export async function syncMailUnits(config: SiteConfig): Promise<void> {
+ * otherwise (configs and /var/vmail are left in place). The shutdown path
+ * only runs when THIS agent started the units (state.mailManaged) — a
+ * host's own unrelated postfix/dovecot must never be touched. Returns the
+ * new mailManaged value for the caller to persist. */
+export async function syncMailUnits(config: SiteConfig, mailManaged: boolean): Promise<boolean> {
   if (config.mail) {
     await enableAndStartServices(MAIL_UNITS);
-    return;
+    return true;
   }
+  if (!mailManaged) return false;
   if (config.mailStatus) {
-    log.info(`mail: not the mail host (${config.mailStatus}); ensuring units are stopped`);
+    log.info(`mail: not the mail host (${config.mailStatus}); stopping the units this agent started`);
   }
   await stopAndDisableServices(MAIL_UNITS);
+  return false;
 }
 
-/** Stop the stack when the `mail` group itself is disabled — but only when
- * something is actually running, so plain nginx/dnsmasq agents don't issue
- * no-op unit operations every 30 seconds. */
+/** Stop the stack when the `mail` group itself is disabled — again only
+ * when this agent started it, and only when something is actually running,
+ * so nothing is churned on agents that never ran mail. */
 export async function stopMailUnitsIfRunning(): Promise<void> {
   const states = await Promise.all(MAIL_UNITS.map((unit) => getServiceState(unit)));
   if (states.some((state) => state === 'active' || state === 'activating')) {
