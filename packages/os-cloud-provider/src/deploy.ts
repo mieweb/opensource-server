@@ -5,7 +5,7 @@
  * deploy is an upsert:
  *
  *   list_containers?hostname=<name>
- *     ├─ none            → create_container (retry as update on 409 conflict)
+ *     ├─ none            → create_container
  *     ├─ same image/GPU  → update_container (services diff, full env, restart)
  *     └─ image/GPU drift → delete_container + create_container
  *                          (`template`/`nvidiaRequested` are create-only; the

@@ -10,7 +10,7 @@ Example config: [`examples/mieweb.jsonc`](examples/mieweb.jsonc).
 
 | Verb | Manager operations |
 | --- | --- |
-| `deploy` | `list_containers?hostname=` → `create_container` (409 → retry as update) \| `update_container` (only when config differs) \| `delete_container`+`create_container` when the image or GPU requirement changes; poll `get_job`; `get_container` for the URL, VMID and SSH port; then wait for SSH and sync the worktree (honoring `.gitignore`) into `/opt/app/src` and restart `app.service` over SSH |
+| `deploy` | `list_containers?hostname=` → `create_container` \| `update_container` (only when config differs) \| `delete_container`+`create_container` when the image or GPU requirement changes; poll `get_job`; `get_container` for the URL, VMID and SSH port; then wait for SSH and sync the worktree (honoring `.gitignore`) into `/opt/app/src` and restart `app.service` over SSH |
 | `destroy` | `delete_container` (the `/mnt/data` volume is retained) |
 | `whoami` | `get_session` |
 | `login` / `logout` | `/api/v1/auth/cli/callback` loopback handoff / `delete_api_key` |

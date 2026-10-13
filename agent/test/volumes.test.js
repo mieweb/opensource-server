@@ -56,8 +56,8 @@ test('reconcileVolumes creates directories and reports per-volume results', () =
   assert.deepEqual(Object.keys(results).sort(), ['11', '12']);
   assert.equal(results['11'].applied, true);
   assert.equal(results['12'].applied, true);
-  assert.ok(fs.existsSync(dir1));
-  assert.ok(fs.existsSync(dir2));
+  assert.equal(fs.statSync(dir1).mode & 0o777, 0o755);
+  assert.equal(fs.statSync(dir2).mode & 0o777, 0o555);
 
   fs.rmSync(base, { recursive: true, force: true });
 });
