@@ -634,7 +634,8 @@ export function parseTailArgs(argv: readonly string[]): TailOptions {
       const eq = a.indexOf('=');
       if (eq !== -1) return a.slice(eq + 1);
       const v = argv[++i];
-      if (v === undefined) throw new ConfigError(`${a} needs a value`);
+      // (`-1h` is a valid value; another `--option` is not.)
+      if (v === undefined || v.startsWith('--')) throw new ConfigError(`${a} needs a value`);
       return v;
     };
     if (a === '-n' || a === '--lines' || a.startsWith('--lines=')) {

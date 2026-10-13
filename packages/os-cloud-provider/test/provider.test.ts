@@ -492,6 +492,7 @@ describe('tail', () => {
     await assert.rejects(p.tail!(harness().ctx), /No container "myapp".*mieweb deploy/);
     await assert.rejects(p.tail!(harness({ argv: ['--bogus'] }).ctx), /Unknown tail option/);
     await assert.rejects(p.tail!(harness({ argv: ['--since', '$(rm -rf /)'] }).ctx), /not a valid time/);
+    await assert.rejects(p.tail!(harness({ argv: ['--since', '--no-follow'] }).ctx), /--since needs a value/);
     await p.deploy(harness().ctx);
     setupShell = (s) => {
       s.streamScript = { chunks: [], code: 1 };
