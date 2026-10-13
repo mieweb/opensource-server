@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@vscode/sqlite3": "5.1.12-vscode",
-    "concurrently": "^9.2.3",
+    "concurrently": "^9.2.5",
     "jest": "^30.4.2",
     "nodemon": "^3.1.10",
     "sequelize-cli": "^6.6.3",
