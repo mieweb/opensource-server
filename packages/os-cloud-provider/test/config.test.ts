@@ -112,6 +112,7 @@ describe('resolveTargetSettings', () => {
 
   test('rejects bad service/port config', () => {
     const base = { siteId: 1 };
+    assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, image: 'ghcr.io/x/y@sha256:' + 'a'.repeat(64) }), {}), /not a digest/);
     assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, port: 70000 }), {}), /TCP port/);
     assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'http', internalPort: 1 }] }), {}), /tcp or udp/);
     assert.throws(() => resolveTargetSettings(ctx({ name: 'a' }, { ...base, services: [{ type: 'srv', internalPort: 1, dnsName: '_sip._udp' }] }), {}), /srv services aren't supported yet/);

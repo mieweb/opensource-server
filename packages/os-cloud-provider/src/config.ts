@@ -236,9 +236,13 @@ export function resolveTargetSettings(ctx: DeployContext, env: ProviderEnv): Tar
     }
   }
 
+  const image = str(tc.image) ?? DEFAULT_IMAGE;
+  // The Manager stores image references as name:tag only.
+  if (image.includes('@')) throw new ConfigError(`${target}.image must be a name:tag reference, not a digest (${image})`);
+
   return {
     ...access,
-    image: str(tc.image) ?? DEFAULT_IMAGE,
+    image,
     port: tc.port === undefined ? DEFAULT_PORT : port(tc.port, `${target}.port`),
     externalHostname,
     domain,

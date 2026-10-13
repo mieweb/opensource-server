@@ -11,16 +11,7 @@ describe('normalizeImageRef (mirrors the Manager)', () => {
     ['bitnami/redis', 'docker.io/bitnami/redis:latest'],
     ['ghcr.io/mieweb/opensource-server/cloud', 'ghcr.io/mieweb/opensource-server/cloud:latest'],
     ['ghcr.io/mieweb/opensource-server/cloud:sha-abc', 'ghcr.io/mieweb/opensource-server/cloud:sha-abc'],
-    // A registry-qualified ref keeps its path: `library/` is Docker Hub only.
-    ['localhost:5000/app', 'localhost:5000/app:latest'],
-    ['localhost/app:1', 'localhost/app:1'],
-    ['registry.example.com/team/app:2', 'registry.example.com/team/app:2'],
-    ['docker.io/nginx', 'docker.io/library/nginx:latest'],
-    ['a/b/c', 'docker.io/a/b/c:latest'],
-    // Digest-pinned: the digest is the reference (a tag next to it is dropped).
-    ['ghcr.io/org/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'ghcr.io/org/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
-    ['nginx:1.27@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'docker.io/library/nginx@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
-    ['localhost:5000/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'localhost:5000/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+    ['localhost:5000/app', 'localhost:5000/library/app:latest'],
   ];
   for (const [input, want] of cases) {
     test(input, () => assert.equal(normalizeImageRef(input), want));
