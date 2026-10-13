@@ -94,6 +94,13 @@ function buildApp({
 
   app.use(express.static('public'));
 
+  // Public one-click unsubscribe (RFC 8058) — mounted before the CSRF guard
+  // because requests come from recipients' mail clients with no session or
+  // token (authentication is the encrypted unsubscribe token itself). Served
+  // without oauth2-proxy interference via the dedicated /u/ location in the
+  // agent's nginx template.
+  app.use('/u', require('./routers/unsubscribe'));
+
   // CSRF guard for every handler that can see the session cookie (CodeQL
   // js/missing-token-validation). Behavior-preserving: csrfGuard skips
   // GET/HEAD/OPTIONS and Bearer-only requests, and every state-changing
