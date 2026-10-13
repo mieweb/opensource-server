@@ -1,0 +1,7 @@
+# Standalone package (not part of a repo-wide workspace); this file only holds pnpm settings.
+# ssh2 works in pure JS; skip its optional native add-ons so installs need no compiler.
+allowBuilds:
+  ssh2: false
+  cpu-features: false
+minimumReleaseAgeExclude:
+  - '@mieweb/deploy-contract@0.3.0'

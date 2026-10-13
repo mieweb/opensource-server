@@ -1,0 +1,23 @@
+[Unit]
+Description=MinIO object storage (R2 binding backend)
+After=network.target environment.service mieweb-env.service
+
+[Service]
+Type=simple
+User=mieweb
+Group=mieweb
+# MINIO_ROOT_USER / MINIO_ROOT_PASSWORD are set by the deploy provider.
+EnvironmentFile=-/run/mieweb/env
+# /mnt/data (the #421 volume) is root-owned; give the service its own dir.
+ExecStartPre=+/usr/bin/install -d -m 0750 -o mieweb -g mieweb /mnt/data/minio
+ExecStart=/usr/local/bin/minio server --quiet --address 127.0.0.1:9000 --console-address 127.0.0.1:9001 /mnt/data/minio
+# Only "started" once it answers its health check, so units ordered after it
+# (app.service) don't race its listener.
+ExecStartPost=/usr/bin/curl -fs -o /dev/null --retry 120 --retry-delay 1 --retry-all-errors --max-time 2 http://127.0.0.1:9000/minio/health/ready
+TimeoutStartSec=150
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

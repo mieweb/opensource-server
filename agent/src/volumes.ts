@@ -33,11 +33,12 @@ import fs from 'fs';
 import { log } from './log';
 import type { SiteConfig, SiteVolume, VolumeResult } from './types';
 
-// Mode for created directories. RW volumes get owner/group rwx (the id-mapped
-// container root owns the dir, so it can write); RO volumes are r-x. World bits
-// are left closed so other tenants can't read another container's data.
-const RW_MODE = 0o0770;
-const RO_MODE = 0o0550;
+// Mode for volume roots, like /var/lib: the id-mapped container root owns the
+// dir (rwx for RW, r-x for RO) and non-root service accounts inside the
+// container can traverse it to their own subdirectories. Isolation between
+// tenants comes from each container mounting only its own volume.
+const RW_MODE = 0o0755;
+const RO_MODE = 0o0555;
 
 /**
  * Collect the volumes to provision from the config snapshot (site-level).

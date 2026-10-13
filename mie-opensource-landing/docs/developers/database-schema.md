@@ -260,6 +260,6 @@ Implemented with **Sequelize ORM** backed by **PostgreSQL**. Includes migrations
 
 ## Key Design Patterns
 
-- **Service STI**: Base `Services` table with `type` discriminator; child tables (`HTTPServices`, `TransportServices`, `DnsServices`) extend via one-to-one relationships
+- **Service STI**: Base `Services` table with `type` discriminator; child tables (`HTTPServices`, `TransportServices`, `DnsServices`) extend via one-to-one relationships; deleting a `Service` cascades to its child row (`ON DELETE CASCADE`)
 - **LDAP compatibility**: User/Group models use LDAP naming (`uidNumber`, `gidNumber`, `cn`, `sn`, `givenName`)
 - **Hierarchy**: Site → Nodes → Containers → Services (mirrors physical topology)

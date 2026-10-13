@@ -60,6 +60,11 @@ function buildApp({
     app.use('/mcp', createMcpProxy(mcpServerUrl));
   }
 
+  // `mieweb login` redeems its one-time code here. Registered before the body
+  // parsers (it has its own 4 KB one) and the session/CSRF middleware: the
+  // CLI has no session, and the code in the body is its only credential.
+  app.post('/api/v1/auth/cli/token', require('./routers/api/v1/cli-auth').tokenRoute);
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
