@@ -30,7 +30,7 @@ pnpm install
 pnpm test          # unit + contract conformance against an in-process fake Manager
 pnpm typecheck
 pnpm build         # tsc → dist/ (ESM .js + .d.ts), run automatically on pack/publish
-pnpm gen:types     # regenerate src/generated/manager-api.ts from the Manager's OpenAPI spec
+pnpm gen:types     # generate src/generated/manager-api.ts (gitignored) from the Manager's OpenAPI spec; typecheck and build run it
 ```
 
 Notable libraries do the general-purpose work: [`openapi-fetch`](https://www.npmjs.com/package/openapi-fetch) is the Manager client, typed by the Manager's OpenAPI spec; [`p-retry`](https://www.npmjs.com/package/p-retry) handles retries (GETs on dropped connections, SSH while a container boots); [`open`](https://www.npmjs.com/package/open) opens the browser for `login`; [`read`](https://www.npmjs.com/package/read) handles terminal prompts; and [`shell-quote`](https://www.npmjs.com/package/shell-quote) quotes remote commands.

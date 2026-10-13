@@ -42,8 +42,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: packages/os-cloud-provider/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Generated Manager types are up to date
-        run: pnpm gen:types && git diff --exit-code -- src/generated
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
