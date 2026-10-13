@@ -255,6 +255,7 @@ async function revoke(
       api.DELETE('/apikeys/{id}', { params: { path: { id: key.apiKeyId } } }),
     );
   } catch (err) {
+    ctx.signal.throwIfAborted();
     // Already deleted, or no longer valid: nothing left to revoke.
     if ((err as Error).name === 'AuthError' || (err as { status?: number }).status === 404) return;
     logger.warn(`Could not revoke API key ${key.apiKeyId} on ${instanceUrl}; delete it under API Keys in the web UI`);

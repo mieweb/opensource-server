@@ -115,7 +115,7 @@ describe('contract', () => {
     assert.equal(fake.containers.length, 1);
   });
 
-  test('supports only the mieweb target; dev and tail are omitted', () => {
+  test('supports only the mieweb target; dev is omitted, tail is implemented', () => {
     const p = provider();
     assert.equal(p.name, 'opensource-server');
     assert.equal(p.supports('mieweb'), true);
