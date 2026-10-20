@@ -105,6 +105,20 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
 
+      - name: Docker Meta (Cloud)
+        id: meta-cloud
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/cloud
+          bake-target: cloud
+          flavor: latest=false
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
+
       - name: Docker Meta (Docs)
         id: meta-docs
         uses: docker/metadata-action@v5
@@ -169,6 +183,7 @@ jobs:
             ${{ steps.meta-nodejs.outputs.bake-file }}
             ${{ steps.meta-docker.outputs.bake-file }}
             ${{ steps.meta-docker-nodejs.outputs.bake-file }}
+            ${{ steps.meta-cloud.outputs.bake-file }}
             ${{ steps.meta-docs.outputs.bake-file }}
             ${{ steps.meta-agent.outputs.bake-file }}
             ${{ steps.meta-manager.outputs.bake-file }}
@@ -182,6 +197,8 @@ jobs:
             docker.cache-to=type=gha,mode=max,scope=docker-${{ github.ref_name }}
             docker-nodejs.cache-from=type=gha,scope=docker-nodejs-${{ github.ref_name }}
             docker-nodejs.cache-to=type=gha,mode=max,scope=docker-nodejs-${{ github.ref_name }}
+            cloud.cache-from=type=gha,scope=cloud-${{ github.ref_name }}
+            cloud.cache-to=type=gha,mode=max,scope=cloud-${{ github.ref_name }}
             docs.cache-from=type=gha,scope=docs-${{ github.ref_name }}
             docs.cache-to=type=gha,mode=max,scope=docs-${{ github.ref_name }}
             agent.cache-from=type=gha,scope=agent-${{ github.ref_name }}

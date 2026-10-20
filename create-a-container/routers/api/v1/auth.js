@@ -379,4 +379,7 @@ router.post(
   }),
 );
 
+// /api/v1/auth/cli/* — loopback login handoff for `mieweb login` (issue #475).
+router.use('/cli', require('./cli-auth'));
+
 module.exports = router;

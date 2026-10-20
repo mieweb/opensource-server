@@ -1,0 +1,17 @@
+[Unit]
+Description=Valkey (KV / Queue binding backend)
+After=network.target environment.service mieweb-env.service
+
+[Service]
+Type=notify
+User=mieweb
+Group=mieweb
+EnvironmentFile=-/run/mieweb/env
+# /mnt/data (the #421 volume) is root-owned; give the service its own dir.
+ExecStartPre=+/usr/bin/install -d -m 0750 -o mieweb -g mieweb /mnt/data/valkey
+ExecStart=/usr/bin/valkey-server --bind 127.0.0.1 --port 6379 --protected-mode yes --dir /mnt/data/valkey --appendonly yes --daemonize no --supervised systemd
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

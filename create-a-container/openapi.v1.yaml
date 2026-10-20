@@ -632,6 +632,90 @@ paths:
       responses:
         '302': { description: 'Redirect to the post-login destination on success, or /login?oidc_error=<code> on failure' }
         '404': { description: 'OIDC not configured (code: oidc_disabled)' }
+  /auth/cli/callback:
+    get:
+      operationId: cli_login_authorize
+      tags: [Auth]
+      summary: CLI loopback login — browser confirmation page
+      description: >-
+        Browser-facing (HTML), used by `mieweb login`. Without a session, it
+        redirects through the normal sign-in (OIDC or /login) and comes back
+        here. With a session, it renders a confirmation form that POSTs back to
+        this path. A GET never mints a key.
+      security: []
+      parameters:
+        - { in: query, name: port, required: true, schema: { type: integer, minimum: 1024, maximum: 65535 }, description: Loopback port the CLI listens on (host is always 127.0.0.1) }
+        - { in: query, name: state, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{16,128}$' }, description: CLI-generated one-time nonce, echoed back }
+        - { in: query, name: client, schema: { type: string, pattern: '^[A-Za-z0-9._@-]{1,64}$' }, description: Label recorded in the minted key's description }
+      responses:
+        '200': { description: HTML confirmation page }
+        '302': { description: Redirect to sign-in when there is no session }
+        '400': { description: HTML error page for invalid parameters }
+    post:
+      operationId: cli_login_mint
+      tags: [Auth]
+      summary: CLI loopback login — hand the loopback listener a one-time code
+      description: >-
+        Requires a browser session and a CSRF token (`_csrf`). Bearer-only
+        requests are rejected. Consumes the page's one-time handoff and
+        303-redirects to `http://127.0.0.1:<port>/callback#code=…&state=…`
+        (fragment, so it never appears in a request line). No key exists until
+        the CLI redeems the code with `cli_login_token`.
+      # Browser session only: Bearer-only requests are rejected.
+      security:
+        - SessionCookie: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [_csrf, port, state]
+              properties:
+                _csrf: { type: string }
+                port: { type: integer }
+                state: { type: string }
+                client: { type: string }
+      responses:
+        '303': { description: Redirect to the loopback listener with a one-time code in the fragment }
+        '400': { description: HTML error page for invalid parameters }
+        '401': { description: No browser session }
+        '403': { description: Missing/invalid CSRF token }
+  /auth/cli/token:
+    post:
+      operationId: cli_login_token
+      tags: [Auth]
+      summary: CLI loopback login — redeem the one-time code for an API key
+      description: >-
+        Called by the CLI itself (no session or CSRF token). The code from the
+        browser handoff mints one API key, for the user who authorized it.
+        It is single use, bound to its `state`, and valid for 2 minutes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code: { type: string }
+                state: { type: string }
+      responses:
+        '200':
+          description: The new API key (plaintext, returned once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [key, id, user]
+                    properties:
+                      key: { type: string }
+                      id: { type: string }
+                      user: { type: string }
+        '400': { description: 'Invalid, expired or already-used code (code: invalid_code)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /auth/logout:
     post:
       operationId: logout
@@ -893,7 +977,7 @@ paths:
           description: Bootstrap payload
           content:
             application/json:
-              schema: { type: object, properties: { data: { type: object, properties: { siteId: { type: integer }, externalDomains: { type: array, items: { type: object } }, nvidiaAvailable: { type: boolean } } } } }
+              schema: { type: object, properties: { data: { type: object, required: [siteId, externalDomains, nvidiaAvailable], properties: { siteId: { type: integer }, externalDomains: { type: array, description: 'Usable domains; the site''s own default domains first', items: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string }, siteId: { type: integer, nullable: true } } } }, nvidiaAvailable: { type: boolean } } } } }
         '404': { description: 'Site not found (code: site_not_found)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /sites/{siteId}/containers/metadata:
     get:
