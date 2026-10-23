@@ -1,6 +1,8 @@
 /** Host system info and systemd unit control via the systemd D-Bus API. */
 
+import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import dbus, { type MessageBus, type ProxyObject, type Variant } from '@particle/dbus-next';
 
 /** First non-internal IPv4 address, or null when none is configured. */
@@ -11,6 +13,23 @@ export function getPrimaryIpv4(): string | null {
     }
   }
   return null;
+}
+
+// sbin dirs are not on the agent's PATH under systemd, but that's where
+// postfix/dovecot/dnsmasq binaries live.
+const EXTRA_BIN_DIRS = ['/usr/sbin', '/usr/bin', '/sbin', '/bin', '/usr/local/sbin', '/usr/local/bin'];
+
+/** Which of `binaries` cannot be found on PATH or the usual sbin dirs. */
+export function findMissingBinaries(binaries: string[]): string[] {
+  const dirs = [...new Set([...(process.env.PATH ?? '').split(':').filter(Boolean), ...EXTRA_BIN_DIRS])];
+  return binaries.filter((bin) => !dirs.some((dir) => {
+    try {
+      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }));
 }
 
 // --- systemd (org.freedesktop.systemd1 on the system bus) -------------------
@@ -33,7 +52,12 @@ interface SystemdManager {
   LoadUnit(name: string): Promise<string>;
   ReloadOrRestartUnit(name: string, mode: string): Promise<string>;
   RestartUnit(name: string, mode: string): Promise<string>;
+  StartUnit(name: string, mode: string): Promise<string>;
+  StopUnit(name: string, mode: string): Promise<string>;
   KillUnit(name: string, who: string, signal: number): Promise<void>;
+  EnableUnitFiles(files: string[], runtime: boolean, force: boolean): Promise<unknown>;
+  DisableUnitFiles(files: string[], runtime: boolean): Promise<unknown>;
+  Reload(): Promise<void>;
   Subscribe(): Promise<void>;
   Unsubscribe(): Promise<void>;
   on(event: 'JobRemoved', listener: (id: number, job: unknown, unit: string, result: string) => void): void;
@@ -85,7 +109,7 @@ export async function getServiceState(unit: string): Promise<string> {
 
 /** Enqueue a systemd job and wait for it to finish; throws unless the job
  * completes with result "done". */
-async function runJob(method: 'ReloadOrRestartUnit' | 'RestartUnit', unit: string): Promise<void> {
+async function runJob(method: 'ReloadOrRestartUnit' | 'RestartUnit' | 'StartUnit' | 'StopUnit', unit: string): Promise<void> {
   const mgr = await getManager();
   // JobRemoved is only broadcast to subscribed clients.
   await mgr.Subscribe();
@@ -139,4 +163,28 @@ export function restartService(unit: string): Promise<void> {
 export async function sighupService(unit: string): Promise<void> {
   const mgr = await getManager();
   await mgr.KillUnit(unitName(unit), 'main', SIGHUP);
+}
+
+/** `systemctl enable --now <units>` — boot persistence + immediate start. */
+export async function enableAndStartServices(units: string[]): Promise<void> {
+  const mgr = await getManager();
+  await mgr.EnableUnitFiles(units.map(unitName), false, true);
+  await mgr.Reload();
+  for (const unit of units) await runJob('StartUnit', unit);
+}
+
+/** `systemctl disable --now <units>`; failures are swallowed — used when the
+ * mail group is turned off or the claim is lost, where units may not even be
+ * installed. Configs and data are left in place. */
+export async function stopAndDisableServices(units: string[]): Promise<void> {
+  const mgr = await getManager();
+  for (const unit of units) {
+    await runJob('StopUnit', unit).catch(() => undefined);
+  }
+  try {
+    await mgr.DisableUnitFiles(units.map(unitName), false);
+    await mgr.Reload();
+  } catch {
+    /* not installed / already disabled */
+  }
 }

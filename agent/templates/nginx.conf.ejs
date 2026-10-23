@@ -223,6 +223,8 @@ http {
   <%_ httpServices.forEach((service, index) => { _%>
   <%_ const authRequired = service.authRequired; _%>
   <%_ const authServer = service.externalDomain.authServer; _%>
+  <%_ const serverName = `${service.externalHostname}.${service.externalDomain.name}`; _%>
+  <%_ const servesUnsubscribe = (typeof unsubscribeHost !== 'undefined' && unsubscribeHost) === serverName; _%>
   server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -233,6 +235,20 @@ http {
     <%_ /* SSL certificates */ -%>
     ssl_certificate /etc/ssl/certs/<%= service.externalDomain.name %>.crt;
     ssl_certificate_key /etc/ssl/private/<%= service.externalDomain.name %>.key;
+
+    <%_ if (servesUnsubscribe && authRequired && authServer) { _%>
+    <%_ /* RFC 8058 one-click unsubscribe: POSTs come from recipients' mail
+          clients with no session, so this location must stay outside
+          auth_request. The endpoint authenticates via its encrypted token. */ -%>
+    location ^~ /u/ {
+      proxy_pass <%= service.backendProtocol %>://<%= service.container.ipv4Address %>:<%= service.internalPort %>;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    <%_ } _%>
 
     error_page 403 @403;
     location @403 {

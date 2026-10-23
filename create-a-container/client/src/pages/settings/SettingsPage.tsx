@@ -38,6 +38,20 @@ const schema = z.object({
   netboxToken: z.string(),
   bannerMessage: z.string(),
   usagePsiProbeLimit: z.string().regex(/^\d*$/, 'Must be a non-negative whole number'),
+  mailHostname: z.string(),
+  mailUnsubscribeBaseUrl: z.string(),
+  mailRelayhost: z.string(),
+  mailRelayhostUsername: z.string(),
+  mailRelayhostPassword: z.string(),
+  mailSpfInclude: z.string(),
+  mailDnsCheckResolvers: z.string(),
+  mailDbHost: z.string(),
+  mailSelfManagedSiteId: z.string().regex(/^\d*$/, 'Must be a site id'),
+  mailDefaultQuotaMb: z.string().regex(/^\d*$/, 'Must be a whole number of MB'),
+  mailMessageSizeLimitMb: z.string().regex(/^\d*$/, 'Must be a whole number of MB'),
+}).refine((v) => !v.mailRelayhost.trim() || !!v.mailSpfInclude.trim(), {
+  path: ['mailSpfInclude'],
+  message: 'Required when a relayhost is set — SPF must delegate to the relay',
 });
 type FormData = z.infer<typeof schema>;
 
@@ -46,7 +60,7 @@ export function SettingsPage() {
   const toast = useToast();
   const { data, isLoading, error } = useQuery({ queryKey: keys.settings(), queryFn: queries.getSettings });
 
-  const { register, handleSubmit, reset, control, formState } = useForm<FormData>({
+  const { register, handleSubmit, reset, control, formState, setValue } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       smtpUrl: '',
@@ -56,6 +70,17 @@ export function SettingsPage() {
       netboxToken: '',
       bannerMessage: '',
       usagePsiProbeLimit: '',
+      mailHostname: '',
+      mailUnsubscribeBaseUrl: '',
+      mailRelayhost: '',
+      mailRelayhostUsername: '',
+      mailRelayhostPassword: '',
+      mailSpfInclude: '',
+      mailDnsCheckResolvers: '',
+      mailDbHost: '',
+      mailSelfManagedSiteId: '',
+      mailDefaultQuotaMb: '',
+      mailMessageSizeLimitMb: '',
     },
   });
   const { fields, append, remove } = useFieldArray({ control, name: 'defaultContainerEnvVars' });
@@ -76,6 +101,22 @@ export function SettingsPage() {
     onError: (err: ApiError) => toast.error(err.message),
   });
 
+  // Suggest the forward-confirmed PTR of the mail IP as mail_hostname.
+  const suggestPtr = useMutation({
+    mutationFn: queries.getMailPtr,
+    onSuccess: (ptr) => {
+      if (ptr.suggestion) {
+        setValue('mailHostname', ptr.suggestion, { shouldDirty: true });
+        toast.success(`Suggested ${ptr.suggestion} from the PTR of ${ptr.mailIp}`);
+      } else if (!ptr.mailIp) {
+        toast.error('No mail IP yet — no agent holds the mail-host claim');
+      } else {
+        toast.error(`No forward-confirmed PTR for ${ptr.mailIp}${ptr.ptr ? ` (found ${ptr.ptr})` : ''}`);
+      }
+    },
+    onError: (err: ApiError) => toast.error(err.message),
+  });
+
   if (isLoading) return <div className="flex justify-center p-12"><Spinner size="lg" /></div>;
   if (error) return <Alert variant="danger"><AlertDescription>{(error as ApiError).message}</AlertDescription></Alert>;
 
@@ -92,6 +133,94 @@ export function SettingsPage() {
             {...register('smtpUrl')}
           />
           <Input label="Noreply address" type="email" placeholder="noreply@example.com" {...register('smtpNoreplyAddress')} />
+        </section>
+
+        <section className="grid gap-4">
+          <h2 className="text-lg font-semibold">Mail service</h2>
+          <div className="flex items-end gap-2">
+            <div className="grow">
+              <Input
+                label="Mail hostname"
+                placeholder="mail.example.com"
+                helperText="HELO name and MX target — should match the forward-confirmed PTR of the mail IP"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                {...register('mailHostname')}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer"
+              isLoading={suggestPtr.isPending}
+              onClick={() => suggestPtr.mutate()}
+            >
+              Suggest from PTR
+            </Button>
+          </div>
+          <Input
+            label="Unsubscribe base URL"
+            placeholder="https://manager.example.com"
+            helperText="Public URL of this manager — one-click unsubscribe links point here"
+            {...register('mailUnsubscribeBaseUrl')}
+          />
+          <Input
+            label="Relayhost"
+            placeholder="[smtp.relay.example]:587"
+            helperText="Optional smarthost for outbound mail; leave empty to deliver directly"
+            {...register('mailRelayhost')}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Relayhost username" autoComplete="off" {...register('mailRelayhostUsername')} />
+            <Input label="Relayhost password" type="password" autoComplete="new-password" {...register('mailRelayhostPassword')} />
+          </div>
+          <Input
+            label="SPF include"
+            placeholder="_spf.relay.example"
+            helperText="Added to the suggested SPF records; required with a relayhost"
+            error={formState.errors.mailSpfInclude?.message}
+            hasError={!!formState.errors.mailSpfInclude}
+            {...register('mailSpfInclude')}
+          />
+          <Input
+            label="DNS check resolvers"
+            placeholder="1.1.1.1, 8.8.8.8"
+            helperText="Comma-separated resolver IPs used by Check DNS; empty uses the defaults"
+            {...register('mailDnsCheckResolvers')}
+          />
+          <Input
+            label="Mail DB host"
+            placeholder="db.internal.example"
+            helperText="Only when the mail host cannot reach the database over the local socket"
+            {...register('mailDbHost')}
+          />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input
+              label="Self-managed site id"
+              inputMode="numeric"
+              helperText="Site whose external IP sends mail when no agent runs the mail group"
+              error={formState.errors.mailSelfManagedSiteId?.message}
+              hasError={!!formState.errors.mailSelfManagedSiteId}
+              {...register('mailSelfManagedSiteId')}
+            />
+            <Input
+              label="Default quota (MB)"
+              inputMode="numeric"
+              placeholder="1024"
+              error={formState.errors.mailDefaultQuotaMb?.message}
+              hasError={!!formState.errors.mailDefaultQuotaMb}
+              {...register('mailDefaultQuotaMb')}
+            />
+            <Input
+              label="Message size limit (MB)"
+              inputMode="numeric"
+              placeholder="25"
+              error={formState.errors.mailMessageSizeLimitMb?.message}
+              hasError={!!formState.errors.mailMessageSizeLimitMb}
+              {...register('mailMessageSizeLimitMb')}
+            />
+          </div>
         </section>
 
         <section className="grid gap-4">
