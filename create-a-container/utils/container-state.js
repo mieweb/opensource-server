@@ -110,9 +110,17 @@ function computeDesiredState({
   mounts = {},
   reservedMounts = 0,
 }) {
+  // Swap may legitimately be 0; every other resource must be positive. A
+  // nonpositive approval (possible via auto-approve, and possibly already
+  // persisted) would otherwise reach the provider as "unlimited" (Docker) or be
+  // rejected (Proxmox), so fall back to the default for those.
   const resources = { ...resourceDefaults };
-  for (const [k, v] of Object.entries(approved)) {
-    if (v !== undefined && v !== null) resources[k] = v;
+  for (const [k, raw] of Object.entries(approved)) {
+    if (raw === undefined || raw === null) continue;
+    const v = Number(raw);
+    if (!Number.isFinite(v)) continue;
+    if (k === 'swap' ? v < 0 : v <= 0) continue;
+    resources[k] = v;
   }
 
   const deleted = String(envConfig.delete || '').split(',').filter(Boolean);

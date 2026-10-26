@@ -63,6 +63,14 @@ describe('container-state', () => {
     expect(d.config.swap).toBe(0);
   });
 
+  test('nonpositive memory/cpus/rootfs approvals fall back to defaults; swap=0 kept', () => {
+    const d = desiredWith({ approved: { memory: 0, cpus: -1, rootfs: 0, swap: 0 } });
+    expect(d.config.memory).toBe(8192);
+    expect(d.config.cores).toBe(4);
+    expect(d.rootfsGb).toBe(50);
+    expect(d.config.swap).toBe(0);
+  });
+
   test('env/entrypoint changes and deletes', () => {
     const d = desiredWith({ envConfig: { env: 'A=1', delete: 'entrypoint' } });
     const result = ops(d, matchingCurrent());
