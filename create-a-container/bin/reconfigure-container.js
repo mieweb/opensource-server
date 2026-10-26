@@ -2,18 +2,18 @@
 /**
  * reconfigure-container.js
  * 
- * Background job script that applies configuration changes and restarts a container.
- * This script is executed by the job-runner when environment variables or entrypoint
- * are changed on an existing container, or when resource requests are approved.
- * 
- * Usage: node bin/reconfigure-container.js --container-id=<id> [--memory=<MB>] [--cpus=<n>] [--swap=<MB>] [--rootfs=<GB>]
- * 
+ * Background job script that converges an existing container onto the
+ * manager's desired state and restarts it.
+ *
+ * Usage: node bin/reconfigure-container.js --container-id=<id>
+ *
  * The script will:
- * 1. Load the container record from the database
- * 2. Apply env, entrypoint, and/or resource config via Proxmox API
- * 3. Stop the container
- * 4. Start the container
- * 5. Update the container status to 'running'
+ * 1. Generate the desired state (defaults + approved resources, env,
+ *    entrypoint, volumes, network, features, hookscript, ...)
+ * 2. Retrieve the container's current state from the provider
+ * 3. Diff the two into set/delete/resize operations
+ * 4. Apply the diff
+ * 5. Restart the container (always) and refresh MAC/IP
  * 
  * All output is logged to STDOUT for capture by the job-runner.
  * Exit code 0 = success, non-zero = failure.
@@ -31,6 +31,12 @@ const {
   resolveVolumesRoot,
   deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
+const {
+  buildDesiredState,
+  readCurrentState,
+  diffState,
+  applyDiff,
+} = require(path.join(__dirname, '..', 'utils', 'container-state'));
 
 /**
  * Ensure this container's volume host paths are derived and their directories
@@ -135,128 +141,77 @@ async function main() {
   console.log(`VMID: ${container.containerId}`);
   
   try {
-    // Get the Proxmox API client
     const client = await node.api();
-    console.log('Proxmox API client initialized');
-    
-    // Build config from environment variables and entrypoint. Pass
-    // deleteMissing so that clearing env vars or removing a custom entrypoint
-    // actually unsets them on the existing container (vs. create, which must
-    // preserve template-provided values).
-    const lxcConfig = await container.buildLxcEnvConfig({ deleteMissing: true });
-    
-    if (Object.keys(lxcConfig).length > 0) {
-      console.log('Applying LXC configuration...');
-      console.log('Config:', JSON.stringify(lxcConfig, null, 2));
-      await client.updateLxcConfig(node.name, container.containerId, lxcConfig);
-      console.log('Configuration applied');
-    } else {
-      console.log('No configuration changes to apply');
-    }
+    console.log('Node API client initialized');
 
-    // Apply resource changes if specified via CLI flags
-    const resourceConfig = {};
-    if (args.memory) resourceConfig.memory = parseInt(args.memory, 10);
-    if (args.cpus) resourceConfig.cores = parseInt(args.cpus, 10);
-    if (args.swap) resourceConfig.swap = parseInt(args.swap, 10);
-    if (args.rootfs) resourceConfig.rootfs = `local-lvm:${parseInt(args.rootfs, 10)}`;
-
-    if (Object.keys(resourceConfig).length > 0) {
-      console.log('Applying resource configuration...');
-      console.log('Resources:', JSON.stringify(resourceConfig, null, 2));
-      await client.updateLxcConfig(node.name, container.containerId, resourceConfig);
-      console.log('Resource configuration applied');
-    }
-
-    // Reconcile volume bind mounts (issue #421): ensure host directories are
-    // ready and (re)render every Volume row to mpN. Setting the same mpN values
-    // is idempotent; attaching a new one requires a restart to take effect.
-    let volumesChanged = false;
+    // Volume host directories must exist before mpN can be rendered.
     const volumes = await ensureVolumesReady(client, node, container);
-    // Skip the mpN mount reconcile on Docker nodes: Docker binds are applied at
-    // create time and `lxcConfig()` does not expose `mpN`, so the diff below
-    // would always report "changed" and re-apply on every reconfigure. (Bind
-    // changes on Docker flow through the container-recreate path, not mpN.)
-    if (volumes.length > 0 && node.nodeType !== 'docker') {
-      const mountConfig = Volume.buildMountConfig(volumes);
-      const currentConfig = await client.lxcConfig(node.name, container.containerId);
-      volumesChanged = Object.entries(mountConfig).some(([k, val]) => currentConfig[k] !== val);
-      if (volumesChanged) {
-        console.log('Applying volume mounts...');
-        console.log('Volumes:', JSON.stringify(mountConfig, null, 2));
-        await client.updateLxcConfig(node.name, container.containerId, mountConfig);
-        await Volume.update(
-          { appliedAt: new Date() },
-          { where: { containerId: container.id } },
-        );
-        console.log('Volume mounts applied');
-      } else {
-        console.log('Volume mounts already up to date');
-      }
+
+    // 1. Desired state (shared with the create job)
+    const desired = await buildDesiredState(container, node, node.site, { volumes });
+
+    // 2. Current state
+    let vmid = container.containerId;
+    const current = await readCurrentState(client, node, vmid);
+
+    // 3. Diff (throws on unsupported changes such as rootfs shrink)
+    const { ops, skipped } = diffState(desired, current, client);
+    if (skipped.length > 0) {
+      console.log(`Keys not supported by ${node.nodeType} provider (skipped): ${skipped.join(', ')}`);
     }
-
-    // Determine if a stop/start cycle is required.
-    // rootfs (disk) changes require a restart; memory/cpu/swap are applied live via cgroups.
-    // LXC env/entrypoint config changes (actual values being set, not just deletions) require a restart.
-    const hasEnvConfigChanges = Object.keys(lxcConfig).some(k => k !== 'delete');
-    const requiresRestart = !!args.rootfs || hasEnvConfigChanges || volumesChanged;
-
-    // Check container status before stop/start cycle
-    const lxcStatus = await client.getLxcStatus(node.name, container.containerId);
-    console.log(`Container current status: ${lxcStatus.status}`);
-
-    if (!requiresRestart) {
-      console.log('Resource changes applied live (no restart required)');
+    if (ops.length === 0) {
+      console.log('Container already matches desired state');
     } else {
-      // Only stop if the container is running
-      if (lxcStatus.status === 'running') {
-        console.log('Stopping container...');
-        const stopUpid = await client.stopLxc(node.name, container.containerId);
-        console.log(`Stop task started: ${stopUpid}`);
-
-        // Wait for stop to complete (shorter timeout for stop/start)
-        await client.waitForTask(node.name, stopUpid, 2000, 60000);
-        console.log('Container stopped');
-      } else {
-        console.log('Container not running, skipping stop');
+      console.log(`Applying ${ops.length} change(s):`);
+      for (const o of ops) {
+        const show = (v) => (o.key === 'env' ? '<env>' : JSON.stringify(v));
+        console.log(`  ${o.op.padEnd(6)} ${o.key}: ${show(o.from)} -> ${show(o.to)}`);
       }
-
-      // Start the container
-      console.log('Starting container...');
-      const startUpid = await client.startLxc(node.name, container.containerId);
-      console.log(`Start task started: ${startUpid}`);
-
-      // Wait for start to complete
-      await client.waitForTask(node.name, startUpid, 2000, 60000);
-      console.log('Container started');
     }
-    
-    if (requiresRestart) {
-      // Get MAC address from config (in case it wasn't captured during failed create)
-      const macAddress = await client.getLxcMacAddress(node.name, container.containerId);
 
-      if (!macAddress) {
-        throw new Error('Could not get MAC address from container configuration');
+    // 4. Restart is always performed for a queued reconfigure job, for
+    // consistency (the UI/API only queues this job when a restart is expected).
+
+    // 5. Apply
+    if (ops.length > 0) {
+      const replacedId = await applyDiff(client, node, vmid, ops);
+      if (replacedId) {
+        vmid = replacedId;
+        await container.update({ containerId: String(vmid) });
+        console.log(`Provider container ID changed to ${vmid}`);
       }
-
-      // Get IP address from Proxmox interfaces API
-      const ipv4Address = await client.getLxcIpAddress(node.name, container.containerId);
-
-      if (!ipv4Address) {
-        throw new Error('Could not get IP address from Proxmox interfaces API');
+      if (ops.some((o) => /^mp\d+$/.test(o.key))) {
+        await Volume.update({ appliedAt: new Date() }, { where: { containerId: container.id } });
       }
-
-      // Update container record with MAC/IP
-      await container.update({
-        macAddress,
-        ipv4Address
-      });
-
-      console.log('Reconfiguration applied; container running');
-      console.log(`  MAC: ${macAddress}`);
-      console.log(`  IP: ${ipv4Address}`);
+      console.log('Desired state applied');
     }
-    
+
+    // 6. Restart
+    const lxcStatus = await client.getLxcStatus(node.name, vmid);
+    console.log(`Container current status: ${lxcStatus.status}`);
+    if (lxcStatus.status === 'running') {
+      console.log('Stopping container...');
+      const stopUpid = await client.stopLxc(node.name, vmid);
+      await client.waitForTask(node.name, stopUpid, 2000, 60000);
+      console.log('Container stopped');
+    }
+    console.log('Starting container...');
+    const startUpid = await client.startLxc(node.name, vmid);
+    await client.waitForTask(node.name, startUpid, 2000, 60000);
+    console.log('Container started');
+
+    const macAddress = await client.getLxcMacAddress(node.name, vmid);
+    if (!macAddress) {
+      throw new Error('Could not get MAC address from container configuration');
+    }
+    const ipv4Address = await client.getLxcIpAddress(node.name, vmid);
+    if (!ipv4Address) {
+      throw new Error('Could not get IP address from provider interfaces API');
+    }
+    await container.update({ macAddress, ipv4Address });
+    console.log(`  MAC: ${macAddress}`);
+    console.log(`  IP: ${ipv4Address}`);
+
     console.log('Container reconfiguration completed successfully!');
     process.exit(0);
   } catch (err) {

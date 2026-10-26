@@ -481,6 +481,21 @@ class DockerApi {
     return task(hasContainerConfigChanges ? 'recreate' : 'update', containerId);
   }
 
+  /**
+   * Config keys this provider can report and apply. Docker cannot represent
+   * swap, rootfs size, LXC features, hookscripts, tags, onboot, or a Proxmox
+   * net0 line, and lxcConfig() does not expose mpN binds; those are skipped by
+   * the desired-state diff instead of producing a permanent drift.
+   */
+  supportsConfigKey(key) {
+    return ['cores', 'memory', 'env', 'entrypoint'].includes(key);
+  }
+
+  async resizeLxcDisk(node, vmid, disk, size) {
+    console.log(`[DockerApi] resizeLxcDisk ${disk}=${size} ignored (unsupported)`);
+    return null;
+  }
+
   async startLxc(node, vmid) {
     const containerId = this.containerId(vmid);
     await this.request('post', `/containers/${containerId}/start`);

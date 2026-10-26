@@ -1924,7 +1924,7 @@ paths:
       summary: >-
         Request a resource adjustment for a container. Auto-approved (and
         applied to matching provisioned containers) when the caller is an admin
-        or the value is at or below the default (memory 4096 MB, swap 0 MB,
+        or the value is at or below the default (memory 8192 MB, swap 0 MB,
         cpus 4, rootfs 50 GB); otherwise left pending for admin review.
       requestBody:
         required: true

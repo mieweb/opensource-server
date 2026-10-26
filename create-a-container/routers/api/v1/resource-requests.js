@@ -233,7 +233,8 @@ async function applyResourceToExistingContainers(siteId, hostname, username, res
   const { Job } = require('../../../models');
   for (const container of containers) {
     await Job.create({
-      command: `node bin/reconfigure-container.js --container-id=${container.id} --${resourceType}=${value}`,
+      // The job derives desired resources (defaults + approvals) itself.
+      command: `node bin/reconfigure-container.js --container-id=${container.id}`,
       createdBy: 'system',
       status: 'pending',
     });

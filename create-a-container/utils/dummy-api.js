@@ -219,6 +219,16 @@ class DummyApi {
     console.log(`[DummyApi] updateLxcConfig vmid=${vmid} keys=${Object.keys(config).join(',') || '(none)'}`);
   }
 
+  async resizeLxcDisk(node, vmid, disk, size) {
+    const cfg = this._ensureConfig(vmid);
+    const current = cfg[disk] || '';
+    cfg[disk] = /size=/.test(current)
+      ? current.replace(/size=[^,]*/, `size=${size}`)
+      : `${current || 'local-lvm:vm-disk'},size=${size}`;
+    console.log(`[DummyApi] resizeLxcDisk vmid=${vmid} ${disk}=${size}`);
+    return this._fakeUpid('resize');
+  }
+
   async lxcConfig(node, vmid) {
     return { ...this._ensureConfig(vmid) };
   }
