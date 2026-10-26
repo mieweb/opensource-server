@@ -84,6 +84,8 @@ function sameMap(a, b) {
   return ak.length === bk.length && ak.every((k) => Object.prototype.hasOwnProperty.call(b, k) && String(a[k]) === String(b[k]));
 }
 
+const escapeRegExp = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const isEmpty = (v) => v === undefined || v === null || v === '';
 
 /**
@@ -143,10 +145,13 @@ function computeDesiredState({
     config,
     rootfsGb: Number(resources.rootfs),
     reservedMounts,
-    // Host-path segment unique to this container's manager-created volumes
-    // (see containerVolumeHostPath in utils/volumes.js). Only unlisted mpN
-    // under it are treated as detached; template/provider mounts are kept.
-    managedMountSegment: `/site-${site.id}/${container.username}/${container.hostname}/`,
+    // Matches this container's manager-created volume host paths
+    // (<root>/site-<siteId>/<owner>/<hostname>/<name>, see
+    // containerVolumeHostPath in utils/volumes.js). The owner segment is a
+    // wildcard because paths keep the ORIGINAL owner after an ownership
+    // transfer; (siteId, hostname) is unique (containers_site_hostname_unique).
+    // Only unlisted mpN matching it are treated as detached.
+    managedMountPattern: new RegExp(`/site-${site.id}/[^/]+/${escapeRegExp(container.hostname)}/[^/]+$`),
   };
 }
 
@@ -238,6 +243,9 @@ function diffState(desired, current, client = {}) {
     }
     const have = cur[key];
     if (keyMatches(key, want, have)) continue;
+    // Only remove a hookscript the manager installed; template/provider
+    // lifecycle hooks are left alone.
+    if (key === 'hookscript' && want === null && have !== NVIDIA_HOOKSCRIPT) continue;
 
     if (want === null) {
       ops.push({ key, op: 'delete', from: have, to: null });
@@ -256,12 +264,12 @@ function diffState(desired, current, client = {}) {
   // directories. Mounts inherited from a template (or added on the provider)
   // are preserved, as are the reserved legacy built-in slots.
   const reserved = desired.reservedMounts || 0;
-  const managed = desired.managedMountSegment;
+  const managed = desired.managedMountPattern;
   for (const key of Object.keys(cur)) {
     const m = /^mp(\d+)$/.exec(key);
     if (!m || Number(m[1]) < reserved || key in desired.config) continue;
     const hostPath = String(cur[key]).split(',')[0];
-    if (!managed || !hostPath.includes(managed)) continue;
+    if (!managed || !managed.test(hostPath)) continue;
     if (!clientSupports(client, key)) continue;
     ops.push({ key, op: 'delete', from: cur[key], to: null });
   }

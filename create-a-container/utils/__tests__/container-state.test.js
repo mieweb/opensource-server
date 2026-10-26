@@ -95,10 +95,18 @@ describe('container-state', () => {
     expect(result.find((o) => o.key === 'mp0')).toBeUndefined();
   });
 
+  test('detached volume created before an ownership transfer is deleted', () => {
+    const result = ops(desiredWith(), matchingCurrent({
+      mp0: '/mnt/pve/cephfs/volumes/site-1/previous-owner/web/data,mp=/data,ro=0',
+    }));
+    expect(result).toEqual([expect.objectContaining({ key: 'mp0', op: 'delete' })]);
+  });
+
   test('inherited/unmanaged mounts are never deleted', () => {
     const result = ops(desiredWith(), matchingCurrent({
       mp0: 'local-lvm:vm-100-disk-1,mp=/data,size=8G',
       mp1: '/mnt/pve/cephfs/volumes/site-1/bob/other/x,mp=/x,ro=0',
+      mp2: '/mnt/pve/cephfs/volumes/site-2/alice/web/x,mp=/y,ro=0',
     }));
     expect(result).toHaveLength(0);
   });
@@ -110,6 +118,8 @@ describe('container-state', () => {
     ]);
     const off = ops(desiredWith(), matchingCurrent({ hookscript: NVIDIA_HOOKSCRIPT }));
     expect(off).toEqual([{ key: 'hookscript', op: 'delete', from: NVIDIA_HOOKSCRIPT, to: null }]);
+    // A template/provider hookscript is not the manager's to remove.
+    expect(ops(desiredWith(), matchingCurrent({ hookscript: 'local:snippets/custom' }))).toHaveLength(0);
   });
 
   test('net0 rewrite preserves hwaddr', () => {
