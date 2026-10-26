@@ -37,7 +37,8 @@ module.exports = (sequelize, DataTypes) => {
       const resources = {};
       for (const row of rows) {
         // Only keep the most recent approval per type
-        if (!resources[row.resourceType]) {
+        // Key presence, not truthiness: an approved value of 0 (e.g. swap) is valid.
+        if (!Object.prototype.hasOwnProperty.call(resources, row.resourceType)) {
           resources[row.resourceType] = row.value;
         }
       }
