@@ -1,8 +1,8 @@
 /**
  * Filter decisions, kept free of milter/server plumbing so they are unit
  * testable. The milter runs pre-queue on the submission ports only, where
- * reject_sender_login_mismatch already guarantees envelope sender == SASL
- * login.
+ * reject_sender_login_mismatch enforces envelope sender == SASL login, except
+ * for the null reverse path, which is rejected explicitly below.
  */
 
 'use strict';
@@ -24,7 +24,8 @@ function parseAddress(raw) {
  * @returns {Promise<{action: 'continue'|'reject'|'tempfail', message?: string}>}
  */
 async function rcptDecision(db, sender, recipient) {
-  if (!sender || !recipient) return { action: 'continue' };
+  if (!sender) return { action: 'reject', message: '5.7.1 Envelope sender required' };
+  if (!recipient) return { action: 'continue' };
   try {
     if (await db.isSuppressed(sender, recipient)) {
       return { action: 'reject', message: `5.7.1 Recipient has unsubscribed from ${sender}` };

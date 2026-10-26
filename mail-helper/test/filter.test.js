@@ -40,6 +40,12 @@ test('rcptDecision rejects suppressed recipients with 5.7.1', async () => {
   assert.equal(miss.action, 'continue');
 });
 
+test('rcptDecision rejects a null envelope sender', async () => {
+  const decision = await rcptDecision(db, '', 'optedout@example.net');
+  assert.equal(decision.action, 'reject');
+  assert.match(decision.message, /^5\.7\.1 /);
+});
+
 test('rcptDecision DEFERS on DB failure (fail closed)', async () => {
   const broken = { async isSuppressed() { throw Object.assign(new Error('down'), { code: 'ECONNREFUSED' }); } };
   const decision = await rcptDecision(broken, 'app@example.com', 'x@y.z');
