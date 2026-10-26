@@ -12,8 +12,9 @@
  *    entrypoint, volumes, network, features, hookscript, ...)
  * 2. Retrieve the container's current state from the provider
  * 3. Diff the two into set/delete/resize operations
- * 4. Apply the diff
- * 5. Restart the container (always) and refresh MAC/IP
+ * 4. Decide whether a restart is required (currently always, for consistency)
+ * 5. Apply the diff
+ * 6. Restart the container and refresh MAC/IP
  * 
  * All output is logged to STDOUT for capture by the job-runner.
  * Exit code 0 = success, non-zero = failure.
