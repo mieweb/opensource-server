@@ -89,20 +89,35 @@ Read from the process environment (systemd loads `/etc/environment`). Set via co
 | `SITE_ID` | Yes | Numeric site ID from the manager |
 | `MANAGER_URL` | Yes | Base URL of the manager (e.g., `http://192.168.1.10:3000`) |
 | `API_KEY` | No | Admin API key for remote agents. Not needed on the manager (localhost is trusted). |
+| `AGENT_SERVICES` | No | Comma-separated service groups: `nginx`, `dnsmasq`, `mail`. Default `nginx,dnsmasq`. |
+| `MAIL_POSTFIX_DB_PASSWORD` | No | DB password for the `mail_postfix` role (mail hosts without local socket auth) |
+| `MAIL_DOVECOT_DB_PASSWORD` | No | DB password for the `mail_dovecot` role (mail hosts without local socket auth) |
+| `MAIL_HELPER_DIR`, `MAIL_HELPER_SOCKET_DIR`, `OPENDKIM_SOCKET_DIR` | No | Mail helper install dir and milter socket dirs (defaults match the packages) |
+| `VMAIL_DIR`, `GC_STATE_FILE`, `GC_RETENTION_MS` | No | Maildir root (default `/var/vmail`), mailbox GC state file, and GC retention (default 30 days) |
 | `STATE_DIRECTORY` | No | State directory, set by systemd via `StateDirectory=` (default `/var/lib/opensource-agent`) |
+
+On mail hosts `MANAGER_URL` must be the manager's **public** URL — one-click unsubscribe links use it as their base.
 
 The agent Dockerfile defaults to `SITE_ID=1` and `MANAGER_URL=http://localhost:3000` so the manager container works without configuration.
 
 ## Managed Services
 
-| Service | Files | Test | Reload |
-|---------|-------|------|--------|
-| nginx | `/etc/nginx/nginx.conf` | `nginx -t` | `systemctl reload-or-restart nginx` |
-| dnsmasq | `/etc/dnsmasq.conf`, `/var/lib/dnsmasq/{dhcp-hosts,hosts,dhcp-opts,servers}` | `dnsmasq --test` | restart when `/etc/dnsmasq.conf` changed, otherwise SIGHUP |
+Services are organized in groups enabled via `AGENT_SERVICES`. The check-in reports the enabled groups plus any missing binaries; the manager refuses the mail-host claim while anything is missing.
 
-Apply flow per service: render templates, skip if nothing changed, stage new files, run the test command, roll back on failure, then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
+| Group | Service | Files | Test | Reload |
+|-------|---------|-------|------|--------|
+| nginx | nginx | `/etc/nginx/nginx.conf` | `nginx -t` | `systemctl reload-or-restart nginx` |
+| dnsmasq | dnsmasq | `/etc/dnsmasq.conf`, `/var/lib/dnsmasq/{dhcp-hosts,hosts,dhcp-opts,servers}` | `dnsmasq --test` | restart when `/etc/dnsmasq.conf` changed, otherwise SIGHUP |
+| mail | opendkim | `/etc/opendkim.conf`, `$STATE_DIRECTORY/mail/{opendkim-keytable,opendkim-signingtable,dkim/*.private}` | `opendkim -n` | restart |
+| mail | dovecot | `/etc/dovecot/dovecot.conf` | `doveconf -n` | reload + `doveadm auth cache flush` |
+| mail | postfix (status: `postfix@-`) | `/etc/postfix/{main.cf,master.cf,vdomains,sni_map,sql/senders.cf,sql/mailboxes.cf}` | `postfix check` (after `postmap -F` postWrite) | reload-or-restart |
+| mail | opensource-mail-helper | `/opt/opensource-server/mail-helper/config.local.json` | — | restart |
 
-To add a managed service, add a `ManagedService` entry in [`agent/src/apply.ts`](https://github.com/mieweb/opensource-server/blob/main/agent/src/apply.ts) plus its template(s) under `agent/templates/`, and extend the config snapshot in `create-a-container/utils/agent-config.js`.
+The mail group renders only on the agent holding the mail-host claim (the `mail` section of the snapshot). The helper is its own component/package ([mail-helper/](https://github.com/mieweb/opensource-server/tree/main/mail-helper)) — a Postfix milter on a unix socket inside the Postfix chroot, ordered before OpenDKIM so the DKIM signature covers the List-Unsubscribe headers it injects. Taking the claim provisions directories (system users come from the helper package) and enables + starts the units; losing it — or removing `mail` from `AGENT_SERVICES` — stops and disables them, leaving configs and `/var/vmail` in place. Maildirs of deleted accounts are garbage-collected after 30 days.
+
+Apply flow per service: render templates, reconcile file mode/owner even when contents are unchanged, stage new files, run post-write commands, run the test command, roll back on failure (re-running post-write commands against the restored sources), then reload. Failures are reported as `lastApply: "failure"` at the next check-in.
+
+To add a managed service, add a `ManagedService` entry in [`agent/src/apply.ts`](https://github.com/mieweb/opensource-server/blob/main/agent/src/apply.ts) (or `agent/src/mail.ts` for the mail group) plus its template(s) under `agent/templates/`, and extend the config snapshot in `create-a-container/utils/agent-config.js`.
 
 ## Running Manually
 

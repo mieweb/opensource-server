@@ -1,0 +1,7 @@
+node_modules/
+config.local.json
+src/unsubscribe-token.js
+.pkg/
+*.deb
+*.rpm
+*.apk

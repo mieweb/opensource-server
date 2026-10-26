@@ -18,6 +18,7 @@ ExecStart=/bin/bash -e -c '\
   export POSTGRES_HOST="localhost"; \
   sudo -u postgres psql -c "CREATE USER $${POSTGRES_USER} WITH PASSWORD '"'"'$${POSTGRES_PASSWORD}'"'"';"; \
   sudo -u postgres psql -c "CREATE DATABASE $${POSTGRES_DATABASE} OWNER $${POSTGRES_USER};"; \
+  sudo -u postgres psql -c "ALTER ROLE $${POSTGRES_USER} CREATEROLE;"; \
   echo "DATABASE_DIALECT=$${DATABASE_DIALECT}" > /etc/default/container-creator; \
   echo "POSTGRES_HOST=$${POSTGRES_HOST}" >> /etc/default/container-creator; \
   echo "POSTGRES_DATABASE=$${POSTGRES_DATABASE}" >> /etc/default/container-creator; \
