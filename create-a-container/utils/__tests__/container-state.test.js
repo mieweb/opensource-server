@@ -82,16 +82,25 @@ describe('container-state', () => {
     );
   });
 
-  test('mounts are added and detached mounts deleted, legacy slots preserved', () => {
-    const d = desiredWith({ mounts: { mp1: '/data/x,mp=/x' }, reservedMounts: 1 });
-    const result = ops(d, matchingCurrent({ mp0: '/legacy,mp=/q', mp2: '/old,mp=/old' }));
+  test('mounts are added and detached managed mounts deleted, legacy slots preserved', () => {
+    const managed = '/mnt/pve/cephfs/volumes/site-1/alice/web';
+    const d = desiredWith({ mounts: { mp1: `${managed}/x,mp=/x,ro=0` }, reservedMounts: 1 });
+    const result = ops(d, matchingCurrent({ mp0: '/legacy,mp=/q', mp2: `${managed}/old,mp=/old,ro=0` }));
     expect(result).toEqual(
       expect.arrayContaining([
-        { key: 'mp1', op: 'set', from: undefined, to: '/data/x,mp=/x' },
+        { key: 'mp1', op: 'set', from: undefined, to: `${managed}/x,mp=/x,ro=0` },
         expect.objectContaining({ key: 'mp2', op: 'delete' }),
       ]),
     );
     expect(result.find((o) => o.key === 'mp0')).toBeUndefined();
+  });
+
+  test('inherited/unmanaged mounts are never deleted', () => {
+    const result = ops(desiredWith(), matchingCurrent({
+      mp0: 'local-lvm:vm-100-disk-1,mp=/data,size=8G',
+      mp1: '/mnt/pve/cephfs/volumes/site-1/bob/other/x,mp=/x,ro=0',
+    }));
+    expect(result).toHaveLength(0);
   });
 
   test('hookscript added when nvidia requested and removed when not', () => {

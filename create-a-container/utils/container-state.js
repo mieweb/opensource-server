@@ -143,6 +143,10 @@ function computeDesiredState({
     config,
     rootfsGb: Number(resources.rootfs),
     reservedMounts,
+    // Host-path segment unique to this container's manager-created volumes
+    // (see containerVolumeHostPath in utils/volumes.js). Only unlisted mpN
+    // under it are treated as detached; template/provider mounts are kept.
+    managedMountSegment: `/site-${site.id}/${container.username}/${container.hostname}/`,
   };
 }
 
@@ -247,12 +251,17 @@ function diffState(desired, current, client = {}) {
     }
   }
 
-  // Unmanaged mpN entries: anything above the reserved legacy slots that the
-  // desired state no longer contains has been detached.
+  // Detached volumes: an mpN the desired state no longer lists is only removed
+  // when its host path is one of this container's manager-created volume
+  // directories. Mounts inherited from a template (or added on the provider)
+  // are preserved, as are the reserved legacy built-in slots.
   const reserved = desired.reservedMounts || 0;
+  const managed = desired.managedMountSegment;
   for (const key of Object.keys(cur)) {
     const m = /^mp(\d+)$/.exec(key);
     if (!m || Number(m[1]) < reserved || key in desired.config) continue;
+    const hostPath = String(cur[key]).split(',')[0];
+    if (!managed || !hostPath.includes(managed)) continue;
     if (!clientSupports(client, key)) continue;
     ops.push({ key, op: 'delete', from: cur[key], to: null });
   }
