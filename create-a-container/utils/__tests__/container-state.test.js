@@ -139,6 +139,12 @@ describe('container-state', () => {
     expect(() => ops(desiredWith({ approved: { rootfs: 20 } }), matchingCurrent())).toThrow(/shrink/);
   });
 
+  test('fractional undersized rootfs is still resized', () => {
+    const cur = matchingCurrent({ rootfs: 'local-lvm:vm-100-disk-0,size=49.75G' });
+    expect(cur.rootfsGb).toBe(49.75);
+    expect(ops(desiredWith(), cur)).toEqual([{ key: 'rootfs', op: 'resize', from: 49.75, to: 50 }]);
+  });
+
   test('keys unsupported by the client are skipped', () => {
     const client = { supportsConfigKey: (k) => ['cores', 'memory', 'env', 'entrypoint'].includes(k) };
     const r = diffState(desiredWith(), { config: { cores: 4, memory: 4096, env: 'A=1\0B=2', entrypoint: '/sbin/init' }, rootfsGb: null }, client);

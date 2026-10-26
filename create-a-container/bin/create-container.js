@@ -581,7 +581,8 @@ async function main() {
     // the values requested at creation time.
     const actualCores = config['cores'] != null ? parseInt(config['cores'], 10) : null;
     const actualMemoryMb = config['memory'] != null ? parseInt(config['memory'], 10) : null;
-    const actualDiskGb = parseRootfsSizeGb(config['rootfs']);
+    const parsedDiskGb = parseRootfsSizeGb(config['rootfs']);
+    const actualDiskGb = parsedDiskGb != null ? Math.round(parsedDiskGb) : null;
 
     // Get IP address from Proxmox interfaces API
     const ipv4Address = await client.getLxcIpAddress(node.name, vmid);

@@ -22,7 +22,7 @@ const LXC_FEATURES = 'nesting=1,keyctl=1,fuse=1';
 
 /**
  * Parse the disk size in gigabytes from a Proxmox LXC `rootfs` config value.
- * Example input: "local-lvm:vm-123-disk-0,size=50G" → 50
+ * Example input: "local-lvm:vm-123-disk-0,size=50G" → 50 ("size=512M" → 0.5)
  * @param {string} [rootfs]
  * @returns {number|null}
  */
@@ -33,7 +33,9 @@ function parseRootfsSizeGb(rootfs) {
   const value = parseFloat(match[1]);
   const unit = (match[2] || 'G').toUpperCase();
   const gb = { T: value * 1024, G: value, M: value / 1024, K: value / (1024 * 1024) }[unit];
-  return Number.isFinite(gb) ? Math.round(gb) : null;
+  // Exact (unrounded) so resize/shrink comparisons don't hide drift such as
+  // 49.75G vs a desired 50G. Round at reporting call sites instead.
+  return Number.isFinite(gb) ? gb : null;
 }
 
 /**
