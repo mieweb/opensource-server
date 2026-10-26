@@ -27,7 +27,7 @@ const context = {
       dialect: 'postgres', host: null, port: null, database: 'cc',
       dovecotUser: 'mail_dovecot', postfixUser: 'mail_postfix',
     },
-    unsubscribe: { baseUrl: 'https://manager.example.com', keys: [] },
+    unsubscribe: { keys: [] },
   },
   stateDir: '/var/lib/opensource-agent/mail',
   helperMilter: 'unix:mail-helper/milter.sock',

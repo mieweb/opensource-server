@@ -15,13 +15,9 @@ export function getPrimaryIpv4(): string | null {
   return null;
 }
 
-// sbin dirs are not on the agent's PATH under systemd, but that's where
-// postfix/dovecot/dnsmasq binaries live.
-const EXTRA_BIN_DIRS = ['/usr/sbin', '/usr/bin', '/sbin', '/bin', '/usr/local/sbin', '/usr/local/bin'];
-
-/** Which of `binaries` cannot be found on PATH or the usual sbin dirs. */
+/** Which of `binaries` cannot be found on PATH. */
 export function findMissingBinaries(binaries: string[]): string[] {
-  const dirs = [...new Set([...(process.env.PATH ?? '').split(':').filter(Boolean), ...EXTRA_BIN_DIRS])];
+  const dirs = (process.env.PATH ?? '').split(':').filter(Boolean);
   return binaries.filter((bin) => !dirs.some((dir) => {
     try {
       fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
@@ -30,6 +26,24 @@ export function findMissingBinaries(binaries: string[]): string[] {
       return false;
     }
   }));
+}
+
+// Node has no getpwnam/getgrnam binding, so resolve names from the system
+// databases directly (local users only — exactly what the mail stack uses).
+function lookupId(file: string, name: string): { id: number; gid: number } {
+  const entry = fs.readFileSync(file, 'utf8').split('\n')
+    .find((line) => line.startsWith(`${name}:`));
+  if (!entry) throw new Error(`unknown ${file.includes('group') ? 'group' : 'user'} "${name}"`);
+  const fields = entry.split(':');
+  return { id: Number(fields[2]), gid: Number(fields[3]) };
+}
+
+/** chown by `user` or `user:group` name via fs.chownSync (no shelling out). */
+export function chownByName(target: string, owner: string): void {
+  const [user, group] = owner.split(':');
+  const pw = lookupId('/etc/passwd', user);
+  const gid = group ? lookupId('/etc/group', group).id : pw.gid;
+  fs.chownSync(target, pw.id, gid);
 }
 
 // --- systemd (org.freedesktop.systemd1 on the system bus) -------------------

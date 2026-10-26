@@ -25,4 +25,4 @@ make test    # node --test
 make deb     # package (installs to /opt/opensource-server/mail-helper)
 ```
 
-The package is suggested by `opensource-agent`; the agent enables/starts the unit only on the host holding the mail-host claim. A [self-managed MTA](../mie-opensource-landing/docs/admins/email.md) can run the daemon standalone — it only needs the DB views and the unsubscribe keys in `config.local.json`.
+The package is suggested by `opensource-agent`; the agent enables/starts the unit only on the host holding the mail-host claim. A [self-managed MTA](../mie-opensource-landing/docs/admins/email.md) can run the daemon standalone — it only needs the DB views and the unsubscribe base URL + keys in `config.local.json`.

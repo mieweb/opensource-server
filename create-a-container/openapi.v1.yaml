@@ -499,7 +499,6 @@ components:
         bannerMessage: { type: string, description: 'Announcement banner shown at the top of the app (supports [text](url) links); blank disables it. Also surfaced unauthenticated via GET /health as `banner`.' }
         usagePsiProbeLimit: { type: string, description: 'Max PSI (pressure stall) probes per usage report, spent on the highest-utilization running containers. Non-negative integer as string; "0" disables PSI, blank uses the default (16).' }
         mailHostname: { type: string, description: 'HELO / MX hostname — the forward-confirmed PTR name of the mail IP (see GET /mail/ptr)' }
-        mailUnsubscribeBaseUrl: { type: string, description: 'Public base URL of the manager for one-click unsubscribe links (RFC 8058)' }
         mailRelayhost: { type: string, description: 'Optional smarthost; requires mailSpfInclude' }
         mailRelayhostUsername: { type: string }
         mailRelayhostPassword: { type: string }

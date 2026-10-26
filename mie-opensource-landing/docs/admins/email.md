@@ -15,13 +15,14 @@ Settings → Mail service:
 | Setting | Purpose |
 |---------|---------|
 | Mail hostname | HELO name and MX target. Set to the forward-confirmed PTR of the mail IP — use **Suggest from PTR**. |
-| Unsubscribe base URL | Public manager URL; one-click unsubscribe links point at `<url>/u/<token>` |
 | Relayhost (+ credentials) | Optional smarthost. Requires **SPF include**, since mail then leaves from the relay's IPs |
 | SPF include | `include:` added to the suggested SPF records |
 | DNS check resolvers | Resolvers used by Check DNS (default `1.1.1.1`, `8.8.8.8`) |
 | Mail DB host | Only when the mail host cannot reach the DB over the local socket |
 | Self-managed site id | Mail IP source when no agent runs mail (option C below) |
 | Default quota / message size limit | `1024` MB and `25` MB when empty |
+
+One-click unsubscribe links (`<manager>/u/<token>`) use the mail host agent's `MANAGER_URL` as the base — set it to the manager's public URL.
 
 ## Where Mail Runs
 

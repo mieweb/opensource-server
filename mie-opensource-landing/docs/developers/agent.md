@@ -92,7 +92,11 @@ Read from the process environment (systemd loads `/etc/environment`). Set via co
 | `AGENT_SERVICES` | No | Comma-separated service groups: `nginx`, `dnsmasq`, `mail`. Default `nginx,dnsmasq`. |
 | `MAIL_POSTFIX_DB_PASSWORD` | No | DB password for the `mail_postfix` role (mail hosts without local socket auth) |
 | `MAIL_DOVECOT_DB_PASSWORD` | No | DB password for the `mail_dovecot` role (mail hosts without local socket auth) |
+| `MAIL_HELPER_DIR`, `MAIL_HELPER_SOCKET_DIR`, `OPENDKIM_SOCKET_DIR` | No | Mail helper install dir and milter socket dirs (defaults match the packages) |
+| `VMAIL_DIR`, `GC_STATE_FILE`, `GC_RETENTION_MS` | No | Maildir root (default `/var/vmail`), mailbox GC state file, and GC retention (default 30 days) |
 | `STATE_DIRECTORY` | No | State directory, set by systemd via `StateDirectory=` (default `/var/lib/opensource-agent`) |
+
+On mail hosts `MANAGER_URL` must be the manager's **public** URL — one-click unsubscribe links use it as their base.
 
 The agent Dockerfile defaults to `SITE_ID=1` and `MANAGER_URL=http://localhost:3000` so the manager container works without configuration.
 

@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import ejs from 'ejs';
-import { reloadOrRestartService, restartService, sighupService } from './system';
+import { chownByName, reloadOrRestartService, restartService, sighupService } from './system';
 import { log, commandOutput } from './log';
 import type { AgentConfig, ServiceGroup } from './config';
 import type { ApplyResult, SiteConfig } from './types';
@@ -54,12 +54,10 @@ export interface ManagedService {
   reload(changedFiles: string[]): Promise<void>;
 }
 
-function renderTemplate(template: string, data: object): Promise<string> {
+/** Render a template from the shared templates dir (used by mail.ts too). */
+export function renderTemplate(template: string, data: object): Promise<string> {
   return ejs.renderFile(path.join(TEMPLATES_DIR, template), data);
 }
-
-/** Render a template from the shared templates dir (used by mail.ts too). */
-export { renderTemplate };
 
 // Run a command, capturing its output. execFileSync with stdio 'pipe' attaches
 // the captured stdout/stderr to the thrown error on failure (see commandOutput
@@ -138,7 +136,7 @@ function readIfExists(file: string): string | null {
 function writeFileAtomic(dest: string, content: string, mode?: number, owner?: string): void {
   const tmp = `${dest}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
-  if (owner) run(['chown', owner, tmp]);
+  if (owner) chownByName(tmp, owner);
   fs.renameSync(tmp, dest);
 }
 
@@ -150,8 +148,7 @@ function reconcileAttributes(svc: ManagedService, files: { dest: string; mode?: 
         fs.chmodSync(f.dest, f.mode);
         log.info(`${svc.unit}: fixed mode on ${f.dest}`);
       }
-      // chown is idempotent and cheap; names are resolved by chown itself.
-      if (f.owner) run(['chown', f.owner, f.dest]);
+      if (f.owner) chownByName(f.dest, f.owner);
     } catch (err) {
       log.warn(`${svc.unit}: could not reconcile attributes on ${f.dest}: ${(err as Error).message}`);
     }

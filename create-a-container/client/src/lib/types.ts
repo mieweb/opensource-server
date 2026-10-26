@@ -471,7 +471,6 @@ export interface AppSettings {
   usagePsiProbeLimit: string;
   /** Mail service (issue #67). All stored as strings; '' means unset. */
   mailHostname: string;
-  mailUnsubscribeBaseUrl: string;
   mailRelayhost: string;
   mailRelayhostUsername: string;
   mailRelayhostPassword: string;

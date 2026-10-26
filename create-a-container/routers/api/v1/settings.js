@@ -20,7 +20,6 @@ const KEYS = [
   'usage_psi_probe_limit',
   // Mail service (issue #67)
   'mail_hostname',
-  'mail_unsubscribe_base_url',
   'mail_relayhost',
   'mail_relayhost_username',
   'mail_relayhost_password',
@@ -51,7 +50,6 @@ router.get(
       bannerMessage: settings.banner_message || '',
       usagePsiProbeLimit: settings.usage_psi_probe_limit || '',
       mailHostname: settings.mail_hostname || '',
-      mailUnsubscribeBaseUrl: settings.mail_unsubscribe_base_url || '',
       mailRelayhost: settings.mail_relayhost || '',
       mailRelayhostUsername: settings.mail_relayhost_username || '',
       mailRelayhostPassword: settings.mail_relayhost_password || '',
@@ -77,7 +75,6 @@ router.put(
       bannerMessage,
       usagePsiProbeLimit,
       mailHostname,
-      mailUnsubscribeBaseUrl,
       mailRelayhost,
       mailRelayhostUsername,
       mailRelayhostPassword,
@@ -125,10 +122,6 @@ router.put(
       return Number.isNaN(n) || n < 1 ? '' : String(n);
     };
     await Setting.set('mail_hostname', (mailHostname || '').trim());
-    // Strip trailing slashes without regex (CodeQL js/polynomial-redos).
-    let unsubscribeBase = (mailUnsubscribeBaseUrl || '').trim();
-    while (unsubscribeBase.endsWith('/')) unsubscribeBase = unsubscribeBase.slice(0, -1);
-    await Setting.set('mail_unsubscribe_base_url', unsubscribeBase);
     await Setting.set('mail_relayhost', (mailRelayhost || '').trim());
     await Setting.set('mail_relayhost_username', (mailRelayhostUsername || '').trim());
     await Setting.set('mail_relayhost_password', mailRelayhostPassword || '');

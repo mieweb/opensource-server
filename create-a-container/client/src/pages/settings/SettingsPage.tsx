@@ -39,7 +39,6 @@ const schema = z.object({
   bannerMessage: z.string(),
   usagePsiProbeLimit: z.string().regex(/^\d*$/, 'Must be a non-negative whole number'),
   mailHostname: z.string(),
-  mailUnsubscribeBaseUrl: z.string(),
   mailRelayhost: z.string(),
   mailRelayhostUsername: z.string(),
   mailRelayhostPassword: z.string(),
@@ -71,7 +70,6 @@ export function SettingsPage() {
       bannerMessage: '',
       usagePsiProbeLimit: '',
       mailHostname: '',
-      mailUnsubscribeBaseUrl: '',
       mailRelayhost: '',
       mailRelayhostUsername: '',
       mailRelayhostPassword: '',
@@ -159,12 +157,6 @@ export function SettingsPage() {
               Suggest from PTR
             </Button>
           </div>
-          <Input
-            label="Unsubscribe base URL"
-            placeholder="https://manager.example.com"
-            helperText="Public URL of this manager — one-click unsubscribe links point here"
-            {...register('mailUnsubscribeBaseUrl')}
-          />
           <Input
             label="Relayhost"
             placeholder="[smtp.relay.example]:587"

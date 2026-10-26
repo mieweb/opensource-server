@@ -103,9 +103,6 @@ export interface NginxConfig {
   httpServices: HttpService[];
   streamServices: StreamService[];
   externalDomains: { name: string }[];
-  /** Host serving the public /u unsubscribe endpoint — its server block gets
-   * an auth-exempt /u/ location. Absent on older managers. */
-  unsubscribeHost?: string | null;
 }
 
 /** Config snapshot for the whole site. `site` is null before the first site
@@ -140,7 +137,6 @@ export interface MailConfig {
     postfixUser: string;
   };
   unsubscribe: {
-    baseUrl: string | null;
     keys: { kid: string; secret: string; active: boolean }[];
   };
 }

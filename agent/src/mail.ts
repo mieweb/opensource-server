@@ -20,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import {
+  chownByName,
   enableAndStartServices,
   stopAndDisableServices,
   getServiceState,
@@ -40,26 +41,19 @@ const HELPER_DIR = process.env.MAIL_HELPER_DIR || '/opt/opensource-server/mail-h
 const HELPER_SOCKET_DIR = process.env.MAIL_HELPER_SOCKET_DIR || '/var/spool/postfix/mail-helper';
 const OPENDKIM_SOCKET_DIR = process.env.OPENDKIM_SOCKET_DIR || '/var/spool/postfix/opendkim';
 
-const VMAIL_DIR = '/var/vmail';
-const GC_STATE_FILE = path.join(VMAIL_DIR, '.gc-state.json');
-const GC_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const VMAIL_DIR = process.env.VMAIL_DIR || '/var/vmail';
+const GC_STATE_FILE = process.env.GC_STATE_FILE || path.join(VMAIL_DIR, '.gc-state.json');
+const GC_RETENTION_MS = Number(process.env.GC_RETENTION_MS) > 0
+  ? Number(process.env.GC_RETENTION_MS)
+  : 30 * 24 * 60 * 60 * 1000;
 
 function sh(cmd: string[]): void {
   execFileSync(cmd[0], cmd.slice(1), { stdio: 'pipe', encoding: 'utf8' });
 }
 
-function fileExists(file: string): boolean {
-  try {
-    fs.accessSync(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** The helper is a separate package; report it like a missing binary. */
 export function missingMailHelper(): boolean {
-  return !fileExists(path.join(HELPER_DIR, 'src', 'index.js'));
+  return !fs.existsSync(path.join(HELPER_DIR, 'src', 'index.js'));
 }
 
 // --- render context ---------------------------------------------------------
@@ -78,7 +72,7 @@ function domainCerts(mail: MailConfig): CertPair[] {
   for (const name of [...names].sort()) {
     const cert = `/etc/ssl/certs/${name}.crt`;
     const key = `/etc/ssl/private/${name}.key`;
-    if (fileExists(cert) && fileExists(key)) pairs.push({ name, cert, key });
+    if (fs.existsSync(cert) && fs.existsSync(key)) pairs.push({ name, cert, key });
   }
   return pairs;
 }
@@ -87,7 +81,7 @@ function fallbackChain(mail: MailConfig): { fallbackCert: string; fallbackKey: s
   if (mail.hostname) {
     const cert = `/etc/ssl/certs/${mail.hostname}.crt`;
     const key = `/etc/ssl/private/${mail.hostname}.key`;
-    if (fileExists(cert) && fileExists(key)) return { fallbackCert: cert, fallbackKey: key };
+    if (fs.existsSync(cert) && fs.existsSync(key)) return { fallbackCert: cert, fallbackKey: key };
   }
   // ssl-cert package default (an agent package dependency).
   return {
@@ -135,7 +129,7 @@ export function buildMailContext(mail: MailConfig, agent: AgentConfig, env: Node
 }
 
 /** Overlay for the helper's committed config.json (see mail-helper/). */
-export function buildHelperLocalConfig(mail: MailConfig, env: NodeJS.ProcessEnv = process.env): string {
+export function buildHelperLocalConfig(mail: MailConfig, agent: AgentConfig, env: NodeJS.ProcessEnv = process.env): string {
   const mysql = mail.db.dialect === 'mysql' || mail.db.dialect === 'mariadb';
   return `${JSON.stringify({
     socket: path.posix.join(HELPER_SOCKET_DIR, 'milter.sock'),
@@ -147,7 +141,13 @@ export function buildHelperLocalConfig(mail: MailConfig, env: NodeJS.ProcessEnv 
       user: mail.db.postfixUser,
       password: env.MAIL_POSTFIX_DB_PASSWORD || null,
     },
-    unsubscribe: mail.unsubscribe,
+    unsubscribe: {
+      // One-click links point at the manager itself (it serves /u/ and is
+      // never behind oauth2-proxy), so the base URL is this agent's
+      // MANAGER_URL rather than a separate setting.
+      baseUrl: agent.managerUrl,
+      keys: mail.unsubscribe.keys,
+    },
   }, null, 2)}\n`;
 }
 
@@ -249,14 +249,14 @@ export const mailServices: ManagedService[] = [
   {
     unit: 'opensource-mail-helper',
     group: 'mail',
-    async render(config) {
+    async render(config, agent) {
       const mail = mailOf(config);
       if (!mail) return null;
       // The committed config.json ships defaults; the agent only writes the
       // environment-specific overlay (same split in dev and production).
       return [{
         dest: path.join(HELPER_DIR, 'config.local.json'),
-        content: buildHelperLocalConfig(mail),
+        content: buildHelperLocalConfig(mail, agent),
         mode: 0o640,
         owner: 'root:opensource-mail',
       }];
@@ -274,30 +274,28 @@ export const mailServices: ManagedService[] = [
  * scripts (opensource-mail-helper postinst creates vmail + opensource-mail). */
 export function ensureMailProvisioned(agent: AgentConfig): void {
   fs.mkdirSync(VMAIL_DIR, { recursive: true });
-  sh(['chown', 'vmail:vmail', VMAIL_DIR]);
-  sh(['chmod', '0750', VMAIL_DIR]);
+  chownByName(VMAIL_DIR, 'vmail:vmail');
+  fs.chmodSync(VMAIL_DIR, 0o750);
 
   // Agent-managed DKIM material under $STATE_DIRECTORY/mail.
   const stateDir = mailStateDir(agent);
-  fs.mkdirSync(path.join(stateDir, 'dkim'), { recursive: true });
-  sh(['chown', 'root:opendkim', stateDir, path.join(stateDir, 'dkim')]);
-  sh(['chmod', '0750', stateDir, path.join(stateDir, 'dkim')]);
+  const dkimDir = path.join(stateDir, 'dkim');
+  fs.mkdirSync(dkimDir, { recursive: true });
+  for (const dir of [stateDir, dkimDir]) {
+    chownByName(dir, 'root:opendkim');
+    fs.chmodSync(dir, 0o750);
+  }
 
   // Milter socket dirs inside the Postfix chroot. The chrooted smtpd
-  // connects as user postfix: setgid keeps sockets group-owned, and postfix
-  // joins the opendkim group for OpenDKIM's socket (the standard Debian
-  // recipe).
+  // connects as user postfix: setgid keeps the sockets group-owned by
+  // postfix (OpenDKIM runs as opendkim:postfix via UserID, so no group
+  // membership changes are needed anywhere).
   fs.mkdirSync(HELPER_SOCKET_DIR, { recursive: true });
-  sh(['chown', 'opensource-mail:postfix', HELPER_SOCKET_DIR]);
-  sh(['chmod', '2750', HELPER_SOCKET_DIR]);
+  chownByName(HELPER_SOCKET_DIR, 'opensource-mail:postfix');
+  fs.chmodSync(HELPER_SOCKET_DIR, 0o2750);
   fs.mkdirSync(OPENDKIM_SOCKET_DIR, { recursive: true });
-  sh(['chown', 'opendkim:postfix', OPENDKIM_SOCKET_DIR]);
-  sh(['chmod', '2750', OPENDKIM_SOCKET_DIR]);
-  try {
-    sh(['usermod', '-a', '-G', 'opendkim', 'postfix']);
-  } catch {
-    /* already a member, or opendkim not installed yet */
-  }
+  chownByName(OPENDKIM_SOCKET_DIR, 'opendkim:postfix');
+  fs.chmodSync(OPENDKIM_SOCKET_DIR, 0o2750);
 }
 
 /** Enable+start the mail units while holding the claim; stop+disable them

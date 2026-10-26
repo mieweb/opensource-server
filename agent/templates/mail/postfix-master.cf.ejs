@@ -1,7 +1,10 @@
 # Managed by opensource-agent (mail service group) — do not edit.
 #
-# Submission policy (restrictions, milters) is defined as named parameters
-# in main.cf and referenced here, keeping master.cf overrides single-valued.
+# master.cf is Postfix's only mechanism for per-service parameter overrides
+# (there are no per-service include files) — each -o below switches a
+# setting on for the submission services only. The multi-value policy lists
+# themselves (restrictions, milters) are defined once in main.cf as named
+# parameters and referenced here as $name, keeping every -o single-valued.
 #
 # service   type  private unpriv  chroot  wakeup  maxproc command + args
 smtp        inet  n       -       y       -       -       smtpd

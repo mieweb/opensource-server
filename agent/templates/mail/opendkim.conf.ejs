@@ -2,10 +2,12 @@
 Syslog                  yes
 UMask                   007
 Mode                    s
-# Unix socket inside the Postfix chroot (no inet port); postfix is a member
-# of the opendkim group to connect.
+# Unix socket inside the Postfix chroot (no inet port). Running with the
+# postfix group (UserID user:group form, opendkim.conf(5)) makes the socket
+# 0660 opendkim:postfix under UMask 007, so the chrooted smtpd connects
+# without postfix joining the opendkim group.
 Socket                  <%= opendkimSocket %>
-UserID                  opendkim
+UserID                  opendkim:postfix
 PidFile                 /run/opendkim/opendkim.pid
 
 Canonicalization        relaxed/simple

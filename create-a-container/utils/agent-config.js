@@ -143,17 +143,6 @@ async function buildAgentConfig(siteId) {
   // the agent only owns user volume directories.
   const volumes = await buildSiteVolumes(site);
 
-  // Host serving the public one-click unsubscribe endpoint (/u/<token>).
-  // The nginx template keeps /u/ outside auth_request on this host so
-  // oauth2-proxy can never block RFC 8058 POSTs from mail clients.
-  let unsubscribeHost = null;
-  try {
-    const baseUrl = await Setting.get('mail_unsubscribe_base_url');
-    if (baseUrl) unsubscribeHost = new URL(baseUrl).hostname;
-  } catch {
-    /* unset or malformed — no bypass location rendered */
-  }
-
   return {
     site: {
       id: site.id,
@@ -179,7 +168,6 @@ async function buildAgentConfig(siteId) {
       httpServices,
       streamServices,
       externalDomains: externalDomains.map((d) => ({ name: d.name })),
-      unsubscribeHost,
     },
   };
 }
@@ -254,7 +242,6 @@ async function buildMailSnapshot(dbConfig) {
   const settings = await Setting.getMultiple([
     'mail_hostname', 'mail_relayhost', 'mail_relayhost_username', 'mail_relayhost_password',
     'mail_db_host', 'mail_default_quota_mb', 'mail_message_size_limit_mb',
-    'mail_unsubscribe_base_url',
   ]);
 
   const sendDomains = await ExternalDomain.findAll({
@@ -303,16 +290,17 @@ async function buildMailSnapshot(dbConfig) {
     },
     // opensource-mail-helper mints List-Unsubscribe tokens with the active
     // key; retired-but-verifiable keys ride along so old links keep working
-    // after a rotation. The manager verifies with the same set.
-    unsubscribe: await buildUnsubscribeSection(settings.mail_unsubscribe_base_url),
+    // after a rotation. The manager verifies with the same set. The links'
+    // base URL is NOT sent — the agent derives it from its MANAGER_URL (the
+    // manager serves /u/ itself and is never behind oauth2-proxy).
+    unsubscribe: await buildUnsubscribeSection(),
   };
 }
 
-async function buildUnsubscribeSection(baseUrl) {
+async function buildUnsubscribeSection() {
   await MailUnsubscribeKey.ensureActive();
   const keys = await MailUnsubscribeKey.verifiable();
   return {
-    baseUrl: baseUrl || null,
     keys: keys.map((k) => ({ kid: k.kid, secret: k.secret, active: k.status === 'active' })),
   };
 }
