@@ -282,7 +282,7 @@ async function buildMailSnapshot(dbConfig) {
     mailboxIds,
     db: {
       dialect: dbConfig.dialect,
-      host: settings.mail_db_host || dbConfig.host || null,
+      host: settings.mail_db_host || null,
       port: dbConfig.port ? Number(dbConfig.port) : null,
       database: dbConfig.database || null,
       dovecotUser: 'mail_dovecot',
