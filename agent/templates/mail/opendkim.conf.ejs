@@ -1,0 +1,21 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+Syslog                  yes
+UMask                   007
+Mode                    s
+# Unix socket inside the Postfix chroot (no inet port). Running with the
+# postfix group (UserID user:group form, opendkim.conf(5)) makes the socket
+# 0660 opendkim:postfix under UMask 007, so the chrooted smtpd connects
+# without postfix joining the opendkim group.
+Socket                  <%= opendkimSocket %>
+UserID                  opendkim:postfix
+PidFile                 /run/opendkim/opendkim.pid
+
+Canonicalization        relaxed/simple
+# RFC 8058: the signature must cover List-Unsubscribe(-Post). Oversigning
+# both signs them when present and prevents later injection.
+OversignHeaders         From,List-Unsubscribe,List-Unsubscribe-Post
+
+# Tables and keys are agent-managed state under $STATE_DIRECTORY/mail.
+KeyTable                <%= stateDir %>/opendkim-keytable
+SigningTable            refile:<%= stateDir %>/opendkim-signingtable
+InternalHosts           127.0.0.0/8
