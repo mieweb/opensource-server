@@ -15,6 +15,12 @@ import type {
   Group,
   Job,
   JobStatusRow,
+  MailAccount,
+  MailDomain,
+  MailDnsInfo,
+  MailHostInfo,
+  MailPtrInfo,
+  MailSuppression,
   Node,
   NodeStats,
   AppSettings,
@@ -49,6 +55,11 @@ export const keys = {
   groups: () => ['groups'] as const,
   group: (id: number | string) => ['groups', String(id)] as const,
   apikeys: () => ['apikeys'] as const,
+  mailAccounts: () => ['mail-accounts'] as const,
+  mailDomains: () => ['mail-accounts', 'domains'] as const,
+  mailSuppressions: (id: string) => ['mail-accounts', id, 'suppressions'] as const,
+  mailDns: (domainId: number | string) => ['external-domains', String(domainId), 'mail-dns'] as const,
+  mailHost: () => ['mail', 'host'] as const,
   settings: () => ['settings'] as const,
   job: (id: number | string) => ['jobs', String(id)] as const,
   jobStatuses: (id: number | string) => ['jobs', String(id), 'statuses'] as const,
@@ -141,6 +152,16 @@ export const queries = {
 
   // API keys
   listApiKeys: () => api.get<ApiKey[]>('/api/v1/apikeys'),
+
+  // Mail accounts (issue #67)
+  listMailAccounts: () => api.get<MailAccount[]>('/api/v1/mail-accounts'),
+  listMailDomains: () => api.get<MailDomain[]>('/api/v1/mail-accounts/domains'),
+  listMailSuppressions: (id: string) =>
+    api.get<MailSuppression[]>(`/api/v1/mail-accounts/${id}/suppressions`),
+  getDomainMailDns: (domainId: number | string) =>
+    api.get<MailDnsInfo>(`/api/v1/external-domains/${domainId}/mail/dns`),
+  getMailHost: () => api.get<MailHostInfo>('/api/v1/mail/host'),
+  getMailPtr: () => api.get<MailPtrInfo>('/api/v1/mail/ptr'),
 
   // Settings
   getSettings: () => api.get<AppSettings>('/api/v1/settings'),
