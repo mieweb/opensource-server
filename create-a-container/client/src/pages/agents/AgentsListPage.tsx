@@ -18,6 +18,8 @@ import { keys, queries } from '@/lib/queries';
 import type { Agent } from '@/lib/types';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { AgentServiceBadges } from './AgentServiceBadges';
+import { AgentRowActions } from './AgentRowActions';
+import { MailHostBadge } from './MailHostBadge';
 import { OnlineBadge } from './OnlineBadge';
 
 export function AgentsListPage() {
@@ -65,7 +67,9 @@ export function AgentsListPage() {
               <TableHead>IPv4</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Services</TableHead>
+              <TableHead>Mail</TableHead>
               <TableHead>Last check-in</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,7 +84,13 @@ export function AgentsListPage() {
                 <TableCell>
                   <AgentServiceBadges services={agent.services} />
                 </TableCell>
+                <TableCell>
+                  <MailHostBadge agent={agent} />
+                </TableCell>
                 <TableCell>{formatRelativeTime(agent.lastCheckinAt, agent.secondsSinceCheckin)}</TableCell>
+                <TableCell className="text-right">
+                  <AgentRowActions agent={agent} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
