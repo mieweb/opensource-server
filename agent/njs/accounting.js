@@ -5,9 +5,10 @@
  * Each proxied request/connection checks a shared dict whose entries expire
  * after 10 minutes (the zone's timeout=): a successful add() means no
  * report was sent in the current window, so this handler claims it —
- * atomically, across all workers — and POSTs to the manager, which stamps
- * the service's lastAccessedAt with its own clock. Everything is fail-open:
- * accounting can never affect the proxied request.
+ * atomically, across all workers — and the report is POSTed to the manager,
+ * which stamps the service's lastAccessedAt with its own clock. http reports
+ * are queued and sent by a periodic handler, never from a client request.
+ * Everything is fail-open: accounting can never affect the proxied request.
  *
  * Injected via nginx variables (see templates/nginx.conf.ejs):
  *   $osaas_service_id   Services.id for this vhost / stream server
@@ -39,23 +40,39 @@ function report(base, apiKey, serviceId, host) {
 }
 
 /**
- * http handler (js_content in the internal mirror location). The mirror
- * subrequest runs in parallel with proxy_pass; awaiting the fetch keeps the
- * subrequest — never the client response — alive until the report lands.
+ * http handler (js_content in the internal mirror location). It only queues
+ * the report for http_flush and returns at once: nginx doesn't read the next
+ * request on a keep-alive connection until the mirror subrequest finishes, so
+ * waiting on the manager here would stall the client.
  */
-async function http_record(r) {
+function http_record(r) {
   try {
     const id = r.variables.osaas_service_id;
     if (id && ngx.shared.osaas_http.add(id, '1')) {
-      const reply = await report(r.variables.osaas_manager_url, r.variables.osaas_api_key, id);
-      if (reply.status !== 204) {
-        r.warn('osaas accounting: manager returned ' + reply.status + ' for service ' + id);
-      }
+      ngx.shared.osaas_http_pending.set(id, '1');
     }
   } catch (e) {
     r.warn('osaas accounting: ' + e.message);
   }
   r.return(204);
+}
+
+/**
+ * http handler (js_periodic): sends the reports queued by http_record.
+ */
+async function http_flush(s) {
+  const pending = ngx.shared.osaas_http_pending;
+  await Promise.all(pending.keys().map(async function (id) {
+    pending.delete(id);
+    try {
+      const reply = await report(s.variables.osaas_manager_url, s.variables.osaas_api_key, id);
+      if (reply.status !== 204) {
+        ngx.log(ngx.WARN, 'osaas accounting: manager returned ' + reply.status + ' for service ' + id);
+      }
+    } catch (e) {
+      ngx.log(ngx.WARN, 'osaas accounting: ' + e.message);
+    }
+  }));
 }
 
 /**
@@ -108,4 +125,4 @@ async function relay(r) {
   r.return(502);
 }
 
-export default { http_record, stream_record, relay };
+export default { http_record, http_flush, stream_record, relay };

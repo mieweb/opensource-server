@@ -38,12 +38,18 @@ test('http context loads the accounting module, dict, and vars', async () => {
   const conf = await render({});
   assert.match(conf, /js_import accounting from \/opt\/opensource-server\/agent\/njs\/accounting\.js;/);
   assert.match(conf, /js_shared_dict_zone zone=osaas_http:256k timeout=10m evict;/);
+  assert.match(conf, /js_shared_dict_zone zone=osaas_http_pending:256k;/);
   assert.match(conf, /js_var \$osaas_manager_url "https:\/\/manager\.example\.com";/);
   assert.match(conf, /js_var \$osaas_api_key "test-key-123";/);
-  // fetch settings are hoisted to http{} level so the mirror location and the
-  // relay server both inherit them — one copy each, not per-location.
+  // fetch settings are hoisted to http{} level so the relay server and the
+  // periodic flush both inherit them — one copy each, not per-location.
   assert.strictEqual(conf.match(/js_fetch_trusted_certificate/g).length, 1);
   assert.strictEqual((conf.match(/js_content accounting\.relay;/g) || []).length, 1);
+});
+
+test('http reports are sent by one periodic flush, not from client requests', async () => {
+  const conf = await render({ httpServices: [httpService, { ...httpService, id: 43, externalHostname: 'other' }] });
+  assert.strictEqual((conf.match(/js_periodic accounting\.http_flush interval=30s;/g) || []).length, 1);
 });
 
 test('http service location records last-access via a parallel mirror', async () => {
