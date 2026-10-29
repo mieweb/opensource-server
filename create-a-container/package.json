@@ -31,7 +31,7 @@
     "express-session-sequelize": "^2.3.0",
     "lru-cache": "^11.5.3",
     "morgan": "^1.12.1",
-    "nodemailer": "^10.0.9",
+    "nodemailer": "^10.1.4",
     "openid-client": "^5.7.1",
     "patch-package": "^8.0.1",
     "pg": "^8.16.3",
@@ -39,7 +39,7 @@
     "swagger-ui-express": "^5.0.1",
     "umzug": "^2.3.0",
     "yamljs": "^0.3.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@vscode/sqlite3": "5.1.12-vscode",
