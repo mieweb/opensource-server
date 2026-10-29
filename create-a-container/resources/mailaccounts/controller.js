@@ -2,8 +2,6 @@ const svc = require('./service');
 const { serializeMailAccount, serializeSuppression } = require('./serializer');
 const { asyncHandler, ok, created, noContent } = require('../../middlewares/api');
 
-const PASSWORD_WARNING = 'Save this password — it will not be shown again.';
-
 function sessionOf(req) {
   return { uid: req.session.user, isAdmin: !!req.session.isAdmin };
 }
@@ -25,11 +23,12 @@ const get = asyncHandler(async (req, res) => {
 
 const create = asyncHandler(async (req, res) => {
   const { account, password, connection } = await svc.createAccount(sessionOf(req), req.validated.body);
+  // The password is returned exactly once; the UI owns the "save this now"
+  // messaging.
   return created(res, {
     ...serializeMailAccount(account),
     password,
     connection,
-    warning: PASSWORD_WARNING,
   });
 });
 
@@ -44,7 +43,6 @@ const rotatePassword = asyncHandler(async (req, res) => {
     ...serializeMailAccount(account),
     password,
     connection,
-    warning: PASSWORD_WARNING,
   });
 });
 

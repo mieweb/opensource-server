@@ -1,7 +1,8 @@
 /**
  * /api/v1/external-domains — admin-only CRUD + per-domain mail enablement.
  * The Cloudflare API key is write-only: never returned in any response.
- * Mail flags are read-only here — they change only via the /mail endpoints.
+ * mailEnabled toggles via PATCH /:id; the verification flags are read-only
+ * (they change only via POST /:id/mail/check-dns).
  */
 
 const express = require('express');
@@ -27,7 +28,8 @@ function serialize(d) {
     site: d.site ? { id: d.site.id, name: d.site.name } : null,
     authServer: d.authServer,
     hasCloudflareApiKey: !!d.cloudflareApiKey,
-    // Read-only mail state (issue #67) — mutate via the /mail endpoints.
+    // Read-only mail verification state (issue #67) — refreshed by
+    // POST /:id/mail/check-dns; mailEnabled toggles via PATCH /:id.
     mailEnabled: d.mailEnabled,
     mailDnsVerified: d.mailDnsVerified,
     mailMxVerified: d.mailMxVerified,
@@ -103,6 +105,42 @@ router.put(
     }
     await d.update(update);
     return ok(res, serialize(d));
+  }),
+);
+
+// Partial update. `mailEnabled` is the mail on/off switch (issue #67):
+// enabling runs Check DNS and requires the send gate (SPF + DKIM + DMARC);
+// disabling keeps keys and config — accounts stop authenticating immediately
+// because the SQL views gate on mailEnabled.
+router.patch(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const d = await loadDomain(req.params.id);
+    const body = req.body || {};
+
+    const update = {};
+    if (body.name !== undefined) update.name = body.name;
+    for (const f of ['acmeEmail', 'acmeDirectoryUrl', 'cloudflareApiEmail', 'siteId', 'authServer']) {
+      if (body[f] !== undefined) update[f] = body[f] || null;
+    }
+    if (body.cloudflareApiKey && body.cloudflareApiKey.trim() !== '') {
+      update.cloudflareApiKey = body.cloudflareApiKey;
+    }
+
+    let check;
+    if (body.mailEnabled === true) {
+      check = await runDnsCheck(d);
+      if (!d.mailDnsVerified) {
+        throw new ApiError(422, 'dns_not_configured',
+          'SPF, DKIM, or DMARC records are missing or wrong — publish the records from GET …/mail/dns and re-check');
+      }
+      update.mailEnabled = true;
+    } else if (body.mailEnabled === false) {
+      update.mailEnabled = false;
+    }
+
+    await d.update(update);
+    return ok(res, check ? { ...serialize(d), check } : serialize(d));
   }),
 );
 
@@ -192,33 +230,6 @@ router.post(
     const d = await loadDomain(req.params.id);
     const result = await runDnsCheck(d);
     return ok(res, { ...serialize(d), check: result });
-  }),
-);
-
-router.post(
-  '/:id/mail/enable',
-  asyncHandler(async (req, res) => {
-    const d = await loadDomain(req.params.id);
-    const result = await runDnsCheck(d);
-    // SPF/DKIM/DMARC are hard requirements to send; MX failure only means
-    // the domain can't receive yet, so it just warns.
-    if (!d.mailDnsVerified) {
-      throw new ApiError(422, 'dns_not_configured',
-        'SPF, DKIM, or DMARC records are missing or wrong — publish the records from GET …/mail/dns and re-check');
-    }
-    await d.update({ mailEnabled: true });
-    return ok(res, { ...serialize(d), check: result });
-  }),
-);
-
-router.post(
-  '/:id/mail/disable',
-  asyncHandler(async (req, res) => {
-    const d = await loadDomain(req.params.id);
-    // Keys and config are kept; accounts stop authenticating immediately
-    // because the SQL views gate on mailEnabled.
-    await d.update({ mailEnabled: false });
-    return ok(res, serialize(d));
   }),
 );
 

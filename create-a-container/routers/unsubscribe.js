@@ -12,50 +12,38 @@
  * Every failure mode (bad token, unknown kid, deleted account) returns the
  * same generic 400 so the endpoint can't be used to probe for accounts or
  * addresses.
+ *
+ * Pages are server-rendered from views/unsubscribe/*.ejs — recipients and
+ * mail providers hit these URLs with no session, so the SPA plays no part.
  */
 
+const path = require('path');
 const express = require('express');
-const { MailAccount, MailSuppression, MailUnsubscribeKey } = require('../models');
+const ejs = require('ejs');
+const { MailAccount, MailSuppression } = require('../models');
 const { asyncHandler } = require('../middlewares/api');
-const { verifyUnsubscribeToken } = require('../utils/unsubscribe-token');
+const { verifyUnsubscribeToken, currentUnsubscribeKeys } = require('../utils/unsubscribe-token');
+
+const VIEWS = path.join(__dirname, '..', 'views', 'unsubscribe');
 
 const router = express.Router();
 
 router.use(express.urlencoded({ extended: false }));
 
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+/** Render views/unsubscribe/<view>.ejs inside the shared page chrome. */
+async function renderPage(res, status, view, data = {}) {
+  const body = await ejs.renderFile(path.join(VIEWS, `${view}.ejs`), data);
+  const html = await ejs.renderFile(path.join(VIEWS, 'page.ejs'), { title: data.title, body });
+  return res.status(status).type('html').send(html);
 }
 
-function page(title, body) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<title>${escapeHtml(title)}</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
-  button { font-size: 1rem; padding: .6rem 1.2rem; cursor: pointer; }
-</style>
-</head>
-<body>
-<main>${body}</main>
-</body>
-</html>`;
+function invalidLink(res) {
+  return renderPage(res, 400, 'invalid', { title: 'Invalid link' });
 }
-
-const GENERIC_400 = page(
-  'Invalid link',
-  '<h1>Invalid link</h1><p>This unsubscribe link is invalid or has expired.</p>',
-);
 
 /** Verify the token and load its account; null means "answer generic 400". */
 async function resolveToken(token) {
-  const keys = await MailUnsubscribeKey.verifiable();
+  const keys = await currentUnsubscribeKeys();
   const payload = verifyUnsubscribeToken(token, keys);
   if (!payload) return null;
   const account = await MailAccount.findByPk(payload.accountId);
@@ -65,31 +53,22 @@ async function resolveToken(token) {
 
 router.get('/:token', asyncHandler(async (req, res) => {
   const resolved = await resolveToken(req.params.token);
-  if (!resolved) return res.status(400).type('html').send(GENERIC_400);
-  const recipient = escapeHtml(resolved.recipient);
-  return res.type('html').send(page('Unsubscribe', `
-<h1>Unsubscribe</h1>
-<p>Stop receiving email to <strong>${recipient}</strong> from this sender?</p>
-<form method="post" action="">
-  <input type="hidden" name="List-Unsubscribe" value="One-Click">
-  <button type="submit" aria-label="Confirm unsubscribe for ${recipient}">Unsubscribe</button>
-</form>`));
+  if (!resolved) return invalidLink(res);
+  return renderPage(res, 200, 'confirm', { title: 'Unsubscribe', recipient: resolved.recipient });
 }));
 
 router.post('/:token', asyncHandler(async (req, res) => {
   // RFC 8058 §3.2: the POST body must be List-Unsubscribe=One-Click.
   if ((req.body || {})['List-Unsubscribe'] !== 'One-Click') {
-    return res.status(400).type('html').send(GENERIC_400);
+    return invalidLink(res);
   }
   const resolved = await resolveToken(req.params.token);
-  if (!resolved) return res.status(400).type('html').send(GENERIC_400);
+  if (!resolved) return invalidLink(res);
   await MailSuppression.findOrCreate({
     where: { mailAccountId: resolved.account.id, recipient: resolved.recipient },
     defaults: { source: 'one-click' },
   });
-  return res.type('html').send(page('Unsubscribed', `
-<h1>Unsubscribed</h1>
-<p><strong>${escapeHtml(resolved.recipient)}</strong> will no longer receive email from this sender.</p>`));
+  return renderPage(res, 200, 'done', { title: 'Unsubscribed', recipient: resolved.recipient });
 }));
 
 module.exports = router;

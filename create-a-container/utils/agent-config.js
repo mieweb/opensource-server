@@ -9,9 +9,10 @@
 
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting, MailUnsubscribeKey, MailAccount } = require('../models');
+const { Site, Node, Container, Service, HTTPService, TransportService, ExternalDomain, Volume, DkimKey, Setting, MailAccount } = require('../models');
 const { isAgentlessNodeType } = require('./volumes');
 const { DEFAULT_QUOTA_MB } = require('./mail-account');
+const { currentUnsubscribeKeys } = require('./unsubscribe-token');
 
 // Owning host UID/GID for volume directories: Proxmox maps an unprivileged CT's
 // UID/GID 0 to host 100000, so RW volumes must be owned by 100000 to be writable
@@ -289,7 +290,8 @@ async function buildMailSnapshot(dbConfig) {
       postfixUser: 'mail_postfix',
     },
     // opensource-mail-helper mints List-Unsubscribe tokens with the active
-    // key; retired-but-verifiable keys ride along so old links keep working
+    // key. The keys are stateless HKDF derivations of the server's session
+    // secrets: the newest secret mints, older ones keep old links verifying
     // after a rotation. The manager verifies with the same set. The links'
     // base URL is NOT sent — the agent derives it from its MANAGER_URL (the
     // manager serves /u/ itself and is never behind oauth2-proxy).
@@ -298,10 +300,9 @@ async function buildMailSnapshot(dbConfig) {
 }
 
 async function buildUnsubscribeSection() {
-  await MailUnsubscribeKey.ensureActive();
-  const keys = await MailUnsubscribeKey.verifiable();
+  const keys = await currentUnsubscribeKeys();
   return {
-    keys: keys.map((k) => ({ kid: k.kid, secret: k.secret, active: k.status === 'active' })),
+    keys: keys.map((k) => ({ kid: k.kid, secret: k.secret.toString('base64'), active: k.active })),
   };
 }
 

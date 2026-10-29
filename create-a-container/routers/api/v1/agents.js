@@ -1,17 +1,21 @@
 /**
- * /api/v1/agents — site agent check-in and status.
+ * /api/v1/agents — site agent check-in, status, and the mail-host claim.
  *
  * POST /  agent check-in: records system info + service states, responds with
  *         the site's config snapshot (or 304 when the agent's If-None-Match
  *         ETag still matches).
  * GET  /  admin: current status of all agents.
+ * GET    /mail-host      admin: who holds the mail-host claim + the mail IP
+ * DELETE /mail-host      admin: release the claim (next qualifying check-in takes it)
+ * GET    /mail-host/ptr  admin: PTR suggestion for the mail_hostname setting
  */
 
 const express = require('express');
-const { Agent, Site, Container, Volume } = require('../../../models');
-const { apiAuth, apiAdmin, localhostOrAdmin, isLocalhostRequest, asyncHandler, ok, noContent, fail } = require('../../../middlewares/api');
+const { Agent, Site, Container, Volume, Setting } = require('../../../models');
+const { apiAuth, apiAdmin, localhostOrAdmin, isLocalhostRequest, csrfGuard, asyncHandler, ok, noContent, fail } = require('../../../middlewares/api');
 const { buildAgentConfig, buildMailSnapshot, computeConfigEtag } = require('../../../utils/agent-config');
-const { MAIL_SERVICE, processMailClaim } = require('../../../utils/mail-host');
+const { MAIL_SERVICE, processMailClaim, getMailHostAgent, getMailIp, releaseMailHost } = require('../../../utils/mail-host');
+const { lookupPtr } = require('../../../utils/mail-dns');
 
 const env = process.env.NODE_ENV || 'development';
 const dbConfig = require('../../../config/config.js')[env];
@@ -151,9 +155,62 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
   })));
 }));
 
+// ---------------------------------------------------------------------------
+// Mail-host claim (issue #67). The mail host is a property of the agent
+// fleet, so it lives under /agents rather than a separate API resource.
+// Registered before the '/:id/*' routes so 'mail-host' is never read as an id.
+// csrfGuard is applied per-route: this router mounts before the app-level
+// guard (check-ins carry no CSRF token), and these are session-driven
+// admin mutations.
+// ---------------------------------------------------------------------------
+
+router.get('/mail-host', apiAuth, apiAdmin, asyncHandler(async (_req, res) => {
+  const holder = await getMailHostAgent();
+  const settings = await Setting.getMultiple(['mail_hostname', 'mail_self_managed_site_id']);
+  return ok(res, {
+    agent: holder
+      ? {
+        id: holder.id,
+        siteId: holder.siteId,
+        siteName: holder.site?.name || null,
+        hostname: holder.hostname,
+        mailHostSince: holder.mailHostSince,
+        enabledServices: holder.enabledServices,
+        missingBinaries: holder.missingBinaries,
+      }
+      : null,
+    mailIp: await getMailIp(),
+    mailHostname: settings.mail_hostname || null,
+    selfManagedSiteId: parseInt(settings.mail_self_managed_site_id, 10) || null,
+  });
+}));
+
+// Release the claim — the next qualifying check-in takes it.
+router.delete('/mail-host', apiAuth, apiAdmin, csrfGuard, asyncHandler(async (_req, res) => {
+  const released = await releaseMailHost();
+  return ok(res, { released: !!released });
+}));
+
+// PTR suggestion for the mail_hostname setting (reverse DNS of the mail IP).
+router.get('/mail-host/ptr', apiAuth, apiAdmin, asyncHandler(async (_req, res) => {
+  const mailIp = await getMailIp();
+  const settings = await Setting.getMultiple(['mail_hostname', 'mail_dns_check_resolvers']);
+  const resolvers = (settings.mail_dns_check_resolvers || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const ptr = mailIp ? await lookupPtr({ ip: mailIp, resolvers }) : { name: null, forwardConfirmed: false };
+  return ok(res, {
+    mailIp,
+    ptr: ptr.name,
+    forwardConfirmed: ptr.forwardConfirmed,
+    mailHostname: settings.mail_hostname || null,
+    // Suggest the forward-confirmed PTR name as mail_hostname.
+    suggestion: ptr.forwardConfirmed ? ptr.name : null,
+  });
+}));
+
 // Clear a remote agent's API-key pin so it can re-pin on its next check-in
 // (e.g. after rotating the agent's key).
-router.delete('/:id/api-key-pin', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
+router.delete('/:id/api-key-pin', apiAuth, apiAdmin, csrfGuard, asyncHandler(async (req, res) => {
   const agent = await Agent.findByPk(req.params.id);
   if (!agent) return fail(res, 404, 'not_found', 'Agent not found');
   await agent.update({ apiKeyId: null });

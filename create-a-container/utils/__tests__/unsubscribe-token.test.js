@@ -1,10 +1,15 @@
 /**
  * Unit tests for utils/unsubscribe-token.js — roundtrip, tamper resistance,
- * key selection, and the all-failures-look-identical contract.
+ * key selection, session-secret derivation, and the all-failures-look-identical
+ * contract.
  */
 
 const crypto = require('crypto');
-const { createUnsubscribeToken, verifyUnsubscribeToken } = require('../unsubscribe-token');
+const {
+  createUnsubscribeToken,
+  verifyUnsubscribeToken,
+  deriveUnsubscribeKeys,
+} = require('../unsubscribe-token');
 
 const key = { kid: 'a1b2c3d4', secret: crypto.randomBytes(32).toString('base64') };
 const otherKey = { kid: 'ffffffff', secret: crypto.randomBytes(32).toString('base64') };
@@ -47,4 +52,30 @@ test('garbage input returns null, never throws', () => {
   for (const junk of ['', 'x', '!!!!', 'AAAA', 'A'.repeat(500), null, undefined]) {
     expect(verifyUnsubscribeToken(junk, [key])).toBeNull();
   }
+});
+
+describe('deriveUnsubscribeKeys', () => {
+  const secrets = ['newest-session-secret', 'older-session-secret'];
+
+  test('is deterministic and marks the newest secret active', () => {
+    const a = deriveUnsubscribeKeys(secrets);
+    const b = deriveUnsubscribeKeys(secrets);
+    expect(a).toHaveLength(2);
+    expect(a[0].active).toBe(true);
+    expect(a[1].active).toBe(false);
+    expect(a.map((k) => k.kid)).toEqual(b.map((k) => k.kid));
+    expect(a[0].secret.equals(b[0].secret)).toBe(true);
+    expect(a[0].kid).not.toBe(a[1].kid);
+    expect(a[0].secret.equals(a[1].secret)).toBe(false);
+  });
+
+  test('derived keys roundtrip tokens, including after a rotation', () => {
+    const [active] = deriveUnsubscribeKeys(secrets);
+    const token = createUnsubscribeToken(payload, active);
+    // Rotation: a new secret is prepended; the old derivation still verifies.
+    const rotated = deriveUnsubscribeKeys(['brand-new-secret', ...secrets]);
+    expect(verifyUnsubscribeToken(token, rotated)).toMatchObject({
+      accountId: payload.accountId,
+    });
+  });
 });

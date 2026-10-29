@@ -47,6 +47,9 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     isLocal: {
+      // True for the agent bundled with the manager (checks in over
+      // localhost, no API key). Remote agents authenticate with a key and
+      // get pinned via apiKeyId below.
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false

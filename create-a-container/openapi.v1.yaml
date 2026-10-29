@@ -464,7 +464,7 @@ components:
             name: { type: string }
         authServer: { type: string, nullable: true }
         hasCloudflareApiKey: { type: boolean }
-        mailEnabled: { type: boolean, description: 'Read-only here — toggled via the …/mail/enable|disable endpoints' }
+        mailEnabled: { type: boolean, description: 'Toggled via PATCH /external-domains/{id}; enabling is gated on Check DNS' }
         mailDnsVerified: { type: boolean, description: 'SPF+DKIM+DMARC verified. With mailEnabled => domain can send' }
         mailMxVerified: { type: boolean, description: 'MX resolves to the mail IP. With mailEnabled => domain can receive' }
         mailDnsCheckedAt: { type: string, format: date-time, nullable: true }
@@ -498,7 +498,7 @@ components:
         netboxToken: { type: string }
         bannerMessage: { type: string, description: 'Announcement banner shown at the top of the app (supports [text](url) links); blank disables it. Also surfaced unauthenticated via GET /health as `banner`.' }
         usagePsiProbeLimit: { type: string, description: 'Max PSI (pressure stall) probes per usage report, spent on the highest-utilization running containers. Non-negative integer as string; "0" disables PSI, blank uses the default (16).' }
-        mailHostname: { type: string, description: 'HELO / MX hostname — the forward-confirmed PTR name of the mail IP (see GET /mail/ptr)' }
+        mailHostname: { type: string, description: 'HELO / MX hostname — the forward-confirmed PTR name of the mail IP (see GET /agents/mail-host/ptr)' }
         mailRelayhost: { type: string, description: 'Optional smarthost; requires mailSpfInclude' }
         mailRelayhostUsername: { type: string }
         mailRelayhostPassword: { type: string }
@@ -543,7 +543,6 @@ components:
                 username: { type: string }
                 smtp: { type: object, properties: { ports: { type: array, items: { type: integer } } } }
                 imap: { type: object, properties: { ports: { type: array, items: { type: integer } } } }
-            warning: { type: string }
     MailDnsRecord:
       type: object
       properties:
@@ -1699,6 +1698,28 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/ExternalDomain' } } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: patch_external_domain
+      tags: [External Domains]
+      summary: Partial update (admin). Only provided fields change; `mailEnabled: true` runs Check DNS first and requires the send gate (SPF + DKIM + DMARC).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ExternalDomainInput'
+                - type: object
+                  properties:
+                    mailEnabled: { type: boolean, description: 'Enable (DNS-gated; response includes the full result under `check`) or disable mail for the domain' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { $ref: '#/components/schemas/ExternalDomain' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: 'mailEnabled: true with SPF/DKIM/DMARC not verified (code: dns_not_configured); MX failure only warns', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       operationId: delete_external_domain
       tags: [External Domains]
@@ -1741,27 +1762,6 @@ paths:
       responses:
         '200':
           description: Domain with updated gates plus the full check result under `check`
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-  /external-domains/{id}/mail/enable:
-    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    post:
-      operationId: enable_domain_mail
-      tags: [Mail]
-      summary: Enable mail for a domain (admin) — runs Check DNS first
-      responses:
-        '200': { description: Enabled }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { description: 'SPF/DKIM/DMARC not verified (code: dns_not_configured); MX failure only warns', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
-  /external-domains/{id}/mail/disable:
-    parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
-    post:
-      operationId: disable_domain_mail
-      tags: [Mail]
-      summary: Disable mail for a domain (admin) — DKIM keys and config are kept
-      responses:
-        '200': { description: Disabled }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
   /external-domains/{id}/mail/dkim:
@@ -1912,7 +1912,7 @@ paths:
         '403': { description: 'Not an admin (code: admin_required)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /mail/host:
+  /agents/mail-host:
     get:
       operationId: get_mail_host
       tags: [Mail]
@@ -1920,17 +1920,16 @@ paths:
       responses:
         '200': { description: 'Holder agent (or null), mailIp, mailHostname, selfManagedSiteId' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /mail/host/release:
-    post:
+    delete:
       operationId: release_mail_host
       tags: [Mail]
       summary: Release the mail-host claim (admin) — next qualifying check-in takes it
       responses:
         '200': { description: '`{ released: boolean }`' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /mail/ptr:
+  /agents/mail-host/ptr:
     get:
-      operationId: get_mail_ptr
+      operationId: get_mail_host_ptr
       tags: [Mail]
       summary: PTR suggestion for the mail_hostname setting (admin)
       responses:

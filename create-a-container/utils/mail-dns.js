@@ -12,6 +12,7 @@
  */
 
 const dns = require('dns');
+const net = require('net');
 const { dkimDnsRecordValue } = require('./dkim');
 
 const DEFAULT_RESOLVERS = ['1.1.1.1', '8.8.8.8'];
@@ -56,23 +57,20 @@ function buildMailDnsRecords({ domain, mailIp, mailHostname, spfInclude, dkimKey
 function ipv4InCidr(ip, cidr) {
   const [base, prefixStr] = cidr.split('/');
   const prefix = prefixStr === undefined ? 32 : parseInt(prefixStr, 10);
+  if (!net.isIPv4(ip) || !net.isIPv4(base)) return false;
   if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
-  const toInt = (addr) => {
-    const parts = addr.split('.').map(Number);
-    if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
-    return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
-  };
-  const ipInt = toInt(ip);
-  const baseInt = toInt(base);
-  if (ipInt === null || baseInt === null) return false;
-  if (prefix === 0) return true;
-  const mask = (0xffffffff << (32 - prefix)) >>> 0;
-  return (ipInt & mask) === (baseInt & mask);
+  const list = new net.BlockList();
+  list.addSubnet(base, prefix, 'ipv4');
+  return list.check(ip, 'ipv4');
 }
 
 /**
  * Record-based SPF pass: any ip4 mechanism covers mailIp, or the record
  * contains include:<spfInclude>.
+ *
+ * TODO(#67): full RFC 7208 evaluation (a/mx/redirect/include chasing) —
+ * `mailauth` is the candidate library; it brings live-evaluation semantics
+ * and its own resolver plumbing, so adopting it is a follow-up.
  */
 function spfRecordPasses(record, { mailIp, spfInclude }) {
   const mechanisms = record.trim().split(/\s+/).slice(1);
@@ -111,7 +109,7 @@ async function resolveTxtSafe(resolver, name) {
 
 /**
  * Reverse-lookup an IP and forward-confirm the result. Used by Check DNS
- * warnings and by GET /mail/ptr to suggest a mail_hostname.
+ * warnings and by GET /agents/mail-host/ptr to suggest a mail_hostname.
  * @returns {Promise<{name: string|null, forwardConfirmed: boolean}>}
  */
 async function lookupPtr({ ip, resolvers, resolver }) {

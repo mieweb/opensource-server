@@ -11,6 +11,9 @@ const router = express.Router();
 router.use(apiAuth, apiAdmin);
 
 const KEYS = [
+  // TODO(#67): fold smtp_url/smtp_noreply_address into the mail system —
+  // the manager's own outbound mail should go through the hosted mail stack
+  // once it can satisfy that role.
   'smtp_url',
   'smtp_noreply_address',
   'default_container_env_vars',

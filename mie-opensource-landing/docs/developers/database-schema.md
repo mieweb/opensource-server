@@ -177,12 +177,6 @@ erDiagram
         enum source "one-click | admin"
     }
 
-    MailUnsubscribeKeys {
-        string kid PK
-        string secret "AES-256-GCM key; never serialized"
-        enum status "active | retired (verifies 1 more year)"
-    }
-
     Jobs {
         int id PK
         string name
@@ -282,13 +276,10 @@ RSA-2048 signing key per external domain, generated at domain creation (selector
 A user-owned SMTP/IMAP account on a can-send domain. Password stored as an Argon2id PHC string with `p=1` (Dovecot verifies via libsodium, which only supports parallelism 1); the plaintext is returned exactly once at create/rotate. `enabled` gates the SQL views, so disabling locks the account out instantly.
 
 ### MailSuppression
-A recipient who one-click-unsubscribed (RFC 8058) from a MailAccount, or was suppressed by an admin. Enforced synchronously at RCPT on the submission ports.
-
-### MailUnsubscribeKey
-AES-256-GCM key for unsubscribe tokens. One `active` key; `retired` keys keep verifying previously issued links for one year.
+A recipient who one-click-unsubscribed (RFC 8058) from a MailAccount, or was suppressed by an admin. Enforced synchronously at RCPT on the submission ports. Unsubscribe tokens are stateless — AES-256-GCM keys are HKDF-derived from the `SessionSecrets` rows (newest mints; older ones keep old links verifying), so there is no key table.
 
 ### Mail Views
-The dialect-aware views created by migration `20261008000006` (SQL built in `create-a-container/utils/mail-views.js`) are the **stable contract** Dovecot/Postfix — or a self-managed MTA — read live:
+The dialect-aware views created by migration `20261008000006` (which contains the per-dialect SQL) are the **stable contract** Dovecot/Postfix — or a self-managed MTA — read live:
 
 | View | Columns | Consumer |
 |------|---------|----------|

@@ -8,7 +8,9 @@
  *
  * Layout (base64url): [version:1][kidLen:1][kid][iv:12][tag:16][ciphertext]
  *
- * Pure crypto — key rows live in the MailUnsubscribeKeys model.
+ * Keys are STATELESS: each one is HKDF-derived from a server session secret
+ * (no key table). The newest secret's derivation mints tokens; older
+ * secrets' derivations keep links verifying after a rotation.
  */
 
 const crypto = require('crypto');
@@ -16,6 +18,37 @@ const crypto = require('crypto');
 const VERSION = 1;
 const IV_LEN = 12;
 const TAG_LEN = 16;
+const HKDF_INFO = 'opensource-mail unsubscribe v1';
+
+/**
+ * Derive the unsubscribe AES keys from the server's session secrets.
+ * Deterministic — the same secrets always derive the same keys, so the
+ * manager and the mail host (via the check-in snapshot) agree without
+ * shared state.
+ * @param {string[]} sessionSecrets - newest first (server.js order)
+ * @returns {Array<{kid: string, secret: Buffer, active: boolean}>}
+ */
+function deriveUnsubscribeKeys(sessionSecrets) {
+  return sessionSecrets.map((s, i) => {
+    const secret = Buffer.from(
+      crypto.hkdfSync('sha256', Buffer.from(String(s)), Buffer.alloc(0), HKDF_INFO, 32),
+    );
+    // kid identifies the key in the token without revealing it.
+    const kid = crypto.createHash('sha256').update(secret).digest('hex').slice(0, 8);
+    return { kid, secret, active: i === 0 };
+  });
+}
+
+/** Session secrets loaded + derived — the key set both /u and the agent snapshot use. */
+async function currentUnsubscribeKeys() {
+  // Lazy require keeps this module import-safe as pure crypto for tests.
+  const { SessionSecret } = require('../models');
+  const secrets = await SessionSecret.findAll({
+    order: [['createdAt', 'DESC']],
+    attributes: ['secret'],
+  });
+  return deriveUnsubscribeKeys(secrets.map((s) => s.secret));
+}
 
 function secretBuffer(secret) {
   return Buffer.isBuffer(secret) ? secret : Buffer.from(secret, 'base64');
@@ -75,4 +108,9 @@ function verifyUnsubscribeToken(token, keys) {
   }
 }
 
-module.exports = { createUnsubscribeToken, verifyUnsubscribeToken };
+module.exports = {
+  createUnsubscribeToken,
+  verifyUnsubscribeToken,
+  deriveUnsubscribeKeys,
+  currentUnsubscribeKeys,
+};
