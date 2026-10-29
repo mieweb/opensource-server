@@ -394,6 +394,23 @@ class ProxmoxApi {
   }
 
   /**
+   * Resize (grow) an LXC container disk.
+   * @param {string} node - The node name
+   * @param {number} vmid - The container VMID
+   * @param {string} disk - Disk key, e.g. 'rootfs'
+   * @param {string} size - Absolute size (e.g. '50G') or '+NG' increment
+   * @returns {Promise<string>} - The task UPID
+   */
+  async resizeLxcDisk(node, vmid, disk, size) {
+    const response = await axios.put(
+      `${this.baseUrl}/api2/json/nodes/${node}/lxc/${vmid}/resize`,
+      { disk, size },
+      this.options
+    );
+    return response.data.data;
+  }
+
+  /**
    * Start an LXC container
    * @param {string} node - The node name
    * @param {number} vmid - The container VMID

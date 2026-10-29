@@ -40,6 +40,12 @@ const {
   resolveVolumesRoot,
   deriveVolumeHostPaths,
 } = require(path.join(__dirname, '..', 'utils', 'volumes'));
+const {
+  buildDesiredState,
+  toLxcConfig,
+  parseRootfsSizeGb,
+  parseDockerTaskId,
+} = require(path.join(__dirname, '..', 'utils', 'container-state'));
 
 /**
  * Generate a filename for a pulled Docker image
@@ -53,23 +59,6 @@ function generateImageFilename(parsed, digest) {
   const { registry, namespace, image, tag } = parsed;
   const sanitized = `${registry}_${namespace}_${image}_${tag}_${digest}`.replace(/[/:]/g, '_');
   return sanitized;
-}
-
-/**
- * Parse the disk size in gigabytes from a Proxmox LXC `rootfs` config value.
- * Example input: "local-lvm:vm-123-disk-0,size=50G" → 50
- * Supports T/G/M/K suffixes; defaults to gigabytes when no suffix is present.
- * @param {string} [rootfs] - The rootfs config string from lxcConfig
- * @returns {number|null} Disk size rounded to whole gigabytes, or null if unparseable
- */
-function parseRootfsSizeGb(rootfs) {
-  if (!rootfs) return null;
-  const match = /size=(\d+(?:\.\d+)?)([TGMK])?/i.exec(rootfs);
-  if (!match) return null;
-  const value = parseFloat(match[1]);
-  const unit = (match[2] || 'G').toUpperCase();
-  const gb = { T: value * 1024, G: value, M: value / 1024, K: value / (1024 * 1024) }[unit];
-  return Number.isFinite(gb) ? Math.round(gb) : null;
 }
 
 /**
@@ -260,16 +249,6 @@ async function setupContainerAcl(client, nodeName, vmid, username) {
   }
 }
 
-function parseDockerTaskId(taskId, expectedKind = null) {
-  if (typeof taskId !== 'string') return null;
-
-  const parts = taskId.split(':');
-  if (parts[0] !== 'docker' || parts.length < 3) return null;
-  if (expectedKind && parts[1] !== expectedKind) return null;
-
-  return parts.slice(2).join(':');
-}
-
 /**
  * Main function
  */
@@ -328,18 +307,12 @@ async function main() {
   console.log(`Site: ${site.name} (${site.internalDomain})`);
   console.log(`Template: ${container.template}`);
 
-  // Look up approved resource requests for this container identity
-  const approvedResources = await ResourceRequest.getApprovedResources(
-    site.id,
-    container.hostname,
-    container.username,
-  );
-  const { RESOURCE_DEFAULTS } = ResourceRequest;
-  const cores = approvedResources.cpus || RESOURCE_DEFAULTS.cpus;
-  const memory = approvedResources.memory || RESOURCE_DEFAULTS.memory;
-  const swap = approvedResources.swap || RESOURCE_DEFAULTS.swap;
-  const rootfsSize = approvedResources.rootfs || RESOURCE_DEFAULTS.rootfs;
-  console.log(`Resources: cores=${cores}, memory=${memory}MB, swap=${swap}MB, rootfs=${rootfsSize}GB`);
+  // Desired state is shared with the reconfigure job (utils/container-state)
+  // so both always converge on the same configuration.
+  const desired = await buildDesiredState(container, node, site);
+  const baseConfig = toLxcConfig(desired);
+  const rootfsSize = desired.rootfsGb;
+  console.log(`Resources: cores=${baseConfig.cores}, memory=${baseConfig.memory}MB, swap=${baseConfig.swap}MB, rootfs=${rootfsSize}GB`);
 
   const isDocker = isDockerImage(container.template);
   const isDockerNode = node.nodeType === 'docker';
@@ -418,14 +391,7 @@ async function main() {
         hostname: container.hostname,
         ostemplate,
         description: `Created from Docker image ${container.template}`,
-        cores,
-        features: 'nesting=1,keyctl=1,fuse=1',
-        memory,
-        net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
-        searchdomain: site.internalDomain,
-        swap,
-        onboot: 1,
-        tags: container.username,
+        ...baseConfig,
         unprivileged: 1,
         rootfs: `${rootfsStorage}:${rootfsSize}`,
         // Volumes (bind mounts) are applied after creation; their host
@@ -495,17 +461,18 @@ async function main() {
       // Volumes (bind mounts) are applied later, after the agent creates their
       // host directories (issue #421).
       console.log('Configuring container...');
-      await client.updateLxcConfig(node.name, vmid, {
-        cores,
-        features: 'nesting=1,keyctl=1,fuse=1',
-        memory,
-        net0: `name=eth0,ip=dhcp,bridge=${node.networkBridge}`,
-        searchdomain: site.internalDomain,
-        swap,
-        onboot: 1,
-        tags: container.username,
-      });
+      await client.updateLxcConfig(node.name, vmid, baseConfig);
       console.log('Container configured');
+
+      // Clones inherit the template's disk size; grow it to the desired size.
+      const clonedRootfsGb = parseRootfsSizeGb((await client.lxcConfig(node.name, vmid)).rootfs);
+      if (clonedRootfsGb != null && clonedRootfsGb < rootfsSize) {
+        console.log(`Resizing rootfs ${clonedRootfsGb}G -> ${rootfsSize}G...`);
+        const resizeUpid = await client.resizeLxcDisk(node.name, vmid, 'rootfs', `${rootfsSize}G`);
+        if (resizeUpid) await client.waitForTask(node.name, resizeUpid);
+      } else if (clonedRootfsGb != null && clonedRootfsGb > rootfsSize) {
+        console.warn(`⚠️  WARNING: template rootfs (${clonedRootfsGb}G) is larger than the desired ${rootfsSize}G; it cannot be shrunk`);
+      }
     }
     
     // Snapshot the template's env/entrypoint onto the container record now, as
@@ -535,8 +502,8 @@ async function main() {
     }
     
     // Attach NVIDIA hookscript when GPU passthrough is requested
-    if (container.nvidiaRequested) {
-      const hookscriptVolid = 'local:snippets/nvidia';
+    if (desired.config.hookscript) {
+      const hookscriptVolid = desired.config.hookscript;
       console.log(`NVIDIA requested — attaching hookscript ${hookscriptVolid}...`);
 
       // Check if the hookscript file exists on the node
@@ -614,7 +581,8 @@ async function main() {
     // the values requested at creation time.
     const actualCores = config['cores'] != null ? parseInt(config['cores'], 10) : null;
     const actualMemoryMb = config['memory'] != null ? parseInt(config['memory'], 10) : null;
-    const actualDiskGb = parseRootfsSizeGb(config['rootfs']);
+    const parsedDiskGb = parseRootfsSizeGb(config['rootfs']);
+    const actualDiskGb = parsedDiskGb != null ? Math.round(parsedDiskGb) : null;
 
     // Get IP address from Proxmox interfaces API
     const ipv4Address = await client.getLxcIpAddress(node.name, vmid);
