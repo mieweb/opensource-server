@@ -396,7 +396,6 @@ export interface MailAccountSecret extends MailAccount {
     smtp: { ports: number[] };
     imap: { ports: number[] };
   };
-  warning: string;
 }
 
 export interface MailSuppression {

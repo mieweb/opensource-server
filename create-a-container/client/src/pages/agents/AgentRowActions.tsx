@@ -16,7 +16,7 @@ export function AgentRowActions({ agent }: { agent: Agent }) {
   };
 
   const release = useMutation({
-    mutationFn: () => api.post('/api/v1/mail/host/release'),
+    mutationFn: () => api.delete('/api/v1/agents/mail-host'),
     onSuccess: () => {
       toast.success('Mail-host claim released — the next qualifying check-in takes it');
       invalidate();

@@ -33,8 +33,12 @@ export function DomainMailSection({ domain }: { domain: ExternalDomain }) {
   };
 
   const action = useMutation({
+    // Enable/disable is a PATCH on the domain itself; enabling is gated on
+    // Check DNS server-side. check-dns stays a dedicated action endpoint.
     mutationFn: (verb: 'check-dns' | 'enable' | 'disable') =>
-      api.post(`/api/v1/external-domains/${domain.id}/mail/${verb}`),
+      verb === 'check-dns'
+        ? api.post(`/api/v1/external-domains/${domain.id}/mail/check-dns`)
+        : api.patch(`/api/v1/external-domains/${domain.id}`, { mailEnabled: verb === 'enable' }),
     onSuccess: (_data, verb) => {
       toast.success(
         verb === 'check-dns' ? 'DNS re-checked' : verb === 'enable' ? 'Mail enabled' : 'Mail disabled',

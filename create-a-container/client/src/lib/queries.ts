@@ -160,8 +160,8 @@ export const queries = {
     api.get<MailSuppression[]>(`/api/v1/mail-accounts/${id}/suppressions`),
   getDomainMailDns: (domainId: number | string) =>
     api.get<MailDnsInfo>(`/api/v1/external-domains/${domainId}/mail/dns`),
-  getMailHost: () => api.get<MailHostInfo>('/api/v1/mail/host'),
-  getMailPtr: () => api.get<MailPtrInfo>('/api/v1/mail/ptr'),
+  getMailHost: () => api.get<MailHostInfo>('/api/v1/agents/mail-host'),
+  getMailPtr: () => api.get<MailPtrInfo>('/api/v1/agents/mail-host/ptr'),
 
   // Settings
   getSettings: () => api.get<AppSettings>('/api/v1/settings'),
