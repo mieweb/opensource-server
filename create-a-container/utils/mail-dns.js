@@ -170,7 +170,8 @@ async function checkMailDns({ domain, mailIp, mailHostname, spfInclude, dkimKey,
 
   // SPF
   const txt = await resolveTxtSafe(r, domain);
-  const spfRecord = txt.find((t) => /^v=spf1(\s|$)/i.test(t)) || null;
+  const spfRecords = txt.filter((t) => /^v=spf1(\s|$)/i.test(t));
+  const spfRecord = spfRecords.length === 1 ? spfRecords[0] : null;
   result.spf = {
     pass: !!(spfRecord && spfRecordPasses(spfRecord, { mailIp, spfInclude })),
     record: spfRecord,
