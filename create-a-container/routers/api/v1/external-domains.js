@@ -244,7 +244,7 @@ router.get(
       order: [['createdAt', 'DESC']],
     });
     if (!key) throw new ApiError(404, 'not_found', 'No active DKIM key for this domain');
-    console.warn(`AUDIT: DKIM private key for ${d.name} exported by admin ${req.session.user}`);
+    console.warn(`AUDIT: DKIM private key for ${d.name} exported by admin [redacted]`);
     return ok(res, {
       domain: d.name,
       selector: key.selector,
