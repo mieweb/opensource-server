@@ -59,9 +59,8 @@ async function processMailClaim(agent, { wantsMail, missingBinaries }) {
     return { status: 'unsupported' };
   }
   if (Array.isArray(missingBinaries) && missingBinaries.length > 0) {
-    // A holder that lost its packages must also lose the claim — otherwise
-    // every other agent stays in `conflict` while nothing serves mail.
-    if (agent.mailHostSince) await agent.update({ mailHostSince: null });
+    // Keep a degraded holder's claim: its Maildirs are local, so another
+    // host must not take over without an explicit mailbox migration.
     return { status: 'missing_packages', missing: missingBinaries };
   }
   return sequelize.transaction(async (transaction) => {
