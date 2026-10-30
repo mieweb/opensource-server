@@ -46,7 +46,8 @@ function createViewsSql(dialect) {
   const canReceive = `(ed.${q('mailEnabled')} AND ed.${q('mailMxVerified')})`;
   const joins =
     `FROM ${q('MailAccounts')} ma ` +
-    `JOIN ${q('ExternalDomains')} ed ON ed.${q('id')} = ma.${q('externalDomainId')}`;
+    `JOIN ${q('ExternalDomains')} ed ON ed.${q('id')} = ma.${q('externalDomainId')} ` +
+    `JOIN ${q('Users')} u ON u.${q('uidNumber')} = ma.${q('uidNumber')} AND u.${q('status')} = 'active'`;
 
   return [
     `CREATE VIEW mail_accounts_v AS ` +
