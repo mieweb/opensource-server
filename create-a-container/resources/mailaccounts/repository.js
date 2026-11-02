@@ -34,9 +34,11 @@ async function create(fields) {
 /** Bring a soft-deleted account back under a fresh owner/credentials while
  *  keeping its id — and therefore its MailSuppressions. */
 async function restore(account, fields) {
-  await account.restore();
-  await account.update(fields);
-  return findById(account.id);
+  return MailAccount.sequelize.transaction(async (transaction) => {
+    await account.restore({ transaction });
+    await account.update(fields, { transaction });
+    return MailAccount.findByPk(account.id, { include: INCLUDES, transaction });
+  });
 }
 
 async function update(account, fields) {
