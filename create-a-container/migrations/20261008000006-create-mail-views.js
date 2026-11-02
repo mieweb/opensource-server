@@ -44,6 +44,9 @@ function createViewsSql(dialect) {
   const address = `LOWER(${cat(`ma.${q('localPart')}`, "'@'", `ed.${q('name')}`)})`;
   const canSend = `(ed.${q('mailEnabled')} AND ed.${q('mailDnsVerified')})`;
   const canReceive = `(ed.${q('mailEnabled')} AND ed.${q('mailMxVerified')})`;
+  // Soft-deleted accounts keep their row (and suppressions) but vanish from
+  // the account views — no authentication, sending, or delivery.
+  const live = `ma.${q('deletedAt')} IS NULL`;
   const joins =
     `FROM ${q('MailAccounts')} ma ` +
     `JOIN ${q('ExternalDomains')} ed ON ed.${q('id')} = ma.${q('externalDomainId')} ` +
@@ -57,18 +60,20 @@ function createViewsSql(dialect) {
       `ma.${q('quotaBytes')} AS quota_bytes, ` +
       `${canSend} AS can_send, ` +
       `${canReceive} AS can_receive ` +
-      `${joins} WHERE ma.${q('enabled')}`,
+      `${joins} WHERE ${live} AND ma.${q('enabled')}`,
 
     `CREATE VIEW mail_senders_v AS ` +
       `SELECT ${address} AS sender, ${address} AS login, ` +
       `ma.${q('id')} AS account_id, ` +
       `ma.${q('unsubscribeHeaders')} AS unsubscribe_headers ` +
-      `${joins} WHERE ma.${q('enabled')} AND ${canSend}`,
+      `${joins} WHERE ${live} AND ma.${q('enabled')} AND ${canSend}`,
 
     `CREATE VIEW mail_recipients_v AS ` +
       `SELECT ${address} AS recipient ` +
-      `${joins} WHERE ma.${q('enabled')} AND ${canReceive}`,
+      `${joins} WHERE ${live} AND ma.${q('enabled')} AND ${canReceive}`,
 
+    // Deliberately includes soft-deleted accounts: their suppressions stay
+    // live so the address cannot shed opt-outs via delete + recreate.
     `CREATE VIEW mail_suppressions_v AS ` +
       `SELECT ${address} AS sender, ms.${q('recipient')} AS recipient ` +
       `FROM ${q('MailSuppressions')} ms ` +

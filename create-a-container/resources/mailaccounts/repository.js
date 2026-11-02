@@ -19,12 +19,23 @@ async function findById(id) {
   return MailAccount.findByPk(id, { include: INCLUDES });
 }
 
-async function findByAddress(externalDomainId, localPart) {
-  return MailAccount.findOne({ where: { externalDomainId, localPart } });
+async function findByAddress(externalDomainId, localPart, { includeDeleted = false } = {}) {
+  return MailAccount.findOne({
+    where: { externalDomainId, localPart },
+    paranoid: !includeDeleted,
+  });
 }
 
 async function create(fields) {
   const account = await MailAccount.create(fields);
+  return findById(account.id);
+}
+
+/** Bring a soft-deleted account back under a fresh owner/credentials while
+ *  keeping its id — and therefore its MailSuppressions. */
+async function restore(account, fields) {
+  await account.restore();
+  await account.update(fields);
   return findById(account.id);
 }
 
@@ -34,6 +45,8 @@ async function update(account, fields) {
 }
 
 async function destroy(account) {
+  // Paranoid model — soft delete. Suppressions survive so recreating the
+  // address cannot shed its opt-outs (see service.createAccount).
   return account.destroy();
 }
 
@@ -79,6 +92,7 @@ module.exports = {
   findById,
   findByAddress,
   create,
+  restore,
   update,
   destroy,
   findDomain,

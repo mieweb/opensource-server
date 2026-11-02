@@ -2,7 +2,8 @@
  * /api/v1/external-domains — admin-only CRUD + per-domain mail enablement.
  * The Cloudflare API key is write-only: never returned in any response.
  * mailEnabled toggles via PATCH /:id; the verification flags are read-only
- * (they change only via POST /:id/mail/check-dns).
+ * (they change only via POST /:id/mail/check-dns, and reset when the domain
+ * is renamed — the saved result belongs to the old name).
  */
 
 const express = require('express');
@@ -16,6 +17,15 @@ const { getMailIp } = require('../../../utils/mail-host');
 const router = express.Router();
 
 router.use(apiAuth, apiAdmin);
+
+// Renaming invalidates DNS verification — SPF/DKIM/DMARC/MX were checked
+// against the old name, so the new name must be re-verified.
+const MAIL_VERIFICATION_RESET = {
+  mailDnsVerified: false,
+  mailMxVerified: false,
+  mailDnsCheckedAt: null,
+  mailDnsCheckResult: null,
+};
 
 function serialize(d) {
   return {
@@ -103,6 +113,9 @@ router.put(
     if (cloudflareApiKey && cloudflareApiKey.trim() !== '') {
       update.cloudflareApiKey = cloudflareApiKey;
     }
+    if (name !== undefined && name !== d.name) {
+      Object.assign(update, MAIL_VERIFICATION_RESET);
+    }
     await d.update(update);
     return ok(res, serialize(d));
   }),
@@ -127,14 +140,23 @@ router.patch(
       update.cloudflareApiKey = body.cloudflareApiKey;
     }
 
+    const renaming = update.name !== undefined && update.name !== d.name;
+    if (renaming) Object.assign(update, MAIL_VERIFICATION_RESET);
+
     let check;
     if (body.mailEnabled === true) {
-      check = await runDnsCheck(d);
-      if (!d.mailDnsVerified) {
+      // Check the name being saved — a rename must not enable mail using the
+      // old name's DNS result.
+      check = await runDnsCheck(d, renaming ? update.name : d.name);
+      const checkFields = dnsCheckFields(check);
+      if (!checkFields.mailDnsVerified) {
+        // Record the failed check unless it ran against a name that is
+        // not being saved (the 422 aborts the rename).
+        if (!renaming) await d.update(checkFields);
         throw new ApiError(422, 'dns_not_configured',
           'SPF, DKIM, or DMARC records are missing or wrong — publish the records from GET …/mail/dns and re-check');
       }
-      update.mailEnabled = true;
+      Object.assign(update, checkFields, { mailEnabled: true });
     } else if (body.mailEnabled === false) {
       update.mailEnabled = false;
     }
@@ -166,7 +188,7 @@ async function loadDomain(id) {
 }
 
 /** Everything buildMailDnsRecords/checkMailDns need for one domain. */
-async function mailDnsContext(d) {
+async function mailDnsContext(d, name = d.name) {
   const settings = await Setting.getMultiple([
     'mail_hostname', 'mail_spf_include', 'mail_dns_check_resolvers',
   ]);
@@ -175,7 +197,7 @@ async function mailDnsContext(d) {
     order: [['createdAt', 'DESC']],
   });
   return {
-    domain: d.name,
+    domain: name,
     mailIp: await getMailIp(),
     mailHostname: settings.mail_hostname || null,
     spfInclude: settings.mail_spf_include || null,
@@ -185,9 +207,10 @@ async function mailDnsContext(d) {
   };
 }
 
-/** Run Check DNS, persist the outcome, and flip the verification gates. */
-async function runDnsCheck(d) {
-  const context = await mailDnsContext(d);
+/** Run Check DNS for `name` (defaults to the saved name) and return the
+ *  result — persist it with dnsCheckFields(). */
+async function runDnsCheck(d, name = d.name) {
+  const context = await mailDnsContext(d, name);
   const result = await checkMailDns(context);
   const accounts = await MailAccount.findAll({
     where: { externalDomainId: d.id, localPart: ['postmaster', 'abuse'] },
@@ -195,16 +218,20 @@ async function runDnsCheck(d) {
   });
   for (const role of ['postmaster', 'abuse']) {
     if (!accounts.some((a) => a.localPart === role)) {
-      result.warnings.push(`No ${role}@${d.name} mailbox exists yet (admins create role mailboxes).`);
+      result.warnings.push(`No ${role}@${name} mailbox exists yet (admins create role mailboxes).`);
     }
   }
-  await d.update({
+  return result;
+}
+
+/** Verification gate fields derived from one Check DNS result. */
+function dnsCheckFields(result) {
+  return {
     mailDnsCheckedAt: new Date(),
     mailDnsCheckResult: result,
     mailDnsVerified: result.spf.pass && result.dkim.pass && result.dmarc.pass,
     mailMxVerified: result.mx.pass,
-  });
-  return result;
+  };
 }
 
 router.get(
@@ -229,6 +256,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const d = await loadDomain(req.params.id);
     const result = await runDnsCheck(d);
+    await d.update(dnsCheckFields(result));
     return ok(res, { ...serialize(d), check: result });
   }),
 );

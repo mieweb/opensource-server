@@ -168,6 +168,7 @@ erDiagram
         bigint quotaBytes
         boolean unsubscribeHeaders "default true (RFC 8058)"
         date lastRotatedAt
+        date deletedAt "paranoid soft delete; keeps suppressions"
     }
 
     MailSuppressions {
@@ -265,7 +266,7 @@ Base model with `type` discriminator (`http`, `transport`, `dns`). Belongs to Co
 Persistent bind-mount attached to a container (issue #421). Unique composite indexes on `(containerId, name)` and `(containerId, mountPath)`. `hostPath` is derived server-side from the node volume storage's actual configured `path` (`<path>/volumes/site-<siteId>/<owner>/<hostname>/<name>`; scoped by site so containers with the same hostname across sites don't collide on shared storage, and by owner so retained data is only reattached for the same owner) and is null until the create job derives it. `mode` is `ro`/`rw`; each row renders to a Proxmox `mpN` bind mount (`Volume.buildMountConfig`). `status` (`pending` → `ready` | `failed`) is the readiness barrier the create/reconfigure jobs block on — the site agent creates the host directory and reports the result at check-in, which the manager writes to `status`/`statusMessage`/`appliedAt`. `builtin` marks the retired `quick_and_dirty` mount backfilled onto pre-#421 containers for reference (never re-applied; its live `mp0` slot is reserved by `buildMountConfig`). Belongs to Container. See [Volumes](../admins/core-concepts/volumes.md).
 
 ### ExternalDomain
-Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). Mail gates (`mailEnabled`, `mailDnsVerified`, `mailMxVerified`) are changed only via the `…/mail/*` endpoints; has many DkimKeys and MailAccounts.
+Manages public domains for HTTP service exposure. `siteId` is nullable — when set, indicates the "default site" whose DNS is assumed pre-configured (e.g., wildcard A record). Global resource available to all sites. Has many HTTPServices. Cloudflare credentials used for both ACME DNS-01 challenges and cross-site A record management. `authServer` is an optional address of an [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) process (e.g. `http://127.0.0.1:4180`) that NGINX proxies `/oauth2/*` to for `auth_request` (see [External Domains](../admins/core-concepts/external-domains.md#authentication)). Mail gates (`mailEnabled`, `mailDnsVerified`, `mailMxVerified`) are changed only via the `…/mail/*` endpoints and reset on rename (DNS results belong to the old name); has many DkimKeys and MailAccounts.
 
 ## Mail Models (issue #67)
 
@@ -273,7 +274,7 @@ Manages public domains for HTTP service exposure. `siteId` is nullable — when 
 RSA-2048 signing key per external domain, generated at domain creation (selector `osYYYYMMDD`). `status` supports future rotation. The private key is never serialized in API responses — it reaches only the mail-host agent snapshot and the admin DKIM export.
 
 ### MailAccount
-A user-owned SMTP/IMAP account on a can-send domain. Password stored as an Argon2id PHC string with `p=1` (Dovecot verifies via libsodium, which only supports parallelism 1); the plaintext is returned exactly once at create/rotate. `enabled` gates the SQL views, so disabling locks the account out instantly.
+A user-owned SMTP/IMAP account on a can-send domain. Password stored as an Argon2id PHC string with `p=1` (Dovecot verifies via libsodium, which only supports parallelism 1); the plaintext is returned exactly once at create/rotate. `enabled` gates the SQL views, so disabling locks the account out instantly. Deletes are soft (`paranoid`, `deletedAt`): the row and its MailSuppressions survive, the account views exclude it, and recreating the same address restores the row — delete + recreate cannot shed opt-outs.
 
 ### MailSuppression
 A recipient who one-click-unsubscribed (RFC 8058) from a MailAccount, or was suppressed by an admin. Enforced synchronously at RCPT on the submission ports. Unsubscribe tokens are stateless — AES-256-GCM keys are HKDF-derived from the `SessionSecrets` rows (newest mints; older ones keep old links verifying), so there is no key table.

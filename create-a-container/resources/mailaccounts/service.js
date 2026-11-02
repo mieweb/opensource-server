@@ -81,20 +81,27 @@ async function createAccount(session, { externalDomainId, localPart, description
   if (quotaMb !== undefined && !session.isAdmin) {
     throw new ApiError(403, 'admin_required', 'Only admins can set a quota');
   }
-  if (await repo.findByAddress(externalDomainId, localPart)) {
+  // Accounts are soft-deleted so a deleted address keeps its suppressions.
+  // Recreating it restores the same row (same id) — delete + recreate cannot
+  // bypass the admin-only suppression-removal rule.
+  const existing = await repo.findByAddress(externalDomainId, localPart, { includeDeleted: true });
+  if (existing && !existing.deletedAt) {
     throw new ApiError(409, 'address_taken', 'That address already exists');
   }
 
   const defaultQuotaMb = parseInt(await repo.getSetting('mail_default_quota_mb'), 10) || DEFAULT_QUOTA_MB;
   const password = generateMailPassword();
-  const account = await repo.create({
+  const fields = {
     uidNumber: user.uidNumber,
     externalDomainId,
     localPart,
     description: description || null,
     passwordHash: await hashMailPassword(password),
     quotaBytes: (quotaMb ?? defaultQuotaMb) * MB,
-  });
+  };
+  const account = existing
+    ? await repo.restore(existing, { ...fields, enabled: true, unsubscribeHeaders: true, lastRotatedAt: null })
+    : await repo.create(fields);
   return { account, password, connection: await connectionInfo(account) };
 }
 
@@ -132,6 +139,7 @@ async function rotatePassword(session, id) {
   return { account: updated, password, connection: await connectionInfo(updated) };
 }
 
+/** Soft delete — the row (and its suppressions) survives for recreation. */
 async function deleteAccount(session, id) {
   const user = await requireUser(session);
   const account = await loadAccountFor(session, id, user);

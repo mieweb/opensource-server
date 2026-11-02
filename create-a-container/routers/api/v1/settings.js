@@ -90,7 +90,14 @@ router.put(
     } = req.body || {};
 
     // A relayhost sends from the relay's IPs, so SPF must delegate to it.
-    if ((mailRelayhost || '').trim() && !(mailSpfInclude || '').trim()) {
+    // Validate the pair that will be in effect after this save — mail fields
+    // omitted from the request keep their stored values.
+    const stored = await Setting.getMultiple(['mail_relayhost', 'mail_spf_include']);
+    const effectiveRelayhost =
+      mailRelayhost !== undefined ? (mailRelayhost || '').trim() : (stored.mail_relayhost || '');
+    const effectiveSpfInclude =
+      mailSpfInclude !== undefined ? (mailSpfInclude || '').trim() : (stored.mail_spf_include || '');
+    if (effectiveRelayhost && !effectiveSpfInclude) {
       return fail(res, 422, 'validation_failed', 'mailSpfInclude is required when a relayhost is set');
     }
 
@@ -124,16 +131,22 @@ router.put(
       const n = parseInt(String(value ?? '').trim(), 10);
       return Number.isNaN(n) || n < 1 ? '' : String(n);
     };
-    await Setting.set('mail_hostname', (mailHostname || '').trim());
-    await Setting.set('mail_relayhost', (mailRelayhost || '').trim());
-    await Setting.set('mail_relayhost_username', (mailRelayhostUsername || '').trim());
-    await Setting.set('mail_relayhost_password', mailRelayhostPassword || '');
-    await Setting.set('mail_spf_include', (mailSpfInclude || '').trim());
-    await Setting.set('mail_dns_check_resolvers', (mailDnsCheckResolvers || '').trim());
-    await Setting.set('mail_db_host', (mailDbHost || '').trim());
-    await Setting.set('mail_self_managed_site_id', positiveIntOrEmpty(mailSelfManagedSiteId));
-    await Setting.set('mail_default_quota_mb', positiveIntOrEmpty(mailDefaultQuotaMb));
-    await Setting.set('mail_message_size_limit_mb', positiveIntOrEmpty(mailMessageSizeLimitMb));
+    // Mail settings are written only when present in the request so clients
+    // that predate them (the existing Settings page) cannot clear them —
+    // an explicit empty string still clears a value.
+    const setIfProvided = async (key, value, normalize = (v) => (v || '').trim()) => {
+      if (value !== undefined) await Setting.set(key, normalize(value));
+    };
+    await setIfProvided('mail_hostname', mailHostname);
+    await setIfProvided('mail_relayhost', mailRelayhost);
+    await setIfProvided('mail_relayhost_username', mailRelayhostUsername);
+    await setIfProvided('mail_relayhost_password', mailRelayhostPassword, (v) => v || '');
+    await setIfProvided('mail_spf_include', mailSpfInclude);
+    await setIfProvided('mail_dns_check_resolvers', mailDnsCheckResolvers);
+    await setIfProvided('mail_db_host', mailDbHost);
+    await setIfProvided('mail_self_managed_site_id', mailSelfManagedSiteId, positiveIntOrEmpty);
+    await setIfProvided('mail_default_quota_mb', mailDefaultQuotaMb, positiveIntOrEmpty);
+    await setIfProvided('mail_message_size_limit_mb', mailMessageSizeLimitMb, positiveIntOrEmpty);
 
     return ok(res, { saved: true });
   }),

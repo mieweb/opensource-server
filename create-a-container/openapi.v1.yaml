@@ -465,7 +465,7 @@ components:
         authServer: { type: string, nullable: true }
         hasCloudflareApiKey: { type: boolean }
         mailEnabled: { type: boolean, description: 'Toggled via PATCH /external-domains/{id}; enabling is gated on Check DNS' }
-        mailDnsVerified: { type: boolean, description: 'SPF+DKIM+DMARC verified. With mailEnabled => domain can send' }
+        mailDnsVerified: { type: boolean, description: 'SPF+DKIM+DMARC verified. With mailEnabled => domain can send. Reset (with mailMxVerified) when the domain is renamed' }
         mailMxVerified: { type: boolean, description: 'MX resolves to the mail IP. With mailEnabled => domain can receive' }
         mailDnsCheckedAt: { type: string, format: date-time, nullable: true }
     ExternalDomainInput:
@@ -1685,7 +1685,7 @@ paths:
     put:
       operationId: update_external_domain
       tags: [External Domains]
-      summary: Update an external domain (admin). Full update — omitted optional fields are cleared (except `cloudflareApiKey`, which is kept when blank/omitted).
+      summary: Update an external domain (admin). Full update — omitted optional fields are cleared (except `cloudflareApiKey`, which is kept when blank/omitted); renaming resets DNS verification.
       requestBody:
         content:
           application/json:
@@ -1701,7 +1701,7 @@ paths:
     patch:
       operationId: patch_external_domain
       tags: [External Domains]
-      summary: Partial update (admin). Only provided fields change; `mailEnabled: true` runs Check DNS first and requires the send gate (SPF + DKIM + DMARC).
+      summary: Partial update (admin). Only provided fields change; renaming resets DNS verification; `mailEnabled: true` runs Check DNS against the name being saved and requires the send gate (SPF + DKIM + DMARC).
       requestBody:
         content:
           application/json:
@@ -1869,7 +1869,7 @@ paths:
     delete:
       operationId: delete_mail_account
       tags: [Mail]
-      summary: Delete a mail account (owner or admin)
+      summary: Delete a mail account (owner or admin). Soft delete — suppressions are preserved and recreating the address restores them.
       responses:
         '204': { description: Deleted }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2212,7 +2212,7 @@ paths:
     put:
       operationId: update_settings
       tags: [Settings]
-      summary: Save system settings (admin). Full update — omitted fields are cleared.
+      summary: Save system settings (admin). Full update for the pre-mail fields — omitted ones are cleared. Mail settings are written only when present (an explicit empty string clears); the relayhost/SPF-include rule is validated against the effective saved pair.
       requestBody:
         content:
           application/json:

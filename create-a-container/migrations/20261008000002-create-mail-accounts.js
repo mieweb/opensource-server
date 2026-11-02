@@ -27,6 +27,9 @@ module.exports = {
       lastRotatedAt: { type: Sequelize.DATE, allowNull: true },
       createdAt: { type: Sequelize.DATE, allowNull: false },
       updatedAt: { type: Sequelize.DATE, allowNull: false },
+      // Soft delete (paranoid) — suppressions must survive delete + recreate
+      // of the same address, so rows are never hard-deleted by the API.
+      deletedAt: { type: Sequelize.DATE, allowNull: true },
     });
     await queryInterface.addIndex('MailAccounts', ['externalDomainId', 'localPart'], { unique: true });
     await queryInterface.addIndex('MailAccounts', ['uidNumber']);

@@ -86,7 +86,7 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      comment: 'SPF/DKIM/DMARC check passed. mailEnabled && mailDnsVerified => domain can send'
+      comment: 'SPF/DKIM/DMARC check passed. mailEnabled && mailDnsVerified => domain can send. Reset (with mailMxVerified and the check metadata) whenever the domain is renamed — see routers/api/v1/external-domains.js'
     },
     mailMxVerified: {
       type: DataTypes.BOOLEAN,

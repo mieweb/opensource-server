@@ -41,6 +41,7 @@ beforeEach(() => {
   repo.findDomain.mockResolvedValue(sendableDomain);
   repo.findByAddress.mockResolvedValue(null);
   repo.create.mockImplementation(async (fields) => accountRow(fields));
+  repo.restore.mockImplementation(async (account, fields) => ({ ...account, ...fields, deletedAt: null }));
   repo.update.mockImplementation(async (account, fields) => ({ ...account, ...fields }));
 });
 
@@ -79,6 +80,23 @@ describe('createAccount', () => {
     repo.findByAddress.mockResolvedValue(accountRow());
     await expect(svc.createAccount(session, { externalDomainId: 1, localPart: 'app' }))
       .rejects.toMatchObject({ status: 409, code: 'address_taken' });
+  });
+
+  test('recreating a soft-deleted address restores it so suppressions survive', async () => {
+    const deleted = accountRow({ deletedAt: new Date(), enabled: false });
+    repo.findByAddress.mockResolvedValue(deleted);
+    const { account, password } = await svc.createAccount(session, { externalDomainId: 1, localPart: 'app' });
+    expect(password).toHaveLength(43);
+    expect(repo.create).not.toHaveBeenCalled();
+    const [restored, fields] = repo.restore.mock.calls[0];
+    expect(restored).toBe(deleted);
+    expect(fields).toMatchObject({
+      uidNumber: user.uidNumber,
+      enabled: true,
+      unsubscribeHeaders: true,
+      lastRotatedAt: null,
+    });
+    expect(account.id).toBe(deleted.id);
   });
 
   test('only admins can set a quota at create', async () => {

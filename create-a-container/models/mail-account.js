@@ -85,6 +85,10 @@ module.exports = (sequelize, DataTypes) => {
     modelName: 'MailAccount',
     tableName: 'MailAccounts',
     timestamps: true,
+    // Soft delete: deleting an account must not cascade away its
+    // MailSuppressions — recreating the same address restores the row (and
+    // its opt-outs) instead of minting a suppression-free account.
+    paranoid: true,
     indexes: [
       { unique: true, fields: ['externalDomainId', 'localPart'] },
       { fields: ['uidNumber'] },
