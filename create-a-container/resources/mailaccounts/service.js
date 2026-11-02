@@ -85,7 +85,7 @@ async function createAccount(session, { externalDomainId, localPart, description
   // Recreating it restores the same row (same id) — delete + recreate cannot
   // bypass the admin-only suppression-removal rule.
   const existing = await repo.findByAddress(externalDomainId, localPart, { includeDeleted: true });
-  if (existing && !existing.deletedAt) {
+  if (existing && (!existing.deletedAt || (!session.isAdmin && existing.uidNumber !== user.uidNumber))) {
     throw new ApiError(409, 'address_taken', 'That address already exists');
   }
 
