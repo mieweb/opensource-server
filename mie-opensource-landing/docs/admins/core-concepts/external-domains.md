@@ -103,6 +103,18 @@ On container or service deletion, cross-site A records are cleaned up automatica
 
 When creating a container service, users select an external domain and specify a subdomain (e.g., `app` for `app.example.com`). All external domains are available regardless of which site the container is on. See the [Web GUI guide](../../users/creating-containers/web-gui.md) for details.
 
+## Mail
+
+Every domain gets an RSA-2048 DKIM key at creation. Mail stays off until an admin enables it on the domain's edit page:
+
+1. Publish the DNS records shown in the **Mail** section (SPF, DKIM, DMARC; MX to receive). Copy buttons provided.
+2. **Check DNS** — verified against public resolvers (configurable in [Settings](../email.md#settings)).
+3. **Enable mail** — refused (`dns_not_configured`) until SPF + DKIM + DMARC verify. A failing MX only blocks *receiving*.
+
+Gates: `enabled + DNS verified = can send` (accounts can be created and SMTP login works); `enabled + MX verified = can receive`. Re-verification is manual — re-run Check DNS after changing records. Disabling keeps keys and config; accounts stop authenticating immediately, IMAP stays readable.
+
+PTR problems and missing `postmaster@`/`abuse@` mailboxes are warnings, not blockers. See [Email Service](../email.md) for the mail host and settings.
+
 ## Security
 
 - Issue Cloudflare User API Tokens with minimum scope (`Zone:DNS:Edit` for the target zone only)

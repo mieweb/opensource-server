@@ -25,6 +25,7 @@ import { InviteUserPage } from '@/pages/users/InviteUserPage';
 import { GroupsListPage } from '@/pages/groups/GroupsListPage';
 import { GroupFormPage } from '@/pages/groups/GroupFormPage';
 import { ApiKeysListPage } from '@/pages/apikeys/ApiKeysListPage';
+import { MailAccountsListPage } from '@/pages/mail-accounts/MailAccountsListPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { ResourceRequestsPage } from '@/pages/resource-requests/ResourceRequestsPage';
 import { MyRequestsPage } from '@/pages/resource-requests/MyRequestsPage';
@@ -83,6 +84,8 @@ export const router = createBrowserRouter([
           { path: '/groups/:id/edit', element: <GroupFormPage /> },
 
           { path: '/apikeys', element: <ApiKeysListPage /> },
+
+          { path: '/mail-accounts', element: <MailAccountsListPage /> },
 
           { path: '/settings', element: <SettingsPage /> },
 

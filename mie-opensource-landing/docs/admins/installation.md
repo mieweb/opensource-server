@@ -16,6 +16,10 @@ The following instructions make several assumptions for clarity. You may have to
 4. The domains `example.org` and `*.example.org` have public DNS entries pointing to the firewall in front of this Proxmox cluster.
 5. At least one Proxmox node is accessible at `https://example.org:8006` with a valid HTTPS certificate.
 
+## Mail Ports and PTR
+
+To use the built-in [email service](email.md), additionally forward these TCP ports to the Manager container: `25` (SMTP), `587`/`465` (submission), `993`/`143` (IMAP). Deliverability requires a **PTR record** on the public mail IP that forward-confirms to the `Mail hostname` setting — arrange this with the IP's owner (ISP/hosting provider) before enabling mail on a domain.
+
 ## Air-Gapped Installation
 
 The standard installation flow assumes that the Proxmox host can access GitHub Container Registry (GHCR). For an air-gapped deployment, container images must instead be downloaded on an Internet-connected machine and transferred into the isolated Proxmox network.
