@@ -1,16 +1,24 @@
 /**
- * /api/v1/agents — site agent check-in and status.
+ * /api/v1/agents — site agent check-in, status, and the mail-host claim.
  *
  * POST /  agent check-in: records system info + service states, responds with
  *         the site's config snapshot (or 304 when the agent's If-None-Match
  *         ETag still matches).
  * GET  /  admin: current status of all agents.
+ * GET    /mail-host      admin: who holds the mail-host claim + the mail IP
+ * DELETE /mail-host      admin: release the claim (next qualifying check-in takes it)
+ * GET    /mail-host/ptr  admin: PTR suggestion for the mail_hostname setting
  */
 
 const express = require('express');
-const { Agent, Site, Container, Volume } = require('../../../models');
-const { apiAuth, apiAdmin, localhostOrAdmin, asyncHandler, ok, fail } = require('../../../middlewares/api');
-const { buildAgentConfig, computeConfigEtag } = require('../../../utils/agent-config');
+const { Agent, Site, Container, Volume, Setting } = require('../../../models');
+const { apiAuth, apiAdmin, localhostOrAdmin, isLocalhostRequest, csrfGuard, asyncHandler, ok, noContent, fail } = require('../../../middlewares/api');
+const { buildAgentConfig, buildMailSnapshot, computeConfigEtag } = require('../../../utils/agent-config');
+const { MAIL_SERVICE, processMailClaim, getMailHostAgent, getMailIp, releaseMailHost } = require('../../../utils/mail-host');
+const { lookupPtr } = require('../../../utils/mail-dns');
+
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = require('../../../config/config.js')[env];
 
 const router = express.Router();
 
@@ -53,7 +61,7 @@ async function applyVolumeResults(siteId, volumesResult) {
 }
 
 router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
-  const { siteId, hostname, ipv4Address, services, volumes } = req.body || {};
+  const { siteId, hostname, ipv4Address, services, volumes, enabledServices, missingBinaries } = req.body || {};
   const parsedSiteId = typeof siteId === 'number' ? siteId : Number(siteId);
   if (!Number.isInteger(parsedSiteId) || !hostname || typeof hostname !== 'string') {
     return fail(res, 422, 'validation_failed', 'siteId and hostname are required');
@@ -61,22 +69,54 @@ router.post('/', localhostOrAdmin, asyncHandler(async (req, res) => {
 
   // Record the check-in. Skipped during bootstrap (the site row doesn't exist
   // yet) since the foreign key has nothing to point at.
+  let mailClaim = null;
   const site = await Site.findByPk(parsedSiteId);
   if (site) {
     const [agent] = await Agent.findOrCreate({
       where: { siteId: parsedSiteId, hostname },
     });
+    const isLocal = isLocalhostRequest(req);
+    // Remote agents are pinned to the API key of their first check-in so a
+    // leaked lesser key can't impersonate an established agent (issue #67).
+    // Admins clear a pin via DELETE /agents/:id/api-key-pin.
+    if (!isLocal && agent.apiKeyId && req.apiKey && agent.apiKeyId !== req.apiKey.id) {
+      return fail(res, 403, 'agent_key_mismatch', 'This agent is pinned to a different API key');
+    }
     await agent.update({
       ipv4Address: ipv4Address || null,
       services: services || null,
+      enabledServices: Array.isArray(enabledServices) ? enabledServices : null,
+      missingBinaries: Array.isArray(missingBinaries) ? missingBinaries : null,
+      isLocal,
+      apiKeyId: agent.apiKeyId || (!isLocal && req.apiKey ? req.apiKey.id : null),
       lastCheckinAt: new Date(),
     });
     // Transition Volume.status from the agent's per-volume directory results,
     // scoped to this site so a check-in can't touch another site's volumes.
     await applyVolumeResults(parsedSiteId, volumes);
+    // Mail-host claim: first agent reporting `mail` with everything installed
+    // wins; the rest see conflict (or unsupported on SQLite).
+    mailClaim = await processMailClaim(agent, {
+      wantsMail: Array.isArray(enabledServices) && enabledServices.includes(MAIL_SERVICE),
+      missingBinaries,
+    });
   }
 
   const config = await buildAgentConfig(parsedSiteId);
+  if (mailClaim && mailClaim.status !== 'disabled') {
+    config.mailStatus = mailClaim.status;
+    // Only the claim holder receives the mail section (DKIM private keys,
+    // unsubscribe AES keys, relay credentials) — and never over plaintext:
+    // remote check-ins must arrive on TLS (req.secure honors X-Forwarded-Proto
+    // via trust proxy) or the secrets would cross the network readable.
+    if (mailClaim.status === 'holder') {
+      if (isLocalhostRequest(req) || req.secure) {
+        config.mail = await buildMailSnapshot(dbConfig);
+      } else {
+        config.mailStatus = 'insecure_transport';
+      }
+    }
+  }
   // Manual conditional-request handling: Express's built-in ETag/fresh logic
   // (res.send + req.fresh) only produces 304s for GET/HEAD, and the check-in
   // is a POST.
@@ -101,6 +141,11 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
     hostname: a.hostname,
     ipv4Address: a.ipv4Address,
     services: a.services,
+    enabledServices: a.enabledServices,
+    missingBinaries: a.missingBinaries,
+    mailHostSince: a.mailHostSince,
+    isLocal: a.isLocal,
+    hasApiKeyPin: !!a.apiKeyId,
     lastCheckinAt: a.lastCheckinAt,
     // Computed server-side so UI staleness judgments don't depend on the
     // client's clock.
@@ -108,6 +153,68 @@ router.get('/', apiAuth, apiAdmin, asyncHandler(async (req, res) => {
       ? Math.max(0, Math.round((now - new Date(a.lastCheckinAt).getTime()) / 1000))
       : null,
   })));
+}));
+
+// ---------------------------------------------------------------------------
+// Mail-host claim (issue #67). The mail host is a property of the agent
+// fleet, so it lives under /agents rather than a separate API resource.
+// Registered before the '/:id/*' routes so 'mail-host' is never read as an id.
+// csrfGuard is applied per-route: this router mounts before the app-level
+// guard (check-ins carry no CSRF token), and these are session-driven
+// admin mutations.
+// ---------------------------------------------------------------------------
+
+router.get('/mail-host', apiAuth, apiAdmin, asyncHandler(async (_req, res) => {
+  const holder = await getMailHostAgent();
+  const settings = await Setting.getMultiple(['mail_hostname', 'mail_self_managed_site_id']);
+  return ok(res, {
+    agent: holder
+      ? {
+        id: holder.id,
+        siteId: holder.siteId,
+        siteName: holder.site?.name || null,
+        hostname: holder.hostname,
+        mailHostSince: holder.mailHostSince,
+        enabledServices: holder.enabledServices,
+        missingBinaries: holder.missingBinaries,
+      }
+      : null,
+    mailIp: await getMailIp(),
+    mailHostname: settings.mail_hostname || null,
+    selfManagedSiteId: parseInt(settings.mail_self_managed_site_id, 10) || null,
+  });
+}));
+
+// Release the claim — the next qualifying check-in takes it.
+router.delete('/mail-host', apiAuth, apiAdmin, csrfGuard, asyncHandler(async (_req, res) => {
+  const released = await releaseMailHost();
+  return ok(res, { released: !!released });
+}));
+
+// PTR suggestion for the mail_hostname setting (reverse DNS of the mail IP).
+router.get('/mail-host/ptr', apiAuth, apiAdmin, asyncHandler(async (_req, res) => {
+  const mailIp = await getMailIp();
+  const settings = await Setting.getMultiple(['mail_hostname', 'mail_dns_check_resolvers']);
+  const resolvers = (settings.mail_dns_check_resolvers || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const ptr = mailIp ? await lookupPtr({ ip: mailIp, resolvers }) : { name: null, forwardConfirmed: false };
+  return ok(res, {
+    mailIp,
+    ptr: ptr.name,
+    forwardConfirmed: ptr.forwardConfirmed,
+    mailHostname: settings.mail_hostname || null,
+    // Suggest the forward-confirmed PTR name as mail_hostname.
+    suggestion: ptr.forwardConfirmed ? ptr.name : null,
+  });
+}));
+
+// Clear a remote agent's API-key pin so it can re-pin on its next check-in
+// (e.g. after rotating the agent's key).
+router.delete('/:id/api-key-pin', apiAuth, apiAdmin, csrfGuard, asyncHandler(async (req, res) => {
+  const agent = await Agent.findByPk(req.params.id);
+  if (!agent) return fail(res, 404, 'not_found', 'Agent not found');
+  await agent.update({ apiKeyId: null });
+  return noContent(res);
 }));
 
 module.exports = router;
