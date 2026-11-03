@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-COMPONENTS := agent mie-opensource-landing manager-control-program create-a-container
+COMPONENTS := agent mail-helper mie-opensource-landing manager-control-program create-a-container
 PACKAGER   ?= deb
 
 # Forwarded to every component Makefile.

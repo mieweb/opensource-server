@@ -1,0 +1,23 @@
+[Unit]
+Description=MIE opensource-server mail helper (unsubscribe milter)
+Documentation=https://github.com/mieweb/opensource-server/issues/67
+After=network.target
+PartOf=postfix.service
+
+[Service]
+Type=simple
+User=opensource-mail
+# postfix group so the chrooted smtpd can connect to the milter socket.
+Group=postfix
+WorkingDirectory=/opt/opensource-server/mail-helper
+ExecStart=/usr/bin/node /opt/opensource-server/mail-helper/src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/spool/postfix/mail-helper
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+{
+  "name": "opensource-mail-helper",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MIE opensource-server mail helper: a Postfix milter that enforces one-click unsubscribe suppressions at RCPT and injects RFC 8058 List-Unsubscribe headers before DKIM signing.",
+  "license": "Apache-2.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "milter": "^3.0.0",
+    "mysql2": "^3.15.3",
+    "pg": "^8.16.3"
+  },
+  "engines": {
+    "node": ">=20.18.1"
+  }
+}

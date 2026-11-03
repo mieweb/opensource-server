@@ -1,0 +1,11 @@
+--name opensource-mail-helper
+--architecture all
+--license Apache-2.0
+--maintainer "Medical Informatics Engineering <helpdesk@mieweb.com>"
+--vendor "Medical Informatics Engineering"
+--url "https://github.com/mieweb/opensource-server"
+--category mail
+--description "MIE opensource-server mail helper: a Postfix milter that enforces one-click unsubscribe suppressions at RCPT and injects RFC 8058 List-Unsubscribe headers before DKIM signing. Managed by the opensource-agent mail service group."
+--depends nodejs
+--deb-no-default-config-files
+--after-install contrib/postinstall.sh

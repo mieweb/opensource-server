@@ -21,8 +21,8 @@ iface vmbr0 inet static
 
         post-up   echo 1 > /proc/sys/net/ipv4/ip_forward
         post-up   iptables -t nat -A POSTROUTING -s 10.254.0.0/16 -o eth0 -j MASQUERADE
-        post-up   iptables -t nat -A PREROUTING  -i eth0 -p tcp -m multiport --dports 80,443,2000:2999 -j DNAT --to-destination 10.254.0.2
+        post-up   iptables -t nat -A PREROUTING  -i eth0 -p tcp -m multiport --dports 80,443,2000:2999,25,143,465,587,993 -j DNAT --to-destination 10.254.0.2
         post-up   iptables -t nat -A PREROUTING  -i eth0 -p udp -m multiport --dports 80,443,2000:2999 -j DNAT --to-destination 10.254.0.2
         post-down iptables -t nat -D POSTROUTING -s 10.254.0.0/16 -o eth0 -j MASQUERADE
-        post-down iptables -t nat -D PREROUTING  -i eth0 -p tcp -m multiport --dports 80,443,2000:2999 -j DNAT --to-destination 10.254.0.2
+        post-down iptables -t nat -D PREROUTING  -i eth0 -p tcp -m multiport --dports 80,443,2000:2999,25,143,465,587,993 -j DNAT --to-destination 10.254.0.2
         post-down iptables -t nat -D PREROUTING  -i eth0 -p udp -m multiport --dports 80,443,2000:2999 -j DNAT --to-destination 10.254.0.2

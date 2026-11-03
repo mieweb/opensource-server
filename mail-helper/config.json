@@ -1,0 +1,15 @@
+{
+  "socket": "/var/spool/postfix/mail-helper/milter.sock",
+  "db": {
+    "dialect": "postgres",
+    "host": null,
+    "port": null,
+    "database": null,
+    "user": "mail_postfix",
+    "password": null
+  },
+  "unsubscribe": {
+    "baseUrl": null,
+    "keys": []
+  }
+}
