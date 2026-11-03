@@ -1,0 +1,60 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+#
+# master.cf is Postfix's only mechanism for per-service parameter overrides
+# (there are no per-service include files) — each -o below switches a
+# setting on for the submission services only. The multi-value policy lists
+# themselves (restrictions, milters) are defined once in main.cf as named
+# parameters and referenced here as $name, keeping every -o single-valued.
+#
+# service   type  private unpriv  chroot  wakeup  maxproc command + args
+smtp        inet  n       -       y       -       -       smtpd
+
+# Submission (STARTTLS on 587, implicit TLS on 465): AUTH only after TLS,
+# sender must match the SASL login, and the pre-queue milters (mail-helper,
+# then OpenDKIM) enforce suppressions at RCPT and sign with the injected
+# List-Unsubscribe headers covered.
+submission  inet  n       -       y       -       -       smtpd
+  -o syslog_name=postfix/submission
+  -o smtpd_tls_security_level=encrypt
+  -o smtpd_tls_auth_only=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
+  -o smtpd_sasl_path=private/auth
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+  -o smtpd_relay_restrictions=$submission_recipient_restrictions
+  -o smtpd_recipient_restrictions=$submission_recipient_restrictions
+  -o smtpd_milters=$submission_milters
+smtps       inet  n       -       y       -       -       smtpd
+  -o syslog_name=postfix/smtps
+  -o smtpd_tls_wrappermode=yes
+  -o smtpd_sasl_auth_enable=yes
+  -o smtpd_sasl_type=dovecot
+  -o smtpd_sasl_path=private/auth
+  -o smtpd_sender_restrictions=reject_sender_login_mismatch
+  -o smtpd_relay_restrictions=$submission_recipient_restrictions
+  -o smtpd_recipient_restrictions=$submission_recipient_restrictions
+  -o smtpd_milters=$submission_milters
+
+pickup      unix  n       -       y       60      1       pickup
+cleanup     unix  n       -       y       -       0       cleanup
+qmgr        unix  n       -       n       300     1       qmgr
+tlsmgr      unix  -       -       y       1000?   1       tlsmgr
+rewrite     unix  -       -       y       -       -       trivial-rewrite
+bounce      unix  -       -       y       -       0       bounce
+defer       unix  -       -       y       -       0       bounce
+trace       unix  -       -       y       -       0       bounce
+verify      unix  -       -       y       -       1       verify
+flush       unix  n       -       y       1000?   0       flush
+proxymap    unix  -       -       n       -       -       proxymap
+proxywrite  unix  -       -       n       -       1       proxymap
+smtp        unix  -       -       y       -       -       smtp
+relay       unix  -       -       y       -       -       smtp
+  -o syslog_name=postfix/$service_name
+showq       unix  n       -       y       -       -       showq
+error       unix  -       -       y       -       -       error
+retry       unix  -       -       y       -       -       error
+discard     unix  -       -       y       -       -       discard
+lmtp        unix  -       -       y       -       -       lmtp
+anvil       unix  -       -       y       -       1       anvil
+scache      unix  -       -       y       -       1       scache
+postlog     unix-dgram n  -       n       -       1       postlogd

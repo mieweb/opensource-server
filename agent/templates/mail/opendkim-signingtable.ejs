@@ -1,0 +1,3 @@
+<%_ mail.dkim.forEach((k) => { _%>
+*@<%= k.domain %> <%= k.selector %>._domainkey.<%= k.domain %>
+<%_ }) _%>

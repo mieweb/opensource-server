@@ -10,33 +10,52 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import ejs from 'ejs';
-import { reloadOrRestartService, restartService, sighupService } from './system';
+import { chownByName, reloadOrRestartService, restartService, sighupService } from './system';
 import { log, commandOutput } from './log';
-import type { AgentConfig } from './config';
+import type { AgentConfig, ServiceGroup } from './config';
 import type { ApplyResult, SiteConfig } from './types';
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
+
+/** Binaries each service group needs; missing ones are reported at check-in
+ * (the manager refuses the mail-host claim until they're installed). */
+export const GROUP_BINARIES: Record<ServiceGroup, string[]> = {
+  nginx: ['nginx'],
+  dnsmasq: ['dnsmasq'],
+  mail: ['postfix', 'dovecot', 'opendkim'],
+};
 
 interface RenderedFile {
   dest: string;
   content: string;
   /** File mode for atomic writes (e.g. 0o600 for configs holding secrets). */
   mode?: number;
+  /** `user:group` to chown to after writing (e.g. DKIM keys → opendkim). */
+  owner?: string;
 }
 
 export interface ManagedService {
   /** systemd unit name (also the key reported at check-in). */
   unit: string;
+  /** Service group this unit belongs to (AGENT_SERVICES opt-in). */
+  group: ServiceGroup;
+  /** Unit whose ActiveState is reported at check-in when it differs from
+   * `unit` (Debian's postfix.service is a wrapper around postfix@-). */
+  statusUnit?: string;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
   render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;
+  /** Commands run after staging files, before `test` (e.g. `postmap -F` to
+   * compile the SNI hash map). A failure rolls the files back. */
+  postWrite?: string[][];
   /** Command that validates the staged config before it is kept. */
   test?: string[];
   /** Reload/restart after a successful apply. */
   reload(changedFiles: string[]): Promise<void>;
 }
 
-function renderTemplate(template: string, data: object): Promise<string> {
+/** Render a template from the shared templates dir (used by mail.ts too). */
+export function renderTemplate(template: string, data: object): Promise<string> {
   return ejs.renderFile(path.join(TEMPLATES_DIR, template), data);
 }
 
@@ -51,6 +70,7 @@ function run(cmd: string[]): string {
 export const services: ManagedService[] = [
   {
     unit: 'nginx',
+    group: 'nginx',
     async render(config, agent) {
       return [{
         dest: '/etc/nginx/nginx.conf',
@@ -73,6 +93,7 @@ export const services: ManagedService[] = [
   },
   {
     unit: 'dnsmasq',
+    group: 'dnsmasq',
     async render(config) {
       const site = config.site;
       // Skip dnsmasq management until the site's DHCP/DNS settings are fully
@@ -112,10 +133,26 @@ function readIfExists(file: string): string | null {
 
 // Write via temp file + rename so a crash mid-write can never leave a
 // truncated config on disk.
-function writeFileAtomic(dest: string, content: string, mode?: number): void {
+function writeFileAtomic(dest: string, content: string, mode?: number, owner?: string): void {
   const tmp = `${dest}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
+  if (owner) chownByName(tmp, owner);
   fs.renameSync(tmp, dest);
+}
+
+/** Re-apply desired mode/owner to files whose content already matches. */
+function reconcileAttributes(svc: ManagedService, files: { dest: string; mode?: number; owner?: string }[]): void {
+  for (const f of files) {
+    try {
+      if (f.mode !== undefined && (fs.statSync(f.dest).mode & 0o7777) !== f.mode) {
+        fs.chmodSync(f.dest, f.mode);
+        log.info(`${svc.unit}: fixed mode on ${f.dest}`);
+      }
+      if (f.owner) chownByName(f.dest, f.owner);
+    } catch (err) {
+      log.warn(`${svc.unit}: could not reconcile attributes on ${f.dest}: ${(err as Error).message}`);
+    }
+  }
 }
 
 export async function applyService(
@@ -133,6 +170,10 @@ export async function applyService(
   const current = new Map(files.map((f) => [f.dest, readIfExists(f.dest)]));
   const changed = files.filter((f) => current.get(f.dest) !== f.content).map((f) => f.dest);
   if (changed.length === 0) {
+    // Contents match, but desired mode/owner must still be reconciled — a
+    // DKIM key or helper config accidentally left world-readable would
+    // otherwise stay exposed forever.
+    reconcileAttributes(svc, files);
     log.debug(`${svc.unit}: config unchanged, nothing to do`);
     return 'success';
   }
@@ -140,20 +181,43 @@ export async function applyService(
   log.info(`${svc.unit}: ${changed.length} file(s) changed, applying: ${changed.join(', ')}`);
 
   const modeByDest = new Map(files.map((f) => [f.dest, f.mode]));
+  const ownerByDest = new Map(files.map((f) => [f.dest, f.owner]));
   // Stage the new files (previous contents kept in memory for rollback).
   for (const f of files) {
     fs.mkdirSync(path.dirname(f.dest), { recursive: true });
-    writeFileAtomic(f.dest, f.content, f.mode);
+    writeFileAtomic(f.dest, f.content, f.mode, f.owner);
     log.debug(`${svc.unit}: wrote ${f.dest}`);
   }
 
   const rollback = () => {
     for (const [dest, prev] of current) {
       if (prev === null) fs.rmSync(dest, { force: true });
-      else writeFileAtomic(dest, prev, modeByDest.get(dest));
+      else writeFileAtomic(dest, prev, modeByDest.get(dest), ownerByDest.get(dest));
+    }
+    // Post-write commands may have produced sidecar artifacts from the new
+    // sources (e.g. postmap compiling sni_map.db) — regenerate them from the
+    // restored files so no stale compiled state survives the rollback.
+    for (const cmd of svc.postWrite ?? []) {
+      try {
+        run(cmd);
+      } catch (err) {
+        log.error(`${svc.unit}: post-write command failed during rollback (\`${cmd.join(' ')}\`): ${(err as Error).message}`);
+      }
     }
     log.debug(`${svc.unit}: rolled back to previous config`);
   };
+
+  for (const cmd of svc.postWrite ?? []) {
+    try {
+      run(cmd);
+    } catch (err) {
+      rollback();
+      log.error(`${svc.unit}: post-write command failed (\`${cmd.join(' ')}\`), rolled back: ${(err as Error).message}`);
+      const output = commandOutput(err);
+      if (output) log.error(`${svc.unit}: post-write output:\n${output}`);
+      return 'failure';
+    }
+  }
 
   if (svc.test) {
     const testCmd = svc.test.join(' ');
