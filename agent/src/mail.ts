@@ -24,6 +24,7 @@ import {
   enableAndStartServices,
   stopAndDisableServices,
   getServiceState,
+  getServiceSubState,
   reloadOrRestartService,
   restartService,
 } from './system';
@@ -158,6 +159,28 @@ function mailOf(config: SiteConfig): MailConfig | null {
   return config.mail ?? null;
 }
 
+/** Which state to report for postfix (exported for tests). Debian <= 12 runs
+ * the real daemon on the postfix@- instance behind a RemainAfterExit
+ * postfix.service wrapper — the wrapper reads active (exited) even when the
+ * MTA is down. Debian 13 runs master directly in postfix.service and leaves
+ * postfix@- inactive. Prefer the instance when it reports anything
+ * meaningful; trust postfix.service only when it actually has a running
+ * main process. */
+export function pickPostfixState(instance: string, mainActive: string, mainSub: string): string {
+  if (instance !== 'inactive' && instance !== 'unknown') return instance;
+  if (mainActive === 'active' && mainSub === 'running') return 'active';
+  return instance;
+}
+
+async function postfixReportedState(): Promise<string> {
+  const [instance, mainActive, mainSub] = await Promise.all([
+    getServiceState('postfix@-'),
+    getServiceState('postfix'),
+    getServiceSubState('postfix'),
+  ]);
+  return pickPostfixState(instance, mainActive, mainSub);
+}
+
 export const mailServices: ManagedService[] = [
   {
     unit: 'opendkim',
@@ -215,9 +238,7 @@ export const mailServices: ManagedService[] = [
   {
     unit: 'postfix',
     group: 'mail',
-    // Debian's postfix.service is a wrapper; the real daemon state lives on
-    // the postfix@- instance.
-    statusUnit: 'postfix@-',
+    status: postfixReportedState,
     async render(config, agent) {
       const mail = mailOf(config);
       if (!mail) return null;

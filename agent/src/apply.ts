@@ -39,9 +39,10 @@ export interface ManagedService {
   unit: string;
   /** Service group this unit belongs to (AGENT_SERVICES opt-in). */
   group: ServiceGroup;
-  /** Unit whose ActiveState is reported at check-in when it differs from
-   * `unit` (Debian's postfix.service is a wrapper around postfix@-). */
-  statusUnit?: string;
+  /** Overrides the state reported at check-in when `unit`'s own ActiveState
+   * can't answer (e.g. Debian's postfix.service/postfix@- split varies by
+   * release — see postfixReportedState in mail.ts). */
+  status?: () => Promise<string>;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
   render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;

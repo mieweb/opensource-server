@@ -29,7 +29,23 @@ local_name <%= d.name %> {
 # Accounts live in the manager's database (mail_accounts_v view, read-only
 # mail_dovecot user). Hash scheme is {ARGON2ID} (p=1).
 sql_driver = <%= db.dovecotDriver %>
-<%= db.dovecotDriver %> <%= db.dovecotHost %> {
+<%_ if (db.dovecotDriver === 'pgsql') { _%>
+<%_ /* pgsql has no per-key settings — libpq key/values go in the
+      pgsql_parameters string list. */ _%>
+pgsql <%= db.dovecotHost %> {
+  parameters {
+<%_ if (db.dovecotParams.dbname) { _%>
+    dbname = <%= db.dovecotParams.dbname %>
+<%_ } _%>
+    user = <%= db.dovecotUser %>
+<%_ if (db.dovecotPassword) { _%>
+    password = <%= db.dovecotPassword %>
+<%_ } _%>
+  }
+}
+<%_ } else { _%>
+<%_ /* mysql has native mysql_dbname/mysql_user/mysql_password settings. */ _%>
+mysql <%= db.dovecotHost %> {
 <%_ if (db.dovecotParams.dbname) { _%>
   dbname = <%= db.dovecotParams.dbname %>
 <%_ } _%>
@@ -38,6 +54,7 @@ sql_driver = <%= db.dovecotDriver %>
   password = <%= db.dovecotPassword %>
 <%_ } _%>
 }
+<%_ } _%>
 
 # Submission (protocol smtp, via Postfix SASL) requires can_send; IMAP stays
 # readable for accounts on domains that can no longer send.

@@ -106,19 +106,31 @@ function unitName(unit: string): string {
   return unit.includes('.') ? unit : `${unit}.service`;
 }
 
-/** systemd ActiveState for a unit (active, inactive, failed, ...). */
-export async function getServiceState(unit: string): Promise<string> {
+/** systemd unit property lookup shared by the state getters. */
+async function getUnitProperty(unit: string, property: string): Promise<string> {
   try {
     const mgr = await getManager();
     const path = await mgr.LoadUnit(unitName(unit));
     const obj = await getBus().getProxyObject(SYSTEMD, path);
     const props = obj.getInterface(PROPERTIES_IFACE) as unknown as DbusProperties;
-    const state = await props.Get(UNIT_IFACE, 'ActiveState');
+    const state = await props.Get(UNIT_IFACE, property);
     return state.value || 'unknown';
   } catch {
     // Any D-Bus failure just means the state can't be determined right now.
     return 'unknown';
   }
+}
+
+/** systemd ActiveState for a unit (active, inactive, failed, ...). */
+export async function getServiceState(unit: string): Promise<string> {
+  return getUnitProperty(unit, 'ActiveState');
+}
+
+/** systemd SubState for a unit (running, exited, dead, ...) — distinguishes
+ * a daemon that is actually running from a RemainAfterExit wrapper's
+ * active (exited). */
+export async function getServiceSubState(unit: string): Promise<string> {
+  return getUnitProperty(unit, 'SubState');
 }
 
 /** Enqueue a systemd job and wait for it to finish; throws unless the job
