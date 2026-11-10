@@ -35,7 +35,7 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
   const serviceStatus: Record<string, ServiceStatus> = {};
   for (const svc of enabledServices(cfg)) {
     serviceStatus[svc.unit] = {
-      state: await getServiceState(svc.statusUnit ?? svc.unit),
+      state: await (svc.status ? svc.status() : getServiceState(svc.unit)),
       lastApply: state.lastApply[svc.unit] ?? 'unknown',
     };
   }

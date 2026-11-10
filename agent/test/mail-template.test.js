@@ -107,6 +107,33 @@ test('dovecot.conf: SQL auth with the can_send smtp gate, per-domain certs, post
   assert.match(out, /auth_allow_cleartext = no/);
 });
 
+test('dovecot.conf: pgsql nests libpq key/values in parameters { } (Dovecot 2.4)', async () => {
+  const out = await render('mail/dovecot.conf.ejs');
+  // pgsql has no per-key settings — a bare `dbname =` in the pgsql block is
+  // rejected by doveconf on Debian 13 (regression: "Unknown setting: dbname").
+  assert.match(out, /pgsql \/var\/run\/postgresql \{\s*parameters \{[^}]*dbname = cc[^}]*user = mail_dovecot[^}]*\}/);
+  // Peer auth over the socket — no password line at all.
+  assert.doesNotMatch(out, /password =/);
+});
+
+test('dovecot.conf: pgsql password lands inside parameters when set', async () => {
+  const out = await render('mail/dovecot.conf.ejs', {
+    ...context,
+    db: { ...context.db, dovecotHost: 'db.example', dovecotPassword: 'hunter2' },
+  });
+  assert.match(out, /pgsql db\.example \{\s*parameters \{[^}]*password = hunter2[^}]*\}/);
+});
+
+test('dovecot.conf: mysql keeps its native dbname/user settings in the block', async () => {
+  const out = await render('mail/dovecot.conf.ejs', {
+    ...context,
+    db: { ...context.db, dovecotDriver: 'mysql', dovecotHost: '/var/run/mysqld/mysqld.sock', dovecotPassword: 'hunter2' },
+  });
+  assert.match(out, /sql_driver = mysql/);
+  assert.doesNotMatch(out, /parameters \{/);
+  assert.match(out, /mysql \/var\/run\/mysqld\/mysqld\.sock \{[^}]*dbname = cc[^}]*user = mail_dovecot[^}]*password = hunter2[^}]*\}/);
+});
+
 test('opendkim: unix socket in the postfix chroot, state-dir tables, oversigned List-Unsubscribe', async () => {
   const conf = await render('mail/opendkim.conf.ejs');
   assert.match(conf, /Socket\s+local:\/var\/spool\/postfix\/opendkim\/opendkim\.sock/);
