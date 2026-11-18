@@ -32,7 +32,8 @@ const crypto = require('crypto');
 const express = require('express');
 const escapeHtml = require('escape-html');
 const { LRUCache } = require('lru-cache');
-const { isOidcEnabled } = require('../../../utils/oidc');
+const { sendPage } = require('../../../utils/html-page');
+const { loginRedirectUrl } = require('../../../utils/login-redirect');
 const { generateCsrfToken, asyncHandler, ok, ApiError, jsonErrorHandler } = require('../../../middlewares/api');
 const apiKeys = require('../../../resources/apikeys/service');
 
@@ -82,36 +83,8 @@ function parseHandoff(src) {
   return { port, state, client: rawClient };
 }
 
-/**
- * @param {string} [formTarget] - Extra origin the page's form may lead to.
- *   Chromium/WebKit apply `form-action` to the redirects that follow a form
- *   submission too, so the confirmation page must allow the loopback origin
- *   its POST is redirected to.
- */
-function page(res, status, title, body, formTarget) {
-  res
-    .status(status)
-    .set('Cache-Control', 'no-store')
-    .set(
-      'Content-Security-Policy',
-      `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${formTarget ? ` ${formTarget}` : ''}`,
-    )
-    .set('X-Frame-Options', 'DENY')
-    .type('html')
-    .send(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<style>
-  body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1f2937}
-  h1{font-size:1.4rem} code{background:#f3f4f6;padding:.1rem .3rem;border-radius:.2rem}
-  .actions{display:flex;gap:.75rem;margin-top:1.5rem}
-  button,a.btn{font:inherit;padding:.5rem 1rem;border-radius:.375rem;border:1px solid #d1d5db;background:#fff;color:inherit;text-decoration:none;cursor:pointer}
-  button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-</style></head><body>${body}</body></html>`);
-}
-
 function errorPage(res, message) {
-  return page(res, 400, 'CLI sign-in failed', `<h1>CLI sign-in failed</h1><p>${escapeHtml(message)}</p>
+  return sendPage(res, 400, 'CLI sign-in failed', `<h1>CLI sign-in failed</h1><p>${escapeHtml(message)}</p>
 <p>Re-run <code>mieweb login</code> to start over.</p>`);
 }
 
@@ -130,10 +103,7 @@ router.get('/callback', asyncHandler(async (req, res) => {
     const params = new URLSearchParams({ port: String(handoff.port), state: handoff.state });
     if (handoff.client) params.set('client', handoff.client);
     const self = `${req.baseUrl}/callback?${params.toString()}`;
-    const target = isOidcEnabled()
-      ? `/api/v1/auth/oidc/login?redirect=${encodeURIComponent(self)}`
-      : `/login?redirect=${encodeURIComponent(self)}`;
-    return res.redirect(302, target);
+    return res.redirect(302, loginRedirectUrl(self));
   }
 
   // One-time handoff, bound to this browser session: the POST below consumes
@@ -143,7 +113,7 @@ router.get('/callback', asyncHandler(async (req, res) => {
   await saveSession(req);
   const csrfToken = generateCsrfToken(req);
   const label = handoff.client || 'mieweb-cli';
-  return page(res, 200, 'Authorize command-line access', `
+  return sendPage(res, 200, 'Authorize command-line access', `
 <h1>Authorize command-line access</h1>
 <p>Signed in as <strong>${escapeHtml(req.session.user)}</strong>.</p>
 <p>A command-line client (<code>${escapeHtml(label)}</code>) is asking for an API key for your
@@ -171,7 +141,7 @@ account. A one-time sign-in code will be sent to a program listening on
 router.post('/callback', asyncHandler(async (req, res) => {
   const bearerOnly = (req.get('Authorization') || '').startsWith('Bearer ');
   if (!req.session?.user || bearerOnly) {
-    return page(res, 401, 'Not signed in', '<h1>Not signed in</h1><p>Sign in and re-run <code>mieweb login</code>.</p>');
+    return sendPage(res, 401, 'Not signed in', '<h1>Not signed in</h1><p>Sign in and re-run <code>mieweb login</code>.</p>');
   }
 
   let handoff;
