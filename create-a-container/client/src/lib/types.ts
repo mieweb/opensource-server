@@ -366,6 +366,19 @@ export interface ApiKeyCreated extends ApiKey {
   warning: string;
 }
 
+/** An OAuth client (e.g. an MCP client) a user signed in to — "Authorized apps". */
+export interface OAuthGrant {
+  id: string;
+  clientId: string;
+  clientName: string;
+  registrationType: 'dynamic' | 'metadata_document';
+  redirectHosts: string[];
+  scope: string;
+  user: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 /** A domain mail accounts can be created on (mail enabled + DNS verified). */
 export interface MailDomain {
   id: number;

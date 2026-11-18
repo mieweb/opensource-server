@@ -418,6 +418,19 @@ components:
         lastUsedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    OAuthGrant:
+      type: object
+      description: An OAuth client (e.g. an MCP client) a user signed in to and approved.
+      properties:
+        id: { type: string }
+        clientId: { type: string, description: Random id (dynamic registration) or the client's metadata document URL }
+        clientName: { type: string }
+        registrationType: { type: string, enum: [dynamic, metadata_document] }
+        redirectHosts: { type: array, items: { type: string }, description: 'Scheme + host of each redirect URI, e.g. http://127.0.0.1:33418' }
+        scope: { type: string }
+        user: { type: string, description: Username of the user who authorized the client }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
     User:
       type: object
       properties:
@@ -2213,6 +2226,31 @@ paths:
       responses:
         '204': { description: Revoked }
         '400': { description: 'Malformed id — must be a UUID (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /oauth-grants:
+    get:
+      operationId: list_authorized_apps
+      tags: [API Keys]
+      summary: List OAuth apps the current user authorized (`?all=true` for admins)
+      parameters:
+        - { in: query, name: all, required: false, schema: { type: string, enum: ['true'] }, description: 'Admins: list every user''s grants' }
+      responses:
+        '200':
+          description: Authorized apps
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/OAuthGrant' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /oauth-grants/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' } }]
+    delete:
+      operationId: revoke_authorized_app
+      tags: [API Keys]
+      summary: Revoke an authorized app (its access and refresh tokens stop working at once). Own grants; admins any.
+      responses:
+        '204': { description: Revoked }
+        '400': { description: 'Malformed id (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /settings:

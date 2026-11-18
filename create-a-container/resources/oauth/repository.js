@@ -28,6 +28,14 @@ function findUserWithGroups(uid) {
   return User.findOne({ where: { uid }, include: [{ association: 'groups' }] });
 }
 
+/** Grants, newest first; optionally only one user's. */
+function findGrants({ accountId } = {}) {
+  return OAuthPayload.findAll({
+    where: { model: 'Grant', ...(accountId ? { accountId } : {}) },
+    order: [['createdAt', 'DESC']],
+  });
+}
+
 function destroyRecord(model, id) {
   return OAuthPayload.destroy({ where: where(model, id) });
 }
@@ -88,6 +96,7 @@ module.exports = {
   findRecord,
   findRecordBy,
   findUserWithGroups,
+  findGrants,
   upsertRecord,
   destroyRecord,
   destroyModelByGrantId,
