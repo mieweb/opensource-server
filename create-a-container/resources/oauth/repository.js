@@ -36,6 +36,26 @@ function findGrants({ accountId } = {}) {
   });
 }
 
+function createRecord(model, id, fields) {
+  return OAuthPayload.create({ model, id, ...fields });
+}
+
+/** Clients created by a user for client_credentials (they have an owner). */
+function findOwnedClients({ accountId } = {}) {
+  return OAuthPayload.findAll({
+    where: { model: 'Client', accountId: accountId || { [Op.ne]: null } },
+    order: [['createdAt', 'DESC']],
+  });
+}
+
+/** Delete a client and everything issued to it. */
+function destroyClient(clientId) {
+  return sequelize.transaction(async (transaction) => {
+    await OAuthPayload.destroy({ where: { clientId }, transaction });
+    await OAuthPayload.destroy({ where: { model: 'Client', id: clientId }, transaction });
+  });
+}
+
 function destroyRecord(model, id) {
   return OAuthPayload.destroy({ where: where(model, id) });
 }
@@ -97,6 +117,9 @@ module.exports = {
   findRecordBy,
   findUserWithGroups,
   findGrants,
+  createRecord,
+  findOwnedClients,
+  destroyClient,
   upsertRecord,
   destroyRecord,
   destroyModelByGrantId,

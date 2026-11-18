@@ -86,6 +86,10 @@ function baseConfiguration(origin, { cookieKeys }) {
         secretFactory: () => crypto.randomBytes(32).toString('base64url'),
       },
       revocation: { enabled: true },
+      // Machine-to-machine access (issue #518). Only owned clients created on
+      // the API keys page can use it: dynamic registration refuses the grant
+      // (service/policy.js) and metadata-document clients have no secret.
+      clientCredentials: { enabled: true },
       clientIdMetadataDocument: { enabled: true, ack: 'draft-03' },
       resourceIndicators: {
         enabled: true,

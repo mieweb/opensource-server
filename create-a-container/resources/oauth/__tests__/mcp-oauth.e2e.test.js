@@ -11,7 +11,6 @@
  * is stable across requests.
  */
 
-const http = require('http');
 const request = require('supertest');
 const { buildApp } = require('../../../app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../tests/helpers/db');
@@ -20,26 +19,8 @@ const {
   pkcePair, registerClient, startAuthorization, follow, decide, exchangeCode, refreshTokens,
 } = require('../../../tests/helpers/oauth');
 const { listenApp, close } = require('../../../tests/helpers/listen');
+const { startMcpUpstream } = require('../../../tests/helpers/mcp-upstream');
 const { OAuthPayload, Group } = require('../../../models');
-
-/** Stub MCP server: on POST, calls back GET /api/v1/session with the caller's Authorization. */
-function startUpstream(getApiBase) {
-  const server = http.createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      const api = new URL('/api/v1/session', getApiBase());
-      http.get(api, { headers: { authorization: req.headers.authorization || '' } }, (apiRes) => {
-        let body = '';
-        apiRes.on('data', (c) => (body += c));
-        apiRes.on('end', () => {
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ apiStatus: apiRes.statusCode, api: JSON.parse(body) }));
-        });
-      });
-    });
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
-}
 
 describe('MCP OAuth end to end', () => {
   let upstream;
@@ -50,7 +31,7 @@ describe('MCP OAuth end to end', () => {
 
   beforeAll(async () => {
     await resetDb();
-    upstream = await startUpstream(() => base);
+    upstream = await startMcpUpstream(() => base);
     const app = buildApp({
       sessionSecrets: ['test-secret'],
       accessLog: false,

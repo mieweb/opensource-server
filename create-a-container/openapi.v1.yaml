@@ -79,6 +79,10 @@ components:
           refreshUrl: /oauth/token
           scopes:
             manager: Act as the signed-in user with the user's full permissions
+        clientCredentials:
+          tokenUrl: /oauth/token
+          scopes:
+            manager: Act as the client's owner with the owner's full permissions
     SessionCookie:
       type: apiKey
       in: cookie
@@ -429,6 +433,16 @@ components:
         redirectHosts: { type: array, items: { type: string }, description: 'Scheme + host of each redirect URI, e.g. http://127.0.0.1:33418' }
         scope: { type: string }
         user: { type: string, description: Username of the user who authorized the client }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    OAuthClient:
+      type: object
+      description: Confidential OAuth client for the client_credentials grant. Its tokens act as the owner.
+      properties:
+        id: { type: string, description: Same as clientId }
+        clientId: { type: string }
+        name: { type: string }
+        owner: { type: string, description: Username of the owner }
         lastUsedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
     User:
@@ -2250,6 +2264,60 @@ paths:
       summary: Revoke an authorized app (its access and refresh tokens stop working at once). Own grants; admins any.
       responses:
         '204': { description: Revoked }
+        '400': { description: 'Malformed id (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /oauth-clients:
+    get:
+      operationId: list_oauth_clients
+      tags: [API Keys]
+      summary: List the current user's client-credentials OAuth clients (`?all=true` for admins)
+      parameters:
+        - { in: query, name: all, required: false, schema: { type: string, enum: ['true'] }, description: 'Admins: list every user''s clients' }
+      responses:
+        '200':
+          description: OAuth clients
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/OAuthClient' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: create_oauth_client
+      tags: [API Keys]
+      summary: Create a client-credentials OAuth client acting as you (secret returned ONCE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        '201':
+          description: Created with plaintext `clientSecret`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/OAuthClient'
+                      - type: object
+                        properties:
+                          clientSecret: { type: string, description: Plaintext client secret — this is the only time it is returned }
+                          warning: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /oauth-clients/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,64}$' }, description: The client id }]
+    delete:
+      operationId: delete_oauth_client
+      tags: [API Keys]
+      summary: Delete a client-credentials OAuth client (its tokens stop working at once). Own clients; admins any.
+      responses:
+        '204': { description: Deleted }
         '400': { description: 'Malformed id (code: invalid_request)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
 
