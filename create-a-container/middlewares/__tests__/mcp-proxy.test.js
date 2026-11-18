@@ -9,7 +9,7 @@
 const http = require('http');
 const request = require('supertest');
 const { buildApp } = require('../../app');
-const { resetDb, closeDb } = require('../../tests/helpers/db');
+const { resetDb, closeDb, createUser, createApiKey } = require('../../tests/helpers/db');
 
 /** Stub MCP upstream: echoes requests, and speaks SSE on GET. */
 function startUpstream() {
@@ -57,9 +57,12 @@ describe('/mcp reverse proxy', () => {
   let app;
   let deadApp;
   let bareApp;
+  let auth;
 
   beforeAll(async () => {
     await resetDb();
+    const { plainKey } = await createApiKey(await createUser({ uid: 'mcpuser' }));
+    auth = ['Authorization', `Bearer ${plainKey}`];
     upstream = await startUpstream();
     const { port } = upstream.address();
     // Build every app variant here, right after resetDb: each buildApp
@@ -87,7 +90,7 @@ describe('/mcp reverse proxy', () => {
     const payload = { jsonrpc: '2.0', method: 'initialize', id: 1 };
     const res = await request(app)
       .post('/mcp')
-      .set('Authorization', 'Bearer caller-token')
+      .set(...auth)
       .set('Content-Type', 'application/json')
       .send(payload);
 
@@ -96,20 +99,20 @@ describe('/mcp reverse proxy', () => {
     expect(res.body).toEqual({
       method: 'POST',
       url: '/mcp',
-      authorization: 'Bearer caller-token',
+      authorization: auth[1],
       contentType: 'application/json',
       body: JSON.stringify(payload),
     });
   });
 
   test('preserves the query string', async () => {
-    const res = await request(app).post('/mcp?foo=bar').send({});
+    const res = await request(app).post('/mcp?foo=bar').set(...auth).send({});
     expect(res.status).toBe(201);
     expect(res.body.url).toBe('/mcp?foo=bar');
   });
 
   test('passes SSE responses through with their content type', async () => {
-    const res = await request(app).get('/mcp').buffer(true).parse(
+    const res = await request(app).get('/mcp').set(...auth).buffer(true).parse(
       // supertest has no default parser for text/event-stream; collect raw.
       (msg, cb) => {
         let data = '';
@@ -124,7 +127,7 @@ describe('/mcp reverse proxy', () => {
   });
 
   test('502 with a JSON error when the MCP server is unreachable', async () => {
-    const res = await request(deadApp).post('/mcp').send({});
+    const res = await request(deadApp).post('/mcp').set(...auth).send({});
     expect(res.status).toBe(502);
     expect(res.body.error.code).toBe('mcp_unavailable');
   });

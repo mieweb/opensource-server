@@ -71,37 +71,81 @@ function csrfGuard(req, res, next) {
 }
 
 // --- Auth ---------------------------------------------------------------------------------
+/**
+ * Resolve a Bearer credential: a manager-issued OAuth access token (see
+ * resources/oauth) or an API key.
+ *
+ * @param {string} token
+ * @param {{ expectedAudience?: string|null }} [opts] OAuth audience to enforce
+ *   (the /mcp guard passes the request origin; see authenticateAccessToken).
+ * @returns {Promise<{ user, apiKey?, oauthGrantId? } | { error: string, reason: string }>}
+ */
+async function authenticateBearer(token, opts = {}) {
+  // Lazy: resources/oauth imports this module (ApiError). OAuth tokens first:
+  // one indexed lookup by hash, while API keys need an argon2 check.
+  const oauth = require('../resources/oauth/service');
+  const result = await oauth.authenticateAccessToken(token, opts);
+  if (!result.error) return { user: result.user, oauthGrantId: result.grantId };
+  if (!result.unknown) return result; // ours, but expired / wrong audience / owner gone
+
+  const { ApiKey, User } = require('../models');
+  const { extractKeyPrefix } = require('../utils/apikey');
+  const apiKeys = await ApiKey.findAll({
+    where: { keyPrefix: extractKeyPrefix(token) },
+    include: [{ model: User, as: 'user', include: [{ association: 'groups' }] }],
+  });
+  for (const stored of apiKeys) {
+    if (await stored.validateKey(token)) {
+      stored.recordUsage().catch((err) =>
+        console.error('Failed to record API key usage:', err),
+      );
+      return { user: stored.user, apiKey: stored };
+    }
+  }
+  return { error: 'invalid_token', reason: 'Invalid API key' };
+}
+
+function bearerToken(req) {
+  const header = req.get('Authorization') || '';
+  return header.startsWith('Bearer ') ? header.substring(7).trim() : '';
+}
+
+/**
+ * RFC 6750 / RFC 9728 challenge. `resource_metadata` tells MCP clients where
+ * to start OAuth discovery.
+ */
+function bearerChallenge(resourceMetadataUrl, { error, description } = {}) {
+  const quote = (v) => `"${String(v).replace(/["\\]/g, '')}"`;
+  const parts = [`resource_metadata=${quote(resourceMetadataUrl)}`, 'scope="manager"'];
+  if (error) parts.push(`error=${quote(error)}`);
+  if (description) parts.push(`error_description=${quote(description)}`);
+  return `Bearer ${parts.join(', ')}`;
+}
+
 async function apiAuth(req, res, next) {
   if (req.session && req.session.user) return next();
 
-  const authHeader = req.get('Authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const apiKey = authHeader.substring(7);
-    if (apiKey) {
-      const { ApiKey, User } = require('../models');
-      const { extractKeyPrefix } = require('../utils/apikey');
-      const keyPrefix = extractKeyPrefix(apiKey);
-      const apiKeys = await ApiKey.findAll({
-        where: { keyPrefix },
-        include: [{ model: User, as: 'user', include: [{ association: 'groups' }] }],
-      });
-      for (const stored of apiKeys) {
-        if (await stored.validateKey(apiKey)) {
-          req.user = stored.user;
-          req.apiKey = stored;
-          req.isAdmin = stored.user.groups?.some((g) => g.isAdmin) || false;
-          req.session = req.session || {};
-          req.session.user = stored.user.uid;
-          req.session.isAdmin = req.isAdmin;
-          stored.recordUsage().catch((err) =>
-            console.error('Failed to record API key usage:', err),
-          );
-          return next();
-        }
-      }
-    }
+  const token = bearerToken(req);
+  const result = token ? await authenticateBearer(token) : null;
+  if (result && !result.error) {
+    const { user } = result;
+    req.user = user;
+    if (result.apiKey) req.apiKey = result.apiKey;
+    if (result.oauthGrantId) req.oauthGrantId = result.oauthGrantId;
+    // Admin status always comes from current group membership, never from
+    // the credential, so removing someone from sysadmins takes effect at once.
+    req.isAdmin = user.groups?.some((g) => g.isAdmin) || false;
+    req.session = req.session || {};
+    req.session.user = user.uid;
+    req.session.isAdmin = req.isAdmin;
+    return next();
   }
 
+  const { requestOrigin } = require('../utils/request-origin');
+  res.set('WWW-Authenticate', bearerChallenge(
+    `${requestOrigin(req)}/.well-known/oauth-protected-resource`,
+    result ? { error: result.error } : {},
+  ));
   return res.status(401).json({ error: { code: 'unauthorized', message: 'Authentication required' } });
 }
 
@@ -183,6 +227,9 @@ class ApiError extends Error {
 
 module.exports = {
   apiAuth,
+  authenticateBearer,
+  bearerToken,
+  bearerChallenge,
   apiAdmin,
   localhostOrAdmin,
   isLocalhostRequest,

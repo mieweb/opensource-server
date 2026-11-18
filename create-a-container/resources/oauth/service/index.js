@@ -5,6 +5,7 @@
  */
 
 module.exports = {
+  ...require('./access-tokens'),
   ...require('./consent'),
   ...require('./client-auth'),
   ...require('./metadata'),
