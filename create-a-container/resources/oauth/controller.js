@@ -108,6 +108,12 @@ function createController(getProvider) {
     return next();
   });
 
+  /** client_credentials without `scope` gets the only scope there is (else the token has none). */
+  function defaultScope(req, res, next) {
+    if (req.body?.grant_type === 'client_credentials' && !req.body.scope) req.body.scope = svc.policy.SCOPE;
+    return next();
+  }
+
   // --- interaction (browser) ---------------------------------------------------------------
   async function details(req, res) {
     try {
@@ -211,6 +217,7 @@ ${identity}
     rootDiscovery,
     checkRegistration,
     hashClientSecret,
+    defaultScope,
     interactionGet,
     interactionPost,
     rateLimited,

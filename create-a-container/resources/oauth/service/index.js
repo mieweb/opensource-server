@@ -8,6 +8,7 @@ module.exports = {
   ...require('./access-tokens'),
   ...require('./consent'),
   ...require('./grants'),
+  ...require('./owned-clients'),
   ...require('./client-auth'),
   ...require('./metadata'),
   ...require('./sweep'),

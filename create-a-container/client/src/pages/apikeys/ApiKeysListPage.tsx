@@ -21,6 +21,7 @@ import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { ApiKey, ApiKeyCreated } from '@/lib/types';
 import { AuthorizedAppsSection } from './AuthorizedAppsSection';
+import { OAuthClientsSection } from './OAuthClientsSection';
 
 export function ApiKeysListPage() {
   const { data, isLoading, error } = useQuery({ queryKey: keys.apikeys(), queryFn: queries.listApiKeys });
@@ -155,6 +156,8 @@ export function ApiKeysListPage() {
       )}
 
       <AuthorizedAppsSection />
+
+      <OAuthClientsSection />
     </div>
   );
 }

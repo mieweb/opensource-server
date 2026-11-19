@@ -39,6 +39,7 @@ function createOAuthRouters({ cookieKeys }) {
   providerRouter.use('/interaction', (req, res, next) => next('router'));
   providerRouter.post('/register', limit(10 * MINUTE, 20), express.json({ limit: '16kb' }), ctrl.checkRegistration);
   providerRouter.post(['/token', '/revoke'], tokenLimit, ...body, ctrl.hashClientSecret);
+  providerRouter.post('/token', ctrl.defaultScope);
   providerRouter.use(ctrl.oauthErrorHandler);
   providerRouter.use(ctrl.provider);
 

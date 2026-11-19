@@ -76,6 +76,7 @@ The manager is its own OAuth 2.1 authorization server:
 | Client registration | Client ID Metadata Documents, or dynamic registration at `/oauth/register` |
 | Flow | Authorization code + PKCE (S256); access tokens last 1 hour, refresh tokens 30 days and rotate on use |
 | Scope | `manager` — the token acts as you, with your full permissions, like an API key |
+| Machine access | `client_credentials` with a client created on the API keys page (see [OAuth Clients](./creating-containers/api-keys.md#oauth-clients-client-credentials)) |
 
 Unauthenticated requests to `/mcp` get `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, which is what starts the sign-in in MCP clients. The same token works at `/mcp` and `/api/v1`: the MCP server forwards it to the API on the same manager.
 

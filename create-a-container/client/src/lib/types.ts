@@ -379,6 +379,21 @@ export interface OAuthGrant {
   createdAt: string;
 }
 
+/** A confidential OAuth client for the client_credentials grant; acts as its owner. */
+export interface OAuthClient {
+  id: string;
+  clientId: string;
+  name: string;
+  owner: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface OAuthClientCreated extends OAuthClient {
+  clientSecret: string;
+  warning: string;
+}
+
 /** A domain mail accounts can be created on (mail enabled + DNS verified). */
 export interface MailDomain {
   id: number;

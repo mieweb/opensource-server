@@ -16,6 +16,7 @@ import type {
   Job,
   JobStatusRow,
   MailAccount,
+  OAuthClient,
   OAuthGrant,
   MailDomain,
   MailDnsInfo,
@@ -57,6 +58,7 @@ export const keys = {
   group: (id: number | string) => ['groups', String(id)] as const,
   apikeys: () => ['apikeys'] as const,
   oauthGrants: (all = false) => ['oauth-grants', all ? 'all' : 'mine'] as const,
+  oauthClients: () => ['oauth-clients'] as const,
   mailAccounts: () => ['mail-accounts'] as const,
   mailDomains: () => ['mail-accounts', 'domains'] as const,
   mailSuppressions: (id: string) => ['mail-accounts', id, 'suppressions'] as const,
@@ -156,6 +158,7 @@ export const queries = {
   listApiKeys: () => api.get<ApiKey[]>('/api/v1/apikeys'),
   listOAuthGrants: (all = false) =>
     api.get<OAuthGrant[]>(`/api/v1/oauth-grants${all ? '?all=true' : ''}`),
+  listOAuthClients: () => api.get<OAuthClient[]>('/api/v1/oauth-clients'),
 
   // Mail accounts (issue #67)
   listMailAccounts: () => api.get<MailAccount[]>('/api/v1/mail-accounts'),
