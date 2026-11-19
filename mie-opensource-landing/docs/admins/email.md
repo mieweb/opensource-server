@@ -46,7 +46,7 @@ One-click unsubscribe links (`<manager>/u/<token>`) use the mail host agent's `M
 
 ## DB Roles
 
-Migration `20261012000000` creates the read-only `mail_dovecot` and `mail_postfix` roles and grants SELECT on the views (the manager grants its app user `CREATEROLE` at first boot; elsewhere the migration logs the SQL for a DBA). Local mail hosts authenticate over the socket (Postgres peer via `pg_ident`); remote hosts need operator-set passwords (`ALTER ROLE … WITH PASSWORD`).
+Migration `20261012000000` creates the read-only `mail_dovecot` and `mail_postfix` roles and grants SELECT on the views; `20261119000000` re-runs it for managers that predate the mail stack. On a local Postgres cluster the `opensource-server` package (install and every upgrade) grants the app user `CREATEROLE` and adds the `pg_hba`/`pg_ident` peer maps; elsewhere the migration logs the SQL for a DBA. Local mail hosts authenticate over the socket (Postgres peer via `pg_ident`); remote hosts need operator-set passwords (`ALTER ROLE … WITH PASSWORD`).
 
 ## Backups
 
