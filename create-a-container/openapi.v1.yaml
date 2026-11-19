@@ -7,10 +7,13 @@ info:
 
     ## Authentication
 
-    Two mechanisms are supported:
+    Three mechanisms are supported:
 
     - **Session cookie** — established by `POST /api/v1/auth/login`. Requires a CSRF token (see below) on every state-changing request.
     - **API key** — `Authorization: Bearer <key>`. CSRF is skipped for Bearer-authenticated requests.
+    - **OAuth 2.1 access token** — `Authorization: Bearer <token>`, issued by the manager's own authorization server (discovery: `/.well-known/oauth-authorization-server`). Used by MCP clients; acts as the signing-in user with the same access as an API key. One audience (the manager origin) covers `/mcp` and `/api/v1`.
+
+    Unauthenticated requests get `401` with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"`.
 
     ## CSRF (session auth only)
 
@@ -62,6 +65,20 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
+    OAuth2:
+      type: oauth2
+      description: >-
+        Manager-issued opaque access token (authorization code + PKCE S256).
+        Clients register via Client ID Metadata Documents or
+        `POST /oauth/register` (RFC 7591); metadata at
+        `/.well-known/oauth-authorization-server`.
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth/authorize
+          tokenUrl: /oauth/token
+          refreshUrl: /oauth/token
+          scopes:
+            manager: Act as the signed-in user with the user's full permissions
     SessionCookie:
       type: apiKey
       in: cookie
@@ -587,6 +604,7 @@ components:
 
 security:
   - BearerAuth: []
+  - OAuth2: [manager]
   - SessionCookie: []
 
 paths:

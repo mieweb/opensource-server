@@ -5,11 +5,11 @@ Use the MCP (Model Context Protocol) server to manage your containers through AI
 There are two ways to use it:
 
 - **Run it locally (stdio)** — VS Code launches a private copy of the server for you, authenticated with your API key from the environment.
-- **Connect to the built-in server (HTTP)** — packaged deployments already serve MCP at `{{ manager_url }}/mcp`; you just send your API key with each request. Nothing to install, so start here.
+- **Connect to the built-in server (HTTP)** — packaged deployments already serve MCP at `{{ manager_url }}/mcp`. Configure only the URL and sign in through your browser, or send an API key. Nothing to install, so start here.
 
 **Prerequisites:**
 - VS Code with an MCP-capable AI extension (e.g., [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), [Claude for VS Code](https://marketplace.visualstudio.com/items?itemName=AnthropicPublicBeta.claude-for-vscode))
-- An API key from [your server]({{ manager_url }}/apikeys) (see [API Keys](./creating-containers/api-keys.md))
+- An API key from [your server]({{ manager_url }}/apikeys) (see [API Keys](./creating-containers/api-keys.md)) — not needed for browser sign-in (Option B)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) installed (local stdio mode only)
 
 ## Option A: Run It Locally (stdio)
@@ -48,7 +48,40 @@ Open your VS Code settings (`Ctrl+Shift+P` → "Preferences: Open User Settings 
 
 ## Option B: Connect to the Built-in Server (HTTP)
 
-Every packaged deployment ships the MCP server as a system service and exposes it at `/mcp` on the same domain as the web UI. Nothing to install — point VS Code at that URL and send your API key in the `Authorization` header. Your key is forwarded to the API on every request, so you act under your own account and permissions:
+Every packaged deployment ships the MCP server as a system service and exposes it at `/mcp` on the same domain as the web UI. Nothing to install.
+
+### Sign in with your browser (OAuth)
+
+Configure only the URL:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "container-manager": {
+        "url": "{{ manager_url }}/mcp"
+      }
+    }
+  }
+}
+```
+
+On first use the client opens your browser. Sign in as you normally do (password or your organization's single sign-on), check the application name and redirect address on the consent screen, and approve. The client stores and refreshes the token itself.
+
+The manager is its own OAuth 2.1 authorization server:
+
+| | |
+|---|---|
+| Discovery | `/.well-known/oauth-protected-resource/mcp`, `/.well-known/oauth-authorization-server` |
+| Client registration | Client ID Metadata Documents, or dynamic registration at `/oauth/register` |
+| Flow | Authorization code + PKCE (S256); access tokens last 1 hour, refresh tokens 30 days and rotate on use |
+| Scope | `manager` — the token acts as you, with your full permissions, like an API key |
+
+Unauthenticated requests to `/mcp` get `401` with `WWW-Authenticate: Bearer resource_metadata="…"`, which is what starts the sign-in in MCP clients. The same token works at `/mcp` and `/api/v1`: the MCP server forwards it to the API on the same manager.
+
+### Use an API key
+
+Clients without OAuth support (and scripts) can send an API key instead. Your key is forwarded to the API on every request, so you act under your own account and permissions:
 
 ```json
 {
@@ -112,4 +145,4 @@ The assistant translates your request into the appropriate API call and returns 
 
 !!! note
 
-    The MCP server inherits the permissions of your API key. It can only perform actions your key is authorized for.
+    The MCP server inherits the permissions of your API key or OAuth sign-in. It can only perform actions your account is authorized for.

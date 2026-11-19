@@ -1,7 +1,7 @@
 /** Sequelize queries over OAuthPayloads (oidc-provider records). No business rules. */
 
 const { Op } = require('sequelize');
-const { OAuthPayload, sequelize } = require('../../models');
+const { OAuthPayload, User, sequelize } = require('../../models');
 
 const where = (model, id) => ({ model, id });
 
@@ -21,6 +21,11 @@ async function upsertRecord(model, id, fields) {
   const existing = await findRecord(model, id);
   if (existing) return existing.update(fields);
   return OAuthPayload.create({ model, id, ...fields });
+}
+
+/** User with groups loaded (admin status is derived from them per request). */
+function findUserWithGroups(uid) {
+  return User.findOne({ where: { uid }, include: [{ association: 'groups' }] });
 }
 
 function destroyRecord(model, id) {
@@ -82,6 +87,7 @@ async function destroyUnusedDynamicClients(cutoff) {
 module.exports = {
   findRecord,
   findRecordBy,
+  findUserWithGroups,
   upsertRecord,
   destroyRecord,
   destroyModelByGrantId,

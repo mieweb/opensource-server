@@ -53,11 +53,14 @@ function buildApp({
   // --- MCP reverse proxy ---
   // Mounted before the body parsers so request bodies stream through
   // untouched, and before session/rate-limit/CSRF: MCP clients authenticate
-  // per-request with Bearer API keys (forwarded by the MCP server back to
-  // /api/v1), not cookies, so none of the cookie-oriented middleware applies.
+  // per-request with a Bearer API key or OAuth access token (forwarded by the
+  // MCP server back to /api/v1), not cookies, so none of the cookie-oriented
+  // middleware applies. mcpAuth validates the Bearer first and answers 401
+  // with the OAuth discovery challenge (resources/oauth/README.md).
   if (mcpServerUrl) {
     const { createMcpProxy } = require('./middlewares/mcp-proxy');
-    app.use('/mcp', createMcpProxy(mcpServerUrl));
+    const { mcpAuth } = require('./middlewares/mcp-auth');
+    app.use('/mcp', mcpAuth, createMcpProxy(mcpServerUrl));
   }
 
   // `mieweb login` redeems its one-time code here. Registered before the body

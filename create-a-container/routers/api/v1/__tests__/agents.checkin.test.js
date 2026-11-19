@@ -8,7 +8,7 @@
  *
  * supertest connects from 127.0.0.1, so requests are localhost by default;
  * an X-Forwarded-For header with a public client IP makes isLocalhostRequest
- * treat the request as proxied-remote (see middlewares/index.js).
+ * treat the request as proxied-remote (see isLocalhostRequest in middlewares/api.js).
  */
 
 const request = require('supertest');
