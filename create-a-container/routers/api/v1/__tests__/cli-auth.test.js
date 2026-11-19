@@ -12,28 +12,10 @@ const { buildApp, bearer } = require('../../../../tests/helpers/app');
 const { resetDb, closeDb, createUser, createApiKey } = require('../../../../tests/helpers/db');
 const { ApiKey } = require('../../../../models');
 const { parseHandoff } = require('../cli-auth');
+const { REMOTE, loggedInAgent, csrfFrom } = require('../../../../tests/helpers/session');
 
-const REMOTE = ['X-Forwarded-For', '203.0.113.7'];
 const STATE = 'abcdefghijklmnop0123456789';
 const BASE = '/api/v1/auth/cli/callback';
-
-async function loggedInAgent(app, uid) {
-  const agent = request.agent(app);
-  const csrf = await agent.get('/api/v1/csrf-token').set(...REMOTE);
-  const token = csrf.body.data.csrfToken;
-  const res = await agent
-    .post('/api/v1/auth/login')
-    .set(...REMOTE)
-    .set('X-CSRF-Token', token)
-    .send({ username: uid, password: 'correct horse battery staple' });
-  expect(res.status).toBe(200);
-  return agent;
-}
-
-function csrfFrom(html) {
-  const m = html.match(/name="_csrf" value="([^"]+)"/);
-  return m && m[1];
-}
 
 describe('parseHandoff', () => {
   test('accepts a valid port/state/client', () => {
