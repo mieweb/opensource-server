@@ -232,6 +232,20 @@ erDiagram
         boolean used
     }
 
+    OAuthPayloads {
+        string model PK "oidc-provider model: Client, Grant, AccessToken, ..."
+        string id PK "SHA-256 for token-like models"
+        json payload "provider data; token values and client secrets hashed"
+        string grantId
+        string uid
+        string accountId "manager username"
+        string clientId
+        json meta "app data, e.g. client display info on grants"
+        date expiresAt
+        date consumedAt
+        date lastUsedAt
+    }
+
     InviteTokens {
         uuid id PK
         string email
@@ -307,6 +321,15 @@ UUID-based tokens with 1-hour default expiry. Methods: `generateToken()`, `valid
 
 ### InviteToken
 UUID-based invite tokens with 24-hour default expiry. Email tied to token and locked during registration. Methods: `generateToken()`, `validateToken()`, `cleanup()`.
+
+## OAuth Models (issue #512)
+
+The manager is its own OAuth 2.1 authorization server for MCP clients, built on `oidc-provider`. See `create-a-container/resources/oauth/README.md`.
+
+### OAuthPayload
+Everything the provider persists through its adapter, one row per record, keyed by `(model, id)`: registered clients, grants (one per user approval), access and refresh tokens, authorization codes, interactions and the provider's internal sessions. `payload` is the provider's JSON. `grantId`, `uid`, `accountId`, `clientId` and `expiresAt` are extracted from it so they can be queried (revocation by grant, "Authorized apps", the sweep). `meta` and `lastUsedAt` are written by the manager, never by the provider.
+
+Secrets at rest: token-like records (`AccessToken`, `RefreshToken`, `AuthorizationCode`, `ClientCredentials`) are keyed by SHA-256 of the token value, and the value's copy inside `payload` (`jti`) is hashed too. Client secrets are stored as `sha256:<hex>`. There are no foreign keys: rows refer to users by username (`accountId`) and are removed by revocation or the sweep.
 
 ## Job Management
 

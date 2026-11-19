@@ -7,6 +7,8 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/', '/client/'],
   // Env must be pinned before any module requires config/config.js.
   setupFiles: ['<rootDir>/tests/setup-env.js'],
+  // oidc-provider is ESM-only; load it with Node's native require (see the shim).
+  moduleNameMapper: { '^oidc-provider$': '<rootDir>/tests/oidc-provider-native.js' },
   // DB-backed suites share one sqlite file; keep workers serialized.
   maxWorkers: 1,
   // List every individual test, not just suite results.

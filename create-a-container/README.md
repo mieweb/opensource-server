@@ -51,7 +51,8 @@ The Manager is not installed by hand in production. It ships as:
   The package depends
   on `opensource-mcp` — the [MCP server](../manager-control-program/) as its
   own package — and the Manager reverse-proxies `/mcp` to its service
-  (`MCP_SERVER_URL`).
+  (`MCP_SERVER_URL`). MCP clients sign in through the Manager's built-in
+  OAuth 2.1 authorization server ([`resources/oauth`](resources/oauth/README.md)).
 
 In both cases the app runs `server.js` (HTTP API + UI) and `job-runner.js`
 (background worker). Per-owner resource usage is computed live in the UI at

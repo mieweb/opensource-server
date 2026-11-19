@@ -65,6 +65,19 @@ function buildApp({
   // CLI has no session, and the code in the body is its only credential.
   app.post('/api/v1/auth/cli/token', require('./routers/api/v1/cli-auth').tokenRoute);
 
+  // --- OAuth 2.1 authorization server (MCP clients, issue #512) ---
+  // oidc-provider at /oauth plus discovery: called by MCP clients with
+  // neither a session cookie nor a Bearer token, so registered before the
+  // body parsers (they bring their own, size-capped), the session and the
+  // CSRF guard. The browser interaction (/oauth/interaction, sign-in check and
+  // consent) is mounted below, after the session and csrfGuard. See
+  // resources/oauth/README.md.
+  const oauth = require('./resources/oauth/router').createOAuthRouters({
+    cookieKeys: [].concat(sessionSecrets),
+  });
+  app.use('/.well-known', oauth.wellKnownRouter);
+  app.use('/oauth', oauth.providerRouter);
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -121,6 +134,10 @@ function buildApp({
   const apiV1Router = require('./routers/api/v1');
 
   app.use('/api/v1', apiV1Router);
+
+  // OAuth sign-in check + consent: needs the browser session; the consent
+  // POST is CSRF-protected by the app-level csrfGuard above.
+  app.use('/oauth/interaction', oauth.interactionRouter);
 
   // --- API Documentation (Swagger UI) ---
   // Swagger UI at /api documents the versioned v1 API (the spec also served at /api/v1/openapi.*).
