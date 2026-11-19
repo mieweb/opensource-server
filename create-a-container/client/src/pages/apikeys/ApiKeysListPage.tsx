@@ -20,6 +20,7 @@ import { KeyRound, Plus, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { ApiKey, ApiKeyCreated } from '@/lib/types';
+import { AuthorizedAppsSection } from './AuthorizedAppsSection';
 
 export function ApiKeysListPage() {
   const { data, isLoading, error } = useQuery({ queryKey: keys.apikeys(), queryFn: queries.listApiKeys });
@@ -152,6 +153,8 @@ export function ApiKeysListPage() {
           </TableBody>
         </Table>
       )}
+
+      <AuthorizedAppsSection />
     </div>
   );
 }

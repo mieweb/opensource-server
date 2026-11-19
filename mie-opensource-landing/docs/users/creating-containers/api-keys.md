@@ -41,3 +41,9 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 ```
 
 For the full list of available endpoints, request and response schemas, and a "Try it out" console, visit the [interactive API documentation]({{ manager_url }}/api) at `/api` on your server.
+
+## Authorized Apps
+
+The **Authorized apps** section on the same page lists applications you signed in to with OAuth, such as MCP clients that connected with only the server URL (see [MCP Server](../mcp-server.md)). Each row shows the application name, where it redirects after sign-in, and when it was last used. Names marked **Unverified** were supplied by the application itself.
+
+Click **Revoke** to cut an application off immediately: its next request is rejected and it has to sign in again. Admins can switch on **All users** to see and revoke every user's authorized apps.
