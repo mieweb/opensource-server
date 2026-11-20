@@ -28,11 +28,11 @@
 const VIEW_NAMES = ['mail_accounts_v', 'mail_senders_v', 'mail_recipients_v', 'mail_suppressions_v'];
 
 /**
- * Build the CREATE VIEW statements for a dialect.
+ * Dialect-specific SQL fragments shared by every mail view (also used by
+ * later view migrations, e.g. mail_forwards_v).
  * @param {string} dialect - 'postgres' | 'mysql' | 'mariadb' | 'sqlite'
- * @returns {string[]} ordered CREATE VIEW statements
  */
-function createViewsSql(dialect) {
+function viewSqlParts(dialect) {
   const mysql = dialect === 'mysql' || dialect === 'mariadb';
   // Identifier quoting
   const q = mysql ? (s) => `\`${s}\`` : (s) => `"${s}"`;
@@ -41,16 +41,31 @@ function createViewsSql(dialect) {
     ? (...parts) => `CONCAT(${parts.join(', ')})`
     : (...parts) => parts.join(' || ');
 
-  const address = `LOWER(${cat(`ma.${q('localPart')}`, "'@'", `ed.${q('name')}`)})`;
-  const canSend = `(ed.${q('mailEnabled')} AND ed.${q('mailDnsVerified')})`;
-  const canReceive = `(ed.${q('mailEnabled')} AND ed.${q('mailMxVerified')})`;
-  // Soft-deleted accounts keep their row (and suppressions) but vanish from
-  // the account views — no authentication, sending, or delivery.
-  const live = `ma.${q('deletedAt')} IS NULL`;
-  const joins =
-    `FROM ${q('MailAccounts')} ma ` +
+  // Joins from an `ma` (MailAccounts) row to its domain and active owner.
+  const accountJoins =
     `JOIN ${q('ExternalDomains')} ed ON ed.${q('id')} = ma.${q('externalDomainId')} ` +
     `JOIN ${q('Users')} u ON u.${q('uidNumber')} = ma.${q('uidNumber')} AND u.${q('status')} = 'active'`;
+  return {
+    q,
+    cat,
+    address: `LOWER(${cat(`ma.${q('localPart')}`, "'@'", `ed.${q('name')}`)})`,
+    canSend: `(ed.${q('mailEnabled')} AND ed.${q('mailDnsVerified')})`,
+    canReceive: `(ed.${q('mailEnabled')} AND ed.${q('mailMxVerified')})`,
+    // Soft-deleted accounts keep their row (and suppressions) but vanish from
+    // the account views — no authentication, sending, or delivery.
+    live: `ma.${q('deletedAt')} IS NULL`,
+    accountJoins,
+    joins: `FROM ${q('MailAccounts')} ma ${accountJoins}`,
+  };
+}
+
+/**
+ * Build the CREATE VIEW statements for a dialect.
+ * @param {string} dialect - 'postgres' | 'mysql' | 'mariadb' | 'sqlite'
+ * @returns {string[]} ordered CREATE VIEW statements
+ */
+function createViewsSql(dialect) {
+  const { q, cat, address, canSend, canReceive, live, joins } = viewSqlParts(dialect);
 
   return [
     `CREATE VIEW mail_accounts_v AS ` +
@@ -88,6 +103,8 @@ function dropViewsSql() {
 }
 
 module.exports = {
+  viewSqlParts,
+
   async up(queryInterface) {
     const dialect = queryInterface.sequelize.getDialect();
     for (const sql of createViewsSql(dialect)) {

@@ -76,9 +76,13 @@ mail_plugins {
 }
 quota_name = User quota
 quota_storage_size = %{userdb:quota_bytes}B
+# Unknown recipients are rejected by Postfix (reject_unlisted_recipient via
+# virtual_mailbox_maps / virtual_alias_maps / SRS reverse maps). The policy
+# service only answers for real mailboxes, so SRS bounce addresses pass.
+quota_status_nouser = DUNNO
 
 # Sockets for Postfix: SASL auth, LMTP delivery, and the quota-status
-# policy service (rejects unknown / over-quota recipients at RCPT).
+# policy service (rejects over-quota recipients at RCPT).
 service auth {
   unix_listener /var/spool/postfix/private/auth {
     mode = 0660

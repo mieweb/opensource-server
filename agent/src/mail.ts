@@ -33,7 +33,25 @@ import { log } from './log';
 import type { AgentConfig } from './config';
 import type { MailConfig, SiteConfig } from './types';
 
-export const MAIL_UNITS = ['opendkim', 'dovecot', 'postfix', 'opensource-mail-helper'];
+const BASE_MAIL_UNITS = ['opendkim', 'dovecot', 'postfix', 'opensource-mail-helper'];
+
+// PostSRSd is optional: without it forwarding still works, but forwarded
+// copies fail SPF at the destination. Debian 13 ships 1.x (tcp tables).
+const POSTSRSD_BIN = process.env.POSTSRSD_BIN || '/usr/sbin/postsrsd';
+const SRS_FORWARD_PORT = 10001;
+const SRS_REVERSE_PORT = 10002;
+
+export function srsInstalled(): boolean {
+  return fs.existsSync(POSTSRSD_BIN);
+}
+
+/** Units the mail stack runs on this host (postsrsd only when installed;
+ * started before postfix, which queries it). */
+export function mailUnits(): string[] {
+  return srsInstalled()
+    ? ['opendkim', 'dovecot', 'postsrsd', 'postfix', 'opensource-mail-helper']
+    : BASE_MAIL_UNITS;
+}
 
 // Paths are env-overridable for development stacks; defaults match the
 // packages. Both milter sockets live inside the Postfix chroot so the
@@ -96,9 +114,27 @@ function mailStateDir(agent: AgentConfig): string {
   return path.join(agent.stateDir, 'mail');
 }
 
+/** SRS settings when postsrsd is installed and a mail hostname (the SRS
+ * domain — it already resolves to the mail IP) is configured. */
+function srsContext(mail: MailConfig, installed: boolean) {
+  if (!installed || !mail.hostname) return null;
+  const domains = new Set([...mail.dkim.map((k) => k.domain), ...mail.receiveDomains, mail.hostname]);
+  return {
+    domain: mail.hostname,
+    excludeDomains: [...domains].sort(),
+    forwardPort: SRS_FORWARD_PORT,
+    reversePort: SRS_REVERSE_PORT,
+  };
+}
+
 /** Everything the mail templates need, derived from the snapshot + local
  * environment (cert presence, DB passwords from /etc/environment). */
-export function buildMailContext(mail: MailConfig, agent: AgentConfig, env: NodeJS.ProcessEnv = process.env) {
+export function buildMailContext(
+  mail: MailConfig,
+  agent: AgentConfig,
+  env: NodeJS.ProcessEnv = process.env,
+  srsAvailable: boolean = srsInstalled(),
+) {
   const mysql = mail.db.dialect === 'mysql' || mail.db.dialect === 'mariadb';
   const host = mail.db.host;
   // Postfix map syntax: TCP "host:port", or a unix socket path for local
@@ -106,8 +142,13 @@ export function buildMailContext(mail: MailConfig, agent: AgentConfig, env: Node
   const pfHosts = host
     ? (mail.db.port ? `${host}:${mail.db.port}` : host)
     : (mysql ? 'unix:/var/run/mysqld/mysqld.sock' : 'unix:/var/run/postgresql');
+  const srs = srsContext(mail, srsAvailable);
   return {
     mail,
+    srs,
+    // Inbound domains, plus the SRS domain so bounces to SRS0= addresses
+    // are accepted (smtpd validates them via recipient_canonical_maps).
+    acceptDomains: [...new Set([...mail.receiveDomains, ...(srs ? [srs.domain] : [])])].sort(),
     stateDir: mailStateDir(agent),
     // Milter endpoints as the chrooted smtpd resolves them (queue-dir relative).
     helperMilter: `unix:${path.posix.relative('/var/spool/postfix', path.posix.join(HELPER_SOCKET_DIR, 'milter.sock'))}`,
@@ -236,6 +277,22 @@ export const mailServices: ManagedService[] = [
     },
   },
   {
+    unit: 'postsrsd',
+    group: 'mail',
+    installed: srsInstalled,
+    async render(config, agent) {
+      const mail = mailOf(config);
+      if (!mail) return null;
+      const context = buildMailContext(mail, agent);
+      if (!context.srs) return null;
+      return [{ dest: '/etc/default/postsrsd', content: await renderTemplate('mail/postsrsd.default.ejs', context) }];
+    },
+    // The launcher reads /etc/default/postsrsd only at start.
+    reload() {
+      return restartService('postsrsd');
+    },
+  },
+  {
     unit: 'postfix',
     group: 'mail',
     status: postfixReportedState,
@@ -251,6 +308,7 @@ export const mailServices: ManagedService[] = [
         // Read by the unchrooted proxymap (runs as postfix), not by root.
         { dest: '/etc/postfix/sql/senders.cf', content: await renderTemplate('mail/postfix-sql-senders.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
         { dest: '/etc/postfix/sql/mailboxes.cf', content: await renderTemplate('mail/postfix-sql-mailboxes.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
+        { dest: '/etc/postfix/sql/forwards.cf', content: await renderTemplate('mail/postfix-sql-forwards.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
       ];
       if (mail.relayhost?.username) {
         files.push({
@@ -330,14 +388,14 @@ export function ensureMailProvisioned(agent: AgentConfig): void {
  * new mailManaged value for the caller to persist. */
 export async function syncMailUnits(config: SiteConfig, mailManaged: boolean): Promise<boolean> {
   if (config.mail) {
-    await enableAndStartServices(MAIL_UNITS);
+    await enableAndStartServices(mailUnits());
     return true;
   }
   if (!mailManaged) return false;
   if (config.mailStatus) {
     log.info(`mail: not the mail host (${config.mailStatus}); stopping the units this agent started`);
   }
-  await stopAndDisableServices(MAIL_UNITS);
+  await stopAndDisableServices(mailUnits());
   return false;
 }
 
@@ -345,10 +403,10 @@ export async function syncMailUnits(config: SiteConfig, mailManaged: boolean): P
  * when this agent started it, and only when something is actually running,
  * so nothing is churned on agents that never ran mail. */
 export async function stopMailUnitsIfRunning(): Promise<void> {
-  const states = await Promise.all(MAIL_UNITS.map((unit) => getServiceState(unit)));
+  const states = await Promise.all(mailUnits().map((unit) => getServiceState(unit)));
   if (states.some((state) => state === 'active' || state === 'activating')) {
     log.info('mail: service group disabled but units are running; stopping them');
-    await stopAndDisableServices(MAIL_UNITS);
+    await stopAndDisableServices(mailUnits());
   }
 }
 

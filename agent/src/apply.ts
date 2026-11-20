@@ -39,6 +39,9 @@ export interface ManagedService {
   unit: string;
   /** Service group this unit belongs to (AGENT_SERVICES opt-in). */
   group: ServiceGroup;
+  /** Optional components (e.g. postsrsd): skipped entirely — no apply, no
+   * status report — when this returns false. */
+  installed?: () => boolean;
   /** Overrides the state reported at check-in when `unit`'s own ActiveState
    * can't answer (e.g. Debian's postfix.service/postfix@- split varies by
    * release — see postfixReportedState in mail.ts). */

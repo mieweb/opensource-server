@@ -25,17 +25,18 @@ RUN apt-get update && apt-get -y install postgresql-common \
 # override prevents a race condition at boot.
 COPY images/manager/wait-proxmox-regenerate-snakeoil.conf /etc/systemd/system/postgresql@.service.d/
 
-# Mail stack (issue #67): Postfix + Dovecot + OpenDKIM, configured entirely by
+# Mail stack (issue #67): Postfix + Dovecot + OpenDKIM (+ PostSRSd for
+# forwarding), configured entirely by
 # the agent once it takes the mail-host claim — preseed "No configuration" and
 # keep the units disabled until then. Dovecot/Postfix read accounts live from
 # Postgres over the local socket; the peer-auth maps (pg_hba/pg_ident) are
 # added by the opensource-server postinst below, so upgrades get them too.
 RUN echo 'postfix postfix/main_mailer_type select No configuration' | debconf-set-selections && \
     apt-get update && \
-    apt-get -y install postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim && \
+    apt-get -y install postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim postsrsd && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    systemctl disable postfix dovecot opendkim
+    systemctl disable postfix dovecot opendkim postsrsd
 
 # First-boot database initialization.
 COPY images/manager/container-creator-init.service /etc/systemd/system/container-creator-init.service

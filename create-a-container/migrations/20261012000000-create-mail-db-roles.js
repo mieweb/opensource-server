@@ -54,10 +54,13 @@ module.exports = {
         await queryInterface.sequelize.query(sql);
       }
     } catch (err) {
+      // The DBA runs this after every migration has run, so it also covers
+      // views created later (their own migrations grant best-effort too).
+      const forwardsGrant = require('./20261119000001-create-mail-forwards').grantSql(queryInterface);
       console.warn(
         'create-mail-db-roles: could not create the mail DB roles '
         + `(${err.message}). Run the following as a privileged DB user:\n`
-        + statements.join(';\n'),
+        + [...statements, forwardsGrant].join(';\n'),
       );
     }
   },

@@ -527,6 +527,8 @@ components:
         enabled: { type: boolean }
         quotaMb: { type: integer }
         unsubscribeHeaders: { type: boolean, description: 'Add RFC 8058 List-Unsubscribe headers to submitted mail' }
+        forwards: { type: array, items: { type: string, format: email }, maxItems: 5, description: 'Addresses that receive a copy of inbound mail (sorted)' }
+        forwardKeepCopy: { type: boolean, description: 'With forwards set, also deliver to this mailbox' }
         lastRotatedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -1855,6 +1857,8 @@ paths:
                 description: { type: string, maxLength: 255, nullable: true }
                 enabled: { type: boolean, description: Disabling locks the account out instantly }
                 unsubscribeHeaders: { type: boolean }
+                forwards: { type: array, items: { type: string, format: email }, maxItems: 5, description: 'Replaces the forwarding set; [] removes forwarding. Cleared on ownership transfer unless given.' }
+                forwardKeepCopy: { type: boolean, description: 'With forwards set, also deliver to this mailbox (default true)' }
                 quotaMb: { type: integer, description: Admin-only }
                 username: { type: string, description: 'Admin-only ownership transfer — target username' }
       responses:
@@ -1865,7 +1869,7 @@ paths:
               schema: { type: object, properties: { data: { $ref: '#/components/schemas/MailAccount' } } }
         '403': { description: 'Admin-only field (code: admin_required)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
-        '422': { description: 'Transfer target inactive (code: user_inactive)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { description: 'Transfer target inactive (code: user_inactive) or forwarding to the account itself (code: forward_to_self)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       operationId: delete_mail_account
       tags: [Mail]

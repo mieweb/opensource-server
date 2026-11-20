@@ -94,6 +94,7 @@ describe('createAccount', () => {
       uidNumber: user.uidNumber,
       enabled: true,
       unsubscribeHeaders: true,
+      forwardKeepCopy: true,
       lastRotatedAt: null,
     });
     expect(account.id).toBe(deleted.id);
@@ -129,6 +130,8 @@ describe('updateAccount', () => {
     });
     await svc.updateAccount(adminSession, 'x-id', { username: 'bob' });
     expect(repo.update.mock.calls[0][1]).toEqual({ uidNumber: 3002 });
+    // The previous owner's forwards are cleared on transfer.
+    expect(repo.update.mock.calls[0][2]).toEqual([]);
 
     await expect(svc.updateAccount(adminSession, 'x-id', { username: 'carol' }))
       .rejects.toMatchObject({ status: 422, code: 'user_inactive' });
@@ -140,6 +143,36 @@ describe('updateAccount', () => {
     repo.findById.mockResolvedValue(accountRow({ uidNumber: 9999 }));
     await expect(svc.updateAccount(session, 'x-id', { enabled: false }))
       .rejects.toMatchObject({ status: 404 });
+  });
+
+  test('owner can set forwards (deduped) and keep-copy; omitted forwards are untouched', async () => {
+    repo.findById.mockResolvedValue(accountRow());
+    await svc.updateAccount(session, 'x-id', {
+      forwards: ['a@gmail.com', 'b@other.org', 'a@gmail.com'],
+      forwardKeepCopy: false,
+    });
+    expect(repo.update.mock.calls[0][1]).toEqual({ forwardKeepCopy: false });
+    expect(repo.update.mock.calls[0][2]).toEqual(['a@gmail.com', 'b@other.org']);
+
+    await svc.updateAccount(session, 'x-id', { description: 'x' });
+    expect(repo.update.mock.calls[1][2]).toBeUndefined();
+  });
+
+  test('forwarding to the account itself is rejected', async () => {
+    repo.findById.mockResolvedValue(accountRow());
+    await expect(svc.updateAccount(session, 'x-id', { forwards: ['app@example.com'] }))
+      .rejects.toMatchObject({ status: 422, code: 'forward_to_self' });
+  });
+});
+
+describe('updateMailAccount validator', () => {
+  const { updateMailAccount } = require('../validator');
+
+  test('lowercases forwards and caps them at 5', () => {
+    expect(updateMailAccount.parse({ forwards: [' A@Gmail.com '] }).forwards).toEqual(['a@gmail.com']);
+    expect(updateMailAccount.safeParse({ forwards: ['not-an-address'] }).success).toBe(false);
+    const six = Array.from({ length: 6 }, (_, i) => `u${i}@x.org`);
+    expect(updateMailAccount.safeParse({ forwards: six }).success).toBe(false);
   });
 });
 
