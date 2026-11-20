@@ -4,11 +4,12 @@ import {
   Alert, AlertDescription, Badge, Button, PageHeader, Spinner, Switch,
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, useToast,
 } from '@mieweb/ui';
-import { Mail, MailX, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Forward, Mail, MailX, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { keys, queries } from '@/lib/queries';
 import type { MailAccount, MailAccountSecret } from '@/lib/types';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { ForwardingModal } from './ForwardingModal';
 import { MailCredentialsAlert } from './MailCredentialsAlert';
 import { NewMailAccountForm } from './NewMailAccountForm';
 import { SuppressionsModal } from './SuppressionsModal';
@@ -24,6 +25,7 @@ export function MailAccountsListPage() {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<MailAccountSecret | null>(null);
   const [suppressionsFor, setSuppressionsFor] = useState<MailAccount | null>(null);
+  const [forwardingFor, setForwardingFor] = useState<MailAccount | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: keys.mailAccounts() });
 
@@ -134,6 +136,11 @@ export function MailAccountsListPage() {
                         Domain can't send
                       </Badge>
                     )}
+                    {a.forwards.length > 0 && (
+                      <Badge variant="secondary" title={`Forwards to ${a.forwards.join(', ')}`}>
+                        {a.forwardKeepCopy ? 'Forwarding' : 'Forward only'}
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>{a.quotaMb} MB</TableCell>
@@ -161,6 +168,15 @@ export function MailAccountsListPage() {
                       disabled={rotate.isPending}
                     >
                       Rotate password
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="cursor-pointer"
+                      leftIcon={<Forward className="size-4" />}
+                      onClick={() => setForwardingFor(a)}
+                    >
+                      Forwarding
                     </Button>
                     <Button
                       variant="ghost"
@@ -204,6 +220,9 @@ export function MailAccountsListPage() {
 
       {suppressionsFor && (
         <SuppressionsModal account={suppressionsFor} onClose={() => setSuppressionsFor(null)} />
+      )}
+      {forwardingFor && (
+        <ForwardingModal account={forwardingFor} onClose={() => setForwardingFor(null)} />
       )}
     </div>
   );

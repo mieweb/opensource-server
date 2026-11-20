@@ -30,17 +30,34 @@ smtpd_tls_chain_files = <%= certs.fallbackKey %>, <%= certs.fallbackCert %>
 smtpd_tls_security_level = may
 smtp_tls_security_level = may
 
+# SQL maps go through proxy: — smtpd is chrooted and cannot reach the DB
+# socket, so the unchrooted proxymap (as postfix) does the lookups.
+#
 # Inbound (:25): only mailboxes that exist on can-receive domains, checked
 # live from SQL so unknown recipients are rejected at RCPT (no backscatter).
 # Dovecot's quota-status policy service additionally rejects over-quota.
 virtual_mailbox_domains = texthash:/etc/postfix/vdomains
-virtual_mailbox_maps = <%= db.prefix %>:/etc/postfix/sql/mailboxes.cf
+virtual_mailbox_maps = proxy:<%= db.prefix %>:/etc/postfix/sql/mailboxes.cf
 virtual_transport = lmtp:unix:private/dovecot-lmtp
 smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
-smtpd_recipient_restrictions = reject_unauth_destination, check_policy_service unix:private/quota-status
+smtpd_recipient_restrictions = reject_unauth_destination, reject_unlisted_recipient, check_policy_service unix:private/quota-status
 
 # Sender ownership: submission enforces sender == SASL login (live from SQL).
-smtpd_sender_login_maps = <%= db.prefix %>:/etc/postfix/sql/senders.cf
+smtpd_sender_login_maps = proxy:<%= db.prefix %>:/etc/postfix/sql/senders.cf
+
+# Per-account forwarding (live from SQL). Expansion happens in cleanup, so
+# forwarded copies keep the original message and DKIM signature intact.
+virtual_alias_maps = proxy:<%= db.prefix %>:/etc/postfix/sql/forwards.cf
+<%_ if (srs) { _%>
+
+# SRS (postsrsd): forwarded mail leaves with SRS0=...@<%= srs.domain %> as the
+# envelope sender so it passes SPF; bounces to those addresses are reversed.
+# TCP tables work from the chrooted cleanup/smtpd.
+sender_canonical_maps = tcp:127.0.0.1:<%= srs.forwardPort %>
+sender_canonical_classes = envelope_sender
+recipient_canonical_maps = tcp:127.0.0.1:<%= srs.reversePort %>
+recipient_canonical_classes = envelope_recipient, header_recipient
+<%_ } _%>
 
 # Submission policy, referenced from master.cf. Milters run pre-queue and in
 # order: opensource-mail-helper rejects suppressed recipients at RCPT and

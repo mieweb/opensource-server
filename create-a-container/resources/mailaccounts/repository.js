@@ -1,7 +1,8 @@
-const { MailAccount, MailSuppression, ExternalDomain, User, Setting } = require('../../models');
+const { MailAccount, MailForward, MailSuppression, ExternalDomain, User, Setting } = require('../../models');
 
-// Always loaded with the owning user and domain (incl. mail gates) so the
-// serializer can compose the address and send/receive state.
+// Always loaded with the owning user, domain (incl. mail gates) and forwards
+// so the serializer can compose the address, send/receive state and
+// forwarding set.
 const INCLUDES = [
   {
     model: ExternalDomain,
@@ -9,6 +10,7 @@ const INCLUDES = [
     attributes: ['id', 'name', 'mailEnabled', 'mailDnsVerified', 'mailMxVerified'],
   },
   { model: User, as: 'owner', attributes: ['uidNumber', 'uid'] },
+  { model: MailForward, as: 'forwards', attributes: ['address'] },
 ];
 
 async function findAll(where = {}) {
@@ -31,18 +33,33 @@ async function create(fields) {
   return findById(account.id);
 }
 
+/** Replace an account's forwarding set (empty array clears it). */
+async function replaceForwards(account, forwards, transaction) {
+  await MailForward.destroy({ where: { mailAccountId: account.id }, transaction });
+  await MailForward.bulkCreate(
+    forwards.map((address) => ({ mailAccountId: account.id, address })),
+    { transaction },
+  );
+}
+
 /** Bring a soft-deleted account back under a fresh owner/credentials while
- *  keeping its id — and therefore its MailSuppressions. */
+ *  keeping its id — and therefore its MailSuppressions. Forwards are cleared:
+ *  they belonged to the previous owner. */
 async function restore(account, fields) {
   return MailAccount.sequelize.transaction(async (transaction) => {
     await account.restore({ transaction });
     await account.update(fields, { transaction });
+    await replaceForwards(account, [], transaction);
     return MailAccount.findByPk(account.id, { include: INCLUDES, transaction });
   });
 }
 
-async function update(account, fields) {
-  await account.update(fields);
+/** `forwards` (optional) replaces the forwarding set atomically with the update. */
+async function update(account, fields, forwards) {
+  await MailAccount.sequelize.transaction(async (transaction) => {
+    await account.update(fields, { transaction });
+    if (forwards) await replaceForwards(account, forwards, transaction);
+  });
   return findById(account.id);
 }
 

@@ -20,6 +20,8 @@ function serializeMailAccount(a) {
     enabled: a.enabled,
     quotaMb: Math.round(Number(a.quotaBytes) / MB),
     unsubscribeHeaders: a.unsubscribeHeaders,
+    forwards: (a.forwards || []).map((f) => f.address).sort(),
+    forwardKeepCopy: a.forwardKeepCopy,
     lastRotatedAt: a.lastRotatedAt,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,

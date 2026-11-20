@@ -30,6 +30,8 @@ const context = {
     unsubscribe: { keys: [] },
   },
   stateDir: '/var/lib/opensource-agent/mail',
+  srs: null,
+  acceptDomains: ['example.com'],
   helperMilter: 'unix:mail-helper/milter.sock',
   opendkimMilter: 'unix:opendkim/opendkim.sock',
   opendkimSocket: 'local:/var/spool/postfix/opendkim/opendkim.sock',
@@ -62,10 +64,13 @@ test('postfix main.cf: live recipient map, sender ownership, size limit, SNI, mi
   assert.match(out, /message_size_limit = 26214400/);
   assert.match(out, /virtual_mailbox_domains = texthash:\/etc\/postfix\/vdomains/);
   // Unknown recipients must be rejected at RCPT (live SQL), not via static:x.
-  assert.match(out, /virtual_mailbox_maps = pgsql:\/etc\/postfix\/sql\/mailboxes\.cf/);
+  assert.match(out, /virtual_mailbox_maps = proxy:pgsql:\/etc\/postfix\/sql\/mailboxes\.cf/);
   assert.doesNotMatch(out, /static:x/);
   assert.match(out, /check_policy_service unix:private\/quota-status/);
-  assert.match(out, /smtpd_sender_login_maps = pgsql:\/etc\/postfix\/sql\/senders\.cf/);
+  // Unknown recipients rejected by Postfix before the policy service, which
+  // answers DUNNO for non-mailboxes (SRS bounce addresses must pass).
+  assert.match(out, /reject_unauth_destination, reject_unlisted_recipient, check_policy_service/);
+  assert.match(out, /smtpd_sender_login_maps = proxy:pgsql:\/etc\/postfix\/sql\/senders\.cf/);
   assert.match(out, /tls_server_sni_maps = hash:\/etc\/postfix\/sni_map/);
   // Helper milter first, OpenDKIM second — the signature covers added headers.
   assert.match(out, /submission_milters = unix:mail-helper\/milter\.sock, unix:opendkim\/opendkim\.sock/);
@@ -104,6 +109,7 @@ test('dovecot.conf: SQL auth with the can_send smtp gate, per-domain certs, post
   assert.match(out, /unix_listener \/var\/spool\/postfix\/private\/auth/);
   assert.match(out, /unix_listener \/var\/spool\/postfix\/private\/dovecot-lmtp/);
   assert.match(out, /quota-status -p postfix/);
+  assert.match(out, /^quota_status_nouser = DUNNO$/m);
   assert.match(out, /auth_allow_cleartext = no/);
 });
 
@@ -155,4 +161,49 @@ test('sql maps, vdomains, and sni_map list the right entries', async () => {
   );
   assert.match(await render('mail/postfix-sql-mailboxes.cf.ejs'), /SELECT 1 FROM mail_recipients_v WHERE recipient = '%s'/);
   assert.match(await render('mail/postfix-sql-senders.cf.ejs'), /SELECT login FROM mail_senders_v WHERE sender = '%s'/);
+  assert.match(await render('mail/postfix-sql-forwards.cf.ejs'), /SELECT destination FROM mail_forwards_v WHERE source = '%s'/);
+});
+
+const srs = {
+  domain: 'mail.example.com',
+  excludeDomains: ['example.com', 'mail.example.com', 'other.example'],
+  forwardPort: 10001,
+  reversePort: 10002,
+};
+
+test('postfix main.cf: forwards via proxied SQL alias map; no SRS maps without postsrsd', async () => {
+  const out = await render('mail/postfix-main.cf.ejs');
+  assert.match(out, /virtual_alias_maps = proxy:pgsql:\/etc\/postfix\/sql\/forwards\.cf/);
+  assert.doesNotMatch(out, /canonical_maps/);
+});
+
+test('postfix main.cf + postsrsd: SRS canonical maps and default file', async () => {
+  const data = { ...context, srs, acceptDomains: ['example.com', 'mail.example.com'] };
+  const main = await render('mail/postfix-main.cf.ejs', data);
+  assert.match(main, /sender_canonical_maps = tcp:127\.0\.0\.1:10001/);
+  assert.match(main, /sender_canonical_classes = envelope_sender/);
+  assert.match(main, /recipient_canonical_maps = tcp:127\.0\.0\.1:10002/);
+  assert.match(main, /recipient_canonical_classes = envelope_recipient, header_recipient/);
+
+  // The SRS domain is accepted so bounces to SRS0= addresses come back.
+  assert.match(await render('mail/postfix-vdomains.ejs', data), /^mail\.example\.com ok$/m);
+
+  const def = await render('mail/postsrsd.default.ejs', data);
+  assert.match(def, /^SRS_DOMAIN=mail\.example\.com$/m);
+  assert.match(def, /^SRS_EXCLUDE_DOMAINS=example\.com,mail\.example\.com,other\.example$/m);
+  assert.match(def, /^SRS_FORWARD_PORT=10001$/m);
+  assert.match(def, /^SRS_LISTEN_ADDR=127\.0\.0\.1$/m);
+});
+
+test('buildMailContext: SRS only with postsrsd installed and a mail hostname', () => {
+  const { buildMailContext } = require('../dist/mail.js');
+  const agent = { stateDir: '/var/lib/opensource-agent' };
+  const withSrs = buildMailContext(context.mail, agent, {}, true);
+  assert.deepStrictEqual(withSrs.srs, srs);
+  assert.deepStrictEqual(withSrs.acceptDomains, ['example.com', 'mail.example.com']);
+
+  assert.strictEqual(buildMailContext(context.mail, agent, {}, false).srs, null);
+  const noHost = buildMailContext({ ...context.mail, hostname: null }, agent, {}, true);
+  assert.strictEqual(noHost.srs, null);
+  assert.deepStrictEqual(noHost.acceptDomains, ['example.com']);
 });

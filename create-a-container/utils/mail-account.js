@@ -17,6 +17,9 @@ const RESERVED_LOCAL_PARTS = [
 
 const DEFAULT_QUOTA_MB = 1024;
 
+// Forwarding destinations per account (mail_forwards_v).
+const MAX_MAIL_FORWARDS = 5;
+
 /** @returns {string} 43-char base64url string (32 random bytes). */
 function generateMailPassword() {
   return crypto.randomBytes(32).toString('base64url');
@@ -35,6 +38,7 @@ function isReservedLocalPart(localPart) {
 module.exports = {
   RESERVED_LOCAL_PARTS,
   DEFAULT_QUOTA_MB,
+  MAX_MAIL_FORWARDS,
   generateMailPassword,
   hashMailPassword,
   isReservedLocalPart,
