@@ -28,7 +28,7 @@ const MAX_PASSES = 5;
 const ALL_SERVICES: ManagedService[] = [...services, ...mailServices];
 
 function enabledServices(cfg: AgentConfig): ManagedService[] {
-  return ALL_SERVICES.filter((svc) => cfg.services.includes(svc.group));
+  return ALL_SERVICES.filter((svc) => cfg.services.includes(svc.group) && (svc.installed?.() ?? true));
 }
 
 async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<CheckinRequest> {

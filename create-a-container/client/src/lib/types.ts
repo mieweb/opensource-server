@@ -382,6 +382,10 @@ export interface MailAccount {
   enabled: boolean;
   quotaMb: number;
   unsubscribeHeaders: boolean;
+  /** Addresses that receive a copy of inbound mail (max 5, sorted). */
+  forwards: string[];
+  /** With forwards set, also deliver to this mailbox. */
+  forwardKeepCopy: boolean;
   lastRotatedAt: string | null;
   createdAt: string;
   updatedAt: string;

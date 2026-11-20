@@ -1,0 +1,15 @@
+# Managed by opensource-agent (mail service group) — do not edit.
+# PostSRSd 1.x (Debian): rewrites the envelope sender of forwarded mail so it
+# passes SPF at the destination; bounces to SRS0=...@<%= srs.domain %> are
+# reversed to the original sender. Our own domains are never rewritten.
+SRS_DOMAIN=<%= srs.domain %>
+SRS_EXCLUDE_DOMAINS=<%= srs.excludeDomains.join(',') %>
+SRS_SEPARATOR==
+SRS_SECRET=/etc/postsrsd.secret
+SRS_HASHLENGTH=4
+SRS_HASHMIN=4
+SRS_FORWARD_PORT=<%= srs.forwardPort %>
+SRS_REVERSE_PORT=<%= srs.reversePort %>
+RUN_AS=postsrsd
+SRS_LISTEN_ADDR=127.0.0.1
+CHROOT=/var/lib/postsrsd

@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'mailAccountId',
         as: 'suppressions',
       });
+      MailAccount.hasMany(models.MailForward, {
+        foreignKey: 'mailAccountId',
+        as: 'forwards',
+      });
     }
   }
 
@@ -75,6 +79,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: true,
       comment: 'Add RFC 8058 List-Unsubscribe headers to submitted mail',
+    },
+    forwardKeepCopy: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      comment: 'With forwards set, also deliver inbound mail to this mailbox',
     },
     lastRotatedAt: {
       type: DataTypes.DATE,

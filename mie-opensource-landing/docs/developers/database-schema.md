@@ -23,6 +23,7 @@ erDiagram
     ExternalDomains ||--o{ DkimKeys : signs
     ExternalDomains ||--o{ MailAccounts : hosts
     MailAccounts ||--o{ MailSuppressions : "unsubscribed by"
+    MailAccounts ||--o{ MailForwards : "forwards to"
     Users ||--o{ MailAccounts : owns
     Jobs ||--o{ JobStatuses : tracks
     Users }o--o{ Groups : "member of"
@@ -167,6 +168,7 @@ erDiagram
         boolean enabled "default true; gates the SQL views"
         bigint quotaBytes
         boolean unsubscribeHeaders "default true (RFC 8058)"
+        boolean forwardKeepCopy "default true; with forwards, also deliver locally"
         date lastRotatedAt
         date deletedAt "paranoid soft delete; keeps suppressions"
     }
@@ -176,6 +178,12 @@ erDiagram
         uuid mailAccountId FK
         string recipient "lowercase; unique per account"
         enum source "one-click | admin"
+    }
+
+    MailForwards {
+        int id PK
+        uuid mailAccountId FK
+        string address "lowercase; unique per account; max 5 per account"
     }
 
     Jobs {
@@ -279,6 +287,9 @@ A user-owned SMTP/IMAP account on a can-send domain. Password stored as an Argon
 ### MailSuppression
 A recipient who one-click-unsubscribed (RFC 8058) from a MailAccount, or was suppressed by an admin. Enforced synchronously at RCPT on the submission ports. Unsubscribe tokens are stateless — AES-256-GCM keys are HKDF-derived from the `SessionSecrets` rows (newest mints; older ones keep old links verifying), so there is no key table.
 
+### MailForward
+A destination that receives a copy of a MailAccount's inbound mail (up to 5 per account, set by the owner). `MailAccount.forwardKeepCopy` decides whether the account's own mailbox also gets the message. Forwards are cleared when ownership is transferred or a deleted address is recreated, so a previous owner never keeps receiving the new owner's mail.
+
 ### Mail Views
 The dialect-aware views created by migration `20261008000006` (which contains the per-dialect SQL) are the **stable contract** Dovecot/Postfix — or a self-managed MTA — read live:
 
@@ -288,6 +299,7 @@ The dialect-aware views created by migration `20261008000006` (which contains th
 | `mail_senders_v` | `sender`, `login`, `account_id`, `unsubscribe_headers` — can-send accounts | Postfix `smtpd_sender_login_maps` + opensource-mail-helper (`mail_postfix` role) |
 | `mail_recipients_v` | `recipient` — deliverable addresses on can-receive domains | Postfix `virtual_mailbox_maps` (unknown recipients rejected at RCPT) |
 | `mail_suppressions_v` | `sender`, `recipient` | opensource-mail-helper milter — reject at RCPT (`mail_postfix` role) |
+| `mail_forwards_v` | `source`, `destination` — one row per forward, plus (`source`, `source`) when keeping a copy; live, enabled accounts on can-receive domains | Postfix `virtual_alias_maps` (`mail_postfix` role; migration `20261119000001`) |
 
 Migration `20261012000000` creates the two read-only roles and grants; the views migration also grants best-effort so either ordering converges.
 

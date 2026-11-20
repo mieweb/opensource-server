@@ -34,6 +34,14 @@ Outbound mail gets RFC 8058 `List-Unsubscribe` headers by default, so recipients
 - **Unsubscribe headers** toggle — turn the headers off for purely transactional accounts.
 - **Suppressions** — recipients who unsubscribed. Further mail from this account to them is rejected synchronously at submission (`5.7.1`), so your app sees the error instead of silently dropped mail. Only admins can remove a suppression.
 
+## Forwarding
+
+**Forwarding** on an account sends a copy of its inbound mail to up to 5 other addresses (any domain).
+
+- **Keep a copy in this mailbox** (default on) — turn off to forward only; nothing is stored in the account.
+- Forwarding works only while the domain can receive mail (MX verified).
+- Forwards are cleared when an admin transfers the account to another owner.
+
 ## Limits
 
 - Sending works only while the domain can send (admin-controlled, DNS-verified). If the domain is disabled, SMTP login is refused but IMAP stays readable.
