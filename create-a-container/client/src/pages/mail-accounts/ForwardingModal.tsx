@@ -58,7 +58,7 @@ export function ForwardingModal({
         }}
       >
         <ModalBody className="flex flex-col gap-4">
-          <p className="text-sm text-(--color-muted,#6b7280)">
+          <p className="text-sm text-[var(--mieweb-muted-foreground,#737373)]">
             Inbound mail to this address is also sent to up to {MAX_FORWARDS} other addresses.
             Leave every field empty to turn forwarding off.
           </p>
@@ -73,15 +73,16 @@ export function ForwardingModal({
           <ul className="flex flex-col gap-2" aria-label="Forwarding addresses">
             {forwards.map((value, index) => (
               <li key={index} className="flex items-end gap-2">
-                <Input
-                  className="flex-1"
-                  type="email"
-                  label={index === 0 ? 'Forward to' : undefined}
-                  aria-label={`Forwarding address ${index + 1}`}
-                  placeholder="someone@example.org"
-                  value={value}
-                  onChange={(e) => setAt(index, e.target.value)}
-                />
+                <div className="flex-1">
+                  <Input
+                    type="email"
+                    label={index === 0 ? 'Forward to' : undefined}
+                    aria-label={`Forwarding address ${index + 1}`}
+                    placeholder="someone@example.org"
+                    value={value}
+                    onChange={(e) => setAt(index, e.target.value)}
+                  />
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
