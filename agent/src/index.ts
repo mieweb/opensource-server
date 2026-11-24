@@ -16,7 +16,7 @@ import { State } from './state';
 import { getPrimaryIpv4, getServiceState, findMissingBinaries, disconnectSystemBus } from './system';
 import { checkin } from './api';
 import { services, GROUP_BINARIES, applyService, type ManagedService } from './apply';
-import { mailServices, ensureMailProvisioned, syncMailUnits, stopMailUnitsIfRunning, gcMailboxes, missingMailHelper } from './mail';
+import { mailServices, ensureMailProvisioned, syncMailUnits, stopMailUnitsIfRunning, gcMailboxes, missingMailHelper, srsInstalled } from './mail';
 import { reconcileVolumes } from './volumes';
 import { log } from './log';
 import type { CheckinRequest, ServiceStatus, SiteConfig } from './types';
@@ -89,6 +89,11 @@ async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig, state: St
 async function main(): Promise<void> {
   const cfg = loadConfig();
   const state = State.load(cfg.stateDir);
+  const postSrsdInstalled = srsInstalled();
+  if (state.postSrsdInstalled !== postSrsdInstalled) {
+    log.info(`PostSRSd availability changed to ${postSrsdInstalled ? 'installed' : 'not installed'}; refreshing config`);
+    state.etag = undefined;
+  }
   log.info(`agent starting: siteId=${cfg.siteId}, manager=${cfg.managerUrl}, services=${cfg.services.join(',')}`);
   log.debug(`state dir=${cfg.stateDir}, saved etag=${state.etag ?? '(none)'}`);
   if (Object.keys(state.pendingVolumeResults).length > 0) {
@@ -150,6 +155,7 @@ async function main(): Promise<void> {
     } else {
       state.etag = result.etag;
     }
+    state.postSrsdInstalled = postSrsdInstalled;
     state.save();
   }
 

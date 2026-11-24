@@ -18,12 +18,14 @@ test('pendingVolumeResults round-trips through save/load', () => {
 
   const s1 = State.load(dir);
   s1.etag = '"abc"';
+  s1.postSrsdInstalled = true;
   s1.pendingVolumeResults['42'] = { applied: false, message: 'mkdir: boom' };
   s1.pendingVolumeResults['43'] = { applied: true };
   s1.save();
 
   const s2 = State.load(dir);
   assert.equal(s2.etag, '"abc"');
+  assert.equal(s2.postSrsdInstalled, true);
   assert.deepEqual(s2.pendingVolumeResults, {
     42: { applied: false, message: 'mkdir: boom' },
     43: { applied: true },

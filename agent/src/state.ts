@@ -9,6 +9,7 @@ import type { ApplyResult, VolumeResult } from './types';
 
 export class State {
   etag?: string;
+  postSrsdInstalled?: boolean;
   lastApply: Record<string, ApplyResult> = {};
   // True once THIS agent has enabled/started the mail units. Guards the
   // shutdown paths: an agent must never stop a postfix/dovecot it did not
@@ -35,11 +36,13 @@ export class State {
     try {
       const data = JSON.parse(raw) as {
         etag?: string;
+        postSrsdInstalled?: boolean;
         lastApply?: Record<string, ApplyResult>;
         mailManaged?: boolean;
         pendingVolumeResults?: Record<string, VolumeResult>;
       };
       state.etag = data.etag;
+      state.postSrsdInstalled = data.postSrsdInstalled;
       state.lastApply = data.lastApply ?? {};
       state.mailManaged = data.mailManaged ?? false;
       state.pendingVolumeResults = data.pendingVolumeResults ?? {};
@@ -58,6 +61,7 @@ export class State {
       JSON.stringify(
         {
           etag: this.etag,
+          postSrsdInstalled: this.postSrsdInstalled,
           lastApply: this.lastApply,
           mailManaged: this.mailManaged,
           pendingVolumeResults: this.pendingVolumeResults,
