@@ -3,6 +3,10 @@ set -e
 
 UNITS="opensource-agent.timer"
 
+# Force a full config apply after agent or template upgrades without discarding
+# other persistent agent state.
+node -e "require('/opt/opensource-server/agent/dist/state.js').State.invalidateEtag('/var/lib/opensource-agent')"
+
 # Nothing to do without systemctl (non-systemd container/chroot).
 command -v systemctl >/dev/null 2>&1 || exit 0
 

@@ -248,8 +248,9 @@ export const mailServices: ManagedService[] = [
         { dest: '/etc/postfix/master.cf', content: await renderTemplate('mail/postfix-master.cf.ejs', context) },
         { dest: '/etc/postfix/vdomains', content: await renderTemplate('mail/postfix-vdomains.ejs', context) },
         { dest: '/etc/postfix/sni_map', content: await renderTemplate('mail/postfix-sni-map.ejs', context), mode: 0o600 },
-        { dest: '/etc/postfix/sql/senders.cf', content: await renderTemplate('mail/postfix-sql-senders.cf.ejs', context), mode: 0o600 },
-        { dest: '/etc/postfix/sql/mailboxes.cf', content: await renderTemplate('mail/postfix-sql-mailboxes.cf.ejs', context), mode: 0o600 },
+        // Read by the unchrooted proxymap (runs as postfix), not by root.
+        { dest: '/etc/postfix/sql/senders.cf', content: await renderTemplate('mail/postfix-sql-senders.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
+        { dest: '/etc/postfix/sql/mailboxes.cf', content: await renderTemplate('mail/postfix-sql-mailboxes.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
       ];
       if (mail.relayhost?.username) {
         files.push({
@@ -298,12 +299,13 @@ export function ensureMailProvisioned(agent: AgentConfig): void {
   chownByName(VMAIL_DIR, 'vmail:vmail');
   fs.chmodSync(VMAIL_DIR, 0o750);
 
-  // Agent-managed DKIM material under $STATE_DIRECTORY/mail.
+  // OpenDKIM needs traversal but must not be able to replace the agent's
+  // write targets; private keys are separately owned by opendkim.
   const stateDir = mailStateDir(agent);
   const dkimDir = path.join(stateDir, 'dkim');
   fs.mkdirSync(dkimDir, { recursive: true });
   for (const dir of [stateDir, dkimDir]) {
-    chownByName(dir, 'root:opendkim');
+    chownByName(dir, 'root:postfix');
     fs.chmodSync(dir, 0o750);
   }
 

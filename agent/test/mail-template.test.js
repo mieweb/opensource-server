@@ -62,10 +62,10 @@ test('postfix main.cf: live recipient map, sender ownership, size limit, SNI, mi
   assert.match(out, /message_size_limit = 26214400/);
   assert.match(out, /virtual_mailbox_domains = texthash:\/etc\/postfix\/vdomains/);
   // Unknown recipients must be rejected at RCPT (live SQL), not via static:x.
-  assert.match(out, /virtual_mailbox_maps = pgsql:\/etc\/postfix\/sql\/mailboxes\.cf/);
+  assert.match(out, /virtual_mailbox_maps = proxy:pgsql:\/etc\/postfix\/sql\/mailboxes\.cf/);
   assert.doesNotMatch(out, /static:x/);
   assert.match(out, /check_policy_service unix:private\/quota-status/);
-  assert.match(out, /smtpd_sender_login_maps = pgsql:\/etc\/postfix\/sql\/senders\.cf/);
+  assert.match(out, /smtpd_sender_login_maps = proxy:pgsql:\/etc\/postfix\/sql\/senders\.cf/);
   assert.match(out, /tls_server_sni_maps = hash:\/etc\/postfix\/sni_map/);
   // Helper milter first, OpenDKIM second — the signature covers added headers.
   assert.match(out, /submission_milters = unix:mail-helper\/milter\.sock, unix:opendkim\/opendkim\.sock/);
