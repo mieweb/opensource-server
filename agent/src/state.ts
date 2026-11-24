@@ -51,6 +51,22 @@ export class State {
     return state;
   }
 
+  static invalidateEtag(stateDir: string): void {
+    const file = path.join(stateDir, 'state.json');
+    let data: unknown;
+    try {
+      data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT' || err instanceof SyntaxError) return;
+      throw err;
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    const state = data as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(state, 'etag')) return;
+    delete state.etag;
+    fs.writeFileSync(file, JSON.stringify(state, null, 2));
+  }
+
   save(): void {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     fs.writeFileSync(

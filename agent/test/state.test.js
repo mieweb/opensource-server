@@ -38,6 +38,25 @@ test('pendingVolumeResults round-trips through save/load', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('invalidateEtag preserves other persistent state', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-state-'));
+  const state = State.load(dir);
+  state.etag = '"abc"';
+  state.mailManaged = true;
+  state.pendingVolumeResults['42'] = { applied: false, message: 'mkdir: boom' };
+  state.save();
+
+  State.invalidateEtag(dir);
+
+  const loaded = State.load(dir);
+  assert.equal(loaded.etag, undefined);
+  assert.equal(loaded.mailManaged, true);
+  assert.deepEqual(loaded.pendingVolumeResults, {
+    42: { applied: false, message: 'mkdir: boom' },
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('load with no state file starts empty', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-state-'));
   const s = State.load(dir);
