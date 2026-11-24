@@ -357,15 +357,14 @@ export function ensureMailProvisioned(agent: AgentConfig): void {
   chownByName(VMAIL_DIR, 'vmail:vmail');
   fs.chmodSync(VMAIL_DIR, 0o750);
 
-  // Agent-managed DKIM material under $STATE_DIRECTORY/mail. Owned (not just
-  // group-owned) by opendkim: Debian's opendkim drops privileges with
-  // initgroups(user, UserID group), so with UserID opendkim:postfix it never
-  // holds the opendkim group.
+  // Agent-managed DKIM material under $STATE_DIRECTORY/mail. Keep the
+  // directories root-owned so opendkim can read through its postfix group
+  // without being able to plant symlinks for the agent's atomic writes.
   const stateDir = mailStateDir(agent);
   const dkimDir = path.join(stateDir, 'dkim');
   fs.mkdirSync(dkimDir, { recursive: true });
   for (const dir of [stateDir, dkimDir]) {
-    chownByName(dir, 'opendkim:opendkim');
+    chownByName(dir, 'root:postfix');
     fs.chmodSync(dir, 0o750);
   }
 
