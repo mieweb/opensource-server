@@ -309,6 +309,7 @@ export const mailServices: ManagedService[] = [
         { dest: '/etc/postfix/sql/senders.cf', content: await renderTemplate('mail/postfix-sql-senders.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
         { dest: '/etc/postfix/sql/mailboxes.cf', content: await renderTemplate('mail/postfix-sql-mailboxes.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
         { dest: '/etc/postfix/sql/forwards.cf', content: await renderTemplate('mail/postfix-sql-forwards.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
+        { dest: '/etc/postfix/sql/forward-only.cf', content: await renderTemplate('mail/postfix-sql-forward-only.cf.ejs', context), mode: 0o640, owner: 'root:postfix' },
       ];
       if (mail.relayhost?.username) {
         files.push({

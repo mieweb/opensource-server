@@ -69,7 +69,7 @@ test('postfix main.cf: live recipient map, sender ownership, size limit, SNI, mi
   assert.match(out, /check_policy_service unix:private\/quota-status/);
   // Unknown recipients rejected by Postfix before the policy service, which
   // answers DUNNO for non-mailboxes (SRS bounce addresses must pass).
-  assert.match(out, /reject_unauth_destination, reject_unlisted_recipient, check_policy_service/);
+  assert.match(out, /reject_unauth_destination, reject_unlisted_recipient, check_recipient_access proxy:pgsql:\/etc\/postfix\/sql\/forward-only\.cf, check_policy_service/);
   assert.match(out, /smtpd_sender_login_maps = proxy:pgsql:\/etc\/postfix\/sql\/senders\.cf/);
   assert.match(out, /tls_server_sni_maps = hash:\/etc\/postfix\/sni_map/);
   // Helper milter first, OpenDKIM second — the signature covers added headers.
@@ -162,6 +162,10 @@ test('sql maps, vdomains, and sni_map list the right entries', async () => {
   assert.match(await render('mail/postfix-sql-mailboxes.cf.ejs'), /SELECT 1 FROM mail_recipients_v WHERE recipient = '%s'/);
   assert.match(await render('mail/postfix-sql-senders.cf.ejs'), /SELECT login FROM mail_senders_v WHERE sender = '%s'/);
   assert.match(await render('mail/postfix-sql-forwards.cf.ejs'), /SELECT destination FROM mail_forwards_v WHERE source = '%s'/);
+  const forwardOnly = await render('mail/postfix-sql-forward-only.cf.ejs');
+  assert.match(forwardOnly, /SELECT 'OK' FROM mail_forwards_v f WHERE f\.source = '%s'/);
+  assert.match(forwardOnly, /f\.destination <> f\.source AND NOT EXISTS/);
+  assert.match(forwardOnly, /destination = local_copy\.source/);
 });
 
 const srs = {
