@@ -113,6 +113,7 @@ describe('updateAccount', () => {
     repo.findById.mockResolvedValue(accountRow());
     await svc.updateAccount(session, 'x-id', { enabled: false, unsubscribeHeaders: false });
     expect(repo.update.mock.calls[0][1]).toEqual({ enabled: false, unsubscribeHeaders: false });
+    expect(repo.update.mock.calls[0][3]).toEqual({ expectedOwnerUidNumber: user.uidNumber });
 
     await expect(svc.updateAccount(session, 'x-id', { quotaMb: 5 }))
       .rejects.toMatchObject({ status: 403, code: 'admin_required' });
@@ -132,6 +133,7 @@ describe('updateAccount', () => {
     expect(repo.update.mock.calls[0][1]).toEqual({ uidNumber: 3002 });
     // The previous owner's forwards are cleared on transfer.
     expect(repo.update.mock.calls[0][2]).toEqual([]);
+    expect(repo.update.mock.calls[0][3]).toEqual({ expectedOwnerUidNumber: undefined });
 
     await expect(svc.updateAccount(adminSession, 'x-id', { username: 'carol' }))
       .rejects.toMatchObject({ status: 422, code: 'user_inactive' });
@@ -156,6 +158,20 @@ describe('updateAccount', () => {
 
     await svc.updateAccount(session, 'x-id', { description: 'x' });
     expect(repo.update.mock.calls[1][2]).toBeUndefined();
+  });
+
+  test('owner receives not found if ownership changes before the update commits', async () => {
+    repo.findById.mockResolvedValue(accountRow());
+    repo.update.mockResolvedValue(null);
+
+    await expect(svc.updateAccount(session, 'x-id', { forwards: ['new@example.net'] }))
+      .rejects.toMatchObject({ status: 404, code: 'not_found' });
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      {},
+      ['new@example.net'],
+      { expectedOwnerUidNumber: user.uidNumber },
+    );
   });
 
   test('forwarding to the account itself is rejected', async () => {

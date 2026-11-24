@@ -140,7 +140,11 @@ async function updateAccount(session, id, body) {
     // The previous owner's forwards must not keep receiving the new owner's mail.
     forwards = forwards ?? [];
   }
-  return repo.update(account, fields, forwards);
+  const updated = await repo.update(account, fields, forwards, {
+    expectedOwnerUidNumber: session.isAdmin ? undefined : user.uidNumber,
+  });
+  if (!updated) throw new ApiError(404, 'not_found', 'Mail account not found');
+  return updated;
 }
 
 /** Returns { account, password, connection } — fresh password shown exactly once. */
@@ -151,7 +155,10 @@ async function rotatePassword(session, id) {
   const updated = await repo.update(account, {
     passwordHash: await hashMailPassword(password),
     lastRotatedAt: new Date(),
+  }, undefined, {
+    expectedOwnerUidNumber: session.isAdmin ? undefined : user.uidNumber,
   });
+  if (!updated) throw new ApiError(404, 'not_found', 'Mail account not found');
   return { account: updated, password, connection: await connectionInfo(updated) };
 }
 

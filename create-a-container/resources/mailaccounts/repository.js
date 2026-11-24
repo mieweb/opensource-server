@@ -47,19 +47,35 @@ async function replaceForwards(account, forwards, transaction) {
  *  they belonged to the previous owner. */
 async function restore(account, fields) {
   return MailAccount.sequelize.transaction(async (transaction) => {
-    await account.restore({ transaction });
-    await account.update(fields, { transaction });
-    await replaceForwards(account, [], transaction);
-    return MailAccount.findByPk(account.id, { include: INCLUDES, transaction });
+    const lockedAccount = await MailAccount.findByPk(account.id, {
+      paranoid: false,
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    await lockedAccount.restore({ transaction });
+    await lockedAccount.update(fields, { transaction });
+    await replaceForwards(lockedAccount, [], transaction);
+    return MailAccount.findByPk(lockedAccount.id, { include: INCLUDES, transaction });
   });
 }
 
 /** `forwards` (optional) replaces the forwarding set atomically with the update. */
-async function update(account, fields, forwards) {
-  await MailAccount.sequelize.transaction(async (transaction) => {
-    await account.update(fields, { transaction });
-    if (forwards) await replaceForwards(account, forwards, transaction);
+async function update(account, fields, forwards, { expectedOwnerUidNumber } = {}) {
+  const updated = await MailAccount.sequelize.transaction(async (transaction) => {
+    const lockedAccount = await MailAccount.findByPk(account.id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!lockedAccount || (expectedOwnerUidNumber !== undefined
+      && lockedAccount.uidNumber !== expectedOwnerUidNumber)) {
+      return false;
+    }
+
+    await lockedAccount.update(fields, { transaction });
+    if (forwards) await replaceForwards(lockedAccount, forwards, transaction);
+    return true;
   });
+  if (!updated) return null;
   return findById(account.id);
 }
 
