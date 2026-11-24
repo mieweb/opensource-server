@@ -100,9 +100,21 @@ async function createAccount(session, { externalDomainId, localPart, description
     quotaBytes: (quotaMb ?? defaultQuotaMb) * MB,
   };
   const account = existing
-    ? await repo.restore(existing, { ...fields, enabled: true, unsubscribeHeaders: true, lastRotatedAt: null })
+    ? await repo.restore(existing, {
+      ...fields, enabled: true, unsubscribeHeaders: true, forwardKeepCopy: true, lastRotatedAt: null,
+    })
     : await repo.create(fields);
   return { account, password, connection: await connectionInfo(account) };
+}
+
+/** Dedupe a forwarding set; forwarding to the account itself is what
+ * forwardKeepCopy is for. */
+function normalizeForwards(account, forwards) {
+  const self = `${account.localPart}@${account.domain.name}`.toLowerCase();
+  if (forwards.includes(self)) {
+    throw new ApiError(422, 'forward_to_self', 'An account cannot forward to itself — use "keep a copy" instead');
+  }
+  return [...new Set(forwards)];
 }
 
 async function updateAccount(session, id, body) {
@@ -117,14 +129,18 @@ async function updateAccount(session, id, body) {
   if (body.description !== undefined) fields.description = body.description;
   if (body.enabled !== undefined) fields.enabled = body.enabled;
   if (body.unsubscribeHeaders !== undefined) fields.unsubscribeHeaders = body.unsubscribeHeaders;
+  if (body.forwardKeepCopy !== undefined) fields.forwardKeepCopy = body.forwardKeepCopy;
   if (body.quotaMb !== undefined) fields.quotaBytes = body.quotaMb * MB;
+  let forwards = body.forwards !== undefined ? normalizeForwards(account, body.forwards) : undefined;
   if (body.username !== undefined) {
     const target = await repo.findUserByUid(body.username);
     if (!target) throw new ApiError(404, 'user_not_found', 'Target user not found');
     if (target.status !== 'active') throw new ApiError(422, 'user_inactive', 'Target user is not active');
     fields.uidNumber = target.uidNumber;
+    // The previous owner's forwards must not keep receiving the new owner's mail.
+    forwards = forwards ?? [];
   }
-  return repo.update(account, fields);
+  return repo.update(account, fields, forwards);
 }
 
 /** Returns { account, password, connection } — fresh password shown exactly once. */

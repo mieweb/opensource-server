@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { MAX_MAIL_FORWARDS } = require('../../utils/mail-account');
 
 // Conservative RFC 5321 dot-atom subset; stored lowercase. Alphanumeric
 // runs joined by single separators — rejects consecutive dots like "a..b".
@@ -22,6 +23,12 @@ const updateMailAccount = z.object({
   description: z.string().max(255).nullable().optional(),
   enabled: z.boolean().optional(),
   unsubscribeHeaders: z.boolean().optional(),
+  // Replaces the whole forwarding set; [] removes forwarding.
+  forwards: z
+    .array(z.string().trim().toLowerCase().max(254).pipe(z.email('invalid forwarding address')))
+    .max(MAX_MAIL_FORWARDS, `at most ${MAX_MAIL_FORWARDS} forwarding addresses`)
+    .optional(),
+  forwardKeepCopy: z.boolean().optional(),
   // Admin-only (service enforces).
   quotaMb: z.coerce.number().int().min(1).max(1048576).optional(),
   // Admin-only ownership transfer — target user's uid (username).
