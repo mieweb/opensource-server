@@ -67,22 +67,41 @@ async function buildCheckinBody(cfg: AgentConfig, state: State): Promise<Checkin
  * mail stack this agent started (and ONLY one it started: state.mailManaged
  * guards against touching a host's own unrelated postfix/dovecot).
  * Failures are logged, not fatal — the next timer run retries. */
-async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig, state: State): Promise<void> {
+async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig, state: State): Promise<boolean> {
   try {
     if (cfg.services.includes('mail')) {
-      const mailManaged = await syncMailUnits(config, state.mailManaged);
-      if (mailManaged !== state.mailManaged) {
-        state.mailManaged = mailManaged;
-        state.save();
+      const result = await syncMailUnits(config, state.mailManaged, cfg);
+      const postsrsdReady = result.postsrsdAvailable && state.lastApply.postsrsd !== 'failure';
+      if (postsrsdReady && state.postsrsdUnavailable && config.mail?.hostname) {
+        const postfix = mailServices.find((service) => service.unit === 'postfix');
+        if (!postfix || await applyService(postfix, config, cfg) === 'failure') {
+          throw new Error('could not restore Postfix SRS maps after PostSRSd started');
+        }
       }
+      const changed = state.mailManaged !== result.mailManaged
+        || state.postsrsdUnavailable !== !postsrsdReady;
+      state.mailManaged = result.mailManaged;
+      state.postsrsdUnavailable = !postsrsdReady;
+      if (changed) state.save();
       if (config.mail) gcMailboxes(config.mail);
+      return result.success && postsrsdReady;
     } else if (state.mailManaged) {
       await stopMailUnitsIfRunning();
       state.mailManaged = false;
       state.save();
     }
+    if (!config.mail && state.postsrsdUnavailable) {
+      state.postsrsdUnavailable = false;
+      state.save();
+    }
+    return true;
   } catch (err) {
     log.error(`mail: unit lifecycle sync failed: ${(err as Error).message}`);
+    if (config.mail && !state.mailManaged) {
+      state.mailManaged = true;
+      state.save();
+    }
+    return false;
   }
 }
 
@@ -119,10 +138,17 @@ async function main(): Promise<void> {
     if (cfg.services.includes('mail') && result.config.mail) {
       ensureMailProvisioned(cfg);
     }
-    for (const svc of enabledServices(cfg)) {
-      state.lastApply[svc.unit] = await applyService(svc, result.config, cfg);
+    if (cfg.services.includes('mail') && result.config.mail?.hostname) {
+      state.postsrsdUnavailable = (await getServiceState('postsrsd')) !== 'active';
     }
-    await syncMailLifecycle(cfg, result.config, state);
+    for (const svc of enabledServices(cfg)) {
+      const options = svc.unit === 'postfix' && state.postsrsdUnavailable ? { disableSrs: true } : undefined;
+      state.lastApply[svc.unit] = await applyService(svc, result.config, cfg, options);
+      if (svc.unit === 'postsrsd' && state.lastApply[svc.unit] === 'failure') {
+        state.postsrsdUnavailable = true;
+      }
+    }
+    const mailLifecycleSucceeded = await syncMailLifecycle(cfg, result.config, state);
 
     // Ensure volume directories exist from the new snapshot; stash results in
     // persistent state so they are reported on the next check-in and survive a
@@ -144,8 +170,9 @@ async function main(): Promise<void> {
     const volumeFailed = volumeResults
       ? Object.values(volumeResults).some((r) => !r.applied)
       : false;
-    if (volumeFailed) {
-      log.warn('one or more volume directories failed to provision; will retry on next check-in');
+    if (!mailLifecycleSucceeded) log.warn('mail unit lifecycle sync failed; will retry on next check-in');
+    if (volumeFailed || !mailLifecycleSucceeded) {
+      if (volumeFailed) log.warn('one or more volume directories failed to provision; will retry on next check-in');
       state.etag = undefined;
     } else {
       state.etag = result.etag;

@@ -14,6 +14,8 @@ export class State {
   // shutdown paths: an agent must never stop a postfix/dovecot it did not
   // start (e.g. a host's own unrelated mail setup).
   mailManaged = false;
+  // Keep Postfix SRS maps disabled across retries while PostSRSd is down.
+  postsrsdUnavailable = false;
   // Volume provisioning results not yet confirmed delivered to the manager.
   // Persisted so they survive a process exit between reconcile and the next
   // check-in — otherwise a saved ETag would 304 the next run and the result
@@ -37,11 +39,13 @@ export class State {
         etag?: string;
         lastApply?: Record<string, ApplyResult>;
         mailManaged?: boolean;
+        postsrsdUnavailable?: boolean;
         pendingVolumeResults?: Record<string, VolumeResult>;
       };
       state.etag = data.etag;
       state.lastApply = data.lastApply ?? {};
       state.mailManaged = data.mailManaged ?? false;
+      state.postsrsdUnavailable = data.postsrsdUnavailable ?? false;
       state.pendingVolumeResults = data.pendingVolumeResults ?? {};
     } catch (err) {
       if (!(err instanceof SyntaxError)) throw err;
@@ -60,6 +64,7 @@ export class State {
           etag: this.etag,
           lastApply: this.lastApply,
           mailManaged: this.mailManaged,
+          postsrsdUnavailable: this.postsrsdUnavailable,
           pendingVolumeResults: this.pendingVolumeResults,
         },
         null,

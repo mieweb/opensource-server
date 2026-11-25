@@ -200,7 +200,7 @@ test('postfix main.cf + SRS: canonical maps and postsrsd default file', async ()
 });
 
 test('buildMailContext: SRS only with a mail hostname', () => {
-  const { buildMailContext } = require('../dist/mail.js');
+  const { buildMailContext, mailServices } = require('../dist/mail.js');
   const agent = { stateDir: '/var/lib/opensource-agent' };
   const withSrs = buildMailContext(context.mail, agent, {});
   assert.deepStrictEqual(withSrs.srs, srs);
@@ -209,4 +209,17 @@ test('buildMailContext: SRS only with a mail hostname', () => {
   const noHost = buildMailContext({ ...context.mail, hostname: null }, agent, {});
   assert.strictEqual(noHost.srs, null);
   assert.deepStrictEqual(noHost.acceptDomains, ['example.com']);
+
+  const unavailable = buildMailContext(context.mail, agent, {}, false);
+  assert.strictEqual(unavailable.srs, null);
+  assert.deepStrictEqual(unavailable.acceptDomains, ['example.com']);
+});
+
+test('postfix render disables SRS maps when postsrsd is unavailable', async () => {
+  const { mailServices } = require('../dist/mail.js');
+  const postfix = mailServices.find((service) => service.unit === 'postfix');
+  const agent = { stateDir: '/var/lib/opensource-agent' };
+  const files = await postfix.render({ mail: context.mail }, agent, { disableSrs: true });
+  const main = files.find((file) => file.dest === '/etc/postfix/main.cf').content;
+  assert.doesNotMatch(main, /sender_canonical_maps|recipient_canonical_maps/);
 });

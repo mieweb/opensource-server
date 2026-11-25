@@ -28,7 +28,7 @@ import {
   reloadOrRestartService,
   restartService,
 } from './system';
-import { renderTemplate, type ManagedService } from './apply';
+import { applyService, renderTemplate, type ManagedService } from './apply';
 import { log } from './log';
 import type { AgentConfig } from './config';
 import type { MailConfig, SiteConfig } from './types';
@@ -119,6 +119,7 @@ export function buildMailContext(
   mail: MailConfig,
   agent: AgentConfig,
   env: NodeJS.ProcessEnv = process.env,
+  enableSrs = true,
 ) {
   const mysql = mail.db.dialect === 'mysql' || mail.db.dialect === 'mariadb';
   const host = mail.db.host;
@@ -127,7 +128,7 @@ export function buildMailContext(
   const pfHosts = host
     ? (mail.db.port ? `${host}:${mail.db.port}` : host)
     : (mysql ? 'unix:/var/run/mysqld/mysqld.sock' : 'unix:/var/run/postgresql');
-  const srs = srsContext(mail);
+  const srs = enableSrs ? srsContext(mail) : null;
   return {
     mail,
     srs,
@@ -280,10 +281,10 @@ export const mailServices: ManagedService[] = [
     unit: 'postfix',
     group: 'mail',
     status: postfixReportedState,
-    async render(config, agent) {
+    async render(config, agent, options) {
       const mail = mailOf(config);
       if (!mail) return null;
-      const context = buildMailContext(mail, agent);
+      const context = buildMailContext(mail, agent, process.env, !options?.disableSrs);
       const files = [
         { dest: '/etc/postfix/main.cf', content: await renderTemplate('mail/postfix-main.cf.ejs', context) },
         { dest: '/etc/postfix/master.cf', content: await renderTemplate('mail/postfix-master.cf.ejs', context) },
@@ -371,17 +372,48 @@ export function ensureMailProvisioned(agent: AgentConfig): void {
  * only runs when THIS agent started the units (state.mailManaged) — a
  * host's own unrelated postfix/dovecot must never be touched. Returns the
  * new mailManaged value for the caller to persist. */
-export async function syncMailUnits(config: SiteConfig, mailManaged: boolean): Promise<boolean> {
+export async function syncMailUnits(
+  config: SiteConfig,
+  mailManaged: boolean,
+  agent: AgentConfig,
+): Promise<{ mailManaged: boolean; postsrsdAvailable: boolean; success: boolean }> {
   if (config.mail) {
-    await enableAndStartServices(MAIL_UNITS);
-    return true;
+    let postsrsdFailed = false;
+    let postfixCanStart = true;
+    for (const unit of MAIL_UNITS) {
+      if (unit === 'postfix' && !postfixCanStart) continue;
+      try {
+        await enableAndStartServices([unit]);
+      } catch (err) {
+        if (unit !== 'postsrsd') throw err;
+        postsrsdFailed = true;
+        log.error(`mail: postsrsd failed to start: ${(err as Error).message}`);
+
+        if (config.mail.hostname) {
+          const postfix = mailServices.find((service) => service.unit === 'postfix');
+          let srsDisabled = false;
+          try {
+            srsDisabled = !!postfix
+              && await applyService(postfix, config, agent, { disableSrs: true }) === 'success';
+          } catch (applyErr) {
+            log.error(`mail: could not disable Postfix SRS maps: ${(applyErr as Error).message}`);
+          }
+          if (!srsDisabled) {
+            postfixCanStart = false;
+            await stopAndDisableServices(['postfix']);
+            log.error('mail: could not disable Postfix SRS maps; leaving postfix stopped');
+          }
+        }
+      }
+    }
+    return { mailManaged: true, postsrsdAvailable: !postsrsdFailed, success: !postsrsdFailed };
   }
-  if (!mailManaged) return false;
+  if (!mailManaged) return { mailManaged: false, postsrsdAvailable: true, success: true };
   if (config.mailStatus) {
     log.info(`mail: not the mail host (${config.mailStatus}); stopping the units this agent started`);
   }
   await stopAndDisableServices(MAIL_UNITS);
-  return false;
+  return { mailManaged: false, postsrsdAvailable: true, success: true };
 }
 
 /** Stop the stack when the `mail` group itself is disabled — again only

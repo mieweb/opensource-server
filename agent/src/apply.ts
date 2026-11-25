@@ -45,7 +45,7 @@ export interface ManagedService {
   status?: () => Promise<string>;
   /** Render all managed files. Returns null when there is nothing to manage
    * yet (e.g. dnsmasq before the site exists). */
-  render(config: SiteConfig, agent: AgentConfig): Promise<RenderedFile[] | null>;
+  render(config: SiteConfig, agent: AgentConfig, options?: { disableSrs?: boolean }): Promise<RenderedFile[] | null>;
   /** Commands run after staging files, before `test` (e.g. `postmap -F` to
    * compile the SNI hash map). A failure rolls the files back. */
   postWrite?: string[][];
@@ -160,9 +160,10 @@ export async function applyService(
   svc: ManagedService,
   config: SiteConfig,
   agent: AgentConfig,
+  options?: { disableSrs?: boolean },
 ): Promise<ApplyResult> {
   log.debug(`${svc.unit}: rendering config`);
-  const files = await svc.render(config, agent);
+  const files = await svc.render(config, agent, options);
   if (!files) {
     log.debug(`${svc.unit}: nothing to manage yet, skipping`);
     return 'success';
