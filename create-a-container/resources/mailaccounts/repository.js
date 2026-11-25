@@ -72,7 +72,8 @@ async function update(account, fields, forwards, { expectedOwnerUidNumber } = {}
     }
 
     await lockedAccount.update(fields, { transaction });
-    if (forwards) await replaceForwards(lockedAccount, forwards, transaction);
+    // Only skip when forwards is truly "not provided"; allow [] to clear.
+    if (forwards !== undefined) await replaceForwards(lockedAccount, forwards, transaction);
     return true;
   });
   if (!updated) return null;
