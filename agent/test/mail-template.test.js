@@ -175,13 +175,13 @@ const srs = {
   reversePort: 10002,
 };
 
-test('postfix main.cf: forwards via proxied SQL alias map; no SRS maps without postsrsd', async () => {
+test('postfix main.cf: forwards via proxied SQL alias map; no SRS maps without a mail hostname', async () => {
   const out = await render('mail/postfix-main.cf.ejs');
   assert.match(out, /virtual_alias_maps = proxy:pgsql:\/etc\/postfix\/sql\/forwards\.cf/);
   assert.doesNotMatch(out, /canonical_maps/);
 });
 
-test('postfix main.cf + postsrsd: SRS canonical maps and default file', async () => {
+test('postfix main.cf + SRS: canonical maps and postsrsd default file', async () => {
   const data = { ...context, srs, acceptDomains: ['example.com', 'mail.example.com'] };
   const main = await render('mail/postfix-main.cf.ejs', data);
   assert.match(main, /sender_canonical_maps = tcp:127\.0\.0\.1:10001/);
@@ -199,15 +199,14 @@ test('postfix main.cf + postsrsd: SRS canonical maps and default file', async ()
   assert.match(def, /^SRS_LISTEN_ADDR=127\.0\.0\.1$/m);
 });
 
-test('buildMailContext: SRS only with postsrsd installed and a mail hostname', () => {
+test('buildMailContext: SRS only with a mail hostname', () => {
   const { buildMailContext } = require('../dist/mail.js');
   const agent = { stateDir: '/var/lib/opensource-agent' };
-  const withSrs = buildMailContext(context.mail, agent, {}, true);
+  const withSrs = buildMailContext(context.mail, agent, {});
   assert.deepStrictEqual(withSrs.srs, srs);
   assert.deepStrictEqual(withSrs.acceptDomains, ['example.com', 'mail.example.com']);
 
-  assert.strictEqual(buildMailContext(context.mail, agent, {}, false).srs, null);
-  const noHost = buildMailContext({ ...context.mail, hostname: null }, agent, {}, true);
+  const noHost = buildMailContext({ ...context.mail, hostname: null }, agent, {});
   assert.strictEqual(noHost.srs, null);
   assert.deepStrictEqual(noHost.acceptDomains, ['example.com']);
 });

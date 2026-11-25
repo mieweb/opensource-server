@@ -10,9 +10,9 @@ The mail IP is the `externalIp` of the mail host's site. Dovecot and Postfix rea
 
 ## Forwarding and SRS
 
-Forwarded copies leave the mail host with the original sender's envelope address, which fails SPF at the destination. When `postsrsd` is installed (the manager image ships it), the agent enables SRS: foreign envelope senders are rewritten to `SRS0=…@<Mail hostname>`, and bounces to those addresses are reversed to the original sender. Senders on your own mail domains are never rewritten.
+Forwarded copies leave the mail host with the original sender's envelope address, which fails SPF at the destination. The agent runs `postsrsd` (part of the mail stack packages): foreign envelope senders are rewritten to `SRS0=…@<Mail hostname>`, and bounces to those addresses are reversed to the original sender. Senders on your own mail domains are never rewritten.
 
-- SRS needs the **Mail hostname** setting; without it (or without `postsrsd`) forwarding still works, unrewritten.
+- SRS needs the **Mail hostname** setting; without it forwarding still works, unrewritten.
 - Publish an SPF record for the mail hostname: `<mail hostname>. TXT "v=spf1 a -all"` (or `ip4:<mail IP>`; add the relay's include when using a relayhost).
 - The agent adds the mail hostname to the accepted domains so SRS bounces are delivered.
 - Side effect: inbound mail from outside senders shows an `SRS0=` `Return-Path` in mailboxes too.
@@ -39,7 +39,7 @@ One-click unsubscribe links (`<manager>/u/<token>`) use the mail host agent's `M
 
 **B. Another agent host.**
 
-1. Install the suggested packages: `apt install opensource-mail-helper postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim postsrsd` (use the `-mysql` variants on MySQL/MariaDB; `postsrsd` is optional — see [Forwarding and SRS](#forwarding-and-srs)).
+1. Install the suggested packages: `apt install opensource-mail-helper postfix postfix-pgsql dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql opendkim postsrsd` (use the `-mysql` variants on MySQL/MariaDB).
 2. Install the per-domain certs under `/etc/ssl` (same layout as nginx).
 3. Set the **Mail DB host** setting, give the `mail_postfix`/`mail_dovecot` roles passwords (`ALTER ROLE mail_postfix WITH PASSWORD '...'`), and put `MAIL_POSTFIX_DB_PASSWORD` / `MAIL_DOVECOT_DB_PASSWORD` in the agent's `/etc/environment`.
 4. Make sure the agent checks in over HTTPS — the manager refuses to send the mail snapshot (DKIM keys, relay credentials) over plaintext (`insecure_transport`).

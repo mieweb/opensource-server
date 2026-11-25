@@ -111,7 +111,7 @@ Services are organized in groups enabled via `AGENT_SERVICES`. The check-in repo
 | mail | opendkim | `/etc/opendkim.conf`, `$STATE_DIRECTORY/mail/{opendkim-keytable,opendkim-signingtable,dkim/*.private}` | `opendkim -n` | restart |
 | mail | dovecot | `/etc/dovecot/dovecot.conf` | `doveconf -n` | reload + `doveadm auth cache flush` |
 | mail | postfix (status: `postfix@-`) | `/etc/postfix/{main.cf,master.cf,vdomains,sni_map,sql/senders.cf,sql/mailboxes.cf,sql/forwards.cf}` | `postfix check` (after `postmap -F` postWrite) | reload-or-restart |
-| mail | postsrsd (only when installed; needs a mail hostname) | `/etc/default/postsrsd` | — | restart |
+| mail | postsrsd (needs a mail hostname) | `/etc/default/postsrsd` | — | restart |
 | mail | opensource-mail-helper | `/opt/opensource-server/mail-helper/config.local.json` | — | restart |
 
 The mail group renders only on the agent holding the mail-host claim (the `mail` section of the snapshot). The helper is its own component/package ([mail-helper/](https://github.com/mieweb/opensource-server/tree/main/mail-helper)) — a Postfix milter on a unix socket inside the Postfix chroot, ordered before OpenDKIM so the DKIM signature covers the List-Unsubscribe headers it injects. Taking the claim provisions directories (system users come from the helper package) and enables + starts the units; losing it — or removing `mail` from `AGENT_SERVICES` — stops and disables them, leaving configs and `/var/vmail` in place. Maildirs of deleted accounts are garbage-collected after 30 days.

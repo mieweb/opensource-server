@@ -7,13 +7,10 @@ PartOf=postfix.service
 [Service]
 Type=simple
 User=opensource-mail
-# postfix group so the chrooted smtpd can connect to the milter socket.
+# postfix group so the chrooted smtpd can connect to the milter socket, and
+# so the daemon can read config.local.json (root:postfix 0640, written by
+# the agent).
 Group=postfix
-# Group= replaces the user's primary group, and system users are not listed
-# as members of their own group in /etc/group — without this the process
-# never carries the opensource-mail gid and cannot read config.local.json
-# (root:opensource-mail 0640, written by the agent).
-SupplementaryGroups=opensource-mail
 WorkingDirectory=/opt/opensource-server/mail-helper
 ExecStart=/usr/bin/node /opt/opensource-server/mail-helper/src/index.js
 Restart=on-failure

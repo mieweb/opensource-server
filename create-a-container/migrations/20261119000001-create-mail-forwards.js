@@ -13,10 +13,22 @@
  *                             accounts on can-receive domains appear.
  */
 
-const { viewSqlParts } = require('./20261008000006-create-mail-views');
-
+// Dialect fragments mirroring 20261008000006-create-mail-views, duplicated
+// on purpose: applied migrations are frozen, so later ones never import them.
 function forwardsViewSql(dialect) {
-  const { q, address, canReceive, live, accountJoins, joins } = viewSqlParts(dialect);
+  const mysql = dialect === 'mysql' || dialect === 'mariadb';
+  const q = mysql ? (s) => `\`${s}\`` : (s) => `"${s}"`;
+  const cat = mysql
+    ? (...parts) => `CONCAT(${parts.join(', ')})`
+    : (...parts) => parts.join(' || ');
+
+  const address = `LOWER(${cat(`ma.${q('localPart')}`, "'@'", `ed.${q('name')}`)})`;
+  const canReceive = `(ed.${q('mailEnabled')} AND ed.${q('mailMxVerified')})`;
+  const live = `ma.${q('deletedAt')} IS NULL`;
+  const accountJoins =
+    `JOIN ${q('ExternalDomains')} ed ON ed.${q('id')} = ma.${q('externalDomainId')} ` +
+    `JOIN ${q('Users')} u ON u.${q('uidNumber')} = ma.${q('uidNumber')} AND u.${q('status')} = 'active'`;
+  const joins = `FROM ${q('MailAccounts')} ma ${accountJoins}`;
   const gate = `${live} AND ma.${q('enabled')} AND ${canReceive}`;
   return (
     'CREATE VIEW mail_forwards_v AS ' +
@@ -41,8 +53,6 @@ function grantSql(queryInterface) {
 }
 
 module.exports = {
-  grantSql,
-
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('MailForwards', {
       id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true, allowNull: false },
