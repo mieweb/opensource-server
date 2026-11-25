@@ -97,10 +97,6 @@ async function syncMailLifecycle(cfg: AgentConfig, config: SiteConfig, state: St
     return true;
   } catch (err) {
     log.error(`mail: unit lifecycle sync failed: ${(err as Error).message}`);
-    if (config.mail && !state.mailManaged) {
-      state.mailManaged = true;
-      state.save();
-    }
     return false;
   }
 }
